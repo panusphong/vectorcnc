@@ -5,7 +5,7 @@ VectorCNC API — FastAPI หุ้ม vectorcnc.pipeline.process
 API : POST http://localhost:8000/api/vectorize   (multipart: file, n_colors)
 CORS เปิดหมด -> Claude Design / เว็บที่ไหนก็เรียกได้
 """
-import os, sys, tempfile, base64
+import os, sys, tempfile, base64, re
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -85,6 +85,49 @@ async def vectorize(
         "rings": rep["n_rings"],
         "layer_info": [{"color": c} for c in rep["layer_colors"]],
     }
+
+
+DESIGN_SYS = (
+    "คุณเป็นดีไซเนอร์ป้าย/โลโก้สำหรับงานตัด CNC/เลเซอร์. "
+    "สร้างงานเป็น SVG ที่ตัดได้จริง: พื้นหลังขาว, รูปทรง/ตัวอักษรทึบสีเข้มคอนทราสต์สูง, "
+    "เส้นหนาชัด ไม่บางเกินไป, ใช้ <text> ตัวหนา หรือรูปทรงเรขาคณิตเรียบง่าย, มี viewBox เสมอ. "
+    "ห้ามใช้ gradient/รูปภาพภายนอก/ฟิลเตอร์. ตอบกลับเป็นโค้ด SVG อย่างเดียว ห้ามมีคำอธิบายอื่น."
+)
+
+
+def _extract_svg(text):
+    m = re.search(r"<svg[\s\S]*?</svg>", text or "", re.IGNORECASE)
+    return m.group(0) if m else ""
+
+
+@app.post("/api/design")
+async def design(brief: str = Form(...), style: str = Form(""), width_mm: float = Form(600.0)):
+    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY")
+    if not key:
+        return JSONResponse(
+            {"error": "ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY ใน Render → Environment"},
+            status_code=400)
+    model = os.environ.get("DESIGN_MODEL", "claude-sonnet-4-6")
+    prompt = (
+        "ออกแบบงานป้าย/โลโก้ตามบรีฟนี้: \"%s\". สไตล์: %s. "
+        "งานกว้างจริงราว %.0f มม. จัดองค์ประกอบให้พอดีกรอบ. "
+        "ส่งกลับเป็น SVG โค้ดอย่างเดียว." % (brief, style or "เรียบ โมเดิร์น", width_mm)
+    )
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        msg = client.messages.create(
+            model=model, max_tokens=4000, system=DESIGN_SYS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(getattr(b, "text", "") for b in msg.content
+                       if getattr(b, "type", "") == "text")
+        svg = _extract_svg(text)
+        if not svg:
+            return JSONResponse({"error": "โมเดลไม่ได้คืน SVG"}, status_code=400)
+        return {"svg": svg, "model": model}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
 
 
 @app.get("/")
