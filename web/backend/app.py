@@ -46,6 +46,7 @@ async def vectorize(
     kerf_mm: float = Form(3.0),
     tool_mm: float = Form(6.0),
     tabs: int = Form(0),
+    mode: str = Form("cutout"),
 ):
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "input.png")
@@ -61,6 +62,7 @@ async def vectorize(
             n_colors=max(2, min(12, int(n_colors))),
             real_width_mm=float(real_width_mm), kerf_mm=float(kerf_mm),
             tool_mm=float(tool_mm), tabs=int(tabs),
+            mode=("lineart" if str(mode).lower() == "lineart" else "cutout"),
         )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
