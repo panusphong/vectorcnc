@@ -43,7 +43,8 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
     mode='cutout'  -> VTracer แปลงสีเป็นชิ้นตัด (kerf/ฟิลเล็ต/tabs)
     mode='lineart' -> skeletonize ลากแกนกลางเส้น (ตัวอักษร/เส้นขอบ)"""
     from . import trace_engine
-    img = cv2.imread(image_path)
+    work = trace_engine.prep_image(image_path)   # เตรียมภาพให้คม (upscale+ลด noise)
+    img = cv2.imread(work)
     if img is None:
         raise FileNotFoundError(image_path)
     H, W = img.shape[:2]
@@ -52,12 +53,12 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
     layers, total_rings = [], 0
 
     if mode == 'lineart':
-        rings, _ = trace_engine.trace_lineart(image_path)
+        rings, _ = trace_engine.trace_lineart(work)
         if rings:
             layers.append(('L0', '#0EA5A5', rings))
             total_rings = len(rings)
     else:
-        traced = trace_engine.trace_color(image_path, n_colors=n_colors, filter_speckle=4)
+        traced = trace_engine.trace_color(work, n_colors=n_colors, filter_speckle=8)
         for i, (bgr, geom) in enumerate(traced):
             rings = cnc_export.process_geom(geom, ppm, kerf_mm=kerf_mm, tool_mm=tool_mm,
                                             min_mm=min_mm, round_corners=round_corners, tabs=tabs)
