@@ -2,7 +2,6 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 opencv-python-headless>=4.8
-scikit-image>=0.22
 numpy>=1.24
 shapely>=2.0
 ezdxf>=1.1

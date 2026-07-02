@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse, FileResponse
 # ให้ import แพ็กเกจ vectorcnc (อยู่ที่ราก VectorCNC_App)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-from vectorcnc import pipeline
+# หมายเหตุ: ไม่ import vectorcnc ที่นี่ (opencv โหลดหนัก ~นาที บนเครื่องฟรี)
+# ใช้ lazy import ในตัว handler แทน -> แอปเปิด port ทันที health check ผ่าน
 
 app = FastAPI(title="VectorCNC API", version="1.0")
 app.add_middleware(
@@ -54,6 +55,7 @@ async def vectorize(
     with open(inp, "wb") as f:
         f.write(data)
     try:
+        from vectorcnc import pipeline   # lazy: โหลด opencv เฉพาะตอนใช้งานจริง
         rep = pipeline.process_cnc(
             inp, out_svg, out_dxf,
             n_colors=max(2, min(12, int(n_colors))),
