@@ -1,0 +1,9 @@
+# Render Blueprint — deploy VectorCNC ด้วยคลิกเดียว (อ่าน Dockerfile ให้เอง)
+services:
+  - type: web
+    name: vectorcnc
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # ฟรี (สลีปเมื่อไม่มีคนใช้ ~50 วิ cold start) · โปรดักชันเปลี่ยนเป็น starter ~$7/เดือน
+    healthCheckPath: /api/health
+    autoDeploy: true
