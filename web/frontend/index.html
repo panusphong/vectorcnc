@@ -197,7 +197,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
 <input type="file" id="fileInput" accept="image/*" style="display:none">
 <script>
 var API='';
-var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc';
+var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc',lastDesignSvg='';
 function $(id){return document.getElementById(id);}
 
 var PRESETS={
@@ -241,10 +241,48 @@ function paintMode(){
 
 // ---- roadmap modals ----
 function openModal(title,badge,html){$('mTitle').textContent=title;$('mBadge').textContent=badge;$('mBody').innerHTML=html;$('modal').classList.add('show');}
-$('btnAI').onclick=function(){openModal('AI ออกแบบ สำหรับเซลล์','เฟสถัดไป · Claude Design',
-  '<p>เซลล์ออกแบบให้ลูกค้าหน้างานได้ทันที แล้วส่งเข้า VectorCNC เพื่อออกไฟล์ตัดเลย</p>'+
-  '<div class="flow"><div class="st"><b>1</b>พิมพ์บรีฟ</div><div class="st"><b>2</b>เลือกแบบ</div><div class="st"><b>3</b>ปรับขนาด/วัสดุ</div><div class="st"><b>4</b>ออกไฟล์+ใบเสนอราคา</div></div>'+
-  '<p>กำลังพัฒนา — เชื่อม Claude Design เพื่อสร้างแบบจากข้อความ แล้วไหลตรงเข้า tracer ออก SVG/DXF พร้อมตัด</p>');};
+function ensureXmlns(svg){return /xmlns=/.test(svg)?svg:svg.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');}
+function svgToPng(svg,cb){
+  var vb=/viewBox=["']([\d.\s-]+)["']/.exec(svg);var W=1200,H=1200;
+  if(vb){var a=vb[1].trim().split(/\s+/);if(a.length===4){var w=parseFloat(a[2]),h=parseFloat(a[3]);if(w>0&&h>0){H=Math.round(1200*h/w);}}}
+  var img=new Image();var b=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});var url=URL.createObjectURL(b);
+  img.onload=function(){var c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(img,0,0,W,H);URL.revokeObjectURL(url);c.toBlob(function(bl){cb(bl);},'image/png');};
+  img.onerror=function(){URL.revokeObjectURL(url);cb(null);};
+  img.src=url;
+}
+function openAIDesign(){
+  $('mBadge').textContent='Claude API · เวกเตอร์';
+  $('mTitle').textContent='AI ออกแบบ สำหรับเซลล์';
+  $('mBody').innerHTML=''+
+    '<p style="color:#5A6B8C;font-size:13.5px;margin-bottom:10px">พิมพ์บรีฟงานป้าย/โลโก้ → Claude สร้างแบบ SVG เวกเตอร์ → ส่งเข้าตัดได้ทันที</p>'+
+    '<textarea id="aiBrief" placeholder="เช่น ป้ายร้านกาแฟ ชื่อ BEAN ตัวหนา โทนมินิมอล มีรูปเมล็ดกาแฟ" style="width:100%;min-height:82px;font-family:inherit;font-size:14px;padding:11px;border:1px solid var(--line2);border-radius:10px;outline:none;resize:vertical;color:var(--ink)"></textarea>'+
+    '<input id="aiStyle" class="numin" style="margin-top:8px" placeholder="สไตล์ (ไม่บังคับ) เช่น โมเดิร์น / วินเทจ / ลายไทย">'+
+    '<button class="btn primary" id="aiGen" style="width:100%;margin-top:10px">✨ สร้างแบบ</button>'+
+    '<div id="aiOut" style="margin-top:12px"></div>';
+  $('modal').classList.add('show');
+  $('aiGen').onclick=genDesign;
+}
+function genDesign(){
+  var brief=($('aiBrief').value||'').trim();
+  if(!brief){$('aiBrief').focus();return;}
+  $('aiGen').disabled=true;$('aiGen').textContent='⏳ กำลังสร้าง...';
+  $('aiOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">Claude กำลังออกแบบ...</div></div>';
+  var fd=new FormData();
+  fd.append('brief',brief);fd.append('style',$('aiStyle').value||'');fd.append('width_mm',$('realW').value||'600');
+  fetch((API||'')+'/api/design',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    $('aiGen').disabled=false;$('aiGen').textContent='✨ สร้างใหม่';
+    if(j.error){$('aiOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
+    lastDesignSvg=ensureXmlns(j.svg);
+    $('aiOut').innerHTML='<div style="background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px;max-height:220px;overflow:auto;display:grid;place-items:center">'+lastDesignSvg+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost" id="aiDl" style="flex:1">⬇ SVG</button><button class="btn primary" id="aiUse" style="flex:1.4">✂️ ส่งเข้าตัด</button></div>';
+    $('aiDl').onclick=function(){var bb=new Blob([lastDesignSvg],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(bb);a.download='design.svg';a.click();};
+    $('aiUse').onclick=function(){if(!lastDesignSvg)return;svgToPng(lastDesignSvg,function(bl){if(!bl){alert('แปลงภาพไม่สำเร็จ');return;}pick(new File([bl],'ai_design.png',{type:'image/png'}));$('modal').classList.remove('show');});};
+  }).catch(function(e){
+    $('aiGen').disabled=false;$('aiGen').textContent='✨ สร้างแบบ';
+    $('aiOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">ต่อ backend ไม่ได้ '+e+'</div>';
+  });
+}
+$('btnAI').onclick=openAIDesign;
 $('btnNest').onclick=function(){openModal('Nesting จัดวางบนแผ่น','เฟสถัดไป · Deep NFP',
   '<p>จัดชิ้นงานหลายชิ้นลงบนแผ่นวัสดุตามรูปจริง (No-Fit Polygon) เพื่อประหยัดวัสดุสูงสุด</p>'+
   '<p>รองรับแผ่น: อะคริลิค 1220×2440 · โลหะ 1200×2400 · 1000×2000 · กำหนดเอง — คำนวณ %การใช้วัสดุ + จำนวนแผ่น ต่อเข้าระบบ BOM/เบิกวัตถุดิบ</p>');};
