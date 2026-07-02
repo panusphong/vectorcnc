@@ -7,86 +7,112 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0B1220;--panel:#111C33;--panel2:#0E1729;--line:#1E2C48;--line2:#2A3B5E;--ink:#EAF1FF;--muted:#8CA0C6;--dim:#5B6E93;--cyan:#22D3EE;--blue:#3B82F6;--grad:linear-gradient(135deg,#22D3EE,#3B82F6);--amber:#FBBF24;--green:#34D399;--red:#F87171}
+:root{--bg:#EEF2F8;--panel:#FFFFFF;--panel2:#F5F8FC;--line:#E6ECF5;--line2:#D6E0EE;--ink:#1B2A4A;--muted:#5A6B8C;--dim:#8A99B5;--brand:#2563EB;--cyan:#06B6D4;--grad:linear-gradient(135deg,#2563EB,#06B6D4);--amber:#F59E0B;--green:#10B981;--red:#EF4444;--shadow:0 18px 50px rgba(30,58,95,.10)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Prompt','Segoe UI',sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
 .mono{font-family:'Prompt',sans-serif}
-.wrap{max-width:1240px;margin:0 auto;padding:0 26px}
-body::before{content:"";position:fixed;inset:0;z-index:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:44px 44px;opacity:.18;mask-image:radial-gradient(ellipse at 50% 0%,#000 40%,transparent 80%)}
+.wrap{max-width:1300px;margin:0 auto;padding:0 26px}
+body::before{content:"";position:fixed;inset:0;z-index:0;background:radial-gradient(900px 480px at 50% -8%,rgba(37,99,235,.10),transparent 70%)}
 .rel{position:relative;z-index:1}
-nav{position:sticky;top:0;z-index:40;background:rgba(11,18,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;padding:15px 26px;max-width:1240px;margin:0 auto}
+nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;padding:14px 26px;max-width:1300px;margin:0 auto}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}
-.logo{width:30px;height:30px;border-radius:8px;background:var(--grad);display:grid;place-items:center;box-shadow:0 0 22px rgba(34,211,238,.45)}
+.logo{width:32px;height:32px;border-radius:9px;background:var(--grad);display:grid;place-items:center;box-shadow:0 6px 18px rgba(37,99,235,.35)}
 .brand b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tag-api{font-size:11.5px;color:var(--dim)}
-.btn{display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:14.5px;padding:11px 20px;border-radius:11px;transition:.18s}
-.btn.primary{background:var(--grad);color:#04121f;box-shadow:0 8px 26px rgba(34,211,238,.3)}
-.btn.primary:hover{transform:translateY(-2px)}
-.btn.primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
-.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line2)}
-.btn.ghost:hover{border-color:var(--cyan);color:var(--cyan)}
-.btn.ghost:disabled{opacity:.4;cursor:not-allowed}
-.hero{padding:40px 0 8px;text-align:center}
-.pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--cyan);background:rgba(34,211,238,.10);border:1px solid rgba(34,211,238,.3);padding:6px 14px;border-radius:100px;margin-bottom:16px}
+.nav-right{display:flex;align-items:center;gap:14px}
+.nav-btn{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--brand);background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);padding:8px 14px;border-radius:10px;cursor:pointer;transition:.16s}
+.nav-btn:hover{background:rgba(37,99,235,.14)}
+.tag-api{font-size:12px;color:var(--dim)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;font-family:inherit;font-weight:600;font-size:14.5px;padding:12px 20px;border-radius:12px;transition:.18s}
+.btn.primary{background:var(--grad);color:#fff;box-shadow:0 10px 26px rgba(37,99,235,.28)}
+.btn.primary:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(37,99,235,.36)}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line2)}
+.btn.ghost:hover{border-color:var(--brand);color:var(--brand)}
+.btn.ghost:disabled{opacity:.45;cursor:not-allowed}
+.hero{padding:38px 0 6px;text-align:center}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--brand);background:#fff;border:1px solid var(--line2);box-shadow:0 4px 14px rgba(30,58,95,.06);padding:6px 15px;border-radius:100px;margin-bottom:16px}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 h1{font-size:clamp(26px,4.4vw,40px);font-weight:700;line-height:1.14;margin-bottom:10px}
 h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.lead{color:var(--muted);font-size:15.5px;max-width:600px;margin:0 auto;font-weight:300}
-.app{background:var(--panel);border:1px solid var(--line2);border-radius:22px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5);margin:26px 0 40px}
+.lead{color:var(--muted);font-size:15.5px;max-width:620px;margin:0 auto;font-weight:300}
+.app{background:var(--panel);border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:var(--shadow);margin:26px 0 40px}
 .app-head{display:flex;align-items:center;gap:10px;padding:13px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
-.dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#2A3B5E}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+.dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#CBD6E6}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
 .app-title{font-size:13px;color:var(--dim)}
-.app-body{display:grid;grid-template-columns:290px 1fr 250px;min-height:470px}
+.app-body{display:grid;grid-template-columns:300px 1fr 258px;min-height:490px}
 @media(max-width:980px){.app-body{grid-template-columns:1fr}}
-.side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:14px}
+.side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
-.drop:hover,.drop.over{border-color:var(--cyan);background:rgba(34,211,238,.06)}
-.drop .ic{font-size:28px;margin-bottom:6px}.drop b{display:block;font-size:14px;margin-bottom:3px}.drop span{font-size:12px;color:var(--dim)}
+.drop:hover,.drop.over{border-color:var(--brand);background:rgba(37,99,235,.05)}
+.drop .ic{font-size:26px;margin-bottom:6px}.drop b{display:block;font-size:14px;margin-bottom:3px}.drop span{font-size:12px;color:var(--dim)}
 .thumb{border-radius:10px;overflow:hidden;border:1px solid var(--line2);display:none}
 .thumb img{width:100%;display:block;max-height:120px;object-fit:cover}
-.set label{display:block;font-size:12.5px;color:var(--muted);margin:8px 0 6px;font-weight:500}
-.set label .v{float:right;color:var(--cyan);font-weight:600}
-input[type=range]{width:100%;accent-color:var(--cyan);height:4px}
-.numin{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);font-family:inherit;font-size:14px;padding:9px 11px;border-radius:9px;outline:none}
-.numin:focus{border-color:var(--cyan)}
-.chk{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer;margin-top:4px}
-.chk input{accent-color:var(--cyan);width:16px;height:16px}
-.stage{position:relative;background:radial-gradient(1000px 500px at 50% -10%,rgba(59,130,246,.1),transparent 60%),var(--panel2);display:grid;place-items:center;padding:22px;overflow:hidden}
-.stage::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:22px 22px}
-.compare{position:relative;width:100%;max-width:460px;aspect-ratio:1.1/1;border-radius:12px;overflow:hidden;border:1px solid var(--line2);box-shadow:0 14px 40px rgba(0,0,0,.4);z-index:1;background:#081120}
+.grp{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)}
+.grp .gt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:inherit;font-size:12px;font-weight:500;color:var(--muted);background:#fff;border:1px solid var(--line2);padding:7px 10px;border-radius:9px;cursor:pointer;transition:.15s}
+.chip:hover{border-color:var(--brand)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.25)}
+.seg{display:flex;gap:6px;margin-top:2px}
+.seg .sbtn{flex:1;padding:9px 6px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--muted);font-family:inherit;font-size:13px;cursor:pointer;transition:.15s}
+.seg .sbtn.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.set label{display:block;font-size:12.5px;color:var(--muted);margin:9px 0 6px;font-weight:500}
+.set label .v{float:right;color:var(--brand);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--brand);height:4px}
+.numin{width:100%;background:#fff;border:1px solid var(--line2);color:var(--ink);font-family:inherit;font-size:14px;padding:9px 11px;border-radius:9px;outline:none}
+.numin:focus{border-color:var(--brand)}
+.hint{font-size:11px;color:var(--dim);margin:6px 0 2px}
+.chk{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer;margin-top:8px}
+.chk input{accent-color:var(--brand);width:16px;height:16px}
+.stage{position:relative;background:var(--panel2);display:grid;place-items:center;padding:22px;overflow:hidden}
+.stage::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(37,99,235,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,.05) 1px,transparent 1px);background-size:24px 24px}
+.compare{position:relative;width:100%;max-width:470px;aspect-ratio:1.1/1;border-radius:14px;overflow:hidden;border:1px solid var(--line2);box-shadow:0 14px 40px rgba(30,58,95,.14);z-index:1;background:#fff}
 .compare .layer{position:absolute;inset:0;width:100%;height:100%;display:grid;place-items:center}
 .compare .layer img,.compare .layer svg{max-width:100%;max-height:100%}
-#after{background:#050c17;clip-path:inset(0 0 0 52%)}
-#after svg *{stroke:var(--cyan)!important;fill:none!important;stroke-width:1.3px!important;vector-effect:non-scaling-stroke}
-.divider{position:absolute;top:0;bottom:0;left:52%;width:2px;background:var(--cyan);box-shadow:0 0 14px var(--cyan);z-index:3}
-.divider .knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;background:var(--grad);display:grid;place-items:center;color:#04121f;cursor:ew-resize;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+#after{background:#fff;clip-path:inset(0 0 0 52%)}
+#after svg *{stroke:var(--brand)!important;fill:none!important;stroke-width:1.3px!important;vector-effect:non-scaling-stroke}
+.divider{position:absolute;top:0;bottom:0;left:52%;width:2px;background:var(--brand);box-shadow:0 0 12px rgba(37,99,235,.6);z-index:3}
+.divider .knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;background:var(--grad);display:grid;place-items:center;color:#fff;cursor:ew-resize;box-shadow:0 4px 14px rgba(30,58,95,.35)}
 .tag{position:absolute;bottom:10px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;z-index:4}
-.tag.b{left:10px;background:rgba(0,0,0,.5);color:#cfe0ff}.tag.a{right:10px;background:var(--cyan);color:#04121f}
-.empty-stage{color:var(--dim);text-align:center;font-size:14px;z-index:1}.empty-stage .big{font-size:40px;margin-bottom:10px;opacity:.6}
-.spinner{width:38px;height:38px;border:3px solid var(--line2);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+.tag.b{left:10px;background:rgba(27,42,74,.75);color:#fff}.tag.a{right:10px;background:var(--brand);color:#fff}
+.empty-stage{color:var(--dim);text-align:center;font-size:14px;z-index:1}.empty-stage .big{font-size:40px;margin-bottom:10px;opacity:.55}
+.spinner{width:38px;height:38px;border:3px solid var(--line2);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .out{padding:20px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
-.out h4{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+.out h4{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim)}
 .layer-row{display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:9px}
-.sw{width:14px;height:14px;border-radius:4px;flex-shrink:0}.layer-row .n{flex:1}
-.stat{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0}.stat b{color:var(--cyan)}
-.dl{display:flex;flex-direction:column;gap:8px;margin-top:auto}.dl .btn{width:100%;justify-content:center}.dl .row2{display:flex;gap:8px}.dl .row2 .btn{flex:1;padding:10px}
+.sw{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid rgba(0,0,0,.1)}.layer-row .n{flex:1}
+.stat{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0}.stat b{color:var(--brand)}
+.dl{display:flex;flex-direction:column;gap:8px;margin-top:auto}.dl .btn{width:100%}.dl .row2{display:flex;gap:8px}.dl .row2 .btn{flex:1;padding:10px}
 .muted-note{color:var(--dim);font-size:12px;text-align:center;padding:14px 0}
 footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-size:13px;text-align:center}
+.modal{position:fixed;inset:0;z-index:80;background:rgba(27,42,74,.45);backdrop-filter:blur(4px);display:none;place-items:center;padding:20px}
+.modal.show{display:grid}
+.modal-card{background:#fff;border-radius:18px;max-width:520px;width:100%;padding:26px;box-shadow:0 30px 70px rgba(0,0,0,.3)}
+.modal-card h3{font-size:20px;margin-bottom:6px}
+.modal-card .badge{display:inline-block;font-size:11px;font-weight:600;color:var(--amber);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);padding:3px 10px;border-radius:100px;margin-bottom:12px}
+.modal-card p{color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:10px}
+.flow{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.flow .st{flex:1;min-width:100px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:12px;color:var(--ink)}
+.flow .st b{display:block;color:var(--brand);font-size:18px;margin-bottom:3px}
 </style>
 </head>
 <body>
 <nav><div class="nav-in">
-  <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#04121f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 7 L14 15 L20 5"/></svg></span>Vector<b>CNC</b></div>
-  <div class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></div>
+  <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 7 L14 15 L20 5"/></svg></span>Vector<b>CNC</b></div>
+  <div class="nav-right">
+    <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
+    <button class="nav-btn" id="btnNest">▦ Nesting</button>
+    <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
+  </div>
 </div></nav>
 
 <div class="wrap rel">
   <section class="hero">
-    <span class="pill"><span class="dot"></span> ระบบจริง · เส้นพร้อมตัด + พร้อม Fusion</span>
+    <span class="pill"><span class="dot"></span> ระบบจริง · พร้อมตัด Fiber / CO2 / Router + พร้อม Fusion</span>
     <h1>เปลี่ยน<span class="g">ภาพถ่าย</span> เป็น <span class="g">เส้นตัด CNC</span></h1>
-    <p class="lead">อัปโหลดรูป → ตั้งขนาดจริง/ดอกกัด → ได้ SVG + DXF หน่วยมม. พร้อม kerf และฟิลเล็ตมุม</p>
+    <p class="lead">อัปโหลดรูป → เลือกวัสดุ/เครื่อง → ตั้งขนาดจริง → ได้ SVG + DXF หน่วยมม. พร้อมตัดเข้า Fiber laser · CO2 · Router</p>
   </section>
 
   <div class="app">
@@ -96,15 +122,37 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
       <div class="side">
         <div class="drop" id="drop"><div class="ic">📤</div><b>ลากรูปมาวาง</b><span>หรือคลิกเลือก · JPG PNG</span></div>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
+
+        <div class="grp">
+          <div class="gt">วัสดุ / เครื่องตัด</div>
+          <div class="chips" id="presetChips">
+            <button class="chip" data-preset="fiber_ss">Fiber · สแตนเลส</button>
+            <button class="chip" data-preset="fiber_zn">Fiber · ซิงค์</button>
+            <button class="chip" data-preset="co2_acr">CO2 · อะคริลิค</button>
+            <button class="chip on" data-preset="router">Router · ดอกกัด</button>
+          </div>
+          <div class="hint" id="presetHint">Router · ดอกกัด — kerf 3.0 มม. · ดอก 6 มม.</div>
+        </div>
+
         <div class="set">
+          <label>โหมดการแปลง</label>
+          <div class="seg" id="modeSeg">
+            <button type="button" class="sbtn on" data-mode="cutout">✂️ ตัดชิ้น</button>
+            <button type="button" class="sbtn" data-mode="lineart">✒️ เส้น (ตัวอักษร)</button>
+          </div>
+          <div class="hint" id="modeHint">ภาพทึบ/โลโก้ → ตัดชิ้น · ตัวอักษร/เส้นขอบบาง → โหมดเส้น</div>
+
           <label>จำนวนสี / เลเยอร์ <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
+
           <label>ขนาดจริงของงาน (กว้าง, มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
-          <label>Kerf ชดเชยดอกกัด <span class="v" id="vK">3.0 มม.</span></label>
-          <input type="range" id="kerf" min="0" max="10" step="0.5" value="3">
-          <label>ขนาดดอกกัด (เส้นผ่านศูนย์กลาง, มม.) <span class="v" id="vT">6</span></label>
-          <input type="range" id="tool" min="1" max="16" step="1" value="6">
+          <div class="hint" id="sizeHint">กำหนดความกว้างจริง → ระบบสเกลไฟล์ให้พอดี (ลด/เพิ่มขนาดก่อนตัด)</div>
+
+          <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
+          <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
+          <label>ขนาดดอกกัด / ปัดมุม <span class="v" id="vT">6</span></label>
+          <input type="range" id="tool" min="0" max="16" step="0.5" value="6">
           <label class="chk"><input type="checkbox" id="tabs"> ใส่ tabs (สะพานกันชิ้นหล่น)</label>
         </div>
         <button class="btn primary" id="go" disabled>⚡ แปลงเป็นเส้นตัด</button>
@@ -124,13 +172,14 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
         <h4>ผลลัพธ์</h4>
         <div id="layers"><div class="muted-note">ยังไม่มีผล</div></div>
         <h4 style="margin-top:4px">ไฟล์ตัด</h4>
+        <div class="stat"><span>วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
         <div class="stat"><span>เลเยอร์</span><b id="sLayers">–</b></div>
         <div class="stat"><span>เส้นตัด (paths)</span><b id="sRings">–</b></div>
         <div class="stat"><span>ขนาดจริง</span><b id="sSize">–</b></div>
         <div class="dl">
           <button class="btn primary" id="dlSvg" disabled>⬇ ดาวน์โหลด SVG (มม.)</button>
           <div class="row2"><button class="btn ghost" id="dlDxf" disabled>⬇ DXF</button><button class="btn ghost" id="copySvg" disabled>คัดลอก</button></div>
-          <div class="muted-note" style="padding:6px 0 0">DXF/SVG หน่วยมม. → Fusion 360: Insert DXF / Insert SVG</div>
+          <div class="muted-note" style="padding:6px 0 0">DXF → CypCut/fiber · SVG → LightBurn · Fusion 360: Insert DXF</div>
         </div>
       </div>
     </div>
@@ -138,19 +187,74 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
   <footer>VectorCNC · vectorcnc engine · โดย Saai Tech</footer>
 </div>
 
+<div class="modal" id="modal"><div class="modal-card">
+  <div class="badge" id="mBadge">เฟสถัดไป</div>
+  <h3 id="mTitle"></h3>
+  <div id="mBody"></div>
+  <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
+</div></div>
+
 <input type="file" id="fileInput" accept="image/*" style="display:none">
 <script>
-var API='';                 // เว้นว่าง = โดเมนเดียวกับ backend · ต่างที่ใส่ URL เต็ม
+var API='';
 var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc';
 function $(id){return document.getElementById(id);}
+
+var PRESETS={
+  fiber_ss:{name:'Fiber · สแตนเลส',kerf:0.15,tool:0,mode:'cutout'},
+  fiber_zn:{name:'Fiber · ซิงค์',kerf:0.12,tool:0,mode:'cutout'},
+  co2_acr:{name:'CO2 · อะคริลิค',kerf:0.20,tool:0,mode:'cutout'},
+  router:{name:'Router · ดอกกัด',kerf:3,tool:6,mode:'cutout'}
+};
+var MATERIAL='Router · ดอกกัด';
+
 $('nColors').oninput=function(){$('vC').textContent=this.value;};
-$('kerf').oninput=function(){$('vK').textContent=parseFloat(this.value).toFixed(1)+' มม.';};
+$('kerf').oninput=function(){$('vK').textContent=parseFloat(this.value).toFixed(2)+' มม.';};
 $('tool').oninput=function(){$('vT').textContent=this.value;};
 
-fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
-  $('apiStatus').textContent=j.ok?'🟢 พร้อม':'🔴 ไม่พร้อม';$('apiStatus').style.color=j.ok?'#34D399':'#F87171';
-}).catch(function(){$('apiStatus').textContent='🔴 ต่อ backend ไม่ได้';$('apiStatus').style.color='#F87171';});
+// ---- material presets ----
+(function(){
+  var chips=document.querySelectorAll('#presetChips .chip');
+  for(var i=0;i<chips.length;i++){chips[i].onclick=function(){
+    for(var j=0;j<chips.length;j++)chips[j].classList.remove('on');
+    this.classList.add('on');
+    var p=PRESETS[this.getAttribute('data-preset')];
+    MATERIAL=p.name;
+    $('kerf').value=p.kerf;$('vK').textContent=parseFloat(p.kerf).toFixed(2)+' มม.';
+    $('tool').value=p.tool;$('vT').textContent=p.tool;
+    MODE=p.mode;paintMode();
+    $('presetHint').textContent=p.name+' — kerf '+parseFloat(p.kerf).toFixed(2)+' มม. · '+(p.tool>0?('ดอก '+p.tool+' มม.'):'ตัดคม (ไม่ปัดมุม)');
+  };}
+})();
 
+// ---- mode toggle ----
+var MODE='cutout';
+function paintMode(){
+  var btns=document.querySelectorAll('#modeSeg .sbtn');
+  for(var i=0;i<btns.length;i++){var on=btns[i].getAttribute('data-mode')===MODE;btns[i].classList.toggle('on',on);}
+  $('go').textContent=MODE==='lineart'?'⚡ ลากเส้นตัวอักษร':'⚡ แปลงเป็นเส้นตัด';
+}
+(function(){var btns=document.querySelectorAll('#modeSeg .sbtn');
+  for(var i=0;i<btns.length;i++){btns[i].onclick=function(){MODE=this.getAttribute('data-mode');paintMode();};}
+  paintMode();
+})();
+
+// ---- roadmap modals ----
+function openModal(title,badge,html){$('mTitle').textContent=title;$('mBadge').textContent=badge;$('mBody').innerHTML=html;$('modal').classList.add('show');}
+$('btnAI').onclick=function(){openModal('AI ออกแบบ สำหรับเซลล์','เฟสถัดไป · Claude Design',
+  '<p>เซลล์ออกแบบให้ลูกค้าหน้างานได้ทันที แล้วส่งเข้า VectorCNC เพื่อออกไฟล์ตัดเลย</p>'+
+  '<div class="flow"><div class="st"><b>1</b>พิมพ์บรีฟ</div><div class="st"><b>2</b>เลือกแบบ</div><div class="st"><b>3</b>ปรับขนาด/วัสดุ</div><div class="st"><b>4</b>ออกไฟล์+ใบเสนอราคา</div></div>'+
+  '<p>กำลังพัฒนา — เชื่อม Claude Design เพื่อสร้างแบบจากข้อความ แล้วไหลตรงเข้า tracer ออก SVG/DXF พร้อมตัด</p>');};
+$('btnNest').onclick=function(){openModal('Nesting จัดวางบนแผ่น','เฟสถัดไป · Deep NFP',
+  '<p>จัดชิ้นงานหลายชิ้นลงบนแผ่นวัสดุตามรูปจริง (No-Fit Polygon) เพื่อประหยัดวัสดุสูงสุด</p>'+
+  '<p>รองรับแผ่น: อะคริลิค 1220×2440 · โลหะ 1200×2400 · 1000×2000 · กำหนดเอง — คำนวณ %การใช้วัสดุ + จำนวนแผ่น ต่อเข้าระบบ BOM/เบิกวัตถุดิบ</p>');};
+
+// ---- api health ----
+fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
+  $('apiStatus').textContent=j.ok?'🟢 พร้อม':'🔴 ไม่พร้อม';$('apiStatus').style.color=j.ok?'#10B981':'#EF4444';
+}).catch(function(){$('apiStatus').textContent='🔴 ต่อ backend ไม่ได้';$('apiStatus').style.color='#EF4444';});
+
+// ---- upload ----
 var drop=$('drop'),fi=$('fileInput');
 drop.onclick=function(){fi.click();};
 drop.ondragover=function(e){e.preventDefault();drop.classList.add('over');};
@@ -165,15 +269,16 @@ function pick(f){
     $('thumbImg').src=rd.result;$('thumb').style.display='block';
     $('before').innerHTML='<img src="'+rd.result+'" alt="">';
     $('emptyStage').style.display='none';$('cmp').style.display='block';
-    $('after').innerHTML='<div style="color:#5B6E93;font-size:13px">กดแปลง →</div>';
+    $('after').innerHTML='<div style="color:#8A99B5;font-size:13px">กดแปลง →</div>';
   };
   rd.readAsDataURL(f);
   $('go').disabled=false;
 }
 
+// ---- vectorize ----
 $('go').onclick=function(){
   if(!fileObj)return;
-  $('after').innerHTML='<div style="text-align:center"><div class="spinner"></div><div style="color:#8CA0C6;font-size:13px">กำลังแปลง...</div></div>';
+  $('after').innerHTML='<div style="text-align:center"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังแปลง...</div></div>';
   $('go').disabled=true;$('go').textContent='⏳ กำลังแปลง...';
   var fd=new FormData();
   fd.append('file',fileObj);
@@ -182,26 +287,30 @@ $('go').onclick=function(){
   fd.append('kerf_mm',$('kerf').value);
   fd.append('tool_mm',$('tool').value);
   fd.append('tabs',$('tabs').checked?'3':'0');
+  fd.append('mode',MODE);
   fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-    $('go').disabled=false;$('go').textContent='⚡ แปลงเป็นเส้นตัด';
-    if(j.error){$('after').innerHTML='<div style="color:#F87171;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
+    $('go').disabled=false;paintMode();
+    if(j.error){$('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
     lastSvg=j.svg_mm||j.svg;lastDxf=j.dxf_base64||'';
     $('after').innerHTML=j.svg;
+    $('sMat').textContent=MATERIAL;
     $('sLayers').textContent=j.layers;$('sRings').textContent=j.rings;
     $('sSize').textContent=(j.width_mm||0)+'×'+(j.height_mm||0)+' มม.';
-    var lh=(j.layer_info||[]).map(function(l,i){return '<div class="layer-row"><span class="sw" style="background:'+(l.color||'#22D3EE')+'"></span><span class="n">เลเยอร์ '+(i+1)+'</span><span style="font-size:11px;color:#5B6E93">ตัด</span></div>';}).join('');
+    var lh=(j.layer_info||[]).map(function(l,i){return '<div class="layer-row"><span class="sw" style="background:'+(l.color||'#2563EB')+'"></span><span class="n">เลเยอร์ '+(i+1)+'</span><span style="font-size:11px;color:#8A99B5">ตัด</span></div>';}).join('');
     $('layers').innerHTML=lh||'<div class="muted-note">ไม่พบเลเยอร์</div>';
     $('dlSvg').disabled=false;$('dlDxf').disabled=!lastDxf;$('copySvg').disabled=false;
   }).catch(function(e){
-    $('go').disabled=false;$('go').textContent='⚡ แปลงเป็นเส้นตัด';
-    $('after').innerHTML='<div style="color:#F87171;font-size:13px;padding:14px">ต่อ backend ไม่ได้<br>'+e+'</div>';
+    $('go').disabled=false;paintMode();
+    $('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ต่อ backend ไม่ได้<br>'+e+'</div>';
   });
 };
 
+// ---- downloads ----
 $('dlSvg').onclick=function(){if(!lastSvg)return;var b=new Blob([lastSvg],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.svg';a.click();};
 $('dlDxf').onclick=function(){if(!lastDxf)return;var bin=atob(lastDxf);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);var b=new Blob([arr],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.dxf';a.click();};
 $('copySvg').onclick=function(){if(!lastSvg)return;navigator.clipboard.writeText(lastSvg);$('copySvg').textContent='คัดลอกแล้ว!';setTimeout(function(){$('copySvg').textContent='คัดลอก';},1500);};
 
+// ---- compare slider ----
 (function(){var cmp=$('cmp'),after=$('after'),div=$('div'),drag=false;
  function set(x){var r=cmp.getBoundingClientRect();var p=Math.max(3,Math.min(97,(x-r.left)/r.width*100));after.style.clipPath='inset(0 0 0 '+p+'%)';div.style.left=p+'%';}
  div.onmousedown=function(){drag=true;};window.onmouseup=function(){drag=false;};window.onmousemove=function(e){if(drag)set(e.clientX);};
