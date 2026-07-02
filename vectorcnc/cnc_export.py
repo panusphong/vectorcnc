@@ -78,6 +78,44 @@ def process_layer(shapes, ppm, kerf_mm=3.0, tool_mm=6.0, min_mm=2.0,
     return out
 
 
+def process_geom(geom, ppm, kerf_mm=3.0, tool_mm=6.0, min_mm=2.0,
+                 simplify_mm=0.3, round_corners=True, tabs=0, tab_mm=6.0):
+    """รับ shapely geom (มีรูได้) -> ring ผ่าน CNC post เหมือน process_layer
+    ใช้กับผลจาก VTracer (โหมด cutout)"""
+    if geom is None or geom.is_empty:
+        return []
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+    kerf_px = kerf_mm * ppm / 2.0
+    tool_r = tool_mm * ppm / 2.0
+    min_px = min_mm * ppm
+    simp_px = max(0.1, simplify_mm * ppm)
+    tab_px = tab_mm * ppm
+
+    out = []
+    for poly in _iter_polys(geom):
+        if poly.area < (min_px * min_px):
+            continue
+        g = poly
+        if round_corners and tool_r > 0.5:
+            g = g.buffer(-tool_r, join_style=1).buffer(tool_r, join_style=1)
+            g = g.buffer(tool_r, join_style=1).buffer(-tool_r, join_style=1)
+        if kerf_px > 0:
+            g = g.buffer(kerf_px, join_style=1)
+        for gg in _iter_polys(g):
+            gg = gg.simplify(simp_px, preserve_topology=True)
+            for ring in [gg.exterior] + list(gg.interiors):
+                coords = [(float(x), float(y)) for x, y in ring.coords]
+                if len(coords) < 4:
+                    continue
+                if tabs and tab_px > 0:
+                    for seg in _apply_tabs(coords, tabs, tab_px):
+                        out.append((seg, False))
+                else:
+                    out.append((coords, True))
+    return out
+
+
 def _apply_tabs(coords, count, tab_px):
     line = LineString(coords)
     total = line.length
@@ -107,13 +145,16 @@ def svg_string(layers, W, H, ppm=None, mm=False):
     dim = ''
     if mm and ppm:
         dim = f'width="{W/ppm:.2f}mm" height="{H/ppm:.2f}mm" '
-    s = [f'<svg xmlns="http://www.w3.org/2000/svg" {dim}viewBox="0 0 {W} {H}">',
-         '<g fill="none" stroke="#0EA5A5" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round">']
+    s = [f'<svg xmlns="http://www.w3.org/2000/svg" {dim}viewBox="0 0 {W} {H}">']
     for name, col, rings in layers:
+        stroke = col if (isinstance(col, str) and col.startswith('#')) else '#0EA5A5'
+        s.append(f'<g fill="none" stroke="{stroke}" stroke-width="0.7" '
+                 f'stroke-linejoin="round" stroke-linecap="round">')
         for coords, closed in rings:
             d = 'M ' + ' L '.join(f'{x:.2f},{y:.2f}' for x, y in coords) + (' Z' if closed else '')
             s.append(f'  <path d="{d}"/>')
-    s.append('</g></svg>')
+        s.append('</g>')
+    s.append('</svg>')
     return '\n'.join(s)
 
 
