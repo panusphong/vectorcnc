@@ -120,8 +120,9 @@ def _cluster_colors(items, k):
 
 
 # ---------- โหมด lineart : skeletonize ----------
-def trace_lineart(image_path, max_dim=2000, smooth=1, simplify_px=1.2):
-    """คืน (rings, (W,H))  · rings = [(coords_px, closed_bool)] แกนกลางเส้น"""
+def trace_lineart(image_path, max_dim=2000, smooth=2, simplify_px=1.2,
+                  min_spur=10, min_path_px=14):
+    """คืน (rings, (W,H))  · rings = [(coords_px, closed_bool)] แกนกลางเส้น (ตัดหนวด+สมูท)"""
     from skimage.morphology import skeletonize
 
     gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -137,9 +138,14 @@ def trace_lineart(image_path, max_dim=2000, smooth=1, simplify_px=1.2):
     bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     sk = skeletonize(bw > 0)
 
+    ys, xs = np.nonzero(sk)
+    pts = _prune_spurs(set(zip(xs.tolist(), ys.tolist())), min_spur)
+
     rings = []
-    for path in _trace_skeleton(sk):
+    for path in _trace_skeleton(pts):
         if len(path) < 2:
+            continue
+        if _polylen(path) < min_path_px:            # ตัดเศษ/จุดเล็ก
             continue
         closed = (tuple(path[0]) == tuple(path[-1])) and len(path) > 3
         arr = _rdp(path, simplify_px, closed)
@@ -152,17 +158,54 @@ def trace_lineart(image_path, max_dim=2000, smooth=1, simplify_px=1.2):
     return rings, (W0, H0)
 
 
-def _trace_skeleton(sk):
+_NB8 = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+
+
+def _nbrs(p, pts):
+    x, y = p
+    return [(x + dx, y + dy) for dx, dy in _NB8 if (x + dx, y + dy) in pts]
+
+
+def _polylen(path):
+    a = np.asarray(path, np.float32)
+    return float(np.sqrt(((a[1:] - a[:-1]) ** 2).sum(1)).sum()) if len(a) > 1 else 0.0
+
+
+def _prune_spurs(pts, min_len, iters=2):
+    """ลบกิ่งปลายสั้น (หนวด) ออกจากเส้นโครง"""
+    pts = set(pts)
+    for _ in range(int(iters)):
+        deg = {p: len(_nbrs(p, pts)) for p in pts}
+        remove = set()
+        for e in [p for p in pts if deg[p] == 1]:
+            branch, prev, cur = [e], None, e
+            while True:
+                nb = [n for n in _nbrs(cur, pts) if n != prev]
+                if len(nb) != 1:
+                    break
+                nxt = nb[0]
+                if deg.get(nxt, 0) >= 3:
+                    break
+                branch.append(nxt)
+                prev, cur = cur, nxt
+                if len(branch) > min_len:
+                    break
+            if len(branch) <= min_len:
+                remove.update(branch)
+        if not remove:
+            break
+        pts = pts - remove
+    return pts
+
+
+def _trace_skeleton(pts):
     """เดินเส้นโครง 1px -> รายการ polyline (พิกัด (x,y))"""
-    ys, xs = np.nonzero(sk)
-    pts = set(zip(xs.tolist(), ys.tolist()))
+    pts = set(pts)
     if not pts:
         return []
-    nb = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
     def neighbors(p):
-        x, y = p
-        return [(x + dx, y + dy) for dx, dy in nb if (x + dx, y + dy) in pts]
+        return _nbrs(p, pts)
 
     deg = {p: len(neighbors(p)) for p in pts}
     used = set()   # frozenset ของ edge
