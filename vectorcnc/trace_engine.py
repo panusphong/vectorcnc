@@ -38,6 +38,30 @@ def _close_color(a, b, thr=28):
     return float(np.abs(np.array(a, float) - np.array(b, float)).max()) <= thr
 
 
+def prep_image(image_path, min_dim=1100, max_dim=2600):
+    """เตรียมภาพให้คมก่อน trace: อัปสเกลภาพเล็ก + ลด noise รักษาขอบ (bilateral)
+    คืน path ไฟล์ที่เตรียมแล้ว (ถ้าไม่ต้องแก้ คืน path เดิม). สเกล mm ไม่เพี้ยนเพราะ
+    ppm = W/real_width_mm ปรับตาม W ที่เปลี่ยนไปเอง."""
+    import tempfile
+    img = cv2.imread(image_path)
+    if img is None:
+        return image_path
+    H, W = img.shape[:2]
+    f = 1.0
+    if max(H, W) < min_dim:
+        f = min_dim / float(max(H, W))          # ภาพเล็ก -> ขยายให้ VTracer เห็นรายละเอียด
+    elif max(H, W) > max_dim:
+        f = max_dim / float(max(H, W))          # ภาพใหญ่มาก -> ย่อ คุมแรม
+    if abs(f - 1.0) > 1e-3:
+        interp = cv2.INTER_CUBIC if f > 1 else cv2.INTER_AREA
+        img = cv2.resize(img, (int(W * f), int(H * f)), interpolation=interp)
+    img = cv2.medianBlur(img, 3)                # ลบ noise เม็ดเล็ก/JPEG
+    img = cv2.bilateralFilter(img, 7, 55, 55)   # ลด noise แต่ยังคงขอบคม
+    tmp = tempfile.mktemp(suffix='.png')
+    cv2.imwrite(tmp, img)
+    return tmp
+
+
 # ---------- โหมด cutout : VTracer ----------
 def trace_color(image_path, n_colors=6, filter_speckle=4):
     """คืน [(color_bgr, shapely_geom)] ต่อสี  (คัดพื้นหลัง + รวมสีใกล้กันเหลือ n_colors)"""
