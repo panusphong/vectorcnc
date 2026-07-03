@@ -283,9 +283,56 @@ function genDesign(){
   });
 }
 $('btnAI').onclick=openAIDesign;
-$('btnNest').onclick=function(){openModal('Nesting จัดวางบนแผ่น','เฟสถัดไป · Deep NFP',
-  '<p>จัดชิ้นงานหลายชิ้นลงบนแผ่นวัสดุตามรูปจริง (No-Fit Polygon) เพื่อประหยัดวัสดุสูงสุด</p>'+
-  '<p>รองรับแผ่น: อะคริลิค 1220×2440 · โลหะ 1200×2400 · 1000×2000 · กำหนดเอง — คำนวณ %การใช้วัสดุ + จำนวนแผ่น ต่อเข้าระบบ BOM/เบิกวัตถุดิบ</p>');};
+var lastNestDxf='',NSHEET={w:1220,h:2440};
+function nchip(k,v){return '<span style="font-size:12px;background:#EEF2F8;border:1px solid #D6E0EE;border-radius:8px;padding:6px 10px"><span style="color:#8A99B5">'+k+':</span> <b style="color:#2563EB">'+v+'</b></span>';}
+function openNesting(){
+  if(!fileObj){openModal('Nesting','ต้องมีรูปก่อน','<p style="color:#5A6B8C">อัปโหลดรูป หรือสร้างด้วย ✨AI ออกแบบ ก่อน แล้วค่อยกด Nesting นะคะ</p>');return;}
+  $('mBadge').textContent='Deep NFP · จัดวางจริง';
+  $('mTitle').textContent='Nesting จัดวางบนแผ่น';
+  $('mBody').innerHTML=''+
+   '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="nSheets">'+
+     '<button class="chip on" data-w="1220" data-h="2440">อะคริลิค 1220×2440</button>'+
+     '<button class="chip" data-w="1200" data-h="2400">โลหะ 1200×2400</button>'+
+     '<button class="chip" data-w="1000" data-h="2000">โลหะ 1000×2000</button>'+
+     '<button class="chip" data-w="0" data-h="0">กำหนดเอง</button></div>'+
+   '<div id="nCustom" style="display:none;margin-bottom:10px"><input class="numin" id="nW" type="number" placeholder="กว้าง มม." style="width:48%;display:inline-block"> <input class="numin" id="nH" type="number" placeholder="ยาว มม." style="width:48%;display:inline-block"></div>'+
+   '<div style="display:flex;gap:8px;margin-bottom:10px">'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">จำนวนชิ้น</label><input class="numin" id="nQty" type="number" value="10" min="1" max="80"></div>'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">กว้างชิ้น มม.</label><input class="numin" id="nPW" type="number" value="'+($('realW').value||'300')+'"></div>'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">เว้นระยะ มม.</label><input class="numin" id="nGap" type="number" value="5" step="0.5"></div></div>'+
+   '<button class="btn primary" id="nGo" style="width:100%">▦ จัดวาง</button><div id="nOut" style="margin-top:12px"></div>';
+  $('modal').classList.add('show');
+  var chips=document.querySelectorAll('#nSheets .chip');
+  for(var i=0;i<chips.length;i++){chips[i].onclick=function(){
+    for(var j=0;j<chips.length;j++)chips[j].classList.remove('on');this.classList.add('on');
+    var w=+this.getAttribute('data-w');
+    if(w===0){$('nCustom').style.display='block';NSHEET={w:0,h:0};}
+    else{$('nCustom').style.display='none';NSHEET={w:w,h:+this.getAttribute('data-h')};}};}
+  $('nGo').onclick=runNest;
+}
+function runNest(){
+  var sw=NSHEET.w,sh=NSHEET.h;
+  if(sw===0){sw=+($('nW').value||0);sh=+($('nH').value||0);if(!sw||!sh){alert('ใส่ขนาดแผ่น');return;}}
+  $('nGo').disabled=true;$('nGo').textContent='⏳ กำลังจัดวาง...';
+  $('nOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวาง (อาจนานสักครู่)...</div></div>';
+  var fd=new FormData();
+  fd.append('file',fileObj);fd.append('qty',$('nQty').value||'10');fd.append('real_width_mm',$('nPW').value||'300');
+  fd.append('sheet_w',sw);fd.append('sheet_h',sh);fd.append('gap',$('nGap').value||'5');
+  fetch((API||'')+'/api/nest',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    $('nGo').disabled=false;$('nGo').textContent='▦ จัดวางใหม่';
+    if(j.error){$('nOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
+    lastNestDxf=j.dxf_base64||'';
+    var stat='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+      nchip('แผ่น',j.n_sheets)+nchip('ใช้วัสดุ',j.utilization+'%')+nchip('ชิ้น',j.qty)+nchip('ขนาดชิ้น',j.part_mm[0]+'×'+j.part_mm[1])+(j.unplaced?nchip('วางไม่ได้',j.unplaced):'')+'</div>';
+    var sheets=(j.sheets_svg||[]).map(function(s,i){
+      var disp=s.replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+      return '<div style="margin-bottom:10px"><div style="font-size:11px;color:#8A99B5;margin-bottom:4px">แผ่น '+(i+1)+'</div><div style="border:1px solid #D6E0EE;border-radius:8px;padding:6px;background:#fff">'+disp+'</div></div>';}).join('');
+    $('nOut').innerHTML=stat+'<div style="max-height:320px;overflow:auto">'+sheets+'</div>'+
+      '<button class="btn primary" id="nDxf" style="width:100%;margin-top:8px">⬇ ดาวน์โหลด DXF ทุกแผ่น</button>';
+    $('nDxf').onclick=function(){if(!lastNestDxf)return;var bin=atob(lastNestDxf);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='nest.dxf';a.click();};
+  }).catch(function(e){$('nGo').disabled=false;$('nGo').textContent='▦ จัดวาง';$('nOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
+}
+$('btnNest').onclick=openNesting;
 
 // ---- api health ----
 fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
