@@ -130,6 +130,64 @@ async def design(brief: str = Form(...), style: str = Form(""), width_mm: float 
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+@app.post("/api/nest")
+async def nest_ep(
+    file: UploadFile = File(...),
+    qty: int = Form(10),
+    real_width_mm: float = Form(300.0),
+    sheet_w: float = Form(1220.0),
+    sheet_h: float = Form(2440.0),
+    margin: float = Form(10.0),
+    gap: float = Form(5.0),
+    n_colors: int = Form(6),
+):
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        import cv2
+        from shapely.ops import unary_union
+        from shapely.geometry import Polygon
+        from shapely.affinity import scale as _scale, translate as _tr
+        from vectorcnc import trace_engine, nesting
+
+        work = trace_engine.prep_image(inp)
+        img = cv2.imread(work)
+        if img is None:
+            return JSONResponse({"error": "อ่านภาพไม่ได้"}, status_code=400)
+        H, W = img.shape[:2]
+        ppm = W / float(real_width_mm) if real_width_mm else 1.0
+        traced = trace_engine.trace_color(work, n_colors=max(2, min(12, int(n_colors))), filter_speckle=8)
+        geoms = [g for _, g in traced]
+        if not geoms:
+            return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
+        u = unary_union(geoms)
+        polys = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
+        base = max(polys, key=lambda p: p.area)
+        part = _scale(Polygon(base.exterior), 1.0 / ppm, 1.0 / ppm, origin=(0, 0))  # px -> มม.
+        minx, miny, mxx, mxy = part.bounds
+        part = _tr(part, xoff=-minx, yoff=-miny)
+        pw, ph = round(mxx - minx, 1), round(mxy - miny, 1)
+
+        qn = max(1, min(80, int(qty)))          # คุมภาระบนเครื่องฟรี
+        res = max(2.0, min(sheet_w, sheet_h) / 500.0)
+        r = nesting.nest([(part, qn)], float(sheet_w), float(sheet_h),
+                         margin=float(margin), gap=float(gap), res=res)
+        svgs = [nesting.sheet_svg(s, float(sheet_w), float(sheet_h)) for s in r["sheets"]]
+        dxf_path = os.path.join(tmp, "nest.dxf")
+        nesting.write_dxf(r["sheets"], dxf_path, float(sheet_w), float(sheet_h))
+        with open(dxf_path, "rb") as f:
+            dxf_b64 = base64.b64encode(f.read()).decode()
+        return {
+            "n_sheets": r["n_sheets"], "utilization": r["utilization"], "unplaced": r["unplaced"],
+            "sheet_w": sheet_w, "sheet_h": sheet_h, "part_mm": [pw, ph], "qty": qn,
+            "sheets_svg": svgs, "dxf_base64": dxf_b64,
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 @app.get("/")
 def home():
     if os.path.exists(FRONTEND):
