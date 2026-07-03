@@ -284,13 +284,17 @@ function genDesign(){
   });
 }
 $('btnAI').onclick=openAIDesign;
-var lastNestDxf='',NSHEET={w:1220,h:2440};
+var lastNestDxf='',NSHEET={w:1220,h:2440},NPM='parts';
 function nchip(k,v){return '<span style="font-size:12px;background:#EEF2F8;border:1px solid #D6E0EE;border-radius:8px;padding:6px 10px"><span style="color:#8A99B5">'+k+':</span> <b style="color:#2563EB">'+v+'</b></span>';}
 function openNesting(){
   if(!fileObj){openModal('Nesting','ต้องมีรูปก่อน','<p style="color:#5A6B8C">อัปโหลดรูป หรือสร้างด้วย ✨AI ออกแบบ ก่อน แล้วค่อยกด Nesting นะคะ</p>');return;}
   $('mBadge').textContent='Deep NFP · จัดวางจริง';
   $('mTitle').textContent='Nesting จัดวางบนแผ่น';
   $('mBody').innerHTML=''+
+   '<div style="display:flex;gap:6px;margin-bottom:8px" id="nMode">'+
+     '<button class="chip on" data-pm="parts" style="flex:1">🔤 แยกชิ้นย่อย (ประหยัด)</button>'+
+     '<button class="chip" data-pm="whole" style="flex:1">▭ ทั้งป้าย</button></div>'+
+   '<div style="font-size:11px;color:#7d90ad;margin:-4px 0 10px">แยกชิ้นย่อย = ตัด ตัวอักษร/รูป แยกชิ้นแพคชิดประหยัดสุด · ทั้งป้าย = ปูป้ายเต็มใบ</div>'+
    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="nSheets">'+
      '<button class="chip on" data-w="1220" data-h="2440">อะคริลิค 1220×2440</button>'+
      '<button class="chip" data-w="1200" data-h="2400">โลหะ 1200×2400</button>'+
@@ -309,6 +313,8 @@ function openNesting(){
     var w=+this.getAttribute('data-w');
     if(w===0){$('nCustom').style.display='block';NSHEET={w:0,h:0};}
     else{$('nCustom').style.display='none';NSHEET={w:w,h:+this.getAttribute('data-h')};}};}
+  var mch=document.querySelectorAll('#nMode .chip');
+  for(var k=0;k<mch.length;k++){mch[k].onclick=function(){for(var j=0;j<mch.length;j++)mch[j].classList.remove('on');this.classList.add('on');NPM=this.getAttribute('data-pm');};}
   $('nGo').onclick=runNest;
 }
 function runNest(){
@@ -318,7 +324,7 @@ function runNest(){
   $('nOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวาง (อาจนานสักครู่)...</div></div>';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('qty',$('nQty').value||'10');fd.append('real_width_mm',$('nPW').value||'300');
-  fd.append('sheet_w',sw);fd.append('sheet_h',sh);fd.append('gap',$('nGap').value||'5');
+  fd.append('sheet_w',sw);fd.append('sheet_h',sh);fd.append('gap',$('nGap').value||'5');fd.append('parts_mode',NPM);
   fetch((API||'')+'/api/nest',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('nGo').disabled=false;$('nGo').textContent='▦ จัดวางใหม่';
     if(j.error){$('nOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
