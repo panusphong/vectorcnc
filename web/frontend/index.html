@@ -241,6 +241,7 @@ function paintMode(){
 
 // ---- roadmap modals ----
 function openModal(title,badge,html){$('mTitle').textContent=title;$('mBadge').textContent=badge;$('mBody').innerHTML=html;$('modal').classList.add('show');}
+function sanitizeSvg(s){return (s||'').replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#x[0-9a-fA-F]+);)/g,'&amp;');}
 function ensureXmlns(svg){return /xmlns=/.test(svg)?svg:svg.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');}
 function svgToPng(svg,cb){
   var vb=/viewBox=["']([\d.\s-]+)["']/.exec(svg);var W=1200,H=1200;
@@ -272,7 +273,7 @@ function genDesign(){
   fetch((API||'')+'/api/design',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('aiGen').disabled=false;$('aiGen').textContent='✨ สร้างใหม่';
     if(j.error){$('aiOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
-    lastDesignSvg=ensureXmlns(j.svg);
+    lastDesignSvg=ensureXmlns(sanitizeSvg(j.svg));
     $('aiOut').innerHTML='<div style="background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px;max-height:220px;overflow:auto;display:grid;place-items:center">'+lastDesignSvg+'</div>'+
       '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost" id="aiDl" style="flex:1">⬇ SVG</button><button class="btn primary" id="aiUse" style="flex:1.4">✂️ ส่งเข้าตัด</button></div>';
     $('aiDl').onclick=function(){var bb=new Blob([lastDesignSvg],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(bb);a.download='design.svg';a.click();};
