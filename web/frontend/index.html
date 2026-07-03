@@ -244,8 +244,8 @@ function openModal(title,badge,html){$('mTitle').textContent=title;$('mBadge').t
 function sanitizeSvg(s){return (s||'').replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#x[0-9a-fA-F]+);)/g,'&amp;');}
 function ensureXmlns(svg){return /xmlns=/.test(svg)?svg:svg.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');}
 function svgToPng(svg,cb){
-  var vb=/viewBox=["']([\d.\s-]+)["']/.exec(svg);var W=2600,H=2600;
-  if(vb){var a=vb[1].trim().split(/\s+/);if(a.length===4){var w=parseFloat(a[2]),h=parseFloat(a[3]);if(w>0&&h>0){H=Math.round(2600*h/w);}}}
+  var vb=/viewBox=["']([\d.\s-]+)["']/.exec(svg);var W=3200,H=3200;
+  if(vb){var a=vb[1].trim().split(/\s+/);if(a.length===4){var w=parseFloat(a[2]),h=parseFloat(a[3]);if(w>0&&h>0){H=Math.round(3200*h/w);}}}
   var img=new Image();var b=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});var url=URL.createObjectURL(b);
   img.onload=function(){var c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(img,0,0,W,H);URL.revokeObjectURL(url);c.toBlob(function(bl){cb(bl);},'image/png');};
   img.onerror=function(){URL.revokeObjectURL(url);cb(null);};
