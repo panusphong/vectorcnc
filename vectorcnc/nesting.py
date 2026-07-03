@@ -1,13 +1,11 @@
 """Deep Nesting (จัดวางชิ้นตามรูปจริง) — raster bottom-left-fill + FFT collision
-- จัดชิ้นตามรูปจริง (ไม่ใช่กล่องสี่เหลี่ยม) หมุนได้ เว้น gap/margin
-- ขึ้นแผ่นใหม่อัตโนมัติ + คำนวณ %การใช้วัสดุ/จำนวนแผ่น
-- ออก SVG (พรีวิว/ตัด) + DXF (มม.) ต่อ BOM ได้
+v2: full-geometry (วางลายครบทุกเส้นในทุกชิ้น) + จูนแพคแน่นขึ้น (เลือกแนวหมุนที่ฟิตสุด)
 ใช้ numpy + scipy + shapely (+ ezdxf, opencv)
 """
 import numpy as np
 import cv2
 from scipy.signal import fftconvolve
-from shapely.affinity import rotate as _rot, translate as _tr
+from shapely.affinity import rotate as _rotate, translate as _translate
 import ezdxf
 
 
@@ -16,122 +14,163 @@ def _raster(poly, res):
     w = max(1, int(np.ceil((maxx - minx) / res)))
     h = max(1, int(np.ceil((maxy - miny) / res)))
     m = np.zeros((h, w), np.float32)
-    ext = np.array([[(x - minx) / res, (y - miny) / res] for x, y in poly.exterior.coords], np.int32)
-    cv2.fillPoly(m, [ext], 1)
-    for ring in poly.interiors:
-        ii = np.array([[(x - minx) / res, (y - miny) / res] for x, y in ring.coords], np.int32)
-        cv2.fillPoly(m, [ii], 0)
+    def draw(ring, val):
+        pts = np.array([[(x - minx) / res, (y - miny) / res] for x, y in ring.coords], np.int32)
+        cv2.fillPoly(m, [pts], val)
+    draw(poly.exterior, 1)
+    for r in poly.interiors:
+        draw(r, 0)
     return m
 
 
-def _place_pos(occ, mask):
-    """หา (row,col) ล่างซ้ายสุดที่วางได้ (ไม่ชน) ; None ถ้าไม่มีที่"""
+def _place(occ, mask):
     grows, gcols = occ.shape
     h, w = mask.shape
     if h > grows or w > gcols:
         return None
-    conv = fftconvolve(occ, mask[::-1, ::-1], mode='valid')   # จำนวนพิกเซลที่ทับ
-    free = conv < 0.5
-    ys, xs = np.where(free)
+    conv = fftconvolve(occ, mask[::-1, ::-1], mode='valid')
+    ys, xs = np.where(conv < 0.5)
     if len(ys) == 0:
         return None
     i = np.lexsort((xs, ys))[0]
     return int(ys[i]), int(xs[i])
 
 
+def _order_rots(buf, rots, uw, uh):
+    """เรียงมุมหมุนโดยเอาแนวที่ใส่ได้เยอะสุด (bbox grid) ไว้ก่อน -> แพคเป็นแถวสม่ำเสมอ"""
+    def fit(rd):
+        b = _rotate(buf, rd, origin='centroid')
+        minx, miny, maxx, maxy = b.bounds
+        w, h = maxx - minx, maxy - miny
+        if w <= 0 or h <= 0:
+            return 0
+        return int(uw // w) * int(uh // h)
+    return sorted(rots, key=lambda r: -fit(r))
+
+
 def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
          rotations=(0, 90, 180, 270), res=2.0):
-    """parts = [(shapely_polygon_mm, qty), ...]
-    คืน dict: sheets=[[placed_polys_mm...]], utilization(%), n_sheets, n_parts, unplaced"""
+    """parts = [(footprint_polygon_mm, qty), ...]
+    คืน dict: placements=[[{part,rot,dx,dy,cx,cy}...] ต่อแผ่น], utilization, n_sheets, n_parts, unplaced"""
     grows = int((sheet_h - 2 * margin) / res)
     gcols = int((sheet_w - 2 * margin) / res)
     if grows < 2 or gcols < 2:
-        return {'sheets': [], 'utilization': 0, 'n_sheets': 0, 'n_parts': 0, 'unplaced': 0}
+        return {'placements': [], 'utilization': 0, 'n_sheets': 0, 'n_parts': 0, 'unplaced': 0}
+    uw, uh = sheet_w - 2 * margin, sheet_h - 2 * margin
 
-    inst = []   # (orig_poly, buffered_poly)
-    for poly, qty in parts:
-        buf = poly.buffer(gap / 2.0, join_style=2)
+    inst = []   # (part_idx, footprint)
+    for idx, (poly, qty) in enumerate(parts):
         for _ in range(int(qty)):
-            inst.append((poly, buf))
-    inst.sort(key=lambda t: -t[1].area)   # ชิ้นใหญ่ก่อน
+            inst.append((idx, poly))
+    inst.sort(key=lambda t: -t[1].area)
 
-    sheets = [[]]
+    placements = [[]]
     occs = [np.zeros((grows, gcols), np.float32)]
     part_area = 0.0
     unplaced = 0
 
-    for orig, buf in inst:
-        part_area += orig.area
-        best = None   # (sheet_idx, row, col, rot)
-        for si in range(len(sheets)):
-            for rdeg in rotations:
-                bufr = _rot(buf, rdeg, origin='centroid')
-                pos = _place_pos(occs[si], _raster(bufr, res))
+    for idx, poly in inst:
+        part_area += poly.area
+        c = poly.centroid
+        cx, cy = c.x, c.y
+        buf = poly.buffer(gap / 2.0, join_style=1)
+        rots = _order_rots(buf, rotations, uw, uh)
+
+        best = None   # (sheet, row, col, rot, bufr, mask)
+        for si in range(len(placements)):
+            for rd in rots:
+                bufr = _rotate(buf, rd, origin=(cx, cy))
+                m = _raster(bufr, res)
+                pos = _place(occs[si], m)
                 if pos and (best is None or pos[0] < best[1] or (pos[0] == best[1] and pos[1] < best[2])):
-                    best = (si, pos[0], pos[1], rdeg)
+                    best = (si, pos[0], pos[1], rd, bufr, m)
             if best and best[0] == si:
-                break   # วางบนแผ่นที่มีอยู่ได้แล้ว
+                break
         if best is None:
-            # แผ่นใหม่
-            sheets.append([])
+            placements.append([])
             occs.append(np.zeros((grows, gcols), np.float32))
-            si = len(sheets) - 1
-            for rdeg in rotations:
-                bufr = _rot(buf, rdeg, origin='centroid')
-                pos = _place_pos(occs[si], _raster(bufr, res))
+            si = len(placements) - 1
+            for rd in rots:
+                bufr = _rotate(buf, rd, origin=(cx, cy))
+                m = _raster(bufr, res)
+                pos = _place(occs[si], m)
                 if pos:
-                    best = (si, pos[0], pos[1], rdeg)
+                    best = (si, pos[0], pos[1], rd, bufr, m)
                     break
         if best is None:
             unplaced += 1
             continue
-        si, row, col, rdeg = best
-        bufr = _rot(buf, rdeg, origin='centroid')
-        m = _raster(bufr, res)
+        si, row, col, rd, bufr, m = best
         h, w = m.shape
         occs[si][row:row + h, col:col + w] = np.maximum(occs[si][row:row + h, col:col + w], m)
-        # แปลงชิ้นจริง (ไม่รวม gap) ไปตำแหน่งเดียวกัน
-        origr = _rot(orig, rdeg, origin='centroid')
         bx0, by0 = bufr.bounds[0], bufr.bounds[1]
-        dx = margin + col * res - bx0
-        dy = margin + row * res - by0
-        sheets[si].append(_tr(origr, xoff=dx, yoff=dy))
+        placements[si].append({'part': idx, 'rot': rd,
+                               'dx': margin + col * res - bx0,
+                               'dy': margin + row * res - by0,
+                               'cx': cx, 'cy': cy})
 
-    n = len(sheets)
+    n = len(placements)
     util = round(part_area / (n * sheet_w * sheet_h) * 100, 1) if n else 0
-    return {'sheets': sheets, 'utilization': util, 'n_sheets': n,
+    return {'placements': placements, 'utilization': util, 'n_sheets': n,
             'n_parts': len(inst), 'unplaced': unplaced}
 
 
-def sheet_svg(polys, sheet_w, sheet_h, stroke='#0EA5A5'):
-    """SVG หนึ่งแผ่น (viewBox = มม.) — Y ชี้ลงแบบภาพ"""
+def place_geom(geom, pl):
+    """วาง geometry (ลายเต็ม) ตาม transform ของ placement"""
+    g = _rotate(geom, pl['rot'], origin=(pl['cx'], pl['cy']))
+    return _translate(g, xoff=pl['dx'], yoff=pl['dy'])
+
+
+def _rings(geom):
+    """ดึงทุกวง (coords, closed) จาก geometry ใดๆ"""
+    if geom is None or geom.is_empty:
+        return
+    t = geom.geom_type
+    if t == 'Polygon':
+        yield [(x, y) for x, y in geom.exterior.coords], True
+        for r in geom.interiors:
+            yield [(x, y) for x, y in r.coords], True
+    elif t in ('MultiPolygon', 'GeometryCollection', 'MultiLineString'):
+        for g in geom.geoms:
+            for r in _rings(g):
+                yield r
+    elif t == 'LineString':
+        yield [(x, y) for x, y in geom.coords], False
+
+
+def sheet_svg(geoms, sheet_w, sheet_h, stroke='#0EA5A5'):
+    """geoms = list ของ shapely geometry (ลายเต็มแต่ละชิ้น) บนแผ่นเดียว"""
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
          f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
          f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>',
          f'<g fill="none" stroke="{stroke}" stroke-width="1" stroke-linejoin="round">']
-    for poly in polys:
-        for ring in [poly.exterior] + list(poly.interiors):
-            d = 'M ' + ' L '.join(f'{x:.2f},{y:.2f}' for x, y in ring.coords) + ' Z'
+    for g in geoms:
+        for coords, closed in _rings(g):
+            if len(coords) < 2:
+                continue
+            d = 'M ' + ' L '.join(f'{x:.2f},{y:.2f}' for x, y in coords) + (' Z' if closed else '')
             s.append(f'  <path d="{d}"/>')
     s.append('</g></svg>')
     return '\n'.join(s)
 
 
-def write_dxf(sheets, path, sheet_w, sheet_h, gap_between=50.0):
-    """DXF หน่วยมม. — เรียงแผ่นต่อกันในแกน X (Y ชี้ขึ้นแบบ CAD)"""
+def write_dxf(sheets_geoms, path, sheet_w, sheet_h, gap_between=50.0):
+    """DXF หน่วยมม. — เรียงแผ่นในแกน X (Y ชี้ขึ้นแบบ CAD) · ลายเต็มทุกชิ้น"""
     doc = ezdxf.new('R2010')
     doc.units = ezdxf.units.MM
     msp = doc.modelspace()
-    for si, polys in enumerate(sheets):
+    for si, geoms in enumerate(sheets_geoms):
         ox = si * (sheet_w + gap_between)
         ly = 'SHEET_%d' % (si + 1)
         if ly not in doc.layers:
             doc.layers.add(ly)
         msp.add_lwpolyline([(ox, 0), (ox + sheet_w, 0), (ox + sheet_w, sheet_h), (ox, sheet_h)],
                            close=True, dxfattribs={'layer': ly, 'color': 8})
-        for poly in polys:
-            for ring in [poly.exterior] + list(poly.interiors):
-                pts = [(ox + x, sheet_h - y) for x, y in ring.coords]   # flip Y เป็น CAD
-                msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': ly})
+        for g in geoms:
+            for coords, closed in _rings(g):
+                if len(coords) < 2:
+                    continue
+                pts = [(ox + x, sheet_h - y) for x, y in coords]
+                msp.add_lwpolyline(pts, close=closed, dxfattribs={'layer': ly})
     doc.saveas(path)
     return path
