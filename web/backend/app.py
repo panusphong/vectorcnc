@@ -163,21 +163,24 @@ async def nest_ep(
         geoms = [g for _, g in traced]
         if not geoms:
             return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
-        u = unary_union(geoms)
-        polys = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
+        # ลายเต็ม (มม.) + รูปนอก (footprint) ในเฟรมเดียวกัน
+        full_mm = unary_union([_scale(g, 1.0 / ppm, 1.0 / ppm, origin=(0, 0)) for g in geoms])
+        polys = list(full_mm.geoms) if full_mm.geom_type == "MultiPolygon" else [full_mm]
         base = max(polys, key=lambda p: p.area)
-        part = _scale(Polygon(base.exterior), 1.0 / ppm, 1.0 / ppm, origin=(0, 0))  # px -> มม.
-        minx, miny, mxx, mxy = part.bounds
-        part = _tr(part, xoff=-minx, yoff=-miny)
+        foot = Polygon(base.exterior)
+        minx, miny, mxx, mxy = foot.bounds
+        foot = _tr(foot, xoff=-minx, yoff=-miny)
+        full = _tr(full_mm, xoff=-minx, yoff=-miny)      # ลายเต็มเฟรมเดียวกับ footprint
         pw, ph = round(mxx - minx, 1), round(mxy - miny, 1)
 
         qn = max(1, min(80, int(qty)))          # คุมภาระบนเครื่องฟรี
-        res = max(2.0, min(sheet_w, sheet_h) / 500.0)
-        r = nesting.nest([(part, qn)], float(sheet_w), float(sheet_h),
+        res = max(2.0, min(sheet_w, sheet_h) / 520.0)
+        r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
                          margin=float(margin), gap=float(gap), res=res)
-        svgs = [nesting.sheet_svg(s, float(sheet_w), float(sheet_h)) for s in r["sheets"]]
+        sheets_geoms = [[nesting.place_geom(full, pl) for pl in sheet] for sheet in r["placements"]]
+        svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
         dxf_path = os.path.join(tmp, "nest.dxf")
-        nesting.write_dxf(r["sheets"], dxf_path, float(sheet_w), float(sheet_h))
+        nesting.write_dxf(sheets_geoms, dxf_path, float(sheet_w), float(sheet_h))
         with open(dxf_path, "rb") as f:
             dxf_b64 = base64.b64encode(f.read()).decode()
         return {
