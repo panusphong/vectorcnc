@@ -38,7 +38,7 @@ def _close_color(a, b, thr=28):
     return float(np.abs(np.array(a, float) - np.array(b, float)).max()) <= thr
 
 
-def prep_image(image_path, min_dim=1100, max_dim=2600):
+def prep_image(image_path, min_dim=1500, max_dim=3400):
     """เตรียมภาพให้คมก่อน trace: อัปสเกลภาพเล็ก + ลด noise รักษาขอบ (bilateral)
     คืน path ไฟล์ที่เตรียมแล้ว (ถ้าไม่ต้องแก้ คืน path เดิม). สเกล mm ไม่เพี้ยนเพราะ
     ppm = W/real_width_mm ปรับตาม W ที่เปลี่ยนไปเอง."""
@@ -79,7 +79,7 @@ def trace_color(image_path, n_colors=6, filter_speckle=4):
     vtracer.convert_image_to_svg_py(
         image_path, tmp, colormode='color', hierarchical='cutout', mode='spline',
         filter_speckle=int(max(1, filter_speckle)), color_precision=6,
-        corner_threshold=60, path_precision=6,
+        corner_threshold=80, path_precision=8, splice_threshold=45,
     )
     paths, attrs = svg2paths(tmp)
     try:
@@ -99,7 +99,7 @@ def trace_color(image_path, n_colors=6, filter_speckle=4):
             L = sub.length()
             if L < 3:
                 continue
-            N = int(max(8, min(1200, L / 4)))
+            N = int(max(10, min(2400, L / 2.5)))
             pts = [(sub.point(i / N).real + tx, sub.point(i / N).imag + ty) for i in range(N + 1)]
             if len(pts) < 4:
                 continue
