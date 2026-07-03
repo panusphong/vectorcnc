@@ -165,9 +165,9 @@ async def nest_ep(
             return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
         # ลายเต็ม (มม.) + รูปนอก (footprint) ในเฟรมเดียวกัน
         full_mm = unary_union([_scale(g, 1.0 / ppm, 1.0 / ppm, origin=(0, 0)) for g in geoms])
-        polys = list(full_mm.geoms) if full_mm.geom_type == "MultiPolygon" else [full_mm]
-        base = max(polys, key=lambda p: p.area)
-        foot = Polygon(base.exterior)
+        foot = full_mm.convex_hull            # รูปนอกครอบทั้งดีไซน์ -> กันชิ้นซ้อน (รองรับตัวอักษรแยกชิ้น)
+        if foot.geom_type != "Polygon":
+            foot = full_mm.envelope
         minx, miny, mxx, mxy = foot.bounds
         foot = _tr(foot, xoff=-minx, yoff=-miny)
         full = _tr(full_mm, xoff=-minx, yoff=-miny)      # ลายเต็มเฟรมเดียวกับ footprint
