@@ -187,9 +187,10 @@ async def nest_ep(
             pieces = [p for p in pieces if p.area > 4.0]          # ตัดเศษจิ๋ว
             if not pieces:
                 return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
-            qn = max(1, min(int(qty), max(1, 60 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
+            qn = max(1, min(int(qty), max(1, 40 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
+            res_p = max(3.0, min(sheet_w, sheet_h) / 340.0)        # grid หยาบขึ้น -> เร็วขึ้น
             r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
-                             margin=float(margin), gap=float(gap), res=res)
+                             margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
             parts_ref = pieces
 
         sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
