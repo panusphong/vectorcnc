@@ -141,6 +141,7 @@ async def nest_ep(
     margin: float = Form(10.0),
     gap: float = Form(5.0),
     n_colors: int = Form(6),
+    parts_mode: str = Form("parts"),
 ):
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "in.png")
@@ -163,21 +164,35 @@ async def nest_ep(
         geoms = [g for _, g in traced]
         if not geoms:
             return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
-        # ลายเต็ม (มม.) + รูปนอก (footprint) ในเฟรมเดียวกัน
         full_mm = unary_union([_scale(g, 1.0 / ppm, 1.0 / ppm, origin=(0, 0)) for g in geoms])
-        foot = full_mm.convex_hull            # รูปนอกครอบทั้งดีไซน์ -> กันชิ้นซ้อน (รองรับตัวอักษรแยกชิ้น)
-        if foot.geom_type != "Polygon":
-            foot = full_mm.envelope
-        minx, miny, mxx, mxy = foot.bounds
-        foot = _tr(foot, xoff=-minx, yoff=-miny)
-        full = _tr(full_mm, xoff=-minx, yoff=-miny)      # ลายเต็มเฟรมเดียวกับ footprint
-        pw, ph = round(mxx - minx, 1), round(mxy - miny, 1)
+        bb = full_mm.bounds
+        pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
+        res = max(2.0, min(sheet_w, sheet_h) / 500.0)
 
-        qn = max(1, min(80, int(qty)))          # คุมภาระบนเครื่องฟรี
-        res = max(2.0, min(sheet_w, sheet_h) / 520.0)
-        r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
-                         margin=float(margin), gap=float(gap), res=res)
-        sheets_geoms = [[nesting.place_geom(full, pl) for pl in sheet] for sheet in r["placements"]]
+        if str(parts_mode).lower() == "whole":
+            # ทั้งป้ายเป็นชิ้นเดียว -> ปูซ้ำทั้งใบ
+            foot = full_mm.convex_hull
+            if foot.geom_type != "Polygon":
+                foot = full_mm.envelope
+            mnx, mny = foot.bounds[0], foot.bounds[1]
+            foot = _tr(foot, xoff=-mnx, yoff=-mny)
+            full = _tr(full_mm, xoff=-mnx, yoff=-mny)
+            qn = max(1, min(80, int(qty)))
+            r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
+                             margin=float(margin), gap=float(gap), res=res)
+            parts_ref = [full]
+        else:
+            # แยกชิ้นย่อย (ตัวอักษร/รูป) -> แพคชิดประหยัดสุด (interlock)
+            pieces = list(full_mm.geoms) if full_mm.geom_type == "MultiPolygon" else [full_mm]
+            pieces = [p for p in pieces if p.area > 4.0]          # ตัดเศษจิ๋ว
+            if not pieces:
+                return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
+            qn = max(1, min(int(qty), max(1, 60 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
+            r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
+                             margin=float(margin), gap=float(gap), res=res)
+            parts_ref = pieces
+
+        sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
         svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
         dxf_path = os.path.join(tmp, "nest.dxf")
         nesting.write_dxf(sheets_geoms, dxf_path, float(sheet_w), float(sheet_h))
@@ -186,6 +201,7 @@ async def nest_ep(
         return {
             "n_sheets": r["n_sheets"], "utilization": r["utilization"], "unplaced": r["unplaced"],
             "sheet_w": sheet_w, "sheet_h": sheet_h, "part_mm": [pw, ph], "qty": qn,
+            "mode": str(parts_mode).lower(), "pieces": len(parts_ref),
             "sheets_svg": svgs, "dxf_base64": dxf_b64,
         }
     except Exception as e:
