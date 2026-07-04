@@ -10,3 +10,4 @@ vtracer>=0.6.0
 svgpathtools>=1.6
 scikit-image>=0.22
 anthropic>=0.40
+pillow>=10.0
