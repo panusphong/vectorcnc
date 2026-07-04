@@ -5,8 +5,8 @@ VectorCNC API — FastAPI หุ้ม vectorcnc.pipeline.process
 API : POST http://localhost:8000/api/vectorize   (multipart: file, n_colors)
 CORS เปิดหมด -> Claude Design / เว็บที่ไหนก็เรียกได้
 """
-import os, sys, tempfile, base64, re
-from fastapi import FastAPI, UploadFile, File, Form
+import os, sys, tempfile, base64, re, json
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 
@@ -207,6 +207,81 @@ async def nest_ep(
         }
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/nest-batch")
+async def nest_batch(request: Request):
+    """รวมไฟล์หลายงาน (จาก CRM) -> nest รวม -> คืนจำนวนแผ่น + per-job area + DXF
+    Auth: header X-API-Key == env VECTORCNC_API_KEY"""
+    key = os.environ.get("VECTORCNC_API_KEY", "")
+    if key and (request.headers.get("x-api-key") or "") != key:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    try:
+        form = await request.form()
+        meta = json.loads(form.get("meta") or "{}")
+        items = meta.get("items", [])
+        sheet_w = float(meta.get("sheet_w", 1220)); sheet_h = float(meta.get("sheet_h", 2440))
+        margin = float(meta.get("margin", 10)); gap = float(meta.get("gap", 5))
+        tmp = tempfile.mkdtemp()
+        from vectorcnc import batch, nesting
+
+        parts, part_job = [], []
+        MAX_INST = 55
+        for i, it in enumerate(items):
+            up = form.get("file%d" % i)
+            if up is None:
+                continue
+            fn = it.get("filename") or getattr(up, "filename", "f%d" % i)
+            p = os.path.join(tmp, "in%d_%s" % (i, os.path.basename(str(fn))))
+            with open(p, "wb") as f:
+                f.write(await up.read())
+            try:
+                pieces = batch.build_parts(p, fn, float(it.get("real_width_mm", 600)))
+            except Exception as e:
+                return JSONResponse({"ok": False, "error": "ไฟล์ %s: %s" % (fn, e)}, status_code=400)
+            qty = max(1, int(it.get("qty", 1)))
+            job = it.get("job_card_no") or it.get("job_id") or ("job%d" % i)
+            for pc in pieces:
+                for _ in range(qty):
+                    if len(parts) >= MAX_INST:
+                        break
+                    parts.append((pc, 1)); part_job.append(job)
+
+        if not parts:
+            return JSONResponse({"ok": False, "error": "ไม่พบชิ้นงานจากไฟล์ที่ส่งมา"}, status_code=400)
+
+        res = max(2.5, min(sheet_w, sheet_h) / 340.0)
+        r = nesting.nest(parts, sheet_w, sheet_h, margin=margin, gap=gap, res=res, rotations=(0, 90))
+
+        job_area, placed_by_job, total_area = {}, {}, 0.0
+        for sheet in r["placements"]:
+            for pl in sheet:
+                a = parts[pl["part"]][0].area
+                j = part_job[pl["part"]]
+                job_area[j] = job_area.get(j, 0.0) + a
+                placed_by_job[j] = placed_by_job.get(j, 0) + 1
+                total_area += a
+        per_job, seen = [], {}
+        for j in part_job:
+            if j in seen:
+                continue
+            seen[j] = 1
+            per_job.append({"job_card_no": j, "placed": placed_by_job.get(j, 0),
+                            "area_ratio": round(job_area.get(j, 0.0) / total_area, 4) if total_area else 0})
+
+        sheets_geoms = [[nesting.place_geom(parts[pl["part"]][0], pl) for pl in s] for s in r["placements"]]
+        svgs = [nesting.sheet_svg(gs, sheet_w, sheet_h) for gs in sheets_geoms]
+        dxf_path = os.path.join(tmp, "batch.dxf")
+        nesting.write_dxf(sheets_geoms, dxf_path, sheet_w, sheet_h)
+        with open(dxf_path, "rb") as f:
+            dxf_b64 = base64.b64encode(f.read()).decode()
+
+        return {"ok": True, "n_sheets": r["n_sheets"], "utilization": r["utilization"],
+                "unplaced": r["unplaced"], "sheet_w": sheet_w, "sheet_h": sheet_h,
+                "n_parts": len(parts), "per_job": per_job,
+                "sheets_svg": svgs, "dxf_base64": dxf_b64}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.get("/")
