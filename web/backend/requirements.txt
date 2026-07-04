@@ -11,3 +11,5 @@ svgpathtools>=1.6
 scikit-image>=0.22
 anthropic>=0.40
 pillow>=10.0
+potracer>=0.0.4
+pymupdf>=1.24
