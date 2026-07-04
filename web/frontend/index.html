@@ -120,7 +120,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
       <span class="app-title">app.vectorcnc.io · <span class="mono" id="fname">ยังไม่ได้เลือกไฟล์</span></span></div>
     <div class="app-body">
       <div class="side">
-        <div class="drop" id="drop"><div class="ic">📤</div><b>ลากรูปมาวาง</b><span>หรือคลิกเลือก · JPG PNG</span></div>
+        <div class="drop" id="drop"><div class="ic">📤</div><b>ลากไฟล์มาวาง</b><span>รูป (JPG PNG) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
 
         <div class="grp">
@@ -195,7 +195,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
   <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
 </div></div>
 
-<input type="file" id="fileInput" accept="image/*" style="display:none">
+<input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" style="display:none">
 <script>
 var API='';
 var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc',lastDesignSvg='';
@@ -357,14 +357,23 @@ fi.onchange=function(){if(fi.files[0])pick(fi.files[0]);};
 function pick(f){
   fileObj=f;lastName=(f.name||'image').replace(/\.[^.]+$/,'');
   $('fname').textContent=f.name;
-  var rd=new FileReader();
-  rd.onload=function(){
-    $('thumbImg').src=rd.result;$('thumb').style.display='block';
-    $('before').innerHTML='<img src="'+rd.result+'" alt="">';
-    $('emptyStage').style.display='none';$('cmp').style.display='block';
-    $('after').innerHTML='<div style="color:#8A99B5;font-size:13px">กดแปลง →</div>';
-  };
-  rd.readAsDataURL(f);
+  var isVec=/\.(ai|pdf|eps|ps|svg)$/i.test(f.name||'');
+  var isImg=/^image\//.test(f.type||'')||/\.(png|jpe?g|webp|bmp|tiff?|gif)$/i.test(f.name||'');
+  $('emptyStage').style.display='none';$('cmp').style.display='block';
+  $('after').innerHTML='<div style="color:#8A99B5;font-size:13px">กดแปลง →</div>';
+  if(isImg && !(/\.svg$/i.test(f.name||''))){
+    var rd=new FileReader();
+    rd.onload=function(){
+      $('thumbImg').src=rd.result;$('thumb').style.display='block';
+      $('before').innerHTML='<img src="'+rd.result+'" alt="">';
+    };
+    rd.readAsDataURL(f);
+  } else {
+    // ไฟล์เวกเตอร์ (AI/PDF/EPS/SVG) — เบราว์เซอร์แสดง <img> ไม่ได้ ใช้ป้ายแทน
+    var ext=((f.name||'').split('.').pop()||'ไฟล์').toUpperCase();
+    $('thumb').style.display='none';
+    $('before').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#2563EB"><div style="text-align:center"><div style="font-size:34px">📐</div><b style="font-size:14px">ไฟล์เวกเตอร์ '+ext+'</b><div style="font-size:11px;color:#8A99B5;margin-top:3px">ดึงเส้นตรง คมสมบูรณ์</div></div></div>';
+  }
   $('go').disabled=false;
 }
 
