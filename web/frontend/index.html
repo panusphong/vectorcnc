@@ -137,10 +137,11 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
         <div class="set">
           <label>โหมดการแปลง</label>
           <div class="seg" id="modeSeg">
-            <button type="button" class="sbtn on" data-mode="cutout">✂️ ตัดชิ้น</button>
-            <button type="button" class="sbtn" data-mode="lineart">✒️ เส้น (ตัวอักษร)</button>
+            <button type="button" class="sbtn on" data-mode="auto">✨ อัตโนมัติ</button>
+            <button type="button" class="sbtn" data-mode="cutout">✂️ ตัดชิ้น</button>
+            <button type="button" class="sbtn" data-mode="lineart">✒️ เส้น</button>
           </div>
-          <div class="hint" id="modeHint">ภาพทึบ/โลโก้ → ตัดชิ้น · ตัวอักษร/เส้นขอบบาง → โหมดเส้น</div>
+          <div class="hint" id="modeHint">อัตโนมัติ = ระบบวิเคราะห์ภาพ แล้วเลือกเครื่องมือที่ดีที่สุดให้เอง (โลโก้/ภาพถ่าย/ตัวอักษร)</div>
 
           <label>จำนวนสี / เลเยอร์ <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
@@ -228,7 +229,7 @@ $('tool').oninput=function(){$('vT').textContent=this.value;};
 })();
 
 // ---- mode toggle ----
-var MODE='cutout';
+var MODE='auto';
 function paintMode(){
   var btns=document.querySelectorAll('#modeSeg .sbtn');
   for(var i=0;i<btns.length;i++){var on=btns[i].getAttribute('data-mode')===MODE;btns[i].classList.toggle('on',on);}
@@ -388,6 +389,7 @@ $('go').onclick=function(){
     $('sMat').textContent=MATERIAL;
     $('sLayers').textContent=j.layers;$('sRings').textContent=j.rings;
     $('sSize').textContent=(j.width_mm||0)+'×'+(j.height_mm||0)+' มม.';
+    if(j.detected){var dk={flat:'โลโก้/ป้ายสีเรียบ',lineart:'ตัวอักษร/เส้นบาง',photo:'ภาพถ่าย'}[j.detected.kind]||j.detected.kind;$('modeHint').innerHTML='🔎 ตรวจพบ: <b style="color:#2563eb">'+dk+'</b> → เครื่องยนต์ '+(j.engine||'')+(j.detected.notes?('<br><span style="color:#8a99b5;font-size:11px">'+j.detected.notes+'</span>'):'');}
     var lh=(j.layer_info||[]).map(function(l,i){return '<div class="layer-row"><span class="sw" style="background:'+(l.color||'#2563EB')+'"></span><span class="n">เลเยอร์ '+(i+1)+'</span><span style="font-size:11px;color:#8A99B5">ตัด</span></div>';}).join('');
     $('layers').innerHTML=lh||'<div class="muted-note">ไม่พบเลเยอร์</div>';
     $('dlSvg').disabled=false;$('dlDxf').disabled=!lastDxf;$('copySvg').disabled=false;
