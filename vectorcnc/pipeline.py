@@ -41,8 +41,20 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
                 round_corners=True, tabs=0, mode='cutout'):
     """ไฟล์พร้อมตัด + พร้อม Fusion
     mode='cutout'  -> VTracer แปลงสีเป็นชิ้นตัด (kerf/ฟิลเล็ต/tabs)
-    mode='lineart' -> skeletonize ลากแกนกลางเส้น (ตัวอักษร/เส้นขอบ)"""
+    mode='lineart' -> skeletonize ลากแกนกลางเส้น (ตัวอักษร/เส้นขอบ)
+    ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.svg) -> ดึง path ตรง คมสมบูรณ์ ไม่ต้อง trace"""
     from . import trace_engine
+    # --- ไฟล์เวกเตอร์: ข้ามการ trace ทั้งหมด ดึงเส้นตรงจากไฟล์ ---
+    try:
+        from . import vector_import
+        _is_vec = vector_import.is_vector_file(image_path)
+    except Exception:
+        _is_vec = False
+    if _is_vec:
+        return vector_import.process_vector(
+            image_path, out_svg_mm, out_dxf, real_width_mm=real_width_mm,
+            kerf_mm=kerf_mm, tool_mm=tool_mm, min_mm=min_mm,
+            round_corners=round_corners, tabs=tabs)
     detected, engine = None, 'crisp'
     if mode == 'auto':
         try:

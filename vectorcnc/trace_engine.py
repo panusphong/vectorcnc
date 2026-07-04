@@ -112,7 +112,7 @@ def trace_color(image_path, n_colors=6, filter_speckle=8):
         mask = (labels == k).astype(np.uint8) * 255
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, ker)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, ker)
-        geom = _mask_to_geom(mask, eps, min_area)
+        geom = _mask_to_geom_smooth(mask, eps, min_area)
         if geom is not None and not geom.is_empty:
             c = centers[k]
             items.append(((int(c[0]), int(c[1]), int(c[2])), geom))
@@ -165,6 +165,102 @@ def _mask_to_geom(mask, eps, min_area):
         except Exception:
             continue
     return unary_union(polys) if polys else None
+
+
+# ---------- Potrace : fit เส้นโค้ง Bézier จริง -> ขอบเนียนกริบ ไม่มียึกยัก ----------
+def _cubic_pt(p0, c1, c2, e, t):
+    mt = 1.0 - t
+    a = mt * mt * mt; b = 3 * mt * mt * t; c = 3 * mt * t * t; d = t * t * t
+    return (a * p0[0] + b * c1[0] + c * c2[0] + d * e[0],
+            a * p0[1] + b * c1[1] + c * c2[1] + d * e[1])
+
+
+def _sample_potrace_curve(curve):
+    """แปลง 1 curve ของ potrace (Bézier/มุม) -> ring จุดหนาแน่นตามความยาวโค้ง (เนียน)"""
+    p0 = curve.start_point
+    pts = [(p0.x, p0.y)]
+    cur = (p0.x, p0.y)
+    for seg in curve:
+        e = (seg.end_point.x, seg.end_point.y)
+        if seg.is_corner:
+            c = (seg.c.x, seg.c.y)
+            pts.append(c); pts.append(e)
+        else:
+            c1 = (seg.c1.x, seg.c1.y); c2 = (seg.c2.x, seg.c2.y)
+            poly = (abs(c1[0] - cur[0]) + abs(c1[1] - cur[1]) +
+                    abs(c2[0] - c1[0]) + abs(c2[1] - c1[1]) +
+                    abs(e[0] - c2[0]) + abs(e[1] - c2[1]))
+            N = int(max(6, min(60, poly / 6.0)))
+            for i in range(1, N + 1):
+                pts.append(_cubic_pt(cur, c1, c2, e, i / float(N)))
+        cur = e
+    return pts
+
+
+def _potrace_nest(rings, min_area):
+    """สร้าง shapely (มีรูซ้อนถูกชั้น) จาก ring หลายวง ด้วย parent-containment"""
+    items = []
+    for r in rings:
+        if len(r) < 3:
+            continue
+        try:
+            fp = Polygon(r).buffer(0)
+        except Exception:
+            continue
+        if fp.is_empty or fp.area < min_area:
+            continue
+        items.append({'ring': r, 'filled': Polygon(r).buffer(0),
+                      'area': fp.area, 'rep': fp.representative_point()})
+    if not items:
+        return None
+    items.sort(key=lambda d: d['area'])           # เล็ก -> ใหญ่
+    n = len(items)
+    for i in range(n):
+        items[i]['parent'] = None
+        for j in range(i + 1, n):                 # หา parent = วงเล็กสุดที่ครอบ
+            if items[j]['filled'].contains(items[i]['rep']):
+                items[i]['parent'] = j
+                break
+    for k in sorted(range(n), key=lambda k: -items[k]['area']):   # ใหญ่ -> เล็ก
+        par = items[k]['parent']
+        items[k]['solid'] = (par is None) or (not items[par]['solid'])
+    polys = []
+    for k in range(n):
+        if not items[k]['solid']:
+            continue
+        holes = [items[c]['ring'] for c in range(n)
+                 if items[c]['parent'] == k and not items[c]['solid']]
+        try:
+            poly = Polygon(items[k]['ring'], holes).buffer(0)
+            if not poly.is_empty:
+                polys.append(poly)
+        except Exception:
+            continue
+    return unary_union(polys) if polys else None
+
+
+def _mask_to_geom_potrace(mask, min_area):
+    """mask (สี=nonzero) -> shapely geom ขอบ Bézier เนียน ด้วย potrace
+    หมายเหตุ: potracer มองพิกเซล 0/False เป็น foreground -> ต้องกลับขั้ว (mask==0)"""
+    import potrace
+    bw = (np.asarray(mask) == 0)
+    if bw.all() or (~bw).all():
+        return None
+    turd = int(max(2, min_area ** 0.5))
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
+    rings = [_sample_potrace_curve(c) for c in path]
+    return _potrace_nest(rings, min_area)
+
+
+def _mask_to_geom_smooth(mask, eps, min_area):
+    """ใช้ potrace (Bézier เนียนที่สุด) ถ้ามี; ถ้าไม่มี fallback เป็น approxPolyDP+Chaikin"""
+    try:
+        g = _mask_to_geom_potrace(mask, min_area)
+        if g is not None and not g.is_empty:
+            return g
+    except Exception:
+        pass
+    return _mask_to_geom(mask, eps, min_area)
 
 
 # ---------- โหมด photo : VTracer (สำหรับภาพถ่าย/ไล่เฉด) ----------
