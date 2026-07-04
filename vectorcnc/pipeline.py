@@ -43,7 +43,18 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
     mode='cutout'  -> VTracer แปลงสีเป็นชิ้นตัด (kerf/ฟิลเล็ต/tabs)
     mode='lineart' -> skeletonize ลากแกนกลางเส้น (ตัวอักษร/เส้นขอบ)"""
     from . import trace_engine
-    work = trace_engine.prep_image(image_path)   # เตรียมภาพให้คม (upscale+ลด noise)
+    detected, engine = None, 'crisp'
+    if mode == 'auto':
+        try:
+            from . import analyze
+            detected = analyze.analyze(image_path)     # วิเคราะห์ชนิดภาพ -> เลือกเครื่องมือ
+            mode = detected['mode']; engine = detected['engine']
+            if detected.get('n_colors'):
+                n_colors = detected['n_colors']
+        except Exception:
+            mode, engine = 'cutout', 'crisp'
+
+    work = trace_engine.prep_image(image_path)   # อ่านทุกฟอร์แมต + upscale + ลด noise
     img = cv2.imread(work)
     if img is None:
         raise FileNotFoundError(image_path)
@@ -58,7 +69,10 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
             layers.append(('L0', '#0EA5A5', rings))
             total_rings = len(rings)
     else:
-        traced = trace_engine.trace_color(work, n_colors=n_colors, filter_speckle=8)
+        if engine == 'photo':
+            traced = trace_engine.trace_photo(work, n_colors=n_colors, filter_speckle=8)
+        else:
+            traced = trace_engine.trace_color(work, n_colors=n_colors, filter_speckle=8)
         for i, (bgr, geom) in enumerate(traced):
             rings = cnc_export.process_geom(geom, ppm, kerf_mm=kerf_mm, tool_mm=tool_mm,
                                             min_mm=min_mm, round_corners=round_corners, tabs=tabs)
@@ -77,6 +91,8 @@ def process_cnc(image_path, out_svg_mm, out_dxf=None, n_colors=6,
         'size_mm': (round(W / ppm, 1), round(H / ppm, 1)),
         'ppm': ppm,
         'mode': mode,
+        'engine': engine,
+        'detected': detected,
         'n_layers': len(layers),
         'n_rings': total_rings,
         'svg_mm': svg_mm,

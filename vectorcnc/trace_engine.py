@@ -43,7 +43,11 @@ def prep_image(image_path, min_dim=1500, max_dim=3400):
     คืน path ไฟล์ที่เตรียมแล้ว (ถ้าไม่ต้องแก้ คืน path เดิม). สเกล mm ไม่เพี้ยนเพราะ
     ppm = W/real_width_mm ปรับตาม W ที่เปลี่ยนไปเอง."""
     import tempfile
-    img = cv2.imread(image_path)
+    try:
+        from . import analyze
+        img = analyze.load_image(image_path)          # รองรับทุกฟอร์แมต + alpha
+    except Exception:
+        img = cv2.imread(image_path)
     if img is None:
         return image_path
     H, W = img.shape[:2]
@@ -62,36 +66,134 @@ def prep_image(image_path, min_dim=1500, max_dim=3400):
     return tmp
 
 
-# ---------- โหมด cutout : VTracer ----------
-def trace_color(image_path, n_colors=6, filter_speckle=4):
-    """คืน [(color_bgr, shapely_geom)] ต่อสี  (คัดพื้นหลัง + รวมสีใกล้กันเหลือ n_colors)"""
+# ---------- โหมด cutout : เครื่องยนต์คมชัด (clean bilevel + supersample + contour + smooth) ----------
+def trace_color(image_path, n_colors=6, filter_speckle=8):
+    """คืน [(bgr, geom)] ต่อสี — ล้างเป็นบิเลเวลสะอาด + quantize + contour + Chaikin
+    ให้ขอบเนียนกริบสำหรับโลโก้/ป้าย (แทน VTracer ที่ไล่ตาม noise พิกเซล)"""
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    H, W = img.shape[:2]
+    sm = cv2.bilateralFilter(img, 7, 45, 45)          # กัน JPEG noise ก่อน quantize
+
+    # quantize สี (เร็ว: kmeans บนภาพย่อ -> assign เต็มภาพแบบ nearest center)
+    K = int(max(2, min(n_colors, 10)))
+    sw = 600
+    small = cv2.resize(sm, (sw, max(1, int(sw * H / W))), interpolation=cv2.INTER_AREA) if W > sw else sm
+    Z = small.reshape(-1, 3).astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 15, 1.0)
+    _, _, centers = cv2.kmeans(Z, K, None, crit, 2, cv2.KMEANS_PP_CENTERS)
+    centers = centers.astype(np.float32)
+
+    flat = sm.reshape(-1, 3).astype(np.float32)
+    best = np.zeros(flat.shape[0], np.int32)
+    bestd = None
+    for k in range(K):
+        dk = ((flat - centers[k]) ** 2).sum(1)
+        if bestd is None:
+            bestd = dk
+        else:
+            m = dk < bestd
+            bestd = np.where(m, dk, bestd)
+            best = np.where(m, k, best)
+    labels = best.reshape(H, W)
+
+    border = np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
+    bg = int(np.bincount(border, minlength=K).argmax())   # พื้นหลัง = label เด่นที่ขอบ
+
+    min_area = max(40.0, W * H * 8e-6)
+    eps = max(1.0, W / 1600.0)
+    ker = np.ones((3, 3), np.uint8)
+
+    items = []
+    for k in range(K):
+        if k == bg:
+            continue
+        mask = (labels == k).astype(np.uint8) * 255
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, ker)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, ker)
+        geom = _mask_to_geom(mask, eps, min_area)
+        if geom is not None and not geom.is_empty:
+            c = centers[k]
+            items.append(((int(c[0]), int(c[1]), int(c[2])), geom))
+    return items
+
+
+def _chaikin_ring(pts, it=2):
+    a = np.asarray(pts, np.float32)
+    if len(a) < 3:
+        return a
+    for _ in range(int(it)):
+        s = np.vstack([a, a[0]])
+        q = np.empty((2 * (len(s) - 1), 2), np.float32)
+        q[0::2] = 0.75 * s[:-1] + 0.25 * s[1:]
+        q[1::2] = 0.25 * s[:-1] + 0.75 * s[1:]
+        a = q
+    return a
+
+
+def _mask_to_geom(mask, eps, min_area):
+    """mask -> shapely geom (มีรู) ผ่าน findContours + approxPolyDP + Chaikin (ขอบเนียน)"""
+    cnts, hier = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts or hier is None:
+        return None
+    hier = hier[0]
+    polys = []
+    for i, c in enumerate(cnts):
+        if hier[i][3] != -1:                    # ข้ามรู (ดึงจาก child ของ outer)
+            continue
+        if cv2.contourArea(c) < min_area:
+            continue
+        ext = _chaikin_ring(cv2.approxPolyDP(c, eps, True).reshape(-1, 2), 2)
+        if len(ext) < 3:
+            continue
+        holes = []
+        ch = hier[i][2]
+        while ch != -1:
+            hc = cnts[ch]
+            if cv2.contourArea(hc) >= min_area:
+                hr = _chaikin_ring(cv2.approxPolyDP(hc, eps, True).reshape(-1, 2), 2)
+                if len(hr) >= 3:
+                    holes.append([(float(x), float(y)) for x, y in hr])
+            ch = hier[ch][0]
+        try:
+            poly = Polygon([(float(x), float(y)) for x, y in ext], holes)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if poly and not poly.is_empty and poly.area > 0:
+                polys.append(poly)
+        except Exception:
+            continue
+    return unary_union(polys) if polys else None
+
+
+# ---------- โหมด photo : VTracer (สำหรับภาพถ่าย/ไล่เฉด) ----------
+def trace_photo(image_path, n_colors=6, filter_speckle=8):
+    """VTracer color -> [(bgr, geom)] เหมาะกับภาพถ่าย/ภาพไล่เฉด"""
     import os
     import tempfile
     import vtracer
     from svgpathtools import svg2paths
-
     img = cv2.imread(image_path)
     if img is None:
         raise FileNotFoundError(image_path)
     bg = _bg_color(img)
-
     tmp = tempfile.mktemp(suffix='.svg')
     vtracer.convert_image_to_svg_py(
         image_path, tmp, colormode='color', hierarchical='cutout', mode='spline',
         filter_speckle=int(max(1, filter_speckle)), color_precision=6,
-        corner_threshold=80, path_precision=8, splice_threshold=45,
+        corner_threshold=80, path_precision=8,
     )
     paths, attrs = svg2paths(tmp)
     try:
         os.remove(tmp)
     except Exception:
         pass
-
-    items = []  # (bgr, geom)
+    items = []
     for p, a in zip(paths, attrs):
         r, g, b = _hex2rgb(a.get('fill', '#000000'))
         bgr = (b, g, r)
-        if _close_color(bgr, bg):          # ทิ้งพื้นหลัง
+        if _close_color(bgr, bg):
             continue
         tx, ty = _translate(a.get('transform', ''))
         polys = []
@@ -113,21 +215,17 @@ def trace_color(image_path, n_colors=6, filter_speckle=4):
             continue
         geom = polys[0]
         for q in polys[1:]:
-            geom = geom.symmetric_difference(q)   # even-odd -> เจาะรูให้ถูก
+            geom = geom.symmetric_difference(q)
         if geom and not geom.is_empty:
             items.append((bgr, geom))
-
-    if not items:
-        return []
-    return _cluster_colors(items, n_colors)
+    return _cluster_colors(items, n_colors) if items else []
 
 
 def _cluster_colors(items, k):
     cols = np.array([it[0] for it in items], np.float32)
     k = int(max(1, min(k, len(items))))
     if k >= len(items):
-        labels = list(range(len(items)))
-        centers = cols
+        labels = list(range(len(items))); centers = cols
     else:
         crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
         _, lab, centers = cv2.kmeans(cols, k, None, crit, 3, cv2.KMEANS_PP_CENTERS)
@@ -137,9 +235,8 @@ def _cluster_colors(items, k):
         geoms = [items[i][1] for i in range(len(items)) if labels[i] == gi]
         if not geoms:
             continue
-        merged = unary_union(geoms)
         c = centers[gi]
-        out.append(((int(c[0]), int(c[1]), int(c[2])), merged))
+        out.append(((int(c[0]), int(c[1]), int(c[2])), unary_union(geoms)))
     return out
 
 
