@@ -1,0 +1,109 @@
+{
+  "_note": "ผูก material_cat -> ItemCode ใน ItemMaster (Inventory). sheet_m2=พื้นที่แผ่นมาตรฐาน. '*'=ต้องยืนยัน",
+  "map": {
+    "metal_stainless": {
+      "itemcode": "RAWSUS0001",
+      "item_name": "สแตนเลสทองเงา (แผ่น 3mm)",
+      "unit": "m2",
+      "price": 4100,
+      "sheet_m2": 2.977
+    },
+    "metal_zinc": {
+      "itemcode": "RAWZIN0001*",
+      "item_name": "ซิงค์ทำสี (แผ่น)",
+      "unit": "m2",
+      "price": 0,
+      "sheet_m2": 2.977
+    },
+    "metal_alu": {
+      "itemcode": "RAWALU0001*",
+      "item_name": "อะลูมิเนียม (แผ่น)",
+      "unit": "m2",
+      "price": 0,
+      "sheet_m2": 2.977
+    },
+    "plaswood": {
+      "itemcode": "RAWPLW0001*",
+      "item_name": "พลาสวูด (แผ่น)",
+      "unit": "m2",
+      "price": 0,
+      "sheet_m2": 2.977
+    },
+    "acrylic_P433": {
+      "itemcode": "RAWACR0004",
+      "item_name": "อะคริลิคตู้ไฟ P433 3mm",
+      "unit": "m2",
+      "price": 1075,
+      "sheet_m2": 2.984
+    },
+    "acrylic_clear": {
+      "itemcode": "RAWACR0001*",
+      "item_name": "อะคริลิคใส",
+      "unit": "m2",
+      "price": 0,
+      "sheet_m2": 2.984
+    },
+    "yokkob_strip": {
+      "itemcode": "RAWSUS0009",
+      "item_name": "ม้วนสแตนเลสทอง (แถบยกขอบ)",
+      "unit": "kg",
+      "price": 120,
+      "thickness_mm": 1.0,
+      "density_kg_mm3": 7.93e-06
+    },
+    "led_ribbon_warm": {
+      "itemcode": "ELCRIB0012",
+      "item_name": "ไฟริบบิ้น LED วอร์มไวท์ 3000K",
+      "unit": "roll",
+      "price": 290,
+      "roll_m": 25
+    },
+    "led_module": {
+      "itemcode": "ELCRIB0012",
+      "item_name": "ไฟริบบิ้น LED",
+      "unit": "roll",
+      "price": 290,
+      "roll_m": 25
+    },
+    "neon_flex": {
+      "itemcode": "ELCNEO0001*",
+      "item_name": "นีออนเฟล็กซ์",
+      "unit": "m",
+      "price": 0
+    },
+    "transformer_meanwell_12v": {
+      "itemcode": "dynamic",
+      "item_name": "หม้อแปลง Mean Well LRS 12V",
+      "unit": "pcs",
+      "price": 0
+    },
+    "wire_vct_2.5": {
+      "itemcode": "ELCWIR0001*",
+      "item_name": "สาย VCT 2Cx2.5 (กันน้ำ/outdoor)",
+      "unit": "m",
+      "price": 28
+    },
+    "wire_vct_1.5": {
+      "itemcode": "ELCWIR0002*",
+      "item_name": "สาย VCT 2Cx1.5 (กันน้ำ/outdoor)",
+      "unit": "m",
+      "price": 20
+    },
+    "wire_thw_2.5": {
+      "itemcode": "ELCWIR0003*",
+      "item_name": "สาย THW 2.5 (indoor)",
+      "unit": "m",
+      "price": 11
+    },
+    "wire_thw_1.5": {
+      "itemcode": "ELCWIR0004*",
+      "item_name": "สาย THW 1.5 (indoor)",
+      "unit": "m",
+      "price": 8
+    }
+  },
+  "paint": {
+    "rate_per_m2": 500,
+    "usage_L_per_m2": 0.333
+  }
+}
