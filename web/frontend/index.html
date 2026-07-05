@@ -155,7 +155,9 @@ select.numin{cursor:pointer}
 @media(max-width:720px){.csm2-list{grid-template-columns:1fr}}
 .pcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;cursor:pointer;transition:.15s;position:relative}
 .pcard:hover{border-color:var(--brand);box-shadow:0 8px 22px rgba(37,99,235,.14);transform:translateY(-2px)}
-.pcard .cust{font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:3px;padding-right:60px}
+.pcard .cust{font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.pthumb{width:100%;height:118px;border-radius:9px;background:#EEF2F8 center/cover no-repeat;margin-bottom:9px;display:grid;place-items:center;color:#C0CBDB;font-size:26px;overflow:hidden;transition:background-image .2s}
+.pthumb.has{color:transparent}
 .pcard .meta{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px}
 .pcard .meta b{color:var(--brand);font-weight:600}
 .pcard .row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -680,6 +682,7 @@ function csApplyQ(){
   box.innerHTML='<div class="csm2-count">พบ '+rows.length+' งาน (ยังไม่สั่งผลิต)</div>'+rows.map(function(r,i){ CSPROJ[i]=r; return csCardHtml(r,i); }).join('');
   var cards=box.querySelectorAll('.pcard');
   for(var i=0;i<cards.length;i++) cards[i].onclick=(function(idx){return function(){csUseProject(CSPROJ[idx]);};})(i);
+  csLazyImgs(box);
 }
 $('csSaleF').onchange=csLoadProjects;
 $('csGfxF').onchange=csLoadProjects;
@@ -687,11 +690,30 @@ var _csqT; $('csQ').oninput=function(){ clearTimeout(_csqT); _csqT=setTimeout(cs
 var CSPROJ={};
 function esc(s){return String(s||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
 function csCardHtml(r,i){
-  return '<div class="pcard" data-i="'+i+'"><div class="date">'+esc(r.created||'')+'</div>'+
+  var thumb=r.img?('<div class="pthumb" data-img="'+encodeURIComponent(r.img)+'"><span>🖼️</span></div>')
+                 :'<div class="pthumb"><span>🖼️</span></div>';
+  return '<div class="pcard" data-i="'+i+'">'+thumb+
     '<div class="cust">'+esc(r.cust||'(ไม่มีชื่อลูกค้า)')+'</div>'+
-    '<div class="meta"><span>เซลล์ <b>'+esc(r.sale||'-')+'</b></span><span>กราฟิก <b>'+esc(r.gfx||'-')+'</b></span></div>'+
+    '<div class="meta"><span>📅 '+esc(r.created||'')+'</span><span>เซลล์ <b>'+esc(r.sale||'-')+'</b></span><span>กราฟิก <b>'+esc(r.gfx||'-')+'</b></span></div>'+
     '<div class="row">'+(r.cat?'<span class="cat">'+esc(r.cat)+'</span>':'')+'<span class="st">'+esc(r.status||'')+'</span></div>'+
     '<button class="use">⬇ ใช้ข้อมูลงานนี้</button></div>';
+}
+var CSIMG={};
+function csSetThumb(el,url){ el.style.backgroundImage='url("'+url+'")'; el.classList.add('has'); el.innerHTML=''; }
+function csLoadImg(el){
+  var enc=el.getAttribute('data-img'); if(!enc) return; el.removeAttribute('data-img');
+  if(CSIMG[enc]){ if(CSIMG[enc]!=='x') csSetThumb(el,CSIMG[enc]); return; }
+  var url=csApiUrl(); if(!url) return;
+  csJsonp(url+(url.indexOf('?')<0?'?':'&')+'api=img&path='+enc,function(j){
+    var u=(j&&j.ok&&j.url)||''; CSIMG[enc]=u||'x'; if(u) csSetThumb(el,u);
+  });
+}
+function csLazyImgs(box){
+  var els=box.querySelectorAll('.pthumb[data-img]');
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(ents){ ents.forEach(function(e){ if(e.isIntersecting){ csLoadImg(e.target); io.unobserve(e.target); } }); },{root:box,rootMargin:'150px'});
+    for(var i=0;i<els.length;i++) io.observe(els[i]);
+  } else { for(var i=0;i<els.length;i++) csLoadImg(els[i]); }
 }
 function csUseProject(r){
   $('csSales').value=r.sale||''; $('csCustomer').value=r.cust||''; $('csGfx').value=r.gfx||'';
