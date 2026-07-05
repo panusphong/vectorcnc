@@ -220,6 +220,50 @@ def _auto_keep(layers, W, H):
     return keep or set(names)
 
 
+def full_geom_mm(path, real_width_mm=300.0):
+    """ดึงรูปทรง (shapely, หน่วยมม.) จากไฟล์เวกเตอร์ — สำหรับ Nesting"""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    ext = os.path.splitext(str(path))[1].lower()
+    layers = None; W = H = 0.0
+    try:
+        if ext == '.svg':
+            layers, W, H = _extract_subpaths_svg(path)
+        elif ext in ('.pdf', '.ai'):
+            layers, W, H = _extract_subpaths_pdf(path, filetype='pdf')
+        elif ext in ('.eps', '.ps'):
+            pdf = _to_pdf_via_gs(path)
+            try:
+                layers, W, H = _extract_subpaths_pdf(pdf, filetype='pdf')
+            finally:
+                try: os.remove(pdf)
+                except Exception: pass
+    except Exception:
+        layers = None
+    if not layers or W <= 0 or H <= 0:
+        return None
+    keep = _auto_keep(layers, W, H)
+    ppm = W / float(real_width_mm) if real_width_mm else 1.0
+    polys = []
+    for ly in keep:
+        for sp in layers[ly]:
+            if not sp.get('closed'):
+                continue
+            pts = _sp_flatten(sp, max(0.5, 0.4 * ppm))
+            mm = [(x / ppm, y / ppm) for x, y in pts]
+            if len(mm) < 3:
+                continue
+            try:
+                p = Polygon(mm).buffer(0)
+                if not p.is_empty and p.area > 1.0:
+                    polys.append(p)
+            except Exception:
+                pass
+    if not polys:
+        return None
+    return unary_union(polys)
+
+
 def _emit_vector(kept, W, H, ppm, out_svg_mm, out_dxf):
     """kept = [(name, color_hex, color_rgb, [subpath])] -> SVG(bezier) + DXF(polyline ละเอียด)"""
     def svg(mm):
