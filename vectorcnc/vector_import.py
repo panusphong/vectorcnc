@@ -243,25 +243,34 @@ def full_geom_mm(path, real_width_mm=300.0):
     if not layers or W <= 0 or H <= 0:
         return None
     keep = _auto_keep(layers, W, H)
+    if not keep:
+        return None
+    # ใช้เลเยอร์ที่ "ละเอียดสุด" (subpaths มากสุด) เป็นชิ้นตัวแทน -> เก็บลายครบ ไม่ยุบเป็นวงรี
+    best = max(keep, key=lambda ly: len(layers[ly]))
     ppm = W / float(real_width_mm) if real_width_mm else 1.0
     polys = []
-    for ly in keep:
-        for sp in layers[ly]:
-            if not sp.get('closed'):
-                continue
-            pts = _sp_flatten(sp, max(0.5, 0.4 * ppm))
-            mm = [(x / ppm, y / ppm) for x, y in pts]
-            if len(mm) < 3:
-                continue
-            try:
-                p = Polygon(mm).buffer(0)
-                if not p.is_empty and p.area > 1.0:
-                    polys.append(p)
-            except Exception:
-                pass
+    for sp in layers[best]:
+        if not sp.get('closed'):
+            continue
+        pts = _sp_flatten(sp, max(0.5, 0.4 * ppm))
+        mm = [(x / ppm, y / ppm) for x, y in pts]
+        if len(mm) < 3:
+            continue
+        try:
+            p = Polygon(mm).buffer(0)
+            if not p.is_empty and p.area > 1.0:
+                polys.append(p)
+        except Exception:
+            pass
     if not polys:
         return None
-    return unary_union(polys)
+    if len(polys) == 1:
+        return polys[0]
+    from shapely.geometry import MultiPolygon
+    try:
+        return MultiPolygon(polys)          # เก็บทุกชิ้น (ไม่ union) -> render ลายครบ
+    except Exception:
+        return unary_union(polys)
 
 
 def _emit_vector(kept, W, H, ppm, out_svg_mm, out_dxf):
