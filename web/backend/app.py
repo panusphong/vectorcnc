@@ -184,27 +184,42 @@ async def nest_ep(
         whole = str(parts_mode).lower() == "whole"
 
         if is_vec:
-            # -------- เวกเตอร์: จัดวาง footprint ละเอียด แล้ว render เป็นเส้นโค้ง Bézier จริง --------
+            # -------- เวกเตอร์: จัดวางทุกเลเยอร์ตัด แยกสี + เส้นโค้ง Bézier จริง (สมูท) --------
             if whole:
+                # ทั้งป้ายเป็นชิ้นเดียว -> จัดกลุ่ม subs ตามเลเยอร์ (คงสี) แล้วปูซ้ำ
+                grp = {}
+                for pc in bez_pieces:
+                    g = grp.setdefault(pc["layer"], {"subs": [], "color": pc["color"], "rgb": pc["rgb"]})
+                    g["subs"].extend(pc["subs"])
                 hull = full_mm.convex_hull
                 if hull.geom_type != "Polygon":
                     hull = full_mm.envelope
-                all_subs = [sp for pc in bez_pieces for sp in pc["subs"]]
-                nest_pieces = [{"poly": hull, "subs": all_subs}]
+                groups = [(g["subs"], g["color"], g["rgb"], ly) for ly, g in grp.items()]
+                nest_pieces = [{"poly": hull, "groups": groups}]
                 qn = max(1, min(80, int(qty)))
-                r = nesting.nest([(nest_pieces[0]["poly"], qn)], float(sheet_w), float(sheet_h),
+                r = nesting.nest([(hull, qn)], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res)
             else:
-                nest_pieces = bez_pieces
-                qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600 กันรันหนัก)
-                res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM ฟรีเทียร์)
-                r = nesting.nest([(pc["poly"], qn) for pc in nest_pieces], float(sheet_w), float(sheet_h),
+                # แยกทุกชิ้นย่อยทุกเลเยอร์ -> แพคชิด (แต่ละชิ้นถือสี/เลเยอร์ของตัวเอง)
+                nest_pieces = [{"poly": pc["poly"],
+                                "groups": [(pc["subs"], pc["color"], pc["rgb"], pc["layer"])]}
+                               for pc in bez_pieces]
+                qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600)
+                res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM)
+                r = nesting.nest([(p["poly"], qn) for p in nest_pieces], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
-            sheets_subs = [[nesting.place_subs(nest_pieces[pl["part"]]["subs"], pl) for pl in sheet]
-                           for sheet in r["placements"]]
-            svgs = [nesting.sheet_svg_bezier(ss, float(sheet_w), float(sheet_h)) for ss in sheets_subs]
+            sheets_items = []
+            for sheet in r["placements"]:
+                items = []
+                for pl in sheet:
+                    pc = nest_pieces[pl["part"]]
+                    for subs, color, rgb, layer in pc["groups"]:
+                        ts = nesting.place_subs(subs, pl)
+                        items.append((ts, color, rgb, layer))       # (subs, color_hex, rgb, layer)
+                sheets_items.append(items)
+            svgs = [nesting.sheet_svg_bezier(it, float(sheet_w), float(sheet_h)) for it in sheets_items]
             dxf_path = os.path.join(tmp, "nest.dxf")
-            nesting.write_dxf_bezier(sheets_subs, dxf_path, float(sheet_w), float(sheet_h))
+            nesting.write_dxf_bezier(sheets_items, dxf_path, float(sheet_w), float(sheet_h))
             n_pieces = len(nest_pieces)
         else:
             # -------- ภาพ raster (JPG/PNG): เส้นจากการ trace (polyline) --------
@@ -327,3 +342,60 @@ def home():
     if os.path.exists(FRONTEND):
         return FileResponse(FRONTEND)
     return {"msg": "VectorCNC API running. POST /api/vectorize"}
+
+
+# ============ BOM Check Sheet (upload + params -> Check Sheet + BOM + record) ============
+CHECKSHEET_PAGE = os.path.join(os.path.dirname(FRONTEND), "checksheet.html")
+
+@app.get("/checksheet")
+def checksheet_page():
+    if os.path.exists(CHECKSHEET_PAGE):
+        return FileResponse(CHECKSHEET_PAGE)
+    return {"msg": "checksheet.html missing"}
+
+@app.post("/api/checksheet")
+async def api_checksheet(
+    file: UploadFile = File(...),
+    sales: str = Form(""), customer: str = Form(""), job_id: str = Form(""),
+    sign_type: str = Form("4.3"),
+    real_width_cm: float = Form(80.0), real_height_cm: float = Form(45.0),
+    metal_cat: str = Form("metal_stainless"),
+    yokkob_outer_cm: float = Form(5.0), yokkob_letter_cm: float = Form(7.0),
+    led_color: str = Form("วอร์มไวท์ 3000K"), install: str = Form("indoor"),
+    wire_gauge: str = Form("2.5"), wire_length_m: float = Form(5.0), qty_sets: int = Form(1),
+):
+    import tempfile, time, traceback, shutil
+    try:
+        from vectorcnc import spec_render, job_record
+        suf = os.path.splitext(file.filename or "")[1].lower() or ".ai"
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=suf)
+        tf.write(await file.read()); tf.close()
+        params = {
+            "real_width_cm": real_width_cm, "real_height_cm": real_height_cm,
+            "sign_type": sign_type, "metal_cat": metal_cat,
+            "yokkob_outer_cm": yokkob_outer_cm, "yokkob_letter_cm": yokkob_letter_cm,
+            "led_color": led_color, "install": install,
+            "wire_gauge": wire_gauge, "wire_length_m": wire_length_m, "qty_sets": qty_sets,
+        }
+        jid = job_id or ("JOB-" + time.strftime("%Y%m%d-%H%M%S"))
+        outdir = tempfile.mkdtemp()
+        outp, cost = spec_render.build_checksheet(tf.name, params=params, outdir=outdir,
+                                                  job_name=(customer or "job"), job_id=jid)
+        html = open(outp, encoding="utf-8").read()
+        files = {"check_sheet": "KFM_CheckSheet.html", "drive_folder": ""}
+        rec = job_record.build_record(jid, sales, customer, params, cost, files=files)
+        # เก็บ manifest + ไฟล์ไว้ใน outputs กลาง (ให้ Apps Script ดึงไปเซฟ Drive)
+        job_record.save_manifest(rec, outdir)
+        payload = {
+            "folder_path": job_record.drive_folder_path(rec),
+            "row": job_record.registry_row(rec),
+            "columns": job_record.REGISTRY_COLUMNS,
+        }
+        try: shutil.rmtree(outdir, ignore_errors=True)
+        except Exception: pass
+        return {"ok": True, "job_id": jid, "html": html,
+                "cost": {k: cost[k] for k in ("material", "labor", "damage", "total")},
+                "led": {"total_m": cost["led"]["total_m"], "transformer": cost["led"]["transformer"]["name"]},
+                "drive_payload": payload}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "trace": traceback.format_exc()[-900:]}, status_code=400)
