@@ -1,12 +1,12 @@
 """นำเข้าไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> ไฟล์ตัด
 
-กลยุทธ์ (คมสมบูรณ์ + ครอบคลุมทุกเคส):
-1) ดึง path เวกเตอร์ "ตรงจากไฟล์" (get_drawings / svgpathtools) -> เส้นคมระดับต้นฉบับ 100%
-   ไม่ผ่านการ rasterize เลย  (เหมาะกับ .ai/.svg/.pdf ที่เป็นเวกเตอร์จริง เช่นงานป้าย)
-2) ถ้าไฟล์แทบไม่มี path (เช่น PDF ที่เป็น "ข้อความสด/ภาพฝัง")
-   -> fallback: เรนเดอร์ความละเอียดสูง + potrace (ยังคมด้วย pipeline เส้นเนียน)
-
-import ทั้งหมดแบบ lazy
+หลักการ:
+1) ดึง path เวกเตอร์ "ตรงจากไฟล์" แยกตาม "เลเยอร์ (OCG)" ของ .ai/.pdf
+2) auto-ตัดเลเยอร์ขยะทิ้ง (กรอบบอกขนาด/ใบงาน/ภาพพรีวิว/texture ที่ path เยอะผิดปกติ)
+3) idealize เส้นทุกเส้น (corner-detect + line-fit + smoothing B-spline)
+   -> เนียนกว่าต้นฉบับ (ลบ wobble ที่ติดมาในไฟล์)
+4) รวมเป็นไฟล์เดียว ให้สีต่างกันต่อเลเยอร์ (SVG สี / DXF layer)
+ถ้าไฟล์แทบไม่มี path (ข้อความสด/ภาพฝัง) -> fallback: เรนเดอร์ + potrace
 """
 import os
 import tempfile
@@ -15,7 +15,11 @@ import numpy as np
 
 VECTOR_EXT = ('.svg', '.ai', '.pdf', '.eps', '.ps')
 RENDER_LONGEST_PX = 3200
-_BEZ_STEP_PT = 1.5          # ระยะ sample โค้ง Bézier (จุด) -> chord เล็ก คมทุกซูม
+_BEZ_STEP_PT = 1.2
+
+# สีต่อเลเยอร์ (วนใช้)
+_PALETTE = ['#111111', '#2563EB', '#DC2626', '#059669', '#D97706',
+            '#7C3AED', '#0891B2', '#DB2777', '#65A30D', '#4B5563']
 
 
 def is_vector_file(path):
@@ -32,25 +36,36 @@ def _closed(r):
     return len(r) >= 3 and abs(r[0][0] - r[-1][0]) < 1.0 and abs(r[0][1] - r[-1][1]) < 1.0
 
 
-# ---------- ดึง path ตรงจาก PDF/AI (get_drawings) ----------
-def _rings_from_pdf_direct(path, filetype=None):
+def _regular(ring):
+    """idealize เส้น (reuse ตัว regularize ของ trace_engine)"""
+    try:
+        from . import trace_engine
+        return trace_engine._regularize_ring(ring)
+    except Exception:
+        return ring
+
+
+# ---------- ดึง path ตาม "เลเยอร์" จาก PDF/AI ----------
+def _extract_pdf_layers(path, filetype=None):
     import fitz
     doc = fitz.open(path, filetype=filetype) if filetype else fitz.open(path)
     try:
         page = doc[0]
         R = page.rect
         W, H = float(R.width), float(R.height)
-        rings = []
+        layers = {}
         for dr in page.get_drawings():
+            ly = dr.get('layer') or '(default)'
+            bucket = layers.setdefault(ly, [])
             cur = None
             sub = []
             for it in dr.get('items', []):
                 op = it[0]
                 if op in ('l', 'c'):
                     a = (it[1].x, it[1].y)
-                    if cur is None or abs(a[0] - cur[0]) > 0.01 or abs(a[1] - cur[1]) > 0.01:
+                    if cur is None or abs(a[0]-cur[0]) > 0.01 or abs(a[1]-cur[1]) > 0.01:
                         if len(sub) >= 2:
-                            rings.append(sub)
+                            bucket.append(sub)
                         sub = [a]
                     if op == 'l':
                         sub.append((it[2].x, it[2].y)); cur = (it[2].x, it[2].y)
@@ -58,25 +73,24 @@ def _rings_from_pdf_direct(path, filetype=None):
                         c1 = (it[2].x, it[2].y); c2 = (it[3].x, it[3].y); e = (it[4].x, it[4].y)
                         L = (abs(c1[0]-a[0]) + abs(c1[1]-a[1]) + abs(c2[0]-c1[0]) +
                              abs(c2[1]-c1[1]) + abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
-                        N = int(min(160, max(4, L / _BEZ_STEP_PT)))
+                        N = int(min(200, max(4, L / _BEZ_STEP_PT)))
                         for i in range(1, N + 1):
                             sub.append(_cubic_pt(a, c1, c2, e, i / float(N)))
                         cur = e
                 elif op == 're':
                     r = it[1]
-                    rings.append([(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1), (r.x0, r.y0)])
+                    bucket.append([(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1), (r.x0, r.y0)])
                 elif op == 'qu':
                     q = it[1]
-                    rings.append([(q.ul.x, q.ul.y), (q.ur.x, q.ur.y),
-                                  (q.lr.x, q.lr.y), (q.ll.x, q.ll.y), (q.ul.x, q.ul.y)])
+                    bucket.append([(q.ul.x, q.ul.y), (q.ur.x, q.ur.y),
+                                   (q.lr.x, q.lr.y), (q.ll.x, q.ll.y), (q.ul.x, q.ul.y)])
             if len(sub) >= 2:
-                rings.append(sub)
-        return rings, W, H
+                bucket.append(sub)
+        return layers, W, H
     finally:
         doc.close()
 
 
-# ---------- ดึง path ตรงจาก SVG ----------
 def _rings_from_svg(path):
     from svgpathtools import svg2paths2
     paths, attrs, svg_attr = svg2paths2(path)
@@ -103,23 +117,49 @@ def _rings_from_svg(path):
     else:
         W = xmax - xmin if xmax > xmin else 100.0
         H = ymax - ymin if ymax > ymin else 100.0
-    return rings, W, H
+    return {'(default)': rings}, W, H
 
 
-def _to_pdf_via_gs(path):
-    out = tempfile.mktemp(suffix='.pdf')
-    subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER',
-                    '-sDEVICE=pdfwrite', '-o', out, path],
-                   check=True, timeout=120,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out
+# ---------- auto ตัดเลเยอร์ขยะ ----------
+def _bbox(r):
+    xs = [p[0] for p in r]; ys = [p[1] for p in r]
+    return max(xs) - min(xs), max(ys) - min(ys)
 
 
-def _npts(rings):
-    return sum(len(r) for r in rings) if rings else 0
+def _extent(rings):
+    xs = [p[0] for r in rings for p in r]
+    ys = [p[1] for r in rings for p in r]
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
-# ---------- fallback: เรนเดอร์ + potrace (ไฟล์ข้อความสด/ภาพฝัง) ----------
+def _auto_keep(layers, W, H):
+    names = [ly for ly, rr in layers.items() if rr]
+    if len(names) <= 1:
+        return set(names)
+    counts = {ly: len(layers[ly]) for ly in names}
+    med = sorted(counts.values())[len(counts) // 2]
+    keep = set()
+    for ly in names:
+        junk = False
+        # (a) จำนวน path มากผิดปกติ (เลเยอร์ catch-all: annotation/preview/texture)
+        if counts[ly] > max(20, 6 * med):
+            junk = True
+        # (b) มีกรอบสี่เหลี่ยมเกือบเต็มหน้า (กรอบบอกขนาด/ใบงาน)
+        if not junk:
+            for r in layers[ly]:
+                bw, bh = _bbox(r)
+                if bw > 0.5 * W and bh > 0.5 * H and len(r) <= 8:
+                    junk = True; break
+        # (c) ชื่อเลเยอร์แนว annotation
+        low = str(ly).lower()
+        if any(k in low for k in ('dim', 'annot', 'note', 'guide', 'spec', 'ใบงาน', 'text')):
+            junk = True
+        if not junk:
+            keep.add(ly)
+    return keep or set(names)
+
+
+# ---------- fallback: เรนเดอร์ + potrace ----------
 def _emit_render(image_path, out_svg_mm, out_dxf, real_width_mm,
                  kerf_mm, tool_mm, min_mm, round_corners, tabs, filetype=None):
     import fitz
@@ -145,14 +185,6 @@ def _emit_render(image_path, out_svg_mm, out_dxf, real_width_mm,
     return _finish([('L0', '#111111', rings)], W2, H2, ppm, out_svg_mm, out_dxf, 'vector-render')
 
 
-# ---------- output linework ตรง (คมสมบูรณ์) ----------
-def _emit_linework(rings, W, H, out_svg_mm, out_dxf, real_width_mm):
-    from . import cnc_export
-    ppm = W / float(real_width_mm) if real_width_mm else 1.0
-    ringc = [(r, _closed(r)) for r in rings if len(r) >= 2]
-    return _finish([('L0', '#111111', ringc)], W, H, ppm, out_svg_mm, out_dxf, 'vector')
-
-
 def _finish(layers, W, H, ppm, out_svg_mm, out_dxf, engine):
     from . import cnc_export
     total = sum(len(rr) for n, c, rr in layers)
@@ -167,11 +199,16 @@ def _finish(layers, W, H, ppm, out_svg_mm, out_dxf, engine):
         'size_mm': (round(W / ppm, 1), round(H / ppm, 1)),
         'ppm': ppm, 'mode': 'vector', 'engine': engine,
         'detected': {'kind': 'vector', 'mode': 'vector', 'engine': engine,
-                     'notes': 'ดึงเส้นตรงจากไฟล์เวกเตอร์ (คมสมบูรณ์)'},
+                     'notes': 'ดึงเวกเตอร์ตรง + idealize เส้น (คมเนียนกว่าต้นฉบับ)'},
         'n_layers': len(layers), 'n_rings': total,
         'svg_mm': svg_mm, 'svg_px': svg_px,
         'layer_colors': [c for n, c, r in layers],
+        'used_layers': [n for n, c, r in layers],
     }
+
+
+def _npts(layers):
+    return sum(len(r) for rr in layers.values() for r in rr)
 
 
 def process_vector(image_path, out_svg_mm, out_dxf=None, real_width_mm=1200.0,
@@ -179,30 +216,58 @@ def process_vector(image_path, out_svg_mm, out_dxf=None, real_width_mm=1200.0,
     """เวกเตอร์ -> ไฟล์ตัด (คืน dict รูปแบบเดียวกับ pipeline.process_cnc)"""
     ext = os.path.splitext(str(image_path))[1].lower()
 
-    # 1) ดึง path ตรง
-    rings = None; W = H = 0.0
+    layers = None; W = H = 0.0
     try:
         if ext == '.svg':
-            rings, W, H = _rings_from_svg(image_path)
+            layers, W, H = _rings_from_svg(image_path)
         elif ext in ('.pdf', '.ai'):
-            rings, W, H = _rings_from_pdf_direct(image_path, filetype='pdf')
+            layers, W, H = _extract_pdf_layers(image_path, filetype='pdf')
         elif ext in ('.eps', '.ps'):
             pdf = _to_pdf_via_gs(image_path)
             try:
-                rings, W, H = _rings_from_pdf_direct(pdf, filetype='pdf')
+                layers, W, H = _extract_pdf_layers(pdf, filetype='pdf')
             finally:
                 try: os.remove(pdf)
                 except Exception: pass
     except Exception:
-        rings = None
+        layers = None
 
-    if rings and _npts(rings) >= 60 and W > 0 and H > 0:
-        return _emit_linework(rings, W, H, out_svg_mm, out_dxf, real_width_mm)
+    if layers and _npts(layers) >= 60 and W > 0 and H > 0:
+        keep = _auto_keep(layers, W, H)
+        # idealize เส้นทุกเลเยอร์ที่เก็บ
+        kept = []
+        for ly in sorted(keep):
+            rr = [_regular(r) for r in layers[ly] if len(r) >= 2]
+            rr = [r for r in rr if len(r) >= 2]
+            if rr:
+                kept.append((str(ly), rr))
+        if kept:
+            # แยกชิ้น: วางแต่ละเลเยอร์เรียงแนวนอน ไม่ทับกัน (ขนาดจริงคงเดิม)
+            boxes = [_extent(rr) for n, rr in kept]
+            maxw = max((b[2] - b[0]) for b in boxes) or 1.0
+            gap = 0.06 * maxw
+            xoff = 0.0; maxh = 0.0
+            out_layers = []
+            for idx, (name, rr) in enumerate(kept):
+                mnx, mny, mxx, mxy = boxes[idx]
+                dx = xoff - mnx; dy = -mny
+                ringc = []
+                for r in rr:
+                    tr = [(px + dx, py + dy) for px, py in r]
+                    ringc.append((tr, _closed(tr)))
+                out_layers.append((name, _PALETTE[idx % len(_PALETTE)], ringc))
+                xoff += (mxx - mnx) + gap
+                maxh = max(maxh, mxy - mny)
+            NW = xoff - gap if len(kept) > 1 else (boxes[0][2] - boxes[0][0])
+            NH = maxh if maxh > 0 else H
+            ppm = maxw / float(real_width_mm) if real_width_mm else 1.0
+            return _finish(out_layers, NW, NH, ppm, out_svg_mm, out_dxf, 'vector')
 
-    # 2) fallback: เรนเดอร์ + potrace (ไฟล์ข้อความสด/ภาพฝัง)
+    # fallback: ข้อความสด/ภาพฝัง
     if ext in ('.pdf', '.ai', '.svg'):
         return _emit_render(image_path, out_svg_mm, out_dxf, real_width_mm,
-                            kerf_mm, tool_mm, min_mm, round_corners, tabs, filetype='pdf' if ext != '.svg' else None)
+                            kerf_mm, tool_mm, min_mm, round_corners, tabs,
+                            filetype='pdf' if ext != '.svg' else None)
     if ext in ('.eps', '.ps'):
         pdf = _to_pdf_via_gs(image_path)
         try:
@@ -212,3 +277,12 @@ def process_vector(image_path, out_svg_mm, out_dxf=None, real_width_mm=1200.0,
             try: os.remove(pdf)
             except Exception: pass
     raise ValueError('ไม่พบเส้นเวกเตอร์ในไฟล์')
+
+
+def _to_pdf_via_gs(path):
+    out = tempfile.mktemp(suffix='.pdf')
+    subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER',
+                    '-sDEVICE=pdfwrite', '-o', out, path],
+                   check=True, timeout=120,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return out
