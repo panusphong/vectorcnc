@@ -96,8 +96,74 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
 .flow{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 .flow .st{flex:1;min-width:100px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:12px;color:var(--ink)}
 .flow .st b{display:block;color:var(--brand);font-size:18px;margin-bottom:3px}
-.cslab{display:block;font-size:12px;color:#5A6B8C;font-weight:600;margin-bottom:4px}
+/* ===== BOM Check Sheet — redesigned UI ===== */
+.cslab{display:block;font-size:11.5px;color:#5A6B8C;font-weight:600;margin:0 0 5px}
 select.numin{cursor:pointer}
+.csm{align-items:stretch;justify-content:center;padding:0}
+.csm-card{background:#fff;width:100%;max-width:1280px;height:100%;max-height:100vh;display:flex;flex-direction:column;border-radius:0}
+@media(min-width:1000px){.csm-card{height:94vh;margin:auto;border-radius:20px;overflow:hidden}}
+.csm-head{display:flex;align-items:center;justify-content:space-between;padding:15px 22px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,#F5F8FC,#EAF1FB)}
+.csm-title{display:flex;align-items:center;gap:12px}
+.csm-ico{width:40px;height:40px;border-radius:11px;background:var(--grad);display:grid;place-items:center;font-size:20px;box-shadow:0 6px 16px rgba(37,99,235,.32)}
+.csm-title b{display:block;font-size:17px;color:var(--ink)}
+.csm-title small{display:block;font-size:12px;color:var(--muted);font-weight:300}
+.csm-x{width:34px;height:34px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:16px;cursor:pointer;transition:.15s}
+.csm-x:hover{border-color:var(--red);color:var(--red)}
+.csm-body{flex:1;display:grid;grid-template-columns:400px 1fr;min-height:0}
+@media(max-width:980px){.csm-body{grid-template-columns:1fr;overflow-y:auto}}
+.csm-form{padding:18px 20px;overflow-y:auto;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:16px}
+.csm-sec{border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--panel2)}
+.csm-sec-h{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:11px}
+.csm-sec-h i{width:21px;height:21px;border-radius:6px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:12px;font-style:normal}
+.csm-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.csm-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.csm-fld{margin-top:10px}
+.csm-pull{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#0F766E,#0891B2);color:#fff;border:none;padding:11px;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:.16s;box-shadow:0 6px 16px rgba(8,145,178,.25)}
+.csm-pull:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(8,145,178,.34)}
+.csm-proj{margin:10px 0 4px;border:1px solid #B9E3D8;background:#ECFDF6;border-radius:10px;padding:9px 11px;font-size:12.5px;color:#0F766E;display:flex;align-items:center;gap:8px}
+.csm-proj b{color:#065F46}
+.csm-file{display:flex;align-items:center;gap:10px;border:1px dashed var(--line2);border-radius:10px;padding:11px 12px;background:#fff}
+.csm-file .fi{font-size:22px}
+.csm-file b{flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.csm-file .lk{font-size:11px;color:var(--brand);font-weight:600;cursor:pointer;text-decoration:underline}
+.csm-result{position:relative;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+.csm-empty{margin:auto;text-align:center;color:var(--dim);padding:30px}
+.csm-empty .big{font-size:46px;opacity:.5;margin-bottom:12px}
+.csm-kpis{display:flex;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);background:#fff}
+.csm-kpi{flex:1;min-width:120px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:9px 12px}
+.csm-kpi span{display:block;font-size:11px;color:var(--muted)}
+.csm-kpi b{font-size:19px;color:var(--brand)}
+.csm-kpi.tot{background:linear-gradient(135deg,#2563EB,#06B6D4);border:none}
+.csm-kpi.tot span{color:rgba(255,255,255,.85)}.csm-kpi.tot b{color:#fff}
+.csm-frame{flex:1;width:100%;border:none;background:#fff;min-height:300px}
+.csm-foot{display:flex;align-items:center;gap:14px;padding:13px 22px;border-top:1px solid var(--line);background:#fff}
+.csm-foot .msg{flex:1;font-size:12.5px;color:var(--muted)}
+.csm-foot .msg.err{color:var(--red)}
+.csm-foot .btn{padding:12px 30px}
+/* project picker popup */
+.csm2{z-index:90;align-items:center;justify-content:center;padding:16px}
+.csm2-card{background:#fff;width:100%;max-width:860px;max-height:88vh;border-radius:18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.csm2-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.csm2-head b{font-size:15.5px}
+.csm2-head small{color:var(--muted);font-weight:300;font-size:12px;margin-left:6px}
+.csm2-filter{display:grid;grid-template-columns:1fr 1fr 1.2fr auto;gap:9px;padding:13px 20px;border-bottom:1px solid var(--line);align-items:end}
+@media(max-width:720px){.csm2-filter{grid-template-columns:1fr 1fr}}
+.csm2-list{padding:14px 20px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:11px;background:var(--panel2)}
+@media(max-width:720px){.csm2-list{grid-template-columns:1fr}}
+.pcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;cursor:pointer;transition:.15s;position:relative}
+.pcard:hover{border-color:var(--brand);box-shadow:0 8px 22px rgba(37,99,235,.14);transform:translateY(-2px)}
+.pcard .cust{font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:3px;padding-right:60px}
+.pcard .meta{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:8px}
+.pcard .meta b{color:var(--brand);font-weight:600}
+.pcard .row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.pcard .cat{font-size:11px;font-weight:600;color:#0F766E;background:#ECFDF6;border:1px solid #B9E3D8;border-radius:7px;padding:3px 8px}
+.pcard .st{font-size:11px;color:var(--dim)}
+.pcard .date{position:absolute;top:12px;right:13px;font-size:11px;color:var(--dim);font-weight:600}
+.pcard .use{margin-top:9px;width:100%;background:rgba(37,99,235,.08);color:var(--brand);border:1px solid rgba(37,99,235,.22);border-radius:8px;padding:7px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.pcard:hover .use{background:var(--brand);color:#fff}
+.csm2-empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:40px 10px;font-size:13.5px}
+.csm2-setbar{grid-column:1/-1;font-size:11.5px;color:var(--dim);padding:4px 20px;border-top:1px solid var(--line);background:#fff;display:flex;align-items:center;gap:8px}
+.csm2-setbar input{flex:1;font-size:11.5px;padding:6px 9px;border:1px solid var(--line2);border-radius:7px;font-family:inherit}
 </style>
 </head>
 <body>
@@ -114,7 +180,6 @@ select.numin{cursor:pointer}
 <div class="wrap rel">
   <section class="hero">
     <span class="pill"><span class="dot"></span> ระบบจริง · พร้อมตัด Fiber / CO2 / Router + พร้อม Fusion</span>
-    <h1>เปลี่ยน<span class="g">ภาพถ่าย · ไฟล์ AI</span> ให้เป็น <span class="g">Vector</span> แบบ Auto · พร้อมตัด</h1>
     <p class="lead">อัปโหลดรูป (JPG/PNG) หรือไฟล์ AI/PDF/SVG → แปลงเป็น Vector อัตโนมัติ → ได้ SVG + DXF หน่วยมม. พร้อมตัดเข้า Fiber laser · CO2 · Router</p>
   </section>
 
@@ -198,50 +263,101 @@ select.numin{cursor:pointer}
   <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
 </div></div>
 
-<div class="modal" id="csOverlay" style="align-items:flex-start;overflow-y:auto;padding:0">
-  <div class="modal-card" style="max-width:1120px;width:100%;margin:26px auto;padding:22px 24px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-      <div><div class="badge" style="color:#2563EB;background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.3)">BOM &middot; Check Sheet</div>
-      <h3 style="margin-top:4px">📋 สร้าง BOM Check Sheet + ต้นทุน</h3></div>
-      <button class="btn ghost" id="csClose" style="padding:8px 14px">✕ ปิด</button>
+<div class="modal csm" id="csOverlay">
+  <div class="csm-card">
+    <div class="csm-head">
+      <div class="csm-title"><span class="csm-ico">📋</span>
+        <div><b>BOM Check Sheet + ต้นทุน</b><small>ป้ายยกขอบไฟออกหน้า · คำนวณ BOM + ราคา + ภาพ อัตโนมัติ</small></div></div>
+      <button class="csm-x" id="csClose" title="ปิด">✕</button>
     </div>
-    <p style="color:#5A6B8C;font-size:13.5px;margin:6px 0 14px">ใช้ไฟล์ที่อัปโหลดฝั่งซ้าย (.ai/.pdf เลเยอร์ 4.3) หรือเลือกใหม่ &rarr; กรอกพารามิเตอร์ &rarr; ออก Check Sheet + BOM + ภาพ อัตโนมัติ &middot; บันทึกลง Google Drive</p>
-    <div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px">
-      <span style="font-size:20px">📄</span>
-      <b id="csFname" style="flex:1;font-size:13.5px;color:#8A99B5">ยังไม่ได้เลือกไฟล์</b>
-      <button class="btn ghost" id="csPick" style="padding:7px 13px;font-size:13px">เลือกไฟล์อื่น</button>
+    <div class="csm-body">
+      <div class="csm-form">
+
+        <div class="csm-sec">
+          <div class="csm-sec-h"><i>1</i> ที่มางาน · เซลล์ / ลูกค้า</div>
+          <button class="csm-pull" id="csPull">🔎 ดึงจากใบสั่งผลิต Auto (งานที่ยังไม่สั่งผลิต)</button>
+          <div class="csm-proj" id="csProjBadge" style="display:none"></div>
+          <div class="csm-2" style="margin-top:11px">
+            <div><label class="cslab">เซลล์ (Sales)</label><input class="numin" id="csSales" placeholder="ดึง หรือพิมพ์เอง"></div>
+            <div><label class="cslab">ลูกค้า (Customer)</label><input class="numin" id="csCustomer" placeholder="—"></div>
+          </div>
+          <div class="csm-fld"><label class="cslab">กราฟิก (ผู้ออกแบบ)</label><input class="numin" id="csGfx" placeholder="—"></div>
+        </div>
+
+        <div class="csm-sec">
+          <div class="csm-sec-h"><i>2</i> ไฟล์แบบ (จากหน้าหลัก)</div>
+          <div class="csm-file"><span class="fi">📄</span>
+            <b id="csFname">ยังไม่ได้เลือกไฟล์</b>
+            <span class="lk" id="csGoUpload">อัปโหลดที่หน้าหลัก ↑</span></div>
+          <div class="hint" style="margin-top:7px">ใช้ไฟล์ .ai/.pdf (เลเยอร์ 4.3) ที่ลากวางในช่องซ้ายของหน้าหลัก — ไฟล์เดียวกับที่ใช้ทำ Nesting</div>
+        </div>
+
+        <div class="csm-sec">
+          <div class="csm-sec-h"><i>3</i> ขนาด + วัสดุ</div>
+          <div class="csm-2">
+            <div><label class="cslab">กว้าง (cm)</label><input class="numin" id="csW" type="number" value="80" step="0.1"></div>
+            <div><label class="cslab">สูง (cm)</label><input class="numin" id="csH" type="number" value="45" step="0.1"></div>
+          </div>
+          <div class="csm-fld"><label class="cslab">วัสดุหลัก</label><select class="numin" id="csMetal">
+            <option value="metal_stainless">สแตนเลสทอง</option><option value="metal_zinc">ซิงค์ (พ่นสี)</option>
+            <option value="metal_alu">อะลูมิเนียม (พ่นสี)</option><option value="plaswood">พลาสวูด (พ่นสี)</option></select></div>
+          <div class="csm-2 csm-fld">
+            <div><label class="cslab">ยกขอบนอก (cm)</label><input class="numin" id="csYo" type="number" value="5" step="0.5"></div>
+            <div><label class="cslab">ยกขอบตัวอักษร (cm)</label><input class="numin" id="csYl" type="number" value="7" step="0.5"></div>
+          </div>
+        </div>
+
+        <div class="csm-sec">
+          <div class="csm-sec-h"><i>4</i> ประเภท · ไฟ · ติดตั้ง</div>
+          <div><label class="cslab">ประเภทป้าย</label><select class="numin" id="csSign">
+            <option value="4.3">4.3 ไฟออกหน้า ยกขอบ</option><option value="4.1">4.1 ยกขอบ ไม่มีไฟ</option>
+            <option value="4.2">4.2 ไฟออกหลัง</option><option value="4.4">4.4 กล่องไฟ</option><option value="4.5">4.5 นีออนเฟล็กซ์</option></select></div>
+          <div class="csm-2 csm-fld">
+            <div><label class="cslab">สีไฟ LED</label><select class="numin" id="csLed">
+              <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
+              <option>แดง</option><option>น้ำเงิน</option><option>เขียว</option><option>RGB</option></select></div>
+            <div><label class="cslab">ติดตั้ง</label><select class="numin" id="csInstall">
+              <option value="indoor">Indoor (ในร่ม)</option><option value="outdoor">Outdoor (กลางแจ้ง)</option></select></div>
+          </div>
+          <div class="csm-3 csm-fld">
+            <div><label class="cslab">สาย <span id="csWt">THW</span> เบอร์</label><select class="numin" id="csWire"><option>2.5</option><option>1.5</option></select></div>
+            <div><label class="cslab">ระยะสาย (m)</label><input class="numin" id="csWlen" type="number" value="5" step="0.5"></div>
+            <div><label class="cslab">จำนวนชุด</label><input class="numin" id="csQty" type="number" value="1" min="1"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="csm-result">
+        <div class="csm-empty" id="csEmpty"><div class="big">🧾</div>กรอกข้อมูล แล้วกด <b>สร้าง Check Sheet</b><br>เอกสาร BOM + ต้นทุน + ภาพ จะขึ้นตรงนี้</div>
+        <div id="csResult" style="display:none;flex:1;flex-direction:column;min-height:0">
+          <div class="csm-kpis" id="csSum"></div>
+          <iframe class="csm-frame" id="csFrame"></iframe>
+        </div>
+      </div>
     </div>
-    <form id="csForm"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-      <div><label class="cslab">เซลล์ (Sales)</label><input class="numin" id="csSales" placeholder="ชื่อเซลล์"></div>
-      <div><label class="cslab">ลูกค้า (Customer)</label><input class="numin" id="csCustomer" placeholder="ชื่อลูกค้า/ร้าน"></div>
-      <div><label class="cslab">ประเภทป้าย</label><select class="numin" id="csSign">
-        <option value="4.3">4.3 ไฟออกหน้า ยกขอบ</option><option value="4.1">4.1 ยกขอบ ไม่มีไฟ</option>
-        <option value="4.2">4.2 ไฟออกหลัง</option><option value="4.4">4.4 กล่องไฟ</option><option value="4.5">4.5 นีออนเฟล็กซ์</option></select></div>
-      <div><label class="cslab">กว้าง (cm)</label><input class="numin" id="csW" type="number" value="80" step="0.1"></div>
-      <div><label class="cslab">สูง (cm)</label><input class="numin" id="csH" type="number" value="45" step="0.1"></div>
-      <div><label class="cslab">วัสดุหลัก</label><select class="numin" id="csMetal">
-        <option value="metal_stainless">สแตนเลสทอง</option><option value="metal_zinc">ซิงค์ (พ่นสี)</option>
-        <option value="metal_alu">อะลูมิเนียม (พ่นสี)</option><option value="plaswood">พลาสวูด (พ่นสี)</option></select></div>
-      <div><label class="cslab">ยกขอบนอก (cm)</label><input class="numin" id="csYo" type="number" value="5" step="0.5"></div>
-      <div><label class="cslab">ยกขอบตัวอักษร (cm)</label><input class="numin" id="csYl" type="number" value="7" step="0.5"></div>
-      <div><label class="cslab">สีไฟ LED</label><select class="numin" id="csLed">
-        <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
-        <option>แดง</option><option>น้ำเงิน</option><option>เขียว</option><option>RGB</option></select></div>
-      <div><label class="cslab">ติดตั้ง</label><select class="numin" id="csInstall">
-        <option value="indoor">Indoor (ในร่ม)</option><option value="outdoor">Outdoor (กลางแจ้ง)</option></select></div>
-      <div><label class="cslab">สายไฟ (<span id="csWt">THW</span>) เบอร์</label><select class="numin" id="csWire"><option>2.5</option><option>1.5</option></select></div>
-      <div><label class="cslab">ระยะหม้อแปลง&rarr;ป้าย (m)</label><input class="numin" id="csWlen" type="number" value="5" step="0.5"></div>
-      <div><label class="cslab">จำนวนชุด</label><input class="numin" id="csQty" type="number" value="1" min="1"></div>
-    </div></form>
-    <button class="btn primary" id="csGo" style="width:100%;margin-top:14px">📋 สร้าง Check Sheet</button>
-    <div id="csErr" style="color:#EF4444;font-size:13px;margin-top:8px;white-space:pre-wrap"></div>
-    <div id="csResult" style="display:none;margin-top:16px">
-      <div id="csSum" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
-      <iframe id="csFrame" style="width:100%;height:74vh;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+
+    <div class="csm-foot">
+      <div class="msg" id="csErr">ใช้ไฟล์จากหน้าหลัก · ราคาเป็นบาท/ชุด (ยังไม่รวม VAT)</div>
+      <button class="btn primary" id="csGo">📋 สร้าง Check Sheet</button>
     </div>
   </div>
 </div>
-<input type="file" id="csFileIn" accept=".ai,.pdf,.svg" style="display:none">
+
+<div class="modal csm2" id="csPick2">
+  <div class="csm2-card">
+    <div class="csm2-head"><div><b>เลือกงานจากใบสั่งผลิต Auto</b><small id="csP2sub">งานที่ยังไม่สั่งผลิต</small></div>
+      <button class="csm-x" id="csP2x">✕</button></div>
+    <div class="csm2-filter">
+      <div><label class="cslab">เปิดงานตั้งแต่</label><input class="numin" id="csFrom" type="date"></div>
+      <div><label class="cslab">ถึง</label><input class="numin" id="csTo" type="date"></div>
+      <div><label class="cslab">เซลล์ / กราฟิก</label><input class="numin" id="csQ" placeholder="พิมพ์กรองชื่อ"></div>
+      <div><button class="btn primary" id="csReload" style="padding:9px 16px">โหลด</button></div>
+    </div>
+    <div class="csm2-list" id="csProjList"><div class="csm2-empty">กด “โหลด” เพื่อดึงงานจากใบสั่งผลิต</div></div>
+    <div class="csm2-setbar">⚙ ลิงก์ Apps Script (/exec):<input id="csApiUrl" placeholder="วาง Web App URL ของใบสั่งผลิต Auto ที่ลงท้าย /exec"><button class="btn ghost" id="csApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
+  </div>
+</div>
 <input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" style="display:none">
 <script>
 var API='';
@@ -467,37 +583,107 @@ $('copySvg').onclick=function(){if(!lastSvg)return;navigator.clipboard.writeText
  cmp.onclick=function(e){if(e.target.closest('.knob'))return;set(e.clientX);};})();
 
 // ---- BOM Check Sheet (merged into main page) ----
-var csFileObj=null;
-function csKpi(k,v){return '<span style="font-size:13px">'+k+' <b style="color:#2563EB;font-size:17px">'+(Number(v)||0).toLocaleString()+'</b></span>';}
-function csSyncFile(){var f=csFileObj||fileObj,el=$('csFname');
-  if(f){el.textContent=f.name;el.style.color='#10B981';}else{el.textContent='ยังไม่ได้เลือกไฟล์ — อัปโหลดฝั่งซ้าย หรือกดเลือกไฟล์';el.style.color='#8A99B5';}}
-$('btnCsheet').onclick=function(){csSyncFile();$('csOverlay').classList.add('show');};
-$('csClose').onclick=function(){$('csOverlay').classList.remove('show');};
-$('csPick').onclick=function(){$('csFileIn').click();};
-$('csFileIn').onchange=function(){if($('csFileIn').files[0]){csFileObj=$('csFileIn').files[0];csSyncFile();}};
-$('csInstall').onchange=function(){$('csWt').textContent=$('csInstall').value==='outdoor'?'VCT':'THW';};
-$('csForm').onsubmit=function(e){e.preventDefault();csRun();};
-$('csGo').onclick=function(e){e.preventDefault();csRun();};
-function csRun(){var f=csFileObj||fileObj;
-  if(!f){$('csErr').textContent='ยังไม่มีไฟล์ .ai/.pdf — อัปโหลดฝั่งซ้าย หรือกดเลือกไฟล์อื่น';return;}
-  $('csErr').textContent='';var b=$('csGo');b.disabled=true;b.textContent='⏳ กำลังสร้าง...';
-  var fd=new FormData();fd.append('file',f);
-  fd.append('sales',$('csSales').value);fd.append('customer',$('csCustomer').value);
+var PRODAPI_KEY='saai_prod_api';
+function csApiUrl(){ try{return localStorage.getItem(PRODAPI_KEY)||'';}catch(e){return '';} }
+function csKpi(k,v,tot){return '<div class="csm-kpi'+(tot?' tot':'')+'"><span>'+k+'</span><b>'+(Number(v)||0).toLocaleString()+'</b></div>';}
+var CS_METALMAP={'fiber_ss':'metal_stainless','fiber_zn':'metal_zinc'};
+var CS_CATMAP=[['ไฟออกหน้า','4.3'],['ไฟออกหลัง','4.2'],['ไม่มีไฟ','4.1'],['กล่องไฟ','4.4'],['นีออน','4.5']];
+
+function csSyncFile(){
+  var el=$('csFname');
+  if(fileObj){ el.textContent=fileObj.name; el.style.color='#10B981'; }
+  else{ el.textContent='ยังไม่ได้เลือกไฟล์ — อัปโหลดที่หน้าหลักก่อน'; el.style.color='#EF4444'; }
+}
+function csPrefillFromMain(){
+  // ใช้ข้อมูลชุดเดียวกับหน้าหลัก/Nesting: ขนาด + วัสดุ
+  var wmm=parseFloat($('realW').value||'0');
+  if(wmm>0) $('csW').value=(wmm/10).toFixed(0);
+  for(var k in CS_METALMAP){ if(MATERIAL && PRESETS[k] && MATERIAL===PRESETS[k].name){ $('csMetal').value=CS_METALMAP[k]; } }
+}
+$('btnCsheet').onclick=function(){ csSyncFile(); csPrefillFromMain(); $('csOverlay').classList.add('show'); };
+$('csClose').onclick=function(){ $('csOverlay').classList.remove('show'); };
+$('csGoUpload').onclick=function(){ $('csOverlay').classList.remove('show'); $('drop').scrollIntoView({behavior:'smooth'}); $('drop').classList.add('over'); setTimeout(function(){$('drop').classList.remove('over');},1200); };
+$('csInstall').onchange=function(){ $('csWt').textContent=$('csInstall').value==='outdoor'?'VCT':'THW'; };
+
+// ----- project picker (ใบสั่งผลิต Auto via JSONP) -----
+var _csjp=0;
+function csJsonp(url,cb){
+  var name='__csjp'+(++_csjp), s=document.createElement('script');
+  var t=setTimeout(function(){cleanup();cb({ok:false,error:'timeout'});},15000);
+  function cleanup(){clearTimeout(t);try{delete window[name];}catch(e){window[name]=null;}if(s.parentNode)s.parentNode.removeChild(s);}
+  window[name]=function(d){cleanup();cb(d);};
+  s.src=url+(url.indexOf('?')<0?'?':'&')+'callback='+name;
+  s.onerror=function(){cleanup();cb({ok:false,error:'โหลดไม่ได้ (ตรวจลิงก์/สิทธิ์ Anyone)'});};
+  document.body.appendChild(s);
+}
+$('csPull').onclick=function(){
+  $('csApiUrl').value=csApiUrl();
+  if(!$('csFrom').value){ var d=new Date(Date.now()-60*864e5); $('csFrom').value=d.toISOString().slice(0,10); }
+  $('csPick2').classList.add('show');
+  if(csApiUrl()) csLoadProjects();
+};
+$('csP2x').onclick=function(){ $('csPick2').classList.remove('show'); };
+$('csApiSave').onclick=function(){ try{localStorage.setItem(PRODAPI_KEY,($('csApiUrl').value||'').trim());}catch(e){} csLoadProjects(); };
+$('csReload').onclick=csLoadProjects;
+function csLoadProjects(){
+  var url=csApiUrl();
+  var box=$('csProjList');
+  if(!url){ box.innerHTML='<div class="csm2-empty">⚙ ยังไม่ได้ตั้งลิงก์ Apps Script — วาง Web App URL (/exec) ด้านล่างแล้วกดบันทึก</div>'; return; }
+  box.innerHTML='<div class="csm2-empty"><div class="spinner"></div>กำลังดึงงาน...</div>';
+  var q='api=projects';
+  if($('csFrom').value)q+='&from='+$('csFrom').value;
+  if($('csTo').value)q+='&to='+$('csTo').value;
+  csJsonp(url+(url.indexOf('?')<0?'?':'&')+q,function(j){
+    if(!j||!j.ok){ box.innerHTML='<div class="csm2-empty">ดึงข้อมูลไม่สำเร็จ: '+((j&&j.error)||'?')+'</div>'; return; }
+    var rows=j.rows||[]; var kw=($('csQ').value||'').toLowerCase();
+    if(kw) rows=rows.filter(function(r){return ((r.sale||'')+' '+(r.gfx||'')+' '+(r.cust||'')).toLowerCase().indexOf(kw)>=0;});
+    if(!rows.length){ box.innerHTML='<div class="csm2-empty">ไม่พบงานที่ยังไม่สั่งผลิตในช่วงที่เลือก</div>'; return; }
+    box.innerHTML=rows.map(function(r,i){ CSPROJ[i]=r; return csCardHtml(r,i); }).join('');
+    var cards=box.querySelectorAll('.pcard');
+    for(var i=0;i<cards.length;i++) cards[i].onclick=(function(idx){return function(){csUseProject(CSPROJ[idx]);};})(i);
+  });
+}
+var CSPROJ={};
+function esc(s){return String(s||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function csCardHtml(r,i){
+  return '<div class="pcard" data-i="'+i+'"><div class="date">'+esc(r.created||'')+'</div>'+
+    '<div class="cust">'+esc(r.cust||'(ไม่มีชื่อลูกค้า)')+'</div>'+
+    '<div class="meta"><span>เซลล์ <b>'+esc(r.sale||'-')+'</b></span><span>กราฟิก <b>'+esc(r.gfx||'-')+'</b></span></div>'+
+    '<div class="row">'+(r.cat?'<span class="cat">'+esc(r.cat)+'</span>':'')+'<span class="st">'+esc(r.status||'')+'</span></div>'+
+    '<button class="use">⬇ ใช้ข้อมูลงานนี้</button></div>';
+}
+function csUseProject(r){
+  $('csSales').value=r.sale||''; $('csCustomer').value=r.cust||''; $('csGfx').value=r.gfx||'';
+  var cat=(r.cat||''); for(var i=0;i<CS_CATMAP.length;i++){ if(cat.indexOf(CS_CATMAP[i][0])>=0){ $('csSign').value=CS_CATMAP[i][1]; break; } }
+  var b=$('csProjBadge'); b.style.display='flex';
+  b.innerHTML='✅ ดึงจากงาน <b>'+esc(r.cust||'')+'</b> · '+esc(r.created||'')+' · เซลล์ '+esc(r.sale||'-')+(r.id?' · #'+esc(r.id):'');
+  $('csPick2').classList.remove('show');
+}
+
+// ----- submit -----
+$('csGo').onclick=function(e){ if(e)e.preventDefault(); csRun(); };
+function csMsg(t,isErr){ var m=$('csErr'); m.textContent=t; m.className='msg'+(isErr?' err':''); }
+function csRun(){
+  if(!fileObj){ csMsg('ยังไม่มีไฟล์ — อัปโหลด .ai/.pdf ที่หน้าหลักก่อน แล้วเปิด Check Sheet อีกครั้ง',true); return; }
+  csMsg('⏳ กำลังสร้าง...'); var b=$('csGo'); b.disabled=true; b.textContent='⏳ กำลังสร้าง...';
+  var fd=new FormData(); fd.append('file',fileObj);
+  fd.append('sales',$('csSales').value); fd.append('customer',$('csCustomer').value);
   fd.append('sign_type',$('csSign').value);
-  fd.append('real_width_cm',$('csW').value||'80');fd.append('real_height_cm',$('csH').value||'45');
+  fd.append('real_width_cm',$('csW').value||'80'); fd.append('real_height_cm',$('csH').value||'45');
   fd.append('metal_cat',$('csMetal').value);
-  fd.append('yokkob_outer_cm',$('csYo').value||'5');fd.append('yokkob_letter_cm',$('csYl').value||'7');
-  fd.append('led_color',$('csLed').value);fd.append('install',$('csInstall').value);
-  fd.append('wire_gauge',$('csWire').value);fd.append('wire_length_m',$('csWlen').value||'5');
+  fd.append('yokkob_outer_cm',$('csYo').value||'5'); fd.append('yokkob_letter_cm',$('csYl').value||'7');
+  fd.append('led_color',$('csLed').value); fd.append('install',$('csInstall').value);
+  fd.append('wire_gauge',$('csWire').value); fd.append('wire_length_m',$('csWlen').value||'5');
   fd.append('qty_sets',$('csQty').value||'1');
   fetch((API||'')+'/api/checksheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-    b.disabled=false;b.textContent='📋 สร้าง Check Sheet';
-    if(!j.ok){$('csErr').textContent='ผิดพลาด: '+(j.error||'สร้างไม่สำเร็จ');return;}
-    $('csResult').style.display='block';var c=j.cost;
-    $('csSum').innerHTML=csKpi('ค่าวัสดุ',c.material)+csKpi('ค่าแรง+OH',c.labor)+csKpi('เสียหาย',c.damage)+csKpi('รวม/ชุด (บาท)',c.total)+
-      (j.led?'<span style="font-size:12px;color:#8A99B5">ไฟรวม '+j.led.total_m+' m &middot; '+j.led.transformer+'</span>':'');
-    $('csFrame').srcdoc=j.html;$('csResult').scrollIntoView({behavior:'smooth'});
-  }).catch(function(ex){b.disabled=false;b.textContent='📋 สร้าง Check Sheet';$('csErr').textContent='ต่อ backend ไม่ได้: '+ex;});
+    b.disabled=false; b.textContent='📋 สร้าง Check Sheet';
+    if(!j.ok){ csMsg('ผิดพลาด: '+(j.error||'สร้างไม่สำเร็จ'),true); return; }
+    csMsg('✅ สร้างสำเร็จ · Job '+ (j.job_id||''));
+    $('csEmpty').style.display='none'; $('csResult').style.display='flex';
+    var c=j.cost;
+    $('csSum').innerHTML=csKpi('ค่าวัสดุ',c.material)+csKpi('ค่าแรง+OH',c.labor)+csKpi('ค่าเสียหาย',c.damage)+csKpi('รวม/ชุด (บาท)',c.total,true);
+    $('csFrame').srcdoc=j.html;
+  }).catch(function(ex){ b.disabled=false; b.textContent='📋 สร้าง Check Sheet'; csMsg('ต่อ backend ไม่ได้: '+ex,true); });
 }
 </script>
 </body>
