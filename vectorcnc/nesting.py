@@ -53,8 +53,14 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
          rotations=(0, 90, 180, 270), res=2.0):
     """parts = [(footprint_polygon_mm, qty), ...]
     คืน dict: placements=[[{part,rot,dx,dy,cx,cy}...] ต่อแผ่น], utilization, n_sheets, n_parts, unplaced"""
+    # จำกัดจำนวนเซลล์กริด -> คุมหน่วยความจำ/เวลา (กัน 502/OOM บนเซิร์ฟเวอร์ฟรี)
+    CELL_CAP = 90000
     grows = int((sheet_h - 2 * margin) / res)
     gcols = int((sheet_w - 2 * margin) / res)
+    if grows * gcols > CELL_CAP:
+        res = res * math.sqrt(grows * gcols / float(CELL_CAP))
+        grows = int((sheet_h - 2 * margin) / res)
+        gcols = int((sheet_w - 2 * margin) / res)
     if grows < 2 or gcols < 2:
         return {'placements': [], 'utilization': 0, 'n_sheets': 0, 'n_parts': 0, 'unplaced': 0}
     uw, uh = sheet_w - 2 * margin, sheet_h - 2 * margin
