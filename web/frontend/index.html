@@ -96,6 +96,8 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
 .flow{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 .flow .st{flex:1;min-width:100px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:12px;color:var(--ink)}
 .flow .st b{display:block;color:var(--brand);font-size:18px;margin-bottom:3px}
+.cslab{display:block;font-size:12px;color:#5A6B8C;font-weight:600;margin-bottom:4px}
+select.numin{cursor:pointer}
 </style>
 </head>
 <body>
@@ -104,6 +106,7 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
   <div class="nav-right">
     <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
+    <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -195,6 +198,50 @@ footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-siz
   <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
 </div></div>
 
+<div class="modal" id="csOverlay" style="align-items:flex-start;overflow-y:auto;padding:0">
+  <div class="modal-card" style="max-width:1120px;width:100%;margin:26px auto;padding:22px 24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div><div class="badge" style="color:#2563EB;background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.3)">BOM &middot; Check Sheet</div>
+      <h3 style="margin-top:4px">📋 สร้าง BOM Check Sheet + ต้นทุน</h3></div>
+      <button class="btn ghost" id="csClose" style="padding:8px 14px">✕ ปิด</button>
+    </div>
+    <p style="color:#5A6B8C;font-size:13.5px;margin:6px 0 14px">ใช้ไฟล์ที่อัปโหลดฝั่งซ้าย (.ai/.pdf เลเยอร์ 4.3) หรือเลือกใหม่ &rarr; กรอกพารามิเตอร์ &rarr; ออก Check Sheet + BOM + ภาพ อัตโนมัติ &middot; บันทึกลง Google Drive</p>
+    <div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+      <span style="font-size:20px">📄</span>
+      <b id="csFname" style="flex:1;font-size:13.5px;color:#8A99B5">ยังไม่ได้เลือกไฟล์</b>
+      <button class="btn ghost" id="csPick" style="padding:7px 13px;font-size:13px">เลือกไฟล์อื่น</button>
+    </div>
+    <form id="csForm"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div><label class="cslab">เซลล์ (Sales)</label><input class="numin" id="csSales" placeholder="ชื่อเซลล์"></div>
+      <div><label class="cslab">ลูกค้า (Customer)</label><input class="numin" id="csCustomer" placeholder="ชื่อลูกค้า/ร้าน"></div>
+      <div><label class="cslab">ประเภทป้าย</label><select class="numin" id="csSign">
+        <option value="4.3">4.3 ไฟออกหน้า ยกขอบ</option><option value="4.1">4.1 ยกขอบ ไม่มีไฟ</option>
+        <option value="4.2">4.2 ไฟออกหลัง</option><option value="4.4">4.4 กล่องไฟ</option><option value="4.5">4.5 นีออนเฟล็กซ์</option></select></div>
+      <div><label class="cslab">กว้าง (cm)</label><input class="numin" id="csW" type="number" value="80" step="0.1"></div>
+      <div><label class="cslab">สูง (cm)</label><input class="numin" id="csH" type="number" value="45" step="0.1"></div>
+      <div><label class="cslab">วัสดุหลัก</label><select class="numin" id="csMetal">
+        <option value="metal_stainless">สแตนเลสทอง</option><option value="metal_zinc">ซิงค์ (พ่นสี)</option>
+        <option value="metal_alu">อะลูมิเนียม (พ่นสี)</option><option value="plaswood">พลาสวูด (พ่นสี)</option></select></div>
+      <div><label class="cslab">ยกขอบนอก (cm)</label><input class="numin" id="csYo" type="number" value="5" step="0.5"></div>
+      <div><label class="cslab">ยกขอบตัวอักษร (cm)</label><input class="numin" id="csYl" type="number" value="7" step="0.5"></div>
+      <div><label class="cslab">สีไฟ LED</label><select class="numin" id="csLed">
+        <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
+        <option>แดง</option><option>น้ำเงิน</option><option>เขียว</option><option>RGB</option></select></div>
+      <div><label class="cslab">ติดตั้ง</label><select class="numin" id="csInstall">
+        <option value="indoor">Indoor (ในร่ม)</option><option value="outdoor">Outdoor (กลางแจ้ง)</option></select></div>
+      <div><label class="cslab">สายไฟ (<span id="csWt">THW</span>) เบอร์</label><select class="numin" id="csWire"><option>2.5</option><option>1.5</option></select></div>
+      <div><label class="cslab">ระยะหม้อแปลง&rarr;ป้าย (m)</label><input class="numin" id="csWlen" type="number" value="5" step="0.5"></div>
+      <div><label class="cslab">จำนวนชุด</label><input class="numin" id="csQty" type="number" value="1" min="1"></div>
+    </div></form>
+    <button class="btn primary" id="csGo" style="width:100%;margin-top:14px">📋 สร้าง Check Sheet</button>
+    <div id="csErr" style="color:#EF4444;font-size:13px;margin-top:8px;white-space:pre-wrap"></div>
+    <div id="csResult" style="display:none;margin-top:16px">
+      <div id="csSum" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px"></div>
+      <iframe id="csFrame" style="width:100%;height:74vh;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+    </div>
+  </div>
+</div>
+<input type="file" id="csFileIn" accept=".ai,.pdf,.svg" style="display:none">
 <input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" style="display:none">
 <script>
 var API='';
@@ -418,6 +465,40 @@ $('copySvg').onclick=function(){if(!lastSvg)return;navigator.clipboard.writeText
  function set(x){var r=cmp.getBoundingClientRect();var p=Math.max(3,Math.min(97,(x-r.left)/r.width*100));after.style.clipPath='inset(0 0 0 '+p+'%)';div.style.left=p+'%';}
  div.onmousedown=function(){drag=true;};window.onmouseup=function(){drag=false;};window.onmousemove=function(e){if(drag)set(e.clientX);};
  cmp.onclick=function(e){if(e.target.closest('.knob'))return;set(e.clientX);};})();
+
+// ---- BOM Check Sheet (merged into main page) ----
+var csFileObj=null;
+function csKpi(k,v){return '<span style="font-size:13px">'+k+' <b style="color:#2563EB;font-size:17px">'+(Number(v)||0).toLocaleString()+'</b></span>';}
+function csSyncFile(){var f=csFileObj||fileObj,el=$('csFname');
+  if(f){el.textContent=f.name;el.style.color='#10B981';}else{el.textContent='ยังไม่ได้เลือกไฟล์ — อัปโหลดฝั่งซ้าย หรือกดเลือกไฟล์';el.style.color='#8A99B5';}}
+$('btnCsheet').onclick=function(){csSyncFile();$('csOverlay').classList.add('show');};
+$('csClose').onclick=function(){$('csOverlay').classList.remove('show');};
+$('csPick').onclick=function(){$('csFileIn').click();};
+$('csFileIn').onchange=function(){if($('csFileIn').files[0]){csFileObj=$('csFileIn').files[0];csSyncFile();}};
+$('csInstall').onchange=function(){$('csWt').textContent=$('csInstall').value==='outdoor'?'VCT':'THW';};
+$('csForm').onsubmit=function(e){e.preventDefault();csRun();};
+$('csGo').onclick=function(e){e.preventDefault();csRun();};
+function csRun(){var f=csFileObj||fileObj;
+  if(!f){$('csErr').textContent='ยังไม่มีไฟล์ .ai/.pdf — อัปโหลดฝั่งซ้าย หรือกดเลือกไฟล์อื่น';return;}
+  $('csErr').textContent='';var b=$('csGo');b.disabled=true;b.textContent='⏳ กำลังสร้าง...';
+  var fd=new FormData();fd.append('file',f);
+  fd.append('sales',$('csSales').value);fd.append('customer',$('csCustomer').value);
+  fd.append('sign_type',$('csSign').value);
+  fd.append('real_width_cm',$('csW').value||'80');fd.append('real_height_cm',$('csH').value||'45');
+  fd.append('metal_cat',$('csMetal').value);
+  fd.append('yokkob_outer_cm',$('csYo').value||'5');fd.append('yokkob_letter_cm',$('csYl').value||'7');
+  fd.append('led_color',$('csLed').value);fd.append('install',$('csInstall').value);
+  fd.append('wire_gauge',$('csWire').value);fd.append('wire_length_m',$('csWlen').value||'5');
+  fd.append('qty_sets',$('csQty').value||'1');
+  fetch((API||'')+'/api/checksheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    b.disabled=false;b.textContent='📋 สร้าง Check Sheet';
+    if(!j.ok){$('csErr').textContent='ผิดพลาด: '+(j.error||'สร้างไม่สำเร็จ');return;}
+    $('csResult').style.display='block';var c=j.cost;
+    $('csSum').innerHTML=csKpi('ค่าวัสดุ',c.material)+csKpi('ค่าแรง+OH',c.labor)+csKpi('เสียหาย',c.damage)+csKpi('รวม/ชุด (บาท)',c.total)+
+      (j.led?'<span style="font-size:12px;color:#8A99B5">ไฟรวม '+j.led.total_m+' m &middot; '+j.led.transformer+'</span>':'');
+    $('csFrame').srcdoc=j.html;$('csResult').scrollIntoView({behavior:'smooth'});
+  }).catch(function(ex){b.disabled=false;b.textContent='📋 สร้าง Check Sheet';$('csErr').textContent='ต่อ backend ไม่ได้: '+ex;});
+}
 </script>
 </body>
 </html>
