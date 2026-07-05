@@ -146,7 +146,10 @@ select.numin{cursor:pointer}
 .csm2-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
 .csm2-head b{font-size:15.5px}
 .csm2-head small{color:var(--muted);font-weight:300;font-size:12px;margin-left:6px}
-.csm2-filter{display:grid;grid-template-columns:1fr 1fr 1.2fr auto;gap:9px;padding:13px 20px;border-bottom:1px solid var(--line);align-items:end}
+.csm2-filter{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:13px 20px;border-bottom:1px solid var(--line);align-items:end}
+.csm2-count{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin:-2px 0 4px;font-weight:600}
+.csm2-quick{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:12px 20px 0}
+.csm2-quick .lbl{font-size:11.5px;color:var(--muted);margin-right:2px}
 @media(max-width:720px){.csm2-filter{grid-template-columns:1fr 1fr}}
 .csm2-list{padding:14px 20px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:11px;background:var(--panel2)}
 @media(max-width:720px){.csm2-list{grid-template-columns:1fr}}
@@ -348,11 +351,14 @@ select.numin{cursor:pointer}
   <div class="csm2-card">
     <div class="csm2-head"><div><b>เลือกงานจากใบสั่งผลิต Auto</b><small id="csP2sub">งานที่ยังไม่สั่งผลิต</small></div>
       <button class="csm-x" id="csP2x">✕</button></div>
+    <div class="csm2-quick" id="csQuick"><span class="lbl">ช่วงเวลาเปิดงาน:</span><button type="button" class="chip" data-days="7">7 วัน</button><button type="button" class="chip on" data-days="15">15 วัน</button><button type="button" class="chip" data-days="30">30 วัน</button><button type="button" class="chip" data-days="90">90 วัน</button><button type="button" class="chip" data-days="0">กำหนดเอง</button></div>
     <div class="csm2-filter">
       <div><label class="cslab">เปิดงานตั้งแต่</label><input class="numin" id="csFrom" type="date"></div>
       <div><label class="cslab">ถึง</label><input class="numin" id="csTo" type="date"></div>
-      <div><label class="cslab">เซลล์ / กราฟิก</label><input class="numin" id="csQ" placeholder="พิมพ์กรองชื่อ"></div>
-      <div><button class="btn primary" id="csReload" style="padding:9px 16px">โหลด</button></div>
+      <div><label class="cslab">เซลล์</label><select class="numin" id="csSaleF"><option value="">ทุกเซลล์</option></select></div>
+      <div><label class="cslab">กราฟิก</label><select class="numin" id="csGfxF"><option value="">ทุกกราฟิก</option></select></div>
+      <div style="grid-column:1 / span 3"><label class="cslab">ค้นหาคำใน Projects</label><input class="numin" id="csQ" placeholder="ชื่อลูกค้า / ID / สถานะ / ประเภทงาน"></div>
+      <div style="align-self:end"><button class="btn primary" id="csReload" style="padding:9px 16px;width:100%">โหลด</button></div>
     </div>
     <div class="csm2-list" id="csProjList"><div class="csm2-empty">กด “โหลด” เพื่อดึงงานจากใบสั่งผลิต</div></div>
     <div class="csm2-setbar">⚙ ลิงก์ Apps Script (/exec):<input id="csApiUrl" placeholder="วาง Web App URL ของใบสั่งผลิต Auto ที่ลงท้าย /exec"><button class="btn ghost" id="csApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
@@ -616,33 +622,68 @@ function csJsonp(url,cb){
   s.onerror=function(){cleanup();cb({ok:false,error:'โหลดไม่ได้ (ตรวจลิงก์/สิทธิ์ Anyone)'});};
   document.body.appendChild(s);
 }
+function csSetRange(days){
+  var to=new Date(); $('csTo').value=to.toISOString().slice(0,10);
+  if(days>0){ var f=new Date(Date.now()-days*864e5); $('csFrom').value=f.toISOString().slice(0,10); }
+}
+(function(){var q=document.querySelectorAll('#csQuick .chip');
+  for(var i=0;i<q.length;i++){ q[i].onclick=function(){
+    for(var j=0;j<q.length;j++)q[j].classList.remove('on'); this.classList.add('on');
+    var d=+this.getAttribute('data-days');
+    if(d>0){ csSetRange(d); csLoadProjects(); }
+    else { $('csProjList').innerHTML='<div class="csm2-empty">ระบุวันที่ “ตั้งแต่–ถึง” ด้านล่าง แล้วกด โหลด</div>'; }
+  };}
+})();
 $('csPull').onclick=function(){
   $('csApiUrl').value=csApiUrl();
-  if(!$('csFrom').value){ var d=new Date(Date.now()-60*864e5); $('csFrom').value=d.toISOString().slice(0,10); }
+  csLoadUsers();
+  csSetRange(15); // ค่าเริ่มต้น 15 วัน แต่ยังไม่ดึงจนกว่าจะกด
   $('csPick2').classList.add('show');
-  if(csApiUrl()) csLoadProjects();
+  $('csProjList').innerHTML='<div class="csm2-empty">⏱ เลือกช่วงเวลาด้านบน (ค่าเริ่มต้น 15 วัน) แล้วกด <b>โหลด</b> เพื่อดึงงาน</div>';
 };
 $('csP2x').onclick=function(){ $('csPick2').classList.remove('show'); };
 $('csApiSave').onclick=function(){ try{localStorage.setItem(PRODAPI_KEY,($('csApiUrl').value||'').trim());}catch(e){} csLoadProjects(); };
 $('csReload').onclick=csLoadProjects;
+var CSROWS=[];
+function csFillSelect(sel, arr, allLabel){
+  var cur=sel.value;
+  sel.innerHTML='<option value="">'+allLabel+'</option>'+(arr||[]).map(function(n){return '<option>'+esc(n)+'</option>';}).join('');
+  sel.value=cur;
+}
+function csLoadUsers(){
+  var url=csApiUrl(); if(!url) return;
+  if($('csSaleF').options.length>1) return; // โหลดรายชื่อแล้ว
+  csJsonp(url+(url.indexOf('?')<0?'?':'&')+'api=users',function(j){
+    if(j&&j.ok){ csFillSelect($('csSaleF'), j.sales, 'ทุกเซลล์'); csFillSelect($('csGfxF'), j.graphics, 'ทุกกราฟิก'); }
+  });
+}
 function csLoadProjects(){
-  var url=csApiUrl();
-  var box=$('csProjList');
+  var url=csApiUrl(); var box=$('csProjList');
+  if(!$('csFrom').value){ box.innerHTML='<div class="csm2-empty">⏱ เลือกช่วงเวลาก่อน (ปุ่มช่วงเวลา หรือระบุวันที่) แล้วกดโหลด</div>'; return; }
   if(!url){ box.innerHTML='<div class="csm2-empty">⚙ ยังไม่ได้ตั้งลิงก์ Apps Script — วาง Web App URL (/exec) ด้านล่างแล้วกดบันทึก</div>'; return; }
   box.innerHTML='<div class="csm2-empty"><div class="spinner"></div>กำลังดึงงาน...</div>';
   var q='api=projects';
   if($('csFrom').value)q+='&from='+$('csFrom').value;
   if($('csTo').value)q+='&to='+$('csTo').value;
+  if($('csSaleF').value)q+='&sale='+encodeURIComponent($('csSaleF').value);
+  if($('csGfxF').value)q+='&gfx='+encodeURIComponent($('csGfxF').value);
   csJsonp(url+(url.indexOf('?')<0?'?':'&')+q,function(j){
     if(!j||!j.ok){ box.innerHTML='<div class="csm2-empty">ดึงข้อมูลไม่สำเร็จ: '+((j&&j.error)||'?')+'</div>'; return; }
-    var rows=j.rows||[]; var kw=($('csQ').value||'').toLowerCase();
-    if(kw) rows=rows.filter(function(r){return ((r.sale||'')+' '+(r.gfx||'')+' '+(r.cust||'')).toLowerCase().indexOf(kw)>=0;});
-    if(!rows.length){ box.innerHTML='<div class="csm2-empty">ไม่พบงานที่ยังไม่สั่งผลิตในช่วงที่เลือก</div>'; return; }
-    box.innerHTML=rows.map(function(r,i){ CSPROJ[i]=r; return csCardHtml(r,i); }).join('');
-    var cards=box.querySelectorAll('.pcard');
-    for(var i=0;i<cards.length;i++) cards[i].onclick=(function(idx){return function(){csUseProject(CSPROJ[idx]);};})(i);
+    CSROWS=j.rows||[]; csApplyQ();
   });
 }
+function csApplyQ(){
+  var box=$('csProjList'); var kw=($('csQ').value||'').toLowerCase(); var rows=CSROWS;
+  if(kw) rows=rows.filter(function(r){return [r.id,r.cust,r.sale,r.gfx,r.cat,r.status].join(' ').toLowerCase().indexOf(kw)>=0;});
+  if(!rows.length){ box.innerHTML='<div class="csm2-empty">ไม่พบงานที่ยังไม่สั่งผลิตในเงื่อนไขนี้</div>'; return; }
+  CSPROJ={};
+  box.innerHTML='<div class="csm2-count">พบ '+rows.length+' งาน (ยังไม่สั่งผลิต)</div>'+rows.map(function(r,i){ CSPROJ[i]=r; return csCardHtml(r,i); }).join('');
+  var cards=box.querySelectorAll('.pcard');
+  for(var i=0;i<cards.length;i++) cards[i].onclick=(function(idx){return function(){csUseProject(CSPROJ[idx]);};})(i);
+}
+$('csSaleF').onchange=csLoadProjects;
+$('csGfxF').onchange=csLoadProjects;
+var _csqT; $('csQ').oninput=function(){ clearTimeout(_csqT); _csqT=setTimeout(csApplyQ,180); };
 var CSPROJ={};
 function esc(s){return String(s||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
 function csCardHtml(r,i){
