@@ -162,6 +162,7 @@ async def nest_ep(
             full_mm = vector_import.full_geom_mm(inp, real_width_mm)
             if full_mm is None or full_mm.is_empty:
                 return JSONResponse({"error": "อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
+            # ใช้โหมดตามที่ผู้ใช้เลือก (แยกชิ้นย่อย = แพคทุกชิ้นชิดสุด)
         else:
             work = trace_engine.prep_image(inp)
             img = cv2.imread(work)
@@ -196,10 +197,10 @@ async def nest_ep(
             pieces = [p for p in pieces if p.area > 4.0]          # ตัดเศษจิ๋ว
             if not pieces:
                 return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
-            qn = max(1, min(int(qty), max(1, 40 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
-            res_p = max(3.0, min(sheet_w, sheet_h) / 340.0)        # grid หยาบขึ้น -> เร็วขึ้น
+            qn = max(1, min(int(qty), max(1, 160 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
+            res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)         # grid หยาบขึ้น -> เร็วขึ้น
             r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
-                             margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
+                             margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
             parts_ref = pieces
 
         sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
