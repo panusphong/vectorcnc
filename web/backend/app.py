@@ -157,12 +157,15 @@ async def nest_ep(
         from shapely.affinity import scale as _scale, translate as _tr
         from vectorcnc import trace_engine, nesting, vector_import
 
-        if vector_import.is_vector_file(inp):
-            # ไฟล์เวกเตอร์ (.ai/.pdf/.svg) -> ดึงรูปทรงตรง (ไม่ต้อง imread)
-            full_mm = vector_import.full_geom_mm(inp, real_width_mm)
-            if full_mm is None or full_mm.is_empty:
+        is_vec = vector_import.is_vector_file(inp)
+        bez_pieces = None
+        if is_vec:
+            # ไฟล์เวกเตอร์ (.ai/.pdf/.svg) -> แยกทุกชิ้น เก็บ "เส้นโค้ง Bézier จริง" (ตัดคมระดับ Illustrator)
+            bez_pieces = vector_import.full_pieces_mm(inp, real_width_mm)
+            bez_pieces = [pc for pc in bez_pieces if pc["poly"].area > 4.0]
+            if not bez_pieces:
                 return JSONResponse({"error": "อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
-            # ใช้โหมดตามที่ผู้ใช้เลือก (แยกชิ้นย่อย = แพคทุกชิ้นชิดสุด)
+            full_mm = unary_union([pc["poly"] for pc in bez_pieces])
         else:
             work = trace_engine.prep_image(inp)
             img = cv2.imread(work)
@@ -178,41 +181,66 @@ async def nest_ep(
         bb = full_mm.bounds
         pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
         res = max(2.0, min(sheet_w, sheet_h) / 500.0)
+        whole = str(parts_mode).lower() == "whole"
 
-        if str(parts_mode).lower() == "whole":
-            # ทั้งป้ายเป็นชิ้นเดียว -> ปูซ้ำทั้งใบ
-            foot = full_mm.convex_hull
-            if foot.geom_type != "Polygon":
-                foot = full_mm.envelope
-            mnx, mny = foot.bounds[0], foot.bounds[1]
-            foot = _tr(foot, xoff=-mnx, yoff=-mny)
-            full = _tr(full_mm, xoff=-mnx, yoff=-mny)
-            qn = max(1, min(80, int(qty)))
-            r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
-                             margin=float(margin), gap=float(gap), res=res)
-            parts_ref = [full]
+        if is_vec:
+            # -------- เวกเตอร์: จัดวาง footprint ละเอียด แล้ว render เป็นเส้นโค้ง Bézier จริง --------
+            if whole:
+                hull = full_mm.convex_hull
+                if hull.geom_type != "Polygon":
+                    hull = full_mm.envelope
+                all_subs = [sp for pc in bez_pieces for sp in pc["subs"]]
+                nest_pieces = [{"poly": hull, "subs": all_subs}]
+                qn = max(1, min(80, int(qty)))
+                r = nesting.nest([(nest_pieces[0]["poly"], qn)], float(sheet_w), float(sheet_h),
+                                 margin=float(margin), gap=float(gap), res=res)
+            else:
+                nest_pieces = bez_pieces
+                qn = max(1, min(int(qty), max(1, 160 // len(nest_pieces))))
+                res_p = max(2.0, min(sheet_w, sheet_h) / 450.0)     # grid ละเอียดขึ้น -> interlock แน่นขึ้น
+                r = nesting.nest([(pc["poly"], qn) for pc in nest_pieces], float(sheet_w), float(sheet_h),
+                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
+            sheets_subs = [[nesting.place_subs(nest_pieces[pl["part"]]["subs"], pl) for pl in sheet]
+                           for sheet in r["placements"]]
+            svgs = [nesting.sheet_svg_bezier(ss, float(sheet_w), float(sheet_h)) for ss in sheets_subs]
+            dxf_path = os.path.join(tmp, "nest.dxf")
+            nesting.write_dxf_bezier(sheets_subs, dxf_path, float(sheet_w), float(sheet_h))
+            n_pieces = len(nest_pieces)
         else:
-            # แยกชิ้นย่อย (ตัวอักษร/รูป) -> แพคชิดประหยัดสุด (interlock)
-            pieces = list(full_mm.geoms) if full_mm.geom_type == "MultiPolygon" else [full_mm]
-            pieces = [p for p in pieces if p.area > 4.0]          # ตัดเศษจิ๋ว
-            if not pieces:
-                return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
-            qn = max(1, min(int(qty), max(1, 160 // len(pieces))))  # คุมจำนวนอินสแตนซ์ (เครื่องฟรี)
-            res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)         # grid หยาบขึ้น -> เร็วขึ้น
-            r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
-                             margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
-            parts_ref = pieces
+            # -------- ภาพ raster (JPG/PNG): เส้นจากการ trace (polyline) --------
+            if whole:
+                foot = full_mm.convex_hull
+                if foot.geom_type != "Polygon":
+                    foot = full_mm.envelope
+                mnx, mny = foot.bounds[0], foot.bounds[1]
+                foot = _tr(foot, xoff=-mnx, yoff=-mny)
+                full = _tr(full_mm, xoff=-mnx, yoff=-mny)
+                qn = max(1, min(80, int(qty)))
+                r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
+                                 margin=float(margin), gap=float(gap), res=res)
+                parts_ref = [full]
+            else:
+                pieces = list(full_mm.geoms) if full_mm.geom_type == "MultiPolygon" else [full_mm]
+                pieces = [p for p in pieces if p.area > 4.0]
+                if not pieces:
+                    return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
+                qn = max(1, min(int(qty), max(1, 160 // len(pieces))))
+                res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)
+                r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
+                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
+                parts_ref = pieces
+            sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
+            svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
+            dxf_path = os.path.join(tmp, "nest.dxf")
+            nesting.write_dxf(sheets_geoms, dxf_path, float(sheet_w), float(sheet_h))
+            n_pieces = len(parts_ref)
 
-        sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
-        svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
-        dxf_path = os.path.join(tmp, "nest.dxf")
-        nesting.write_dxf(sheets_geoms, dxf_path, float(sheet_w), float(sheet_h))
         with open(dxf_path, "rb") as f:
             dxf_b64 = base64.b64encode(f.read()).decode()
         return {
             "n_sheets": r["n_sheets"], "utilization": r["utilization"], "unplaced": r["unplaced"],
             "sheet_w": sheet_w, "sheet_h": sheet_h, "part_mm": [pw, ph], "qty": qn,
-            "mode": str(parts_mode).lower(), "pieces": len(parts_ref),
+            "mode": str(parts_mode).lower(), "pieces": n_pieces,
             "sheets_svg": svgs, "dxf_base64": dxf_b64,
         }
     except Exception as e:
