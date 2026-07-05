@@ -220,26 +220,76 @@ def _auto_keep(layers, W, H):
     return keep or set(names)
 
 
-def full_geom_mm(path, real_width_mm=300.0):
-    """ดึงรูปทรง (shapely, หน่วยมม.) จากไฟล์เวกเตอร์ — สำหรับ Nesting"""
-    from shapely.geometry import Polygon
-    from shapely.ops import unary_union
+def _sp_scale(sp, s):
+    """สเกลทุกจุด (start+control+end) ด้วยตัวคูณ s — คงชนิดเซ็กเมนต์ (L/C)"""
+    def t(p):
+        return (p[0] * s, p[1] * s)
+    ns = []
+    for x in sp['segs']:
+        ns.append(('L', t(x[1])) if x[0] == 'L' else ('C', t(x[1]), t(x[2]), t(x[3])))
+    return {'start': t(sp['start']), 'segs': ns, 'closed': sp.get('closed', False)}
+
+
+def _load_layers(path):
+    """คืน (layers, W, H) จากไฟล์เวกเตอร์ทุกชนิด (แชร์กับ nesting/cut)"""
     ext = os.path.splitext(str(path))[1].lower()
-    layers = None; W = H = 0.0
     try:
         if ext == '.svg':
-            layers, W, H = _extract_subpaths_svg(path)
-        elif ext in ('.pdf', '.ai'):
-            layers, W, H = _extract_subpaths_pdf(path, filetype='pdf')
-        elif ext in ('.eps', '.ps'):
+            return _extract_subpaths_svg(path)
+        if ext in ('.pdf', '.ai'):
+            return _extract_subpaths_pdf(path, filetype='pdf')
+        if ext in ('.eps', '.ps'):
             pdf = _to_pdf_via_gs(path)
             try:
-                layers, W, H = _extract_subpaths_pdf(pdf, filetype='pdf')
+                return _extract_subpaths_pdf(pdf, filetype='pdf')
             finally:
                 try: os.remove(pdf)
                 except Exception: pass
     except Exception:
-        layers = None
+        return None, 0.0, 0.0
+    return None, 0.0, 0.0
+
+
+def full_pieces_mm(path, real_width_mm=300.0):
+    """แยกทุกชิ้น (closed subpath) เป็น dict {'poly': footprint(shapely,มม.), 'subs': [bezier subpath มม. Y-down]}
+    — สำหรับ Nesting คุณภาพ Illustrator: footprint ละเอียดเพื่อแพคชิด + subs เส้นโค้งจริงเพื่อตัดคม
+    """
+    from shapely.geometry import Polygon
+    layers, W, H = _load_layers(path)
+    if not layers or W <= 0 or H <= 0:
+        return []
+    keep = _auto_keep(layers, W, H)
+    if not keep:
+        return []
+    best = max(keep, key=lambda ly: len(layers[ly]))     # เลเยอร์ละเอียดสุด = คิ้ว/ลายจริง
+    ppm = W / float(real_width_mm) if real_width_mm else 1.0
+    inv = 1.0 / ppm
+    pieces = []
+    for sp in layers[best]:
+        if not sp.get('closed'):
+            continue
+        sub_mm = _sp_scale(sp, inv)                       # เส้นโค้งจริง หน่วยมม.
+        pts = _sp_flatten(sp, max(0.18, 0.10 * ppm))      # footprint ละเอียด (chord ~0.1px)
+        mm = [(x * inv, y * inv) for x, y in pts]
+        if len(mm) < 3:
+            continue
+        try:
+            poly = Polygon(mm).buffer(0)
+        except Exception:
+            continue
+        if poly.is_empty or poly.area <= 1.0:
+            continue
+        if poly.geom_type == 'MultiPolygon':
+            poly = max(poly.geoms, key=lambda g: g.area)  # footprint = ชิ้นใหญ่สุด
+        pieces.append({'poly': poly, 'subs': [sub_mm]})
+    return pieces
+
+
+def full_geom_mm(path, real_width_mm=300.0):
+    """ดึงรูปทรง (shapely, หน่วยมม.) จากไฟล์เวกเตอร์ — สำหรับ Nesting"""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    layers, W, H = _load_layers(path)
     if not layers or W <= 0 or H <= 0:
         return None
     keep = _auto_keep(layers, W, H)
