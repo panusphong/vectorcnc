@@ -190,11 +190,103 @@ def _sample_potrace_curve(curve):
             poly = (abs(c1[0] - cur[0]) + abs(c1[1] - cur[1]) +
                     abs(c2[0] - c1[0]) + abs(c2[1] - c1[1]) +
                     abs(e[0] - c2[0]) + abs(e[1] - c2[1]))
-            N = int(max(6, min(60, poly / 6.0)))
+            N = int(min(3000, max(6, poly / 0.8)))   # sample ถี่ (chord เล็ก -> ไม่เห็น facet)
             for i in range(1, N + 1):
                 pts.append(_cubic_pt(cur, c1, c2, e, i / float(N)))
         cur = e
     return pts
+
+
+# ---------- Shape regularization: มุมจริง + fit เส้นตรง (แทนมือคน) ----------
+def _detect_corners(P, win=7, ang_deg=30.0):
+    """คืน index ของ 'มุมจริง' (ทิศเปลี่ยนเกิน ang_deg และเป็น local max)"""
+    n = len(P)
+    ang = np.zeros(n)
+    for i in range(n):
+        a = P[(i - win) % n]; b = P[i]; c = P[(i + win) % n]
+        v1 = b - a; v2 = c - b
+        n1 = float(np.hypot(v1[0], v1[1])); n2 = float(np.hypot(v2[0], v2[1]))
+        if n1 < 1e-6 or n2 < 1e-6:
+            continue
+        cs = max(-1.0, min(1.0, float(np.dot(v1, v2)) / (n1 * n2)))
+        ang[i] = np.degrees(np.arccos(cs))
+    half = max(1, win // 2)
+    cor = []
+    for i in range(n):
+        if ang[i] > ang_deg and ang[i] >= max(ang[(i + j) % n] for j in range(-half, half + 1)):
+            cor.append(i)
+    return sorted(set(cor))
+
+
+def _smooth_open(seg, smooth_px=1.2):
+    """fit smoothing B-spline บนช่วงโค้ง (เปิด) -> เฉลี่ย noise เป็นเส้นโค้งลื่น
+    clamp ปลายทั้งสองให้ต่อเนื่องกับ segment ข้างเคียง"""
+    if len(seg) < 7:
+        return [(float(p[0]), float(p[1])) for p in seg[:-1]]
+    try:
+        from scipy.interpolate import splprep, splev
+        tck, u = splprep([seg[:, 0], seg[:, 1]], s=len(seg) * (smooth_px ** 2), k=3)
+        arclen = float(np.hypot(*(seg[1:] - seg[:-1]).T).sum())
+        M = int(min(4000, max(12, arclen / 0.35)))    # chord ~0.3 มม. -> เนียนระดับตัด
+        uu = np.linspace(0, 1, M)
+        xs, ys = splev(uu, tck)
+        xs[0], ys[0] = seg[0]; xs[-1], ys[-1] = seg[-1]
+        return [(float(a), float(b)) for a, b in zip(xs[:-1], ys[:-1])]
+    except Exception:
+        return [(float(p[0]), float(p[1])) for p in seg[:-1]]
+
+
+def _smooth_closed(P, smooth_px=1.2):
+    """smoothing B-spline แบบวงปิด (สำหรับวงที่ไม่มีมุม เช่น o / จุด i)"""
+    n = len(P)
+    if n < 10:
+        r = [(float(p[0]), float(p[1])) for p in P]; r.append(r[0]); return r
+    try:
+        from scipy.interpolate import splprep, splev
+        tck, u = splprep([P[:, 0], P[:, 1]], s=n * (smooth_px ** 2), k=3, per=True)
+        Pc = np.vstack([P, P[0]])
+        arclen = float(np.hypot(*(Pc[1:] - Pc[:-1]).T).sum())
+        M = int(min(6000, max(24, arclen / 0.35)))
+        uu = np.linspace(0, 1, M)
+        xs, ys = splev(uu, tck)
+        r = [(float(a), float(b)) for a, b in zip(xs, ys)]; r.append(r[0]); return r
+    except Exception:
+        r = [(float(p[0]), float(p[1])) for p in P]; r.append(r[0]); return r
+
+
+def _regularize_ring(ring, line_abs=0.6, line_frac=0.004, min_len=12.0):
+    """ช่วงระหว่างมุมที่ 'ตรงจริง' -> แทนด้วยเส้นตรงเป๊ะ (least-squares/ระยะตั้งฉาก),
+    ช่วงโค้ง -> คงจุดเดิม (เนียนจาก potrace). ลบอาการส่ายของเส้นตรงจากขอบ raster"""
+    P = np.asarray(ring, dtype=float)
+    if len(P) > 1 and np.hypot(P[0][0] - P[-1][0], P[0][1] - P[-1][1]) < 1e-6:
+        P = P[:-1]
+    n = len(P)
+    if n < 14:
+        return ring
+    cor = _detect_corners(P)
+    if len(cor) < 2:
+        return _smooth_closed(P)        # ทั้งวงเป็นโค้ง (เช่น o / จุด) -> spline ปิด
+    out = []
+    m = len(cor)
+    for k in range(m):
+        a = cor[k]; b = cor[(k + 1) % m]
+        seg = P[a:b + 1] if b > a else np.vstack([P[a:], P[:b + 1]])
+        if len(seg) < 3:
+            out.append((float(P[a][0]), float(P[a][1]))); continue
+        v = seg[-1] - seg[0]; L = float(np.hypot(v[0], v[1]))
+        straight = False
+        if L > min_len:
+            dist = np.abs(v[0] * (seg[:, 1] - seg[0][1]) - v[1] * (seg[:, 0] - seg[0][0])) / L
+            if float(dist.max()) < max(line_abs, line_frac * L):
+                straight = True
+        if straight:
+            out.append((float(seg[0][0]), float(seg[0][1])))   # ตรง -> เส้นตรงเป๊ะ
+        else:
+            out.extend(_smooth_open(seg))                       # โค้ง -> smoothing spline ลื่น
+    if len(out) < 3:
+        return ring
+    out.append(out[0])
+    return out
 
 
 def _potrace_nest(rings, min_area):
@@ -243,12 +335,28 @@ def _mask_to_geom_potrace(mask, min_area):
     """mask (สี=nonzero) -> shapely geom ขอบ Bézier เนียน ด้วย potrace
     หมายเหตุ: potracer มองพิกเซล 0/False เป็น foreground -> ต้องกลับขั้ว (mask==0)"""
     import potrace
-    bw = (np.asarray(mask) == 0)
+    m = np.asarray(mask)
+    if m.dtype != np.uint8:
+        m = m.astype(np.uint8)
+    H, W = m.shape[:2]
+    # อัปสเกลให้ด้านยาว ~3200px (ลดขนาดขั้นบันไดพิกเซลบนเส้นโค้งลาด) + เบลอลบ aliasing
+    up = min(3.0, max(1.0, 3200.0 / max(H, W)))
+    if up > 1.01:
+        m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
+    m = cv2.bilateralFilter(m, 9, 60, 60)             # ลบ noise ขอบ (JPEG) รักษาขอบคม
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.4)  # sigma โต -> ขอบเนียน แต่มุมคมยังอยู่
+    _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
+    bw = (m == 0)                                     # potracer: 0/False = foreground
     if bw.all() or (~bw).all():
         return None
-    turd = int(max(2, min_area ** 0.5))
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
-    rings = [_sample_potrace_curve(c) for c in path]
+    turd = int(max(2, (min_area * up * up) ** 0.5))
+    # opttolerance 2.0 + alphamax 1.3 = fit โค้ง Bézier ยาวเนียนที่สุด (ไม่มียึกยักแม้ซูม)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=2.0)
+    rings = []
+    for c in path:
+        r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]
+        r = _regularize_ring(r)                       # เส้นตรง -> ตรงเป๊ะ, โค้ง -> คงเนียน
+        rings.append(r)
     return _potrace_nest(rings, min_area)
 
 

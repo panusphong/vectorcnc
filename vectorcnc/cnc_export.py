@@ -79,7 +79,7 @@ def process_layer(shapes, ppm, kerf_mm=3.0, tool_mm=6.0, min_mm=2.0,
 
 
 def process_geom(geom, ppm, kerf_mm=3.0, tool_mm=6.0, min_mm=2.0,
-                 simplify_mm=0.3, round_corners=True, tabs=0, tab_mm=6.0):
+                 simplify_mm=0.03, round_corners=True, tabs=0, tab_mm=6.0):
     """รับ shapely geom (มีรูได้) -> ring ผ่าน CNC post เหมือน process_layer
     ใช้กับผลจาก VTracer (โหมด cutout)"""
     if geom is None or geom.is_empty:
