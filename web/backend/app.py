@@ -155,19 +155,25 @@ async def nest_ep(
         from shapely.ops import unary_union
         from shapely.geometry import Polygon
         from shapely.affinity import scale as _scale, translate as _tr
-        from vectorcnc import trace_engine, nesting
+        from vectorcnc import trace_engine, nesting, vector_import
 
-        work = trace_engine.prep_image(inp)
-        img = cv2.imread(work)
-        if img is None:
-            return JSONResponse({"error": "อ่านภาพไม่ได้"}, status_code=400)
-        H, W = img.shape[:2]
-        ppm = W / float(real_width_mm) if real_width_mm else 1.0
-        traced = trace_engine.trace_color(work, n_colors=max(2, min(12, int(n_colors))), filter_speckle=8)
-        geoms = [g for _, g in traced]
-        if not geoms:
-            return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
-        full_mm = unary_union([_scale(g, 1.0 / ppm, 1.0 / ppm, origin=(0, 0)) for g in geoms])
+        if vector_import.is_vector_file(inp):
+            # ไฟล์เวกเตอร์ (.ai/.pdf/.svg) -> ดึงรูปทรงตรง (ไม่ต้อง imread)
+            full_mm = vector_import.full_geom_mm(inp, real_width_mm)
+            if full_mm is None or full_mm.is_empty:
+                return JSONResponse({"error": "อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
+        else:
+            work = trace_engine.prep_image(inp)
+            img = cv2.imread(work)
+            if img is None:
+                return JSONResponse({"error": "อ่านภาพไม่ได้ (รองรับ JPG/PNG หรือ .ai/.pdf/.svg)"}, status_code=400)
+            H, W = img.shape[:2]
+            ppm = W / float(real_width_mm) if real_width_mm else 1.0
+            traced = trace_engine.trace_color(work, n_colors=max(2, min(12, int(n_colors))), filter_speckle=8)
+            geoms = [g for _, g in traced]
+            if not geoms:
+                return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
+            full_mm = unary_union([_scale(g, 1.0 / ppm, 1.0 / ppm, origin=(0, 0)) for g in geoms])
         bb = full_mm.bounds
         pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
         res = max(2.0, min(sheet_w, sheet_h) / 500.0)
