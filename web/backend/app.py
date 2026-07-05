@@ -196,7 +196,7 @@ async def nest_ep(
                                  margin=float(margin), gap=float(gap), res=res)
             else:
                 nest_pieces = bez_pieces
-                qn = max(1, min(int(qty), max(1, 90 // len(nest_pieces))))
+                qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600 กันรันหนัก)
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM ฟรีเทียร์)
                 r = nesting.nest([(pc["poly"], qn) for pc in nest_pieces], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
@@ -224,7 +224,7 @@ async def nest_ep(
                 pieces = [p for p in pieces if p.area > 4.0]
                 if not pieces:
                     return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
-                qn = max(1, min(int(qty), max(1, 90 // len(pieces))))
+                qn = max(1, min(int(qty), max(1, 600 // len(pieces))))
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)
                 r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
