@@ -1,0 +1,83 @@
+<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>สร้าง BOM Check Sheet — Saai Tech</title>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Prompt',sans-serif;background:#eef1f6;color:#1e293b;padding:24px}
+.wrap{max-width:1040px;margin:0 auto}
+h1{font-size:22px;font-weight:700;color:#0f766e;margin-bottom:4px}
+.sub{font-size:13px;color:#64748b;margin-bottom:18px;font-weight:300}
+.card{background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.06);padding:22px 24px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+label{font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px}
+input,select{width:100%;padding:9px 11px;border:1px solid #d7dde6;border-radius:9px;font-family:inherit;font-size:14px;background:#fff}
+.drop{border:2px dashed #b6c2d2;border-radius:12px;padding:22px;text-align:center;color:#64748b;cursor:pointer;background:#fafcff;grid-column:1/-1}
+.drop.on{border-color:#0891b2;background:#ecfeff}
+.btn{background:linear-gradient(135deg,#0f766e,#0891b2);color:#fff;border:none;padding:12px 24px;border-radius:10px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.sumbar{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;margin:10px 0}
+.sumbar b{color:#0f766e;font-size:18px}
+iframe{width:100%;height:80vh;border:1px solid #e6ebf2;border-radius:12px;background:#fff}
+.err{color:#dc2626;font-size:13px;margin-top:8px;white-space:pre-wrap}
+.hint{font-size:11.5px;color:#94a3b8;margin-top:3px;font-weight:300}
+</style></head><body><div class="wrap">
+<h1>สร้าง BOM Check Sheet</h1>
+<div class="sub">อัปโหลดไฟล์ .ai/.pdf (เลเยอร์ 4.3) + กรอกพารามิเตอร์ → ออก Check Sheet + BOM + ภาพ อัตโนมัติ · บันทึกลง Google Drive</div>
+<div class="card"><form id="f">
+<div class="grid">
+  <div class="drop" id="drop">📄 <b id="fn">ลากไฟล์มาวาง หรือคลิกเลือก</b><div class="hint">.ai / .pdf (เลเยอร์ s-2, a, คิ้ว)</div>
+    <input type="file" id="file" name="file" accept=".ai,.pdf,.svg" style="display:none"></div>
+  <div><label>เซลล์ (Sales)</label><input name="sales" placeholder="ชื่อเซลล์"></div>
+  <div><label>ลูกค้า (Customer)</label><input name="customer" placeholder="ชื่อลูกค้า/ร้าน"></div>
+  <div><label>ประเภทป้าย</label><select name="sign_type">
+    <option value="4.3">4.3 ไฟออกหน้า ยกขอบ</option><option value="4.1">4.1 ยกขอบ ไม่มีไฟ</option>
+    <option value="4.2">4.2 ไฟออกหลัง</option><option value="4.4">4.4 กล่องไฟ</option><option value="4.5">4.5 นีออนเฟล็กซ์</option></select></div>
+  <div><label>กว้าง (cm)</label><input name="real_width_cm" type="number" value="80" step="0.1"></div>
+  <div><label>สูง (cm)</label><input name="real_height_cm" type="number" value="45" step="0.1"></div>
+  <div><label>วัสดุหลัก</label><select name="metal_cat">
+    <option value="metal_stainless">สแตนเลสทอง</option><option value="metal_zinc">ซิงค์ (พ่นสี)</option>
+    <option value="metal_alu">อะลูมิเนียม (พ่นสี)</option><option value="plaswood">พลาสวูด (พ่นสี)</option></select></div>
+  <div><label>ยกขอบนอก (cm)</label><input name="yokkob_outer_cm" type="number" value="5" step="0.5"></div>
+  <div><label>ยกขอบตัวอักษร (cm)</label><input name="yokkob_letter_cm" type="number" value="7" step="0.5"></div>
+  <div><label>สีไฟ LED</label><select name="led_color">
+    <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
+    <option>แดง</option><option>น้ำเงิน</option><option>เขียว</option><option>RGB</option></select></div>
+  <div><label>ติดตั้ง</label><select name="install" id="install">
+    <option value="indoor">Indoor (ในร่ม)</option><option value="outdoor">Outdoor (กลางแจ้ง)</option></select></div>
+  <div><label>สายไฟ (<span id="wt">THW</span>) เบอร์</label><select name="wire_gauge"><option>2.5</option><option>1.5</option></select></div>
+  <div><label>ระยะหม้อแปลง→ป้าย (m)</label><input name="wire_length_m" type="number" value="5" step="0.5"><div class="hint">ระยะจริงที่เดินสาย</div></div>
+  <div><label>จำนวนชุด</label><input name="qty_sets" type="number" value="1" min="1"></div>
+</div>
+<button class="btn" id="go" type="submit" disabled>สร้าง Check Sheet</button>
+<div class="err" id="err"></div>
+</form></div>
+<div class="card" id="result" style="display:none">
+  <div class="sumbar"><span>ค่าวัสดุ <b id="mMat">-</b></span><span>ค่าแรง+OH <b id="mLab">-</b></span><span>เสียหาย <b id="mDmg">-</b></span><span>รวม <b id="mTot">-</b> บาท/ชุด</span></div>
+  <iframe id="frame"></iframe>
+</div>
+<script>
+const $=s=>document.querySelector(s), API=location.origin;
+const inst=$('#install'), wt=$('#wt');
+inst.onchange=()=>wt.textContent=inst.value==='outdoor'?'VCT':'THW';
+const file=$('#file'), drop=$('#drop');
+drop.onclick=()=>file.click();
+['dragover','dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.toggle('on',ev==='dragover');}));
+drop.addEventListener('drop',e=>{file.files=e.dataTransfer.files;onFile();});
+file.onchange=onFile;
+function onFile(){ if(file.files[0]){ $('#fn').textContent=file.files[0].name; $('#go').disabled=false; } }
+$('#f').onsubmit=async e=>{
+  e.preventDefault(); $('#err').textContent=''; const btn=$('#go'); btn.disabled=true; btn.textContent='กำลังสร้าง...';
+  try{
+    const fd=new FormData($('#f'));
+    const r=await fetch(API+'/api/checksheet',{method:'POST',body:fd});
+    const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'สร้างไม่สำเร็จ');
+    $('#result').style.display='block';
+    $('#mMat').textContent=j.cost.material.toLocaleString(); $('#mLab').textContent=j.cost.labor.toLocaleString();
+    $('#mDmg').textContent=j.cost.damage.toLocaleString(); $('#mTot').textContent=j.cost.total.toLocaleString();
+    $('#frame').srcdoc=j.html;
+    $('#result').scrollIntoView({behavior:'smooth'});
+  }catch(ex){ $('#err').textContent='ผิดพลาด: '+ex.message; }
+  btn.disabled=false; btn.textContent='สร้าง Check Sheet';
+};
+</script></div></body></html>
