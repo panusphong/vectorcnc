@@ -239,7 +239,10 @@ def _emit_vector(kept, W, H, ppm, out_svg_mm, out_dxf):
         import ezdxf
         doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM
         msp = doc.modelspace()
-        step = max(0.4, 0.08 * ppm)   # chord ~0.08 มม.
+
+        def tf(p):
+            return (p[0] / ppm, (H - p[1]) / ppm)   # -> มม. + flip Y (ระบบ CAD)
+
         for name, col, rgb, subs in kept:
             lyname = 'CUT_' + str(name)
             if lyname not in doc.layers:
@@ -247,10 +250,16 @@ def _emit_vector(kept, W, H, ppm, out_svg_mm, out_dxf):
                 try: lay.rgb = rgb
                 except Exception: pass
             for sp in subs:
-                pts = _sp_flatten(sp, step)
-                mmpts = [(x / ppm, (H - y) / ppm) for x, y in pts]
-                if len(mmpts) >= 2:
-                    msp.add_lwpolyline(mmpts, close=sp.get('closed', False), dxfattribs={'layer': lyname})
+                cur = sp['start']
+                for s in sp['segs']:
+                    if s[0] == 'L':
+                        msp.add_line(tf(cur), tf(s[1]), dxfattribs={'layer': lyname})
+                        cur = s[1]
+                    else:
+                        # Bézier -> SPLINE จริง (เนียนทุกซูมในโปรแกรม CAD)
+                        msp.add_open_spline([tf(cur), tf(s[1]), tf(s[2]), tf(s[3])],
+                                            degree=3, dxfattribs={'layer': lyname})
+                        cur = s[3]
         doc.saveas(out_dxf)
     total = sum(len(subs) for n, c, r, subs in kept)
     return {
