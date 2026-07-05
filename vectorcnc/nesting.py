@@ -2,6 +2,7 @@
 v2: full-geometry (วางลายครบทุกเส้นในทุกชิ้น) + จูนแพคแน่นขึ้น (เลือกแนวหมุนที่ฟิตสุด)
 ใช้ numpy + scipy + shapely (+ ezdxf, opencv)
 """
+import math
 import numpy as np
 import cv2
 from scipy.signal import fftconvolve
@@ -119,6 +120,85 @@ def place_geom(geom, pl):
     """วาง geometry (ลายเต็ม) ตาม transform ของ placement"""
     g = _rotate(geom, pl['rot'], origin=(pl['cx'], pl['cy']))
     return _translate(g, xoff=pl['dx'], yoff=pl['dy'])
+
+
+# ---------- Bézier path (คุณภาพ Illustrator) ----------
+# subpath = {'start':(x,y), 'segs':[('L',pt)|('C',c1,c2,e)], 'closed':bool} · หน่วยมม. Y ชี้ลง
+def place_subs(subs, pl):
+    """แปลง bezier subpaths ตาม placement (หมุน+เลื่อน) — คงเส้นโค้งจริง ตรงกับ place_geom เป๊ะ"""
+    th = math.radians(pl['rot']); cs = math.cos(th); sn = math.sin(th)
+    cx, cy, dx, dy = pl['cx'], pl['cy'], pl['dx'], pl['dy']
+
+    def T(p):
+        x0 = p[0] - cx; y0 = p[1] - cy
+        return (x0 * cs - y0 * sn + cx + dx, x0 * sn + y0 * cs + cy + dy)
+
+    out = []
+    for sp in subs:
+        segs = []
+        for s in sp['segs']:
+            segs.append(('L', T(s[1])) if s[0] == 'L' else ('C', T(s[1]), T(s[2]), T(s[3])))
+        out.append({'start': T(sp['start']), 'segs': segs, 'closed': sp.get('closed', False)})
+    return out
+
+
+def _sp_d(sp):
+    d = ['M %.3f %.3f' % sp['start']]
+    for s in sp['segs']:
+        if s[0] == 'L':
+            d.append('L %.3f %.3f' % s[1])
+        else:
+            d.append('C %.3f %.3f %.3f %.3f %.3f %.3f' %
+                     (s[1][0], s[1][1], s[2][0], s[2][1], s[3][0], s[3][1]))
+    if sp.get('closed'):
+        d.append('Z')
+    return ' '.join(d)
+
+
+def sheet_svg_bezier(subs_list, sheet_w, sheet_h, stroke='#0EA5A5'):
+    """subs_list = list ของ [subpath,...] (แต่ละชิ้นบนแผ่น) — เส้นโค้ง Bézier จริง เนียนทุกซูม"""
+    s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
+         f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
+         f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>',
+         f'<g fill="none" stroke="{stroke}" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">']
+    for subs in subs_list:
+        for sp in subs:
+            if len(sp['segs']) < 1:
+                continue
+            s.append(f'  <path d="{_sp_d(sp)}"/>')
+    s.append('</g></svg>')
+    return '\n'.join(s)
+
+
+def write_dxf_bezier(sheets_subs, path, sheet_w, sheet_h, gap_between=50.0):
+    """DXF หน่วยมม. — SPLINE(โค้ง)+LINE(ตรง) · เรียงแผ่นในแกน X (Y ชี้ขึ้นแบบ CAD)"""
+    doc = ezdxf.new('R2010')
+    doc.units = ezdxf.units.MM
+    msp = doc.modelspace()
+    for si, subs_list in enumerate(sheets_subs):
+        ox = si * (sheet_w + gap_between)
+        ly = 'SHEET_%d' % (si + 1)
+        if ly not in doc.layers:
+            doc.layers.add(ly)
+        msp.add_lwpolyline([(ox, 0), (ox + sheet_w, 0), (ox + sheet_w, sheet_h), (ox, sheet_h)],
+                           close=True, dxfattribs={'layer': ly, 'color': 8})
+
+        def tf(p):
+            return (ox + p[0], sheet_h - p[1])   # flip Y (ระบบ CAD)
+
+        for subs in subs_list:
+            for sp in subs:
+                cur = sp['start']
+                for s in sp['segs']:
+                    if s[0] == 'L':
+                        msp.add_line(tf(cur), tf(s[1]), dxfattribs={'layer': ly})
+                        cur = s[1]
+                    else:
+                        msp.add_open_spline([tf(cur), tf(s[1]), tf(s[2]), tf(s[3])],
+                                            degree=3, dxfattribs={'layer': ly})
+                        cur = s[3]
+    doc.saveas(path)
+    return path
 
 
 def _rings(geom):
