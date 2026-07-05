@@ -254,6 +254,72 @@ def _smooth_closed(P, smooth_px=1.2):
         r = [(float(p[0]), float(p[1])) for p in P]; r.append(r[0]); return r
 
 
+def _fit_ellipse_ring(P, tol_frac=0.005, tol_abs=1.0):
+    """ถ้า ring ทั้งวงเป็นวงรี/วงกลม -> แทนด้วยวงรีคณิตเป๊ะ (คืน None ถ้าไม่ใช่)"""
+    if len(P) < 12:
+        return None
+    pts = np.asarray(P, np.float32)
+    try:
+        (cx, cy), (MA, ma), angle = cv2.fitEllipse(pts)
+    except Exception:
+        return None
+    a = MA / 2.0; b = ma / 2.0
+    if a <= 1 or b <= 1 or max(a, b) / min(a, b) > 6:
+        return None
+    th = np.radians(angle); ct = np.cos(th); st = np.sin(th)
+    dx = pts[:, 0] - cx; dy = pts[:, 1] - cy
+    xe = dx * ct + dy * st; ye = -dx * st + dy * ct
+    dev = np.abs(np.sqrt((xe / a) ** 2 + (ye / b) ** 2) - 1.0) * min(a, b)
+    if float(dev.max()) > max(tol_abs, tol_frac * max(a, b)):
+        return None
+    ang_pt = np.arctan2(ye / b, xe / a)          # ต้องครอบเกือบ 360° จึงจะเป็นวงรีจริง
+    if float(ang_pt.max() - ang_pt.min()) < np.radians(300):
+        return None
+    per = np.pi * (3 * (a + b) - np.sqrt((3 * a + b) * (a + 3 * b)))
+    N = int(min(4000, max(60, per / 0.5)))
+    t = np.linspace(0, 2 * np.pi, N)
+    X = cx + a * np.cos(t) * ct - b * np.sin(t) * st
+    Y = cy + a * np.cos(t) * st + b * np.sin(t) * ct
+    out = [(float(x), float(y)) for x, y in zip(X, Y)]
+    out.append(out[0])
+    return out
+
+
+def _fit_circle_seg(seg, tol_abs=0.6, tol_frac=0.004):
+    """ถ้า segment เป็นอาร์ควงกลม -> คืนจุดอาร์คเป๊ะ (คืน None ถ้าไม่ใช่)"""
+    if len(seg) < 6:
+        return None
+    x = seg[:, 0]; y = seg[:, 1]
+    A = np.c_[2 * x, 2 * y, np.ones(len(x))]; bb = x * x + y * y
+    try:
+        sol, _, _, _ = np.linalg.lstsq(A, bb, rcond=None)
+    except Exception:
+        return None
+    cx, cy, cc = sol; R2 = cc + cx * cx + cy * cy
+    if R2 <= 1:
+        return None
+    R = np.sqrt(R2)
+    d = np.abs(np.hypot(x - cx, y - cy) - R)
+    L = float(np.hypot(x[-1] - x[0], y[-1] - y[0]))
+    if float(d.max()) > max(tol_abs, tol_frac * L):
+        return None
+    a0 = np.arctan2(y[0] - cy, x[0] - cx)
+    a1 = np.arctan2(y[-1] - cy, x[-1] - cx)
+    am = np.arctan2(y[len(y) // 2] - cy, x[len(x) // 2] - cx)
+
+    def _uw(ang, ref):
+        while ang - ref > np.pi: ang -= 2 * np.pi
+        while ang - ref < -np.pi: ang += 2 * np.pi
+        return ang
+    a1u = _uw(a1, a0); amu = _uw(am, a0)
+    if not (min(a0, a1u) <= amu <= max(a0, a1u)):
+        a1u = a1u - 2 * np.pi if a1u > a0 else a1u + 2 * np.pi
+    arclen = abs(a1u - a0) * R
+    N = int(min(3000, max(8, arclen / 0.5)))
+    t = np.linspace(a0, a1u, N)
+    return [(float(cx + R * np.cos(tt)), float(cy + R * np.sin(tt))) for tt in t]
+
+
 def _regularize_ring(ring, line_abs=0.6, line_frac=0.004, min_len=12.0):
     """ช่วงระหว่างมุมที่ 'ตรงจริง' -> แทนด้วยเส้นตรงเป๊ะ (least-squares/ระยะตั้งฉาก),
     ช่วงโค้ง -> คงจุดเดิม (เนียนจาก potrace). ลบอาการส่ายของเส้นตรงจากขอบ raster"""
@@ -265,7 +331,10 @@ def _regularize_ring(ring, line_abs=0.6, line_frac=0.004, min_len=12.0):
         return ring
     cor = _detect_corners(P)
     if len(cor) < 2:
-        return _smooth_closed(P)        # ทั้งวงเป็นโค้ง (เช่น o / จุด) -> spline ปิด
+        e = _fit_ellipse_ring(P)        # ทั้งวงโค้ง -> ลอง fit วงรีเป๊ะก่อน
+        if e is not None:
+            return e
+        return _smooth_closed(P)        # ไม่ใช่วงรี -> spline ปิด
     out = []
     m = len(cor)
     for k in range(m):
@@ -282,7 +351,7 @@ def _regularize_ring(ring, line_abs=0.6, line_frac=0.004, min_len=12.0):
         if straight:
             out.append((float(seg[0][0]), float(seg[0][1])))   # ตรง -> เส้นตรงเป๊ะ
         else:
-            out.extend(_smooth_open(seg))                       # โค้ง -> smoothing spline ลื่น
+            out.extend(_smooth_open(seg))                       # โค้ง -> smoothing spline (ปลอดภัย ไม่เพี้ยน)
     if len(out) < 3:
         return ring
     out.append(out[0])

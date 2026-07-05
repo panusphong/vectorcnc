@@ -1,11 +1,11 @@
-"""นำเข้าไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> ไฟล์ตัด
+"""นำเข้าไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> ไฟล์ตัดคุณภาพ Illustrator
 
-หลักการ:
-1) ดึง path เวกเตอร์ "ตรงจากไฟล์" แยกตาม "เลเยอร์ (OCG)" ของ .ai/.pdf
-2) auto-ตัดเลเยอร์ขยะทิ้ง (กรอบบอกขนาด/ใบงาน/ภาพพรีวิว/texture ที่ path เยอะผิดปกติ)
-3) idealize เส้นทุกเส้น (corner-detect + line-fit + smoothing B-spline)
-   -> เนียนกว่าต้นฉบับ (ลบ wobble ที่ติดมาในไฟล์)
-4) รวมเป็นไฟล์เดียว ให้สีต่างกันต่อเลเยอร์ (SVG สี / DXF layer)
+หัวใจ: ดึง "เส้นโค้ง Bézier จริง" จากไฟล์ (control points) แล้ว output เป็น
+  - SVG: คำสั่ง C/L/Z (เส้นโค้งจริง) -> เนียน infinite ทุกซูม เหมือนดีไซเนอร์วาด
+  - DXF: LWPOLYLINE ละเอียด (chord ~0.08 มม.) -> เนียนระดับเครื่องตัด เข้า CAM ได้ทุกตัว
+ไม่ sample เป็น polyline หยาบ, ไม่ดัดรูป (faithful 100% -> ไม่มีทางเพี้ยน)
+
++ แยกตาม "เลเยอร์ (OCG)" ของ .ai/.pdf, auto-ตัดเลเยอร์ขยะ, แยกชิ้นวางเรียง, สีต่อเลเยอร์
 ถ้าไฟล์แทบไม่มี path (ข้อความสด/ภาพฝัง) -> fallback: เรนเดอร์ + potrace
 """
 import os
@@ -15,38 +15,82 @@ import numpy as np
 
 VECTOR_EXT = ('.svg', '.ai', '.pdf', '.eps', '.ps')
 RENDER_LONGEST_PX = 3200
-_BEZ_STEP_PT = 1.2
-
-# สีต่อเลเยอร์ (วนใช้)
 _PALETTE = ['#111111', '#2563EB', '#DC2626', '#059669', '#D97706',
             '#7C3AED', '#0891B2', '#DB2777', '#65A30D', '#4B5563']
+_PALETTE_RGB = [(17, 17, 17), (37, 99, 235), (220, 38, 38), (5, 150, 105), (217, 119, 6),
+                (124, 58, 237), (8, 145, 178), (219, 39, 119), (101, 163, 13), (75, 85, 99)]
 
 
 def is_vector_file(path):
     return os.path.splitext(str(path))[1].lower() in VECTOR_EXT
 
 
-def _cubic_pt(a, c1, c2, e, t):
-    mt = 1.0 - t
+# ---------- subpath = {'start':(x,y), 'segs':[('L',pt) | ('C',c1,c2,e)], 'closed':bool} ----------
+def _sp_last(sp):
+    if sp['segs']:
+        s = sp['segs'][-1]
+        return s[1] if s[0] == 'L' else s[3]
+    return sp['start']
+
+
+def _sp_points(sp):
+    """จุดทั้งหมด (start+control+end) — สำหรับ bbox / translate"""
+    pts = [sp['start']]
+    for s in sp['segs']:
+        if s[0] == 'L':
+            pts.append(s[1])
+        else:
+            pts.extend([s[1], s[2], s[3]])
+    return pts
+
+
+def _sp_translate(sp, dx, dy):
+    def t(p):
+        return (p[0] + dx, p[1] + dy)
+    ns = []
+    for s in sp['segs']:
+        ns.append(('L', t(s[1])) if s[0] == 'L' else ('C', t(s[1]), t(s[2]), t(s[3])))
+    return {'start': t(sp['start']), 'segs': ns, 'closed': sp.get('closed', False)}
+
+
+def _sp_svg_d(sp):
+    d = ['M %.3f %.3f' % sp['start']]
+    for s in sp['segs']:
+        if s[0] == 'L':
+            d.append('L %.3f %.3f' % s[1])
+        else:
+            d.append('C %.3f %.3f %.3f %.3f %.3f %.3f' %
+                     (s[1][0], s[1][1], s[2][0], s[2][1], s[3][0], s[3][1]))
+    if sp.get('closed'):
+        d.append('Z')
+    return ' '.join(d)
+
+
+def _cubic(a, c1, c2, e, t):
+    mt = 1 - t
     return (mt**3 * a[0] + 3*mt*mt*t * c1[0] + 3*mt*t*t * c2[0] + t**3 * e[0],
             mt**3 * a[1] + 3*mt*mt*t * c1[1] + 3*mt*t*t * c2[1] + t**3 * e[1])
 
 
-def _closed(r):
-    return len(r) >= 3 and abs(r[0][0] - r[-1][0]) < 1.0 and abs(r[0][1] - r[-1][1]) < 1.0
+def _sp_flatten(sp, step):
+    """แตกเป็นจุดถี่ (chord ~step pt) สำหรับ DXF LWPOLYLINE"""
+    out = [sp['start']]
+    cur = sp['start']
+    for s in sp['segs']:
+        if s[0] == 'L':
+            out.append(s[1]); cur = s[1]
+        else:
+            c1, c2, e = s[1], s[2], s[3]
+            L = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) +
+                 abs(c2[1]-c1[1]) + abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
+            N = int(min(400, max(2, L / max(0.3, step))))
+            for i in range(1, N + 1):
+                out.append(_cubic(cur, c1, c2, e, i / float(N)))
+            cur = e
+    return out
 
 
-def _regular(ring):
-    """idealize เส้น (reuse ตัว regularize ของ trace_engine)"""
-    try:
-        from . import trace_engine
-        return trace_engine._regularize_ring(ring)
-    except Exception:
-        return ring
-
-
-# ---------- ดึง path ตาม "เลเยอร์" จาก PDF/AI ----------
-def _extract_pdf_layers(path, filetype=None):
+def _extract_subpaths_pdf(path, filetype=None):
     import fitz
     doc = fitz.open(path, filetype=filetype) if filetype else fitz.open(path)
     try:
@@ -57,100 +101,117 @@ def _extract_pdf_layers(path, filetype=None):
         for dr in page.get_drawings():
             ly = dr.get('layer') or '(default)'
             bucket = layers.setdefault(ly, [])
-            cur = None
-            sub = []
+            cur = None; sp = None
+
+            def flush():
+                if sp and sp['segs']:
+                    lp = _sp_last(sp)
+                    sp['closed'] = abs(lp[0] - sp['start'][0]) < 1.0 and abs(lp[1] - sp['start'][1]) < 1.0
+                    bucket.append(sp)
+
             for it in dr.get('items', []):
                 op = it[0]
                 if op in ('l', 'c'):
                     a = (it[1].x, it[1].y)
-                    if cur is None or abs(a[0]-cur[0]) > 0.01 or abs(a[1]-cur[1]) > 0.01:
-                        if len(sub) >= 2:
-                            bucket.append(sub)
-                        sub = [a]
+                    if cur is None or abs(a[0]-cur[0]) > 0.05 or abs(a[1]-cur[1]) > 0.05:
+                        flush(); sp = {'start': a, 'segs': [], 'closed': False}
                     if op == 'l':
-                        sub.append((it[2].x, it[2].y)); cur = (it[2].x, it[2].y)
+                        e = (it[2].x, it[2].y); sp['segs'].append(('L', e)); cur = e
                     else:
                         c1 = (it[2].x, it[2].y); c2 = (it[3].x, it[3].y); e = (it[4].x, it[4].y)
-                        L = (abs(c1[0]-a[0]) + abs(c1[1]-a[1]) + abs(c2[0]-c1[0]) +
-                             abs(c2[1]-c1[1]) + abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
-                        N = int(min(200, max(4, L / _BEZ_STEP_PT)))
-                        for i in range(1, N + 1):
-                            sub.append(_cubic_pt(a, c1, c2, e, i / float(N)))
-                        cur = e
+                        sp['segs'].append(('C', c1, c2, e)); cur = e
                 elif op == 're':
+                    flush(); sp = None; cur = None
                     r = it[1]
-                    bucket.append([(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1), (r.x0, r.y0)])
+                    bucket.append({'start': (r.x0, r.y0), 'closed': True, 'segs': [
+                        ('L', (r.x1, r.y0)), ('L', (r.x1, r.y1)), ('L', (r.x0, r.y1)), ('L', (r.x0, r.y0))]})
                 elif op == 'qu':
+                    flush(); sp = None; cur = None
                     q = it[1]
-                    bucket.append([(q.ul.x, q.ul.y), (q.ur.x, q.ur.y),
-                                   (q.lr.x, q.lr.y), (q.ll.x, q.ll.y), (q.ul.x, q.ul.y)])
-            if len(sub) >= 2:
-                bucket.append(sub)
+                    bucket.append({'start': (q.ul.x, q.ul.y), 'closed': True, 'segs': [
+                        ('L', (q.ur.x, q.ur.y)), ('L', (q.lr.x, q.lr.y)), ('L', (q.ll.x, q.ll.y)), ('L', (q.ul.x, q.ul.y))]})
+            flush()
         return layers, W, H
     finally:
         doc.close()
 
 
-def _rings_from_svg(path):
+def _extract_subpaths_svg(path):
     from svgpathtools import svg2paths2
     paths, attrs, svg_attr = svg2paths2(path)
     xmin = ymin = 1e18; xmax = ymax = -1e18
-    rings = []
+    subs = []
     for p in paths:
         for sub in p.continuous_subpaths():
-            L = sub.length()
-            if L < 0.5:
+            if sub.length() < 0.5:
                 continue
-            N = int(max(4, min(6000, L / 1.2)))
-            pts = []
-            for i in range(N + 1):
-                z = sub.point(i / float(N))
-                pts.append((z.real, z.imag))
-                xmin = min(xmin, z.real); xmax = max(xmax, z.real)
-                ymin = min(ymin, z.imag); ymax = max(ymax, z.imag)
-            if len(pts) >= 2:
-                rings.append(pts)
+            st = (sub[0].start.real, sub[0].start.imag)
+            segs = []
+            for seg in sub:
+                nm = type(seg).__name__
+                if nm == 'Line':
+                    segs.append(('L', (seg.end.real, seg.end.imag)))
+                elif nm == 'CubicBezier':
+                    segs.append(('C', (seg.control1.real, seg.control1.imag),
+                                 (seg.control2.real, seg.control2.imag), (seg.end.real, seg.end.imag)))
+                elif nm == 'QuadraticBezier':
+                    c1 = (st[0] + 2/3*(seg.control.real-st[0]), st[1] + 2/3*(seg.control.imag-st[1]))
+                    c2 = (seg.end.real + 2/3*(seg.control.real-seg.end.real),
+                          seg.end.imag + 2/3*(seg.control.imag-seg.end.imag))
+                    segs.append(('C', c1, c2, (seg.end.real, seg.end.imag)))
+                else:  # Arc -> sample
+                    N = max(6, int(seg.length() / 2))
+                    for i in range(1, N + 1):
+                        z = seg.point(i / float(N)); segs.append(('L', (z.real, z.imag)))
+                st = _sp_last({'start': st, 'segs': segs})
+            sp = {'start': (sub[0].start.real, sub[0].start.imag), 'segs': segs,
+                  'closed': bool(sub.isclosed())}
+            subs.append(sp)
+            for pt in _sp_points(sp):
+                xmin = min(xmin, pt[0]); xmax = max(xmax, pt[0]); ymin = min(ymin, pt[1]); ymax = max(ymax, pt[1])
     vb = svg_attr.get('viewBox') or svg_attr.get('viewbox')
     if vb:
-        v = [float(x) for x in vb.replace(',', ' ').split()]
-        W, H = v[2], v[3]
+        v = [float(x) for x in vb.replace(',', ' ').split()]; W, H = v[2], v[3]
     else:
         W = xmax - xmin if xmax > xmin else 100.0
         H = ymax - ymin if ymax > ymin else 100.0
-    return {'(default)': rings}, W, H
+    return {'(default)': subs}, W, H
 
 
-# ---------- auto ตัดเลเยอร์ขยะ ----------
-def _bbox(r):
-    xs = [p[0] for p in r]; ys = [p[1] for p in r]
-    return max(xs) - min(xs), max(ys) - min(ys)
+def _to_pdf_via_gs(path):
+    out = tempfile.mktemp(suffix='.pdf')
+    subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER', '-sDEVICE=pdfwrite', '-o', out, path],
+                   check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return out
 
 
-def _extent(rings):
-    xs = [p[0] for r in rings for p in r]
-    ys = [p[1] for r in rings for p in r]
+def _npts(layers):
+    return sum(len(_sp_points(sp)) for subs in layers.values() for sp in subs)
+
+
+def _extent(subs):
+    xs = []; ys = []
+    for sp in subs:
+        for p in _sp_points(sp):
+            xs.append(p[0]); ys.append(p[1])
     return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _auto_keep(layers, W, H):
-    names = [ly for ly, rr in layers.items() if rr]
+    names = [ly for ly, s in layers.items() if s]
     if len(names) <= 1:
         return set(names)
     counts = {ly: len(layers[ly]) for ly in names}
     med = sorted(counts.values())[len(counts) // 2]
     keep = set()
     for ly in names:
-        junk = False
-        # (a) จำนวน path มากผิดปกติ (เลเยอร์ catch-all: annotation/preview/texture)
-        if counts[ly] > max(20, 6 * med):
-            junk = True
-        # (b) มีกรอบสี่เหลี่ยมเกือบเต็มหน้า (กรอบบอกขนาด/ใบงาน)
+        junk = counts[ly] > max(20, 6 * med)
         if not junk:
-            for r in layers[ly]:
-                bw, bh = _bbox(r)
-                if bw > 0.5 * W and bh > 0.5 * H and len(r) <= 8:
+            for sp in layers[ly]:
+                pts = _sp_points(sp)
+                xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                if (max(xs)-min(xs)) > 0.5*W and (max(ys)-min(ys)) > 0.5*H and len(sp['segs']) <= 8:
                     junk = True; break
-        # (c) ชื่อเลเยอร์แนว annotation
         low = str(ly).lower()
         if any(k in low for k in ('dim', 'annot', 'note', 'guide', 'spec', 'ใบงาน', 'text')):
             junk = True
@@ -159,7 +220,52 @@ def _auto_keep(layers, W, H):
     return keep or set(names)
 
 
-# ---------- fallback: เรนเดอร์ + potrace ----------
+def _emit_vector(kept, W, H, ppm, out_svg_mm, out_dxf):
+    """kept = [(name, color_hex, color_rgb, [subpath])] -> SVG(bezier) + DXF(polyline ละเอียด)"""
+    def svg(mm):
+        dim = 'width="%.2fmm" height="%.2fmm" ' % (W / ppm, H / ppm) if mm else ''
+        s = ['<svg xmlns="http://www.w3.org/2000/svg" %sviewBox="0 0 %.2f %.2f">' % (dim, W, H)]
+        for name, col, rgb, subs in kept:
+            s.append('<g fill="none" stroke="%s" stroke-width="0.7" stroke-linejoin="round" stroke-linecap="round">' % col)
+            for sp in subs:
+                s.append('<path d="%s"/>' % _sp_svg_d(sp))
+            s.append('</g>')
+        s.append('</svg>')
+        return '\n'.join(s)
+    svg_mm = svg(True); svg_px = svg(False)
+    with open(out_svg_mm, 'w', encoding='utf-8') as f:
+        f.write(svg_mm)
+    if out_dxf:
+        import ezdxf
+        doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM
+        msp = doc.modelspace()
+        step = max(0.4, 0.08 * ppm)   # chord ~0.08 มม.
+        for name, col, rgb, subs in kept:
+            lyname = 'CUT_' + str(name)
+            if lyname not in doc.layers:
+                lay = doc.layers.add(lyname)
+                try: lay.rgb = rgb
+                except Exception: pass
+            for sp in subs:
+                pts = _sp_flatten(sp, step)
+                mmpts = [(x / ppm, (H - y) / ppm) for x, y in pts]
+                if len(mmpts) >= 2:
+                    msp.add_lwpolyline(mmpts, close=sp.get('closed', False), dxfattribs={'layer': lyname})
+        doc.saveas(out_dxf)
+    total = sum(len(subs) for n, c, r, subs in kept)
+    return {
+        'size_px': (int(round(W)), int(round(H))),
+        'size_mm': (round(W / ppm, 1), round(H / ppm, 1)),
+        'ppm': ppm, 'mode': 'vector', 'engine': 'vector',
+        'detected': {'kind': 'vector', 'mode': 'vector', 'engine': 'vector',
+                     'notes': 'เส้นโค้ง Bézier จริงจากไฟล์ (คุณภาพ Illustrator)'},
+        'n_layers': len(kept), 'n_rings': total,
+        'svg_mm': svg_mm, 'svg_px': svg_px,
+        'layer_colors': [c for n, c, r, s in kept],
+        'used_layers': [n for n, c, r, s in kept],
+    }
+
+
 def _emit_render(image_path, out_svg_mm, out_dxf, real_width_mm,
                  kerf_mm, tool_mm, min_mm, round_corners, tabs, filetype=None):
     import fitz
@@ -182,86 +288,58 @@ def _emit_render(image_path, out_svg_mm, out_dxf, real_width_mm,
     ppm = W2 / float(real_width_mm) if real_width_mm else 1.0
     rings = cnc_export.process_geom(geom, ppm, kerf_mm=kerf_mm, tool_mm=tool_mm,
                                     min_mm=min_mm, round_corners=round_corners, tabs=tabs)
-    return _finish([('L0', '#111111', rings)], W2, H2, ppm, out_svg_mm, out_dxf, 'vector-render')
-
-
-def _finish(layers, W, H, ppm, out_svg_mm, out_dxf, engine):
-    from . import cnc_export
-    total = sum(len(rr) for n, c, rr in layers)
-    svg_mm = cnc_export.svg_string(layers, W, H, ppm, mm=True)
-    svg_px = cnc_export.svg_string(layers, W, H, ppm, mm=False)
+    svg_mm = cnc_export.svg_string([('L0', '#111111', rings)], W2, H2, ppm, mm=True)
+    svg_px = cnc_export.svg_string([('L0', '#111111', rings)], W2, H2, ppm, mm=False)
     with open(out_svg_mm, 'w', encoding='utf-8') as f:
         f.write(svg_mm)
     if out_dxf:
-        cnc_export.write_dxf(layers, out_dxf, ppm, H)
-    return {
-        'size_px': (int(round(W)), int(round(H))),
-        'size_mm': (round(W / ppm, 1), round(H / ppm, 1)),
-        'ppm': ppm, 'mode': 'vector', 'engine': engine,
-        'detected': {'kind': 'vector', 'mode': 'vector', 'engine': engine,
-                     'notes': 'ดึงเวกเตอร์ตรง + idealize เส้น (คมเนียนกว่าต้นฉบับ)'},
-        'n_layers': len(layers), 'n_rings': total,
-        'svg_mm': svg_mm, 'svg_px': svg_px,
-        'layer_colors': [c for n, c, r in layers],
-        'used_layers': [n for n, c, r in layers],
-    }
-
-
-def _npts(layers):
-    return sum(len(r) for rr in layers.values() for r in rr)
+        cnc_export.write_dxf([('L0', '#111111', rings)], out_dxf, ppm, H2)
+    return {'size_px': (int(W2), int(H2)), 'size_mm': (round(W2/ppm, 1), round(H2/ppm, 1)),
+            'ppm': ppm, 'mode': 'vector', 'engine': 'vector-render',
+            'detected': {'kind': 'vector', 'mode': 'vector', 'engine': 'vector-render'},
+            'n_layers': 1, 'n_rings': len(rings), 'svg_mm': svg_mm, 'svg_px': svg_px,
+            'layer_colors': ['#111111']}
 
 
 def process_vector(image_path, out_svg_mm, out_dxf=None, real_width_mm=1200.0,
                    kerf_mm=3.0, tool_mm=6.0, min_mm=2.0, round_corners=True, tabs=0):
-    """เวกเตอร์ -> ไฟล์ตัด (คืน dict รูปแบบเดียวกับ pipeline.process_cnc)"""
     ext = os.path.splitext(str(image_path))[1].lower()
-
     layers = None; W = H = 0.0
     try:
         if ext == '.svg':
-            layers, W, H = _rings_from_svg(image_path)
+            layers, W, H = _extract_subpaths_svg(image_path)
         elif ext in ('.pdf', '.ai'):
-            layers, W, H = _extract_pdf_layers(image_path, filetype='pdf')
+            layers, W, H = _extract_subpaths_pdf(image_path, filetype='pdf')
         elif ext in ('.eps', '.ps'):
             pdf = _to_pdf_via_gs(image_path)
             try:
-                layers, W, H = _extract_pdf_layers(pdf, filetype='pdf')
+                layers, W, H = _extract_subpaths_pdf(pdf, filetype='pdf')
             finally:
                 try: os.remove(pdf)
                 except Exception: pass
     except Exception:
         layers = None
 
-    if layers and _npts(layers) >= 60 and W > 0 and H > 0:
+    if layers and _npts(layers) >= 40 and W > 0 and H > 0:
         keep = _auto_keep(layers, W, H)
-        # idealize เส้นทุกเลเยอร์ที่เก็บ
-        kept = []
-        for ly in sorted(keep):
-            rr = [_regular(r) for r in layers[ly] if len(r) >= 2]
-            rr = [r for r in rr if len(r) >= 2]
-            if rr:
-                kept.append((str(ly), rr))
-        if kept:
-            # แยกชิ้น: วางแต่ละเลเยอร์เรียงแนวนอน ไม่ทับกัน (ขนาดจริงคงเดิม)
-            boxes = [_extent(rr) for n, rr in kept]
+        kept_layers = [(ly, layers[ly]) for ly in sorted(keep) if layers[ly]]
+        if kept_layers:
+            boxes = [_extent(subs) for n, subs in kept_layers]
             maxw = max((b[2] - b[0]) for b in boxes) or 1.0
             gap = 0.06 * maxw
             xoff = 0.0; maxh = 0.0
-            out_layers = []
-            for idx, (name, rr) in enumerate(kept):
+            out = []
+            for idx, (name, subs) in enumerate(kept_layers):
                 mnx, mny, mxx, mxy = boxes[idx]
                 dx = xoff - mnx; dy = -mny
-                ringc = []
-                for r in rr:
-                    tr = [(px + dx, py + dy) for px, py in r]
-                    ringc.append((tr, _closed(tr)))
-                out_layers.append((name, _PALETTE[idx % len(_PALETTE)], ringc))
+                tsubs = [_sp_translate(sp, dx, dy) for sp in subs]
+                out.append((name, _PALETTE[idx % len(_PALETTE)], _PALETTE_RGB[idx % len(_PALETTE_RGB)], tsubs))
                 xoff += (mxx - mnx) + gap
                 maxh = max(maxh, mxy - mny)
-            NW = xoff - gap if len(kept) > 1 else (boxes[0][2] - boxes[0][0])
+            NW = xoff - gap if len(kept_layers) > 1 else (boxes[0][2] - boxes[0][0])
             NH = maxh if maxh > 0 else H
             ppm = maxw / float(real_width_mm) if real_width_mm else 1.0
-            return _finish(out_layers, NW, NH, ppm, out_svg_mm, out_dxf, 'vector')
+            return _emit_vector(out, NW, NH, ppm, out_svg_mm, out_dxf)
 
     # fallback: ข้อความสด/ภาพฝัง
     if ext in ('.pdf', '.ai', '.svg'):
@@ -277,12 +355,3 @@ def process_vector(image_path, out_svg_mm, out_dxf=None, real_width_mm=1200.0,
             try: os.remove(pdf)
             except Exception: pass
     raise ValueError('ไม่พบเส้นเวกเตอร์ในไฟล์')
-
-
-def _to_pdf_via_gs(path):
-    out = tempfile.mktemp(suffix='.pdf')
-    subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER',
-                    '-sDEVICE=pdfwrite', '-o', out, path],
-                   check=True, timeout=120,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out
