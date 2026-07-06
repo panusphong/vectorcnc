@@ -190,7 +190,7 @@ def _sample_potrace_curve(curve):
             poly = (abs(c1[0] - cur[0]) + abs(c1[1] - cur[1]) +
                     abs(c2[0] - c1[0]) + abs(c2[1] - c1[1]) +
                     abs(e[0] - c2[0]) + abs(e[1] - c2[1]))
-            N = int(min(3000, max(6, poly / 0.8)))   # sample ถี่ (chord เล็ก -> ไม่เห็น facet)
+            N = int(min(6000, max(8, poly / 0.4)))   # sample ถี่มาก (chord 0.4px -> เนียนเป๊ะ)
             for i in range(1, N + 1):
                 pts.append(_cubic_pt(cur, c1, c2, e, i / float(N)))
         cur = e
@@ -420,11 +420,10 @@ def _mask_to_geom_potrace(mask, min_area):
         return None
     turd = int(max(2, (min_area * up * up) ** 0.5))
     # opttolerance 2.0 + alphamax 1.3 = fit โค้ง Bézier ยาวเนียนที่สุด (ไม่มียึกยักแม้ซูม)
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
     rings = []
     for c in path:
-        r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]
-        r = _regularize_ring(r)                       # เส้นตรง -> ตรงเป๊ะ, โค้ง -> คงเนียน
+        r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]   # potrace Bézier แซมป์ถี่ = คมเป๊ะ (ไม่ resmooth)
         rings.append(r)
     return _potrace_nest(rings, min_area)
 
@@ -470,13 +469,13 @@ def _mask_to_subpaths(mask, min_area):
     if up > 1.01:
         m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
     m = cv2.bilateralFilter(m, 9, 60, 60)
-    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.4)
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 0.8)
     _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
     bw = (m == 0)
     if bw.all() or (~bw).all():
         return []
     turd = int(max(2, (min_area * up * up) ** 0.5))
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
     subs = []
     for c in path:
         sp = _potrace_curve_to_subpath(c, up)
