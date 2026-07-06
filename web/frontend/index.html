@@ -278,6 +278,17 @@ select.numin{cursor:pointer}
     <div class="csm-body">
       <div class="csm-form">
 
+        <div class="csm-sec" style="border-color:#0891b2;background:#ecfeff">
+          <div class="csm-sec-h"><i style="background:#0891b2">★</i> ประเภทป้าย — เลือกก่อน (ตัวตั้งต้น)</div>
+          <select class="numin" id="csSign" style="font-weight:600">
+            <option value="4.1">4.1 อักษรยกขอบ ไม่มีไฟ (ติดผนัง)</option>
+            <option value="4.2">4.2 อักษรไฟออกหลัง (halo)</option>
+            <option value="4.3" selected>4.3 อักษรไฟออกหน้า ยกขอบ</option>
+            <option value="4.4">4.4 กล่องไฟ</option>
+            <option value="4.5">4.5 นีออนเฟล็กซ์</option></select>
+          <div class="hint" style="margin-top:6px">ประเภทที่เลือกกำหนดโครงสร้าง (ฐาน/คิ้ว/ไฟ) · การวาดภาพ · และ BOM ทั้งหมด</div>
+        </div>
+
         <div class="csm-sec">
           <div class="csm-sec-h"><i>1</i> ที่มางาน · เซลล์ / ลูกค้า</div>
           <button class="csm-pull" id="csPull">🔎 ดึงจากใบสั่งผลิต Auto (งานที่ยังไม่สั่งผลิต)</button>
@@ -313,10 +324,7 @@ select.numin{cursor:pointer}
         </div>
 
         <div class="csm-sec">
-          <div class="csm-sec-h"><i>4</i> ประเภท · ไฟ · ติดตั้ง</div>
-          <div><label class="cslab">ประเภทป้าย</label><select class="numin" id="csSign">
-            <option value="4.3">4.3 ไฟออกหน้า ยกขอบ</option><option value="4.1">4.1 ยกขอบ ไม่มีไฟ</option>
-            <option value="4.2">4.2 ไฟออกหลัง</option><option value="4.4">4.4 กล่องไฟ</option><option value="4.5">4.5 นีออนเฟล็กซ์</option></select></div>
+          <div class="csm-sec-h"><i>4</i> ไฟ · ติดตั้ง</div>
           <div class="csm-2 csm-fld">
             <div><label class="cslab">สีไฟ LED</label><select class="numin" id="csLed">
               <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
