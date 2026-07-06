@@ -239,10 +239,12 @@ async def nest_ep(
                 pieces = [p for p in pieces if p.area > 4.0]
                 if not pieces:
                     return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
-                qn = max(1, min(int(qty), max(1, 600 // len(pieces))))
-                res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)
+                pieces.sort(key=lambda p: -p.area)
+                pieces = pieces[:40]                       # เพดานชิ้น กัน timeout/OOM บนคลาวด์ฟรี
+                qn = max(1, min(int(qty), max(1, 500 // len(pieces))))
+                res_p = max(4.0, min(sheet_w, sheet_h) / 300.0)   # กริดหยาบขึ้น = เร็วขึ้น
                 r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
-                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
+                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
                 parts_ref = pieces
             sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
             svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
