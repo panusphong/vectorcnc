@@ -129,3 +129,19 @@ def fit_ring(points, max_error=0.8):
                      (float(b[3][0]), float(b[3][1]))))
     start = (float(beziers[0][0][0]), float(beziers[0][0][1]))
     return {'start': start, 'segs': segs, 'closed': True}
+
+
+def fit_segments(points, max_error=0.8):
+    """จุด polyline (เปิด) -> list ของ ('C', c1, c2, e) เส้นโค้ง Bézier แท้"""
+    P = np.asarray(points, float)
+    if len(P) < 2:
+        return []
+    if len(P) == 2:
+        lt = _normalize(P[1] - P[0]); d = np.hypot(*(P[1] - P[0])) / 3.0
+        return [('C', (float(P[0][0]+lt[0]*d), float(P[0][1]+lt[1]*d)),
+                 (float(P[1][0]-lt[0]*d), float(P[1][1]-lt[1]*d)),
+                 (float(P[1][0]), float(P[1][1])))]
+    lt = _normalize(P[1] - P[0]); rt = _normalize(P[-2] - P[-1])
+    bez = _fit(P, lt, rt, float(max_error) ** 2)
+    return [('C', (float(b[1][0]), float(b[1][1])), (float(b[2][0]), float(b[2][1])),
+             (float(b[3][0]), float(b[3][1]))) for b in bez]

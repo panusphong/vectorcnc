@@ -563,6 +563,37 @@ def trace_color_bezier(image_path, n_colors=6, filter_speckle=8):
 
 
 # ---------- โหมด Bézier เนียน infinite : potrace -> smooth (ลบ ripple) -> fit Bézier แท้ ----------
+def _resample_open(pts, step=1.0):
+    P = np.asarray(pts, float)
+    if len(P) < 3: return P
+    seg = np.hypot(*(P[1:]-P[:-1]).T); d = np.concatenate([[0.0], np.cumsum(seg)])
+    if d[-1] < 2*step: return P
+    n = max(6, int(d[-1]/step))
+    u = np.linspace(0, d[-1], n)
+    return np.stack([np.interp(u,d,P[:,0]), np.interp(u,d,P[:,1])], 1)
+
+
+def _smooth_open(pts, sigma):
+    try:
+        from scipy.ndimage import gaussian_filter1d
+    except Exception:
+        return np.asarray(pts, float)
+    P = _resample_open(pts, 1.0)
+    if len(P) < max(6, int(sigma*3)): return P
+    a = P.copy()
+    a[:,0] = gaussian_filter1d(P[:,0], sigma, mode="nearest")
+    a[:,1] = gaussian_filter1d(P[:,1], sigma, mode="nearest")
+    a[0] = P[0]; a[-1] = P[-1]
+    return a
+
+
+def _is_straight(P, abs_tol=0.7, frac=0.004):
+    v = P[-1]-P[0]; L = float(np.hypot(v[0], v[1]))
+    if L < 9: return False
+    d = np.abs(v[0]*(P[:,1]-P[0,1]) - v[1]*(P[:,0]-P[0,0])) / L
+    return float(d.max()) < max(abs_tol, frac*L)
+
+
 def _mask_to_smooth_subpaths(mask, min_area):
     """mask -> subpaths Bézier ที่ ลบ ripple แล้ว fit เส้นโค้งคณิตศาสตร์ (Schneider) = คมกริบทุกซูม"""
     import potrace
@@ -582,29 +613,59 @@ def _mask_to_smooth_subpaths(mask, min_area):
         return []
     turd = int(max(2, (min_area * up * up) ** 0.5))
     path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
-    sig = max(2.0, min(6.0, max(H, W) / 500.0))
+    sig = max(1.6, min(5.0, max(H, W) / 650.0))
     subs = []
     for c in path:
+        # เก็บจุด + ทำเครื่องหมาย "มุมคม" (จาก potrace corner) เพื่อคงเส้นตรง/มุม
         cur = (c.start_point.x, c.start_point.y)
-        pts = [(cur[0] / up, cur[1] / up)]
+        pts = [(cur[0] / up, cur[1] / up)]; hard = [True]
         for seg in c:
             e = (seg.end_point.x, seg.end_point.y)
             if seg.is_corner:
-                pts.append((seg.c.x / up, seg.c.y / up)); pts.append((e[0] / up, e[1] / up))
+                pts.append((seg.c.x / up, seg.c.y / up)); hard.append(True)   # มุมคม
+                pts.append((e[0] / up, e[1] / up));       hard.append(True)
             else:
                 c1 = (seg.c1.x, seg.c1.y); c2 = (seg.c2.x, seg.c2.y)
                 L = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1]) +
                      abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
-                N = int(min(600, max(8, L / 1.0)))
+                N = int(min(600, max(6, L / 1.0)))
                 for i in range(1, N + 1):
-                    t = i / float(N); mt = 1 - t
-                    pts.append(((mt**3*cur[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t**3*e[0]) / up,
-                                (mt**3*cur[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t**3*e[1]) / up))
+                    tt = i / float(N); mt = 1 - tt
+                    pts.append(((mt**3*cur[0] + 3*mt*mt*tt*c1[0] + 3*mt*tt*tt*c2[0] + tt**3*e[0]) / up,
+                                (mt**3*cur[1] + 3*mt*mt*tt*c1[1] + 3*mt*tt*tt*c2[1] + tt**3*e[1]) / up))
+                    hard.append(False)
             cur = e
-        r = _smooth_ring(pts, sig)                 # ลบ ripple (low-pass ตามเส้น)
-        sp = bezier_fit.fit_ring(r, max_error=0.9)  # fit Bézier แท้ (เนียน infinite)
-        if sp and len(sp['segs']) >= 2:
-            subs.append(sp)
+        P = np.asarray(pts, float)
+        if len(P) < 4:
+            continue
+        # ปิดวง: ตัดจุดซ้ำท้าย
+        if np.hypot(*(P[0]-P[-1])) < 1e-6:
+            P = P[:-1]; hard = hard[:-1]
+        n = len(P)
+        idx = [i for i in range(n) if hard[i]]
+        segs = []
+        if len(idx) < 2:
+            # ไม่มีมุม -> โค้งล้วน: smooth วง + fit ปิด
+            r = _smooth_ring(P, sig)
+            sp = bezier_fit.fit_ring(r, max_error=0.9)
+            if sp and len(sp['segs']) >= 2:
+                subs.append(sp)
+            continue
+        start = (float(P[idx[0]][0]), float(P[idx[0]][1]))
+        m = len(idx)
+        for k in range(m):
+            a = idx[k]; b = idx[(k+1) % m]
+            span = P[a:b+1] if b > a else np.vstack([P[a:], P[:b+1]])
+            if len(span) <= 2:
+                segs.append(('L', (float(P[b][0]), float(P[b][1])))); continue
+            sm = _smooth_open(span, sig)
+            if _is_straight(sm):
+                segs.append(('L', (float(sm[-1][0]), float(sm[-1][1]))))   # เส้นตรงเป๊ะ
+            else:
+                for cseg in bezier_fit.fit_segments(sm, max_error=0.8):    # โค้งเนียน
+                    segs.append(cseg)
+        if len(segs) >= 2:
+            subs.append({'start': start, 'segs': segs, 'closed': True})
     return subs
 
 
