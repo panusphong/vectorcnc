@@ -229,7 +229,7 @@ async def nest_ep(
                     foot = full_mm.envelope
                 mnx, mny = foot.bounds[0], foot.bounds[1]
                 foot = _tr(foot, xoff=-mnx, yoff=-mny)
-                full = _tr(full_mm, xoff=-mnx, yoff=-mny)
+                full = _tr(full_mm, xoff=-mnx, yoff=-mny).simplify(0.12, preserve_topology=True)
                 qn = max(1, min(80, int(qty)))
                 r = nesting.nest([(foot, qn)], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res)
@@ -241,6 +241,7 @@ async def nest_ep(
                     return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
                 pieces.sort(key=lambda p: -p.area)
                 pieces = pieces[:40]                       # เพดานชิ้น กัน timeout/OOM บนคลาวด์ฟรี
+                pieces = [p.simplify(0.12, preserve_topology=True) for p in pieces]   # ลดจุด (~0.12mm) -> DXF เล็ก, nest เร็ว
                 qn = max(1, min(int(qty), max(1, 500 // len(pieces))))
                 res_p = max(4.0, min(sheet_w, sheet_h) / 300.0)   # กริดหยาบขึ้น = เร็วขึ้น
                 r = nesting.nest([(p, qn) for p in pieces], float(sheet_w), float(sheet_h),
