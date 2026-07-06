@@ -72,8 +72,16 @@ def load_geometry(ai_path, real_w_mm=800.0, real_h_mm=450.0, disp_w=900.0, xmax_
             p = Polygon(pts).buffer(0)
             if not p.is_empty and p.area > 40: out.append(p)
         return out
-    OVAL = max(polys('s-2'), key=lambda p: p.area)
+    _s2 = polys('s-2')
+    if not _s2:
+        _ext_ = os.path.splitext(str(ai_path))[1].lower()
+        if _ext_ not in ('.ai', '.pdf'):
+            raise ValueError('ไฟล์ Check Sheet ต้องเป็น .ai หรือ .pdf ที่มีเลเยอร์มาตรฐาน 4.3 (s-2, a, คิ้ว) — ไฟล์ที่อัปเป็น ' + (_ext_ or 'รูปภาพ') + ' ซึ่งเป็นภาพแบน ดึงเส้นเวกเตอร์มาคิด BOM ไม่ได้ กรุณาอัปไฟล์เวกเตอร์ที่หน้าหลัก')
+        raise ValueError('ไม่พบเลเยอร์ "s-2" (วงรีฐาน) ในไฟล์ — ตรวจว่าไฟล์ .ai/.pdf มีเลเยอร์มาตรฐาน 4.3 ครบ (s-2, a, คิ้ว)')
+    OVAL = max(_s2, key=lambda p: p.area)
     A = sorted(polys('a'), key=lambda z: -z.area)
+    if not A:
+        raise ValueError('ไม่พบเลเยอร์ "a" (ตัวอักษร/หน้าอักษร) ในไฟล์ .ai/.pdf — ต้องมีเลเยอร์มาตรฐาน 4.3')
     BG = A[0]; LET = A[1:]
     KW = polys('คิ้ว'); letU = unary_union(LET)
     LEAF = [p for p in KW if p.intersection(letU).area < 0.30*p.area and p.area < 40000]
