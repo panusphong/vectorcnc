@@ -613,7 +613,7 @@ def _mask_to_smooth_subpaths(mask, min_area):
         return []
     turd = int(max(2, (min_area * up * up) ** 0.5))
     path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
-    sig = max(1.6, min(5.0, max(H, W) / 650.0))
+    sig = max(1.1, min(3.0, max(H, W) / 900.0))
     subs = []
     for c in path:
         # เก็บจุด + ทำเครื่องหมาย "มุมคม" (จาก potrace corner) เพื่อคงเส้นตรง/มุม
@@ -647,7 +647,7 @@ def _mask_to_smooth_subpaths(mask, min_area):
         if len(idx) < 2:
             # ไม่มีมุม -> โค้งล้วน: smooth วง + fit ปิด
             r = _smooth_ring(P, sig)
-            sp = bezier_fit.fit_ring(r, max_error=0.9)
+            sp = bezier_fit.fit_ring(r, max_error=0.6)
             if sp and len(sp['segs']) >= 2:
                 subs.append(sp)
             continue
@@ -662,7 +662,7 @@ def _mask_to_smooth_subpaths(mask, min_area):
             if _is_straight(sm):
                 segs.append(('L', (float(sm[-1][0]), float(sm[-1][1]))))   # เส้นตรงเป๊ะ
             else:
-                for cseg in bezier_fit.fit_segments(sm, max_error=0.8):    # โค้งเนียน
+                for cseg in bezier_fit.fit_segments(sm, max_error=0.55):   # โค้งเนียน ทาบแน่น
                     segs.append(cseg)
         if len(segs) >= 2:
             subs.append({'start': start, 'segs': segs, 'closed': True})
