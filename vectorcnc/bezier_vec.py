@@ -73,7 +73,7 @@ def _dxf(all_subs_mm, Hmm, path):
 def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None):
     """คืน dict: svg_px, svg_mm, dxf_path, width_mm, height_mm, layers, rings
     เส้นโค้ง Bézier แท้ (เหมือน .ai) — ขนาดจริงจาก ppm เป๊ะ"""
-    items = te.trace_color_bezier(image_path, n_colors=max(2, min(12, int(n_colors))))
+    items = te.trace_color_smooth_bezier(image_path, n_colors=max(2, min(12, int(n_colors))))
     if not items:
         raise ValueError('ไม่พบรูปทรงสำหรับแปลงเป็นเส้นตัด')
     mnx, mny, mxx, mxy = _bbox(items)

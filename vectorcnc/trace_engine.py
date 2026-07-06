@@ -561,6 +561,92 @@ def trace_color_bezier(image_path, n_colors=6, filter_speckle=8):
     return items
 
 
+
+# ---------- โหมด Bézier เนียน infinite : potrace -> smooth (ลบ ripple) -> fit Bézier แท้ ----------
+def _mask_to_smooth_subpaths(mask, min_area):
+    """mask -> subpaths Bézier ที่ ลบ ripple แล้ว fit เส้นโค้งคณิตศาสตร์ (Schneider) = คมกริบทุกซูม"""
+    import potrace
+    from . import bezier_fit
+    m = np.asarray(mask)
+    if m.dtype != np.uint8:
+        m = m.astype(np.uint8)
+    H, W = m.shape[:2]
+    up = min(4.0, max(1.0, 4000.0 / max(H, W)))
+    if up > 1.01:
+        m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
+    m = cv2.bilateralFilter(m, 9, 60, 60)
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 0.8)
+    _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
+    bw = (m == 0)
+    if bw.all() or (~bw).all():
+        return []
+    turd = int(max(2, (min_area * up * up) ** 0.5))
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
+    sig = max(2.0, min(6.0, max(H, W) / 500.0))
+    subs = []
+    for c in path:
+        cur = (c.start_point.x, c.start_point.y)
+        pts = [(cur[0] / up, cur[1] / up)]
+        for seg in c:
+            e = (seg.end_point.x, seg.end_point.y)
+            if seg.is_corner:
+                pts.append((seg.c.x / up, seg.c.y / up)); pts.append((e[0] / up, e[1] / up))
+            else:
+                c1 = (seg.c1.x, seg.c1.y); c2 = (seg.c2.x, seg.c2.y)
+                L = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1]) +
+                     abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
+                N = int(min(600, max(8, L / 1.0)))
+                for i in range(1, N + 1):
+                    t = i / float(N); mt = 1 - t
+                    pts.append(((mt**3*cur[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t**3*e[0]) / up,
+                                (mt**3*cur[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t**3*e[1]) / up))
+            cur = e
+        r = _smooth_ring(pts, sig)                 # ลบ ripple (low-pass ตามเส้น)
+        sp = bezier_fit.fit_ring(r, max_error=0.9)  # fit Bézier แท้ (เนียน infinite)
+        if sp and len(sp['segs']) >= 2:
+            subs.append(sp)
+    return subs
+
+
+def trace_color_smooth_bezier(image_path, n_colors=6, filter_speckle=8):
+    """คืน [(bgr, [subpaths Bézier เนียน])] — คุณภาพเส้นตัดระดับ .ai (โค้งคณิตศาสตร์ ไม่มี ripple)"""
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    H, W = img.shape[:2]
+    sm = cv2.bilateralFilter(img, 7, 45, 45)
+    K = int(max(2, min(n_colors, 10)))
+    sw = 600
+    small = cv2.resize(sm, (sw, max(1, int(sw * H / W))), interpolation=cv2.INTER_AREA) if W > sw else sm
+    Z = small.reshape(-1, 3).astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 15, 1.0)
+    _, _, centers = cv2.kmeans(Z, K, None, crit, 2, cv2.KMEANS_PP_CENTERS)
+    centers = centers.astype(np.float32)
+    flat = sm.reshape(-1, 3).astype(np.float32)
+    best = np.zeros(flat.shape[0], np.int32); bestd = None
+    for k in range(K):
+        dk = ((flat - centers[k]) ** 2).sum(1)
+        if bestd is None: bestd = dk
+        else:
+            mm = dk < bestd; bestd = np.where(mm, dk, bestd); best = np.where(mm, k, best)
+    labels = best.reshape(H, W)
+    border = np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
+    bg = int(np.bincount(border, minlength=K).argmax())
+    min_area = max(40.0, W * H * 8e-6)
+    ker = np.ones((3, 3), np.uint8)
+    items = []
+    for k in range(K):
+        if k == bg:
+            continue
+        mask = (labels == k).astype(np.uint8) * 255
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, ker)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, ker)
+        subs = _mask_to_smooth_subpaths(mask, min_area)
+        if subs:
+            c = centers[k]
+            items.append(((int(c[0]), int(c[1]), int(c[2])), subs))
+    return items
+
 # ---------- โหมด photo : VTracer (สำหรับภาพถ่าย/ไล่เฉด) ----------
 def trace_photo(image_path, n_colors=6, filter_speckle=8):
     """VTracer color -> [(bgr, geom)] เหมาะกับภาพถ่าย/ภาพไล่เฉด"""
