@@ -616,14 +616,13 @@ def _mask_to_smooth_subpaths(mask, min_area):
     sig = max(1.1, min(3.0, max(H, W) / 900.0))
     subs = []
     for c in path:
-        # เก็บจุด + ทำเครื่องหมาย "มุมคม" (จาก potrace corner) เพื่อคงเส้นตรง/มุม
+        # 1) แซมป์ทุก segment เป็นจุดถี่ (px source)
         cur = (c.start_point.x, c.start_point.y)
-        pts = [(cur[0] / up, cur[1] / up)]; hard = [True]
+        pts = [(cur[0] / up, cur[1] / up)]
         for seg in c:
             e = (seg.end_point.x, seg.end_point.y)
             if seg.is_corner:
-                pts.append((seg.c.x / up, seg.c.y / up)); hard.append(True)   # มุมคม
-                pts.append((e[0] / up, e[1] / up));       hard.append(True)
+                pts.append((seg.c.x / up, seg.c.y / up)); pts.append((e[0] / up, e[1] / up))
             else:
                 c1 = (seg.c1.x, seg.c1.y); c2 = (seg.c2.x, seg.c2.y)
                 L = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1]) +
@@ -633,36 +632,30 @@ def _mask_to_smooth_subpaths(mask, min_area):
                     tt = i / float(N); mt = 1 - tt
                     pts.append(((mt**3*cur[0] + 3*mt*mt*tt*c1[0] + 3*mt*tt*tt*c2[0] + tt**3*e[0]) / up,
                                 (mt**3*cur[1] + 3*mt*mt*tt*c1[1] + 3*mt*tt*tt*c2[1] + tt**3*e[1]) / up))
-                    hard.append(False)
             cur = e
-        P = np.asarray(pts, float)
-        if len(P) < 4:
+        # 2) smooth วง (ลบ ripple) — ทำงานบนอาเรย์เดียว
+        P = _smooth_ring(pts, sig)
+        P = np.asarray(P, float)
+        if len(P) < 6:
             continue
-        # ปิดวง: ตัดจุดซ้ำท้าย
-        if np.hypot(*(P[0]-P[-1])) < 1e-6:
-            P = P[:-1]; hard = hard[:-1]
-        n = len(P)
-        idx = [i for i in range(n) if hard[i]]
-        segs = []
-        if len(idx) < 2:
-            # ไม่มีมุม -> โค้งล้วน: smooth วง + fit ปิด
-            r = _smooth_ring(P, sig)
-            sp = bezier_fit.fit_ring(r, max_error=0.6)
+        # 3) หามุมจริงจากเรขาคณิต (ไม่พึ่ง corner ของ potrace)
+        win = int(max(4, sig * 3)); cor = _detect_corners(P, win=win, ang_deg=30.0)
+        if len(cor) < 2:
+            sp = bezier_fit.fit_ring(P, max_error=0.6)   # ทั้งวงโค้ง (o, จุด)
             if sp and len(sp['segs']) >= 2:
                 subs.append(sp)
             continue
-        start = (float(P[idx[0]][0]), float(P[idx[0]][1]))
-        m = len(idx)
+        start = (float(P[cor[0]][0]), float(P[cor[0]][1]))
+        segs = []; m = len(cor)
         for k in range(m):
-            a = idx[k]; b = idx[(k+1) % m]
-            span = P[a:b+1] if b > a else np.vstack([P[a:], P[:b+1]])
-            if len(span) <= 2:
+            a = cor[k]; b = cor[(k + 1) % m]
+            span = P[a:b + 1] if b > a else np.vstack([P[a:], P[:b + 1]])
+            if len(span) < 3:
                 segs.append(('L', (float(P[b][0]), float(P[b][1])))); continue
-            sm = _smooth_open(span, sig)
-            if _is_straight(sm):
-                segs.append(('L', (float(sm[-1][0]), float(sm[-1][1]))))   # เส้นตรงเป๊ะ
+            if _is_straight(span, abs_tol=1.2):
+                segs.append(('L', (float(span[-1][0]), float(span[-1][1]))))   # ก้านตรง = ตรงเป๊ะ
             else:
-                for cseg in bezier_fit.fit_segments(sm, max_error=0.55):   # โค้งเนียน ทาบแน่น
+                for cseg in bezier_fit.fit_segments(span, max_error=0.55):     # โค้ง = Bézier ทาบแน่น
                     segs.append(cseg)
         if len(segs) >= 2:
             subs.append({'start': start, 'segs': segs, 'closed': True})
