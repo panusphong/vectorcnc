@@ -917,8 +917,8 @@ def _chaikin(pts, closed):
 
 
 # ---------- โหมด vtracer : เครื่องยนต์ vectorize สมัยใหม่ (เส้นตรง=line, โค้ง=spline, มุมคม) ----------
-def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=6,
-                  length_threshold=4.0, splice_threshold=45, path_precision=6):
+def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
+                  length_threshold=3.0, splice_threshold=45, path_precision=6):
     """คืน [(bgr, [subpaths])] — ใช้ vtracer (VisionCortex) คุณภาพเส้นตัดระดับมืออาชีพ
     เส้นตรง = ตรงจริง · โค้ง = spline เนียน · มุม = คม · ขนาดพิกัด = px ต้นฉบับ"""
     import tempfile, re
@@ -932,7 +932,22 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=6,
     if img is None:
         raise FileNotFoundError(image_path)
     import cv2 as _cv
-    tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, img)
+    # ---- เตรียมภาพ: binarize ครอบคลุม เก็บเส้นบาง/จาง + เชื่อมรอยขาดจาก JPEG ----
+    g = img
+    if g.ndim == 3:
+        g = _cv.cvtColor(g, _cv.COLOR_BGR2GRAY)
+    g = _cv.bilateralFilter(g, 7, 45, 45)
+    # พื้นหลัง = สว่างเด่นที่ขอบ -> ตั้ง threshold ให้จับเส้นที่เข้มกว่าพื้นเล็กน้อย (เก็บเส้นจาง)
+    border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])
+    bg = float(np.median(border))
+    if bg >= 128:                       # พื้นสว่าง วัตถุเข้ม
+        thr = max(40.0, bg - 45.0); mask = (g < thr).astype(np.uint8) * 255
+    else:                               # พื้นเข้ม วัตถุสว่าง
+        thr = min(215.0, bg + 45.0); mask = (g > thr).astype(np.uint8) * 255
+    k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (3, 3))
+    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, k)   # เชื่อมรอยขาดเส้นบาง
+    canvas = np.full(mask.shape, 255, np.uint8); canvas[mask > 0] = 0   # ดำบนขาว
+    tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, canvas)
     outsvg = tempfile.mktemp(suffix='.svg')
     vtracer.convert_image_to_svg_py(
         tf, outsvg, colormode='binary', mode='spline', hierarchical='stacked',
