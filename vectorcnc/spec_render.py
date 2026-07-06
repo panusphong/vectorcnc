@@ -165,7 +165,12 @@ def build_checksheet(ai_path, params=None, outdir='outputs', job_name='KFM', job
     params = params or {}
     w = float(params.get('real_width_cm', 80)) * 10.0
     h = float(params.get('real_height_cm', 45)) * 10.0
-    g = load_geometry(ai_path, real_w_mm=w, real_h_mm=h)
+    ext = os.path.splitext(str(ai_path))[1].lower()
+    if ext in ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff'):
+        from . import raster_geom as _rg
+        g = _rg.load_geometry_raster(ai_path, real_w_mm=w, real_h_mm=h, n_colors=int(params.get('n_colors', 4)))
+    else:
+        g = load_geometry(ai_path, real_w_mm=w, real_h_mm=h)
     gs = geom_summary(g)
     front_m, halo_m = led_lengths(g)
     install = params.get('install', 'indoor')
