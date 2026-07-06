@@ -400,6 +400,35 @@ def _potrace_nest(rings, min_area):
     return unary_union(polys) if polys else None
 
 
+def _resample_uniform(pts, step=1.0):
+    """แซมป์ใหม่ให้ระยะห่างเท่ากัน ~step px (ก่อน low-pass ตามเส้น)"""
+    P = np.asarray(pts, float)
+    if len(P) < 4:
+        return P
+    seg = np.hypot(*(P[1:] - P[:-1]).T)
+    d = np.concatenate([[0.0], np.cumsum(seg)])
+    if d[-1] < 2 * step:
+        return P
+    n = max(12, int(d[-1] / step))
+    u = np.linspace(0, d[-1], n, endpoint=False)
+    x = np.interp(u, d, P[:, 0]); y = np.interp(u, d, P[:, 1])
+    return np.stack([x, y], 1)
+
+
+def _smooth_ring(pts, sigma_px=3.0):
+    """Gaussian low-pass ตามแนวเส้นปิด — ลบ ripple/JPEG noise โดยไม่ดึงรูปเพี้ยน"""
+    try:
+        from scipy.ndimage import gaussian_filter1d
+    except Exception:
+        return pts
+    P = _resample_uniform(pts, 1.0)
+    if len(P) < max(12, int(sigma_px * 3)):
+        return pts
+    x = gaussian_filter1d(P[:, 0], sigma_px, mode='wrap')
+    y = gaussian_filter1d(P[:, 1], sigma_px, mode='wrap')
+    return np.stack([x, y], 1)
+
+
 def _mask_to_geom_potrace(mask, min_area):
     """mask (สี=nonzero) -> shapely geom ขอบ Bézier เนียน ด้วย potrace
     หมายเหตุ: potracer มองพิกเซล 0/False เป็น foreground -> ต้องกลับขั้ว (mask==0)"""
@@ -421,10 +450,12 @@ def _mask_to_geom_potrace(mask, min_area):
     turd = int(max(2, (min_area * up * up) ** 0.5))
     # opttolerance 2.0 + alphamax 1.3 = fit โค้ง Bézier ยาวเนียนที่สุด (ไม่มียึกยักแม้ซูม)
     path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=0.4)
+    _sig = max(2.0, min(6.0, max(H, W) / 500.0))   # ระดับ low-pass ตามความละเอียด (ลบ ripple)
     rings = []
     for c in path:
-        r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]   # potrace Bézier แซมป์ถี่ = คมเป๊ะ (ไม่ resmooth)
-        rings.append(r)
+        r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]
+        r = _smooth_ring(r, _sig)                  # ลบระลอก JPEG โดยไม่เพี้ยนรูป
+        rings.append([(float(a), float(b)) for a, b in r])
     return _potrace_nest(rings, min_area)
 
 
