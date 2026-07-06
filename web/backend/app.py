@@ -55,29 +55,6 @@ async def vectorize(
     data = await file.read()
     with open(inp, "wb") as f:
         f.write(data)
-    _isimg = str(inp).lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"))
-    # ---- raster + โหมด "ตัดชิ้น" -> เส้นโค้ง Bézier แท้ (คุณภาพ .ai) ----
-    if _isimg and str(mode).lower() == "cutout":
-        try:
-            from vectorcnc import bezier_vec
-            bz = bezier_vec.vectorize_bezier(inp, real_width_mm=float(real_width_mm),
-                                             n_colors=max(2, min(12, int(n_colors))), dxf_out=out_dxf)
-            dxf_b64 = ""
-            try:
-                with open(out_dxf, "rb") as f:
-                    dxf_b64 = base64.b64encode(f.read()).decode()
-            except Exception:
-                pass
-            return {
-                "svg": bz["svg_px"], "svg_mm": bz["svg_mm"], "dxf_base64": dxf_b64,
-                "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
-                "layers": bz["layers"], "rings": bz["rings"],
-                "layer_info": [{"color": "#2563EB"}],
-                "detected": {"kind": "logo", "notes": "เส้นโค้ง Bézier แท้ (potrace) คุณภาพ .ai"},
-                "used_mode": "cutout", "engine": bz["engine"],
-            }
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
     try:
         from vectorcnc import pipeline   # lazy: โหลด opencv เฉพาะตอนใช้งานจริง
         rep = pipeline.process_cnc(
