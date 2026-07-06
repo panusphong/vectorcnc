@@ -38,8 +38,8 @@ def _bbox(items):
         for sp in subs:
             xs.append(sp['start'][0]); ys.append(sp['start'][1])
             for s in sp['segs']:
-                for pt in s[1:]:
-                    xs.append(pt[0]); ys.append(pt[1])
+                pt = s[-1]            # จุดปลายบนเส้นจริง (ไม่รวม control point ที่พุ่งเกิน)
+                xs.append(pt[0]); ys.append(pt[1])
     return min(xs), min(ys), max(xs), max(ys)
 
 
@@ -73,7 +73,7 @@ def _dxf(all_subs_mm, Hmm, path):
 def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None):
     """คืน dict: svg_px, svg_mm, dxf_path, width_mm, height_mm, layers, rings
     เส้นโค้ง Bézier แท้ (เหมือน .ai) — ขนาดจริงจาก ppm เป๊ะ"""
-    items = te.trace_color_smooth_bezier(image_path, n_colors=max(2, min(12, int(n_colors))))
+    items = te.trace_vtracer(image_path, n_colors=max(2, min(12, int(n_colors))))
     if not items:
         raise ValueError('ไม่พบรูปทรงสำหรับแปลงเป็นเส้นตัด')
     mnx, mny, mxx, mxy = _bbox(items)
@@ -95,5 +95,5 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None)
     return {
         'svg_px': svg_px, 'svg_mm': svg_mm, 'dxf_path': dxf_out,
         'width_mm': round(Wmm, 1), 'height_mm': round(Hmm, 1),
-        'layers': len(items), 'rings': nrings, 'engine': 'bezier (potrace)',
+        'layers': len(items), 'rings': nrings, 'engine': 'vtracer (line+spline)',
     }

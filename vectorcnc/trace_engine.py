@@ -914,3 +914,71 @@ def _chaikin(pts, closed):
     if not closed:
         q = np.vstack([p[0], q, p[-1]])
     return q
+
+
+# ---------- โหมด vtracer : เครื่องยนต์ vectorize สมัยใหม่ (เส้นตรง=line, โค้ง=spline, มุมคม) ----------
+def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=6,
+                  length_threshold=4.0, splice_threshold=45, path_precision=6):
+    """คืน [(bgr, [subpaths])] — ใช้ vtracer (VisionCortex) คุณภาพเส้นตัดระดับมืออาชีพ
+    เส้นตรง = ตรงจริง · โค้ง = spline เนียน · มุม = คม · ขนาดพิกัด = px ต้นฉบับ"""
+    import tempfile, re
+    import vtracer
+    from svgpathtools import parse_path
+    from . import analyze
+    # อ่าน + วางบนพื้นขาวทึบ (กัน alpha ทำ threshold เพี้ยน)
+    img = analyze.load_image(image_path)
+    if img is None:
+        import cv2 as _cv; img = _cv.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    import cv2 as _cv
+    tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, img)
+    outsvg = tempfile.mktemp(suffix='.svg')
+    vtracer.convert_image_to_svg_py(
+        tf, outsvg, colormode='binary', mode='spline', hierarchical='stacked',
+        filter_speckle=int(filter_speckle), corner_threshold=int(corner_threshold),
+        length_threshold=float(length_threshold), splice_threshold=int(splice_threshold),
+        path_precision=int(path_precision))
+    svg = open(outsvg, encoding='utf-8').read()
+    subs = []
+    for pm in re.finditer(r'<path\b([^>]*?)/>', svg, re.S):
+        tag = pm.group(1)
+        dm = re.search(r'd="([^"]+)"', tag)
+        if not dm:
+            continue
+        tx = ty = 0.0; sx = sy = 1.0
+        tt = re.search(r'translate\(\s*([-\d.eE]+)[ ,]+([-\d.eE]+)', tag)
+        if tt:
+            tx = float(tt.group(1)); ty = float(tt.group(2))
+        sc = re.search(r'scale\(\s*([-\d.eE]+)(?:[ ,]+([-\d.eE]+))?', tag)
+        if sc:
+            sx = float(sc.group(1)); sy = float(sc.group(2)) if sc.group(2) else sx
+        def X(pt):
+            return (pt.real * sx + tx, pt.imag * sy + ty)
+        try:
+            path = parse_path(dm.group(1))
+        except Exception:
+            continue
+        for sub in path.continuous_subpaths():
+            if len(sub) < 1:
+                continue
+            segs = []
+            st = X(sub[0].start)
+            for seg in sub:
+                cn = type(seg).__name__
+                if cn == 'Line':
+                    segs.append(('L', X(seg.end)))
+                elif cn == 'CubicBezier':
+                    segs.append(('C', X(seg.control1), X(seg.control2), X(seg.end)))
+                elif cn == 'QuadraticBezier':
+                    c1 = seg.start + (2.0/3.0)*(seg.control - seg.start)
+                    c2 = seg.end + (2.0/3.0)*(seg.control - seg.end)
+                    segs.append(('C', X(c1), X(c2), X(seg.end)))
+                elif cn == 'Arc':
+                    for t in (0.25, 0.5, 0.75, 1.0):
+                        segs.append(('L', X(seg.point(t))))
+            if segs:
+                subs.append({'start': st, 'segs': segs, 'closed': True})
+    if not subs:
+        raise ValueError('vtracer ไม่พบรูปทรง')
+    return [((0, 0, 0), subs)]
