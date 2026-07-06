@@ -56,7 +56,7 @@ async def vectorize(
     with open(inp, "wb") as f:
         f.write(data)
     _isimg = str(inp).lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"))
-    # ---- raster + "ตัดชิ้น" -> Bézier แท้ เนียน infinite (potrace + low-pass + Schneider fit) ----
+    # ---- raster + "ตัดชิ้น" -> vtracer (เส้นตรง=line, โค้ง=spline, มุมคม) คุณภาพเวกเตอร์มืออาชีพ ----
     if _isimg and str(mode).lower() == "cutout":
         try:
             from vectorcnc import bezier_vec
@@ -72,7 +72,7 @@ async def vectorize(
                 "svg": bz["svg_px"], "svg_mm": bz["svg_mm"], "dxf_base64": dxf_b64,
                 "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
                 "layers": bz["layers"], "rings": bz["rings"], "layer_info": [{"color": "#2563EB"}],
-                "detected": {"kind": "logo", "notes": "Bézier แท้ เนียน infinite (Schneider fit) คุณภาพ .ai"},
+                "detected": {"kind": "logo", "notes": "vtracer engine — เส้นตรงตรง โค้งเนียน มุมคม"},
                 "used_mode": "cutout", "engine": bz["engine"],
             }
         except Exception as e:
