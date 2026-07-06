@@ -150,15 +150,15 @@ def _need_cairosvg():
     import cairosvg
     return cairosvg
 
-def render_all(g, outdir):
-    """สร้าง finished / exploded / led_plan / nesting (แยกโลหะ-อะคริลิค) เป็น PNG"""
+def render_all(g, outdir, prof=None):
+    """สร้าง finished / exploded / led_plan / nesting ตาม profile ประเภทป้าย"""
     from ._spec_draw import draw_finished, draw_exploded, draw_led_plan, draw_nesting_split
     os.makedirs(outdir, exist_ok=True)
     paths = {}
-    paths['finished'] = draw_finished(g, os.path.join(outdir, 'finished.png'))
-    paths['exploded'] = draw_exploded(g, os.path.join(outdir, 'exploded.png'))
-    paths['led_plan'] = draw_led_plan(g, os.path.join(outdir, 'led_plan.png'))
-    paths['nesting'] = draw_nesting_split(g, os.path.join(outdir, 'nesting.png'))
+    paths['finished'] = draw_finished(g, os.path.join(outdir, 'finished.png'), prof)
+    paths['exploded'] = draw_exploded(g, os.path.join(outdir, 'exploded.png'), prof)
+    paths['led_plan'] = draw_led_plan(g, os.path.join(outdir, 'led_plan.png'), prof)
+    paths['nesting'] = draw_nesting_split(g, os.path.join(outdir, 'nesting.png'), prof)
     return paths
 
 # ---------------- Check Sheet ----------------
@@ -177,14 +177,26 @@ def build_checksheet(ai_path, params=None, outdir='outputs', job_name='KFM', job
     else:
         g = load_geometry(ai_path, real_w_mm=w, real_h_mm=h)
     gs = geom_summary(g)
+    from . import sign_profiles as _prof
+    sign_type = str(params.get('sign_type', '4.3'))
+    P = _prof.get(sign_type)
     front_m, halo_m = led_lengths(g)
+    if not _prof.has_front(P): front_m = 0.0
+    if not _prof.has_halo(P): halo_m = 0.0
     install = params.get('install', 'indoor')
     series = 'RSP' if install == 'outdoor' else 'LRS'   # outdoor -> หม้อแปลงกันน้ำ
-    led_plan = _led.plan_two_systems(front_m, halo_m, series=series)
-    cost = _cost.build_cost_sheet(gs, led_plan, sign_type=params.get('sign_type', '4.3'),
+    if P['led'] == 'none':
+        led_plan = {'front_m': 0, 'halo_m': 0, 'front_w': 0, 'halo_w': 0, 'total_m': 0,
+                    'total_w': 0, 'need_w': 0, 'transformer': {}, 'rolls': 0}
+    elif P['led'] == 'neon':
+        neon_m = gs['letter_perim_mm'] / 1000.0
+        led_plan = _led.plan_two_systems(neon_m, 0.0, series=series)
+    else:
+        led_plan = _led.plan_two_systems(front_m, halo_m, series=series)
+    cost = _cost.build_cost_sheet(gs, led_plan, sign_type=sign_type,
                                  qty_sets=int(params.get('qty_sets', 1)), params=params)
-    imgs = render_all(g, outdir)
-    html = _checksheet_html(imgs, cost, gs, led_plan, job_name, job_id)
+    imgs = render_all(g, outdir, P)
+    html = _checksheet_html(imgs, cost, gs, cost['led'], job_name, job_id)
     outp = os.path.join(outdir, 'KFM_BOM_CheckSheet.html')
     with open(outp, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -201,14 +213,35 @@ def _checksheet_html(imgs, cost, gs, led, job_name, job_id):
                 f'<td class="r">{r["unit_price"]}</td><td class="r">{r["qty"]}</td>'
                 f'<td class="r money">{cost}</td></tr>')
     tbody = '\n'.join(tr(r) for r in cost['rows'])
+    prof = cost.get('profile', {}); pr = cost.get('params', {})
+    stype = cost.get('sign_type', '4.3'); sname = cost.get('sign_type_name', '')
+    subtitle = f"{sname} (กลุ่ม {stype}) &middot; {job_id}"
+    tl = [f"ขนาด {gs['width_mm']/10:.0f}&times;{gs['height_mm']/10:.0f} cm"]
+    yk = []
+    if prof.get('yk_outer'): yk.append(f"ขอบนอก {pr.get('yokkob_outer_cm',5):g}")
+    if prof.get('yk_letter'): yk.append(f"อักษร {pr.get('yokkob_letter_cm',7):g}")
+    if yk: tl.append("ยกขอบ " + "+".join(yk) + " cm")
+    ledmap = {'none': 'ไม่มีไฟ', 'front': 'ไฟออกหน้า', 'halo': 'ไฟออกหลัง halo',
+              'front+halo': 'ไฟหน้า+halo', 'neon': 'นีออนเฟล็กซ์'}
+    tl.append(ledmap.get(prof.get('led', 'none'), ''))
+    mm = {'metal_stainless': 'สแตนเลสทอง', 'metal_zinc': 'ซิงค์', 'metal_alu': 'อะลูมิเนียม', 'plaswood': 'พลาสวูด'}
+    tl.append(mm.get(pr.get('metal_cat', ''), ''))
+    tags = ''.join(f'<span class="tag">{t}</span>' for t in tl if t)
+    parts = []
+    if led.get('front_m', 0): parts.append(f"หน้า {led['front_m']}m/{led.get('front_w',0):.0f}W")
+    if led.get('halo_m', 0): parts.append(f"halo {led['halo_m']}m/{led.get('halo_w',0):.0f}W")
+    if led.get('neon_m', 0): parts.append(f"นีออน {led['neon_m']}m")
+    if parts:
+        tfn = (led.get('transformer', {}) or {}).get('name', '')
+        led_line = "ไฟ: " + " &middot; ".join(parts) + (f" &rarr; {tfn}" if tfn else "")
+    else:
+        led_line = "ป้ายนี้ไม่มีไฟ (ยกขอบอย่างเดียว)"
     return _TPL.format(
-        job=job_name, jobid=job_id, W=gs['width_mm']/10, H=gs['height_mm']/10,
+        job=job_name, jobid=job_id, subtitle=subtitle, tags=tags,
         fin=fin, exp=exp, ledp=ledp, nest=nest, tbody=tbody,
         material=f"{cost['material']:,}", labor_pct=int(cost['markup']['labor_oh']*100),
         labor=f"{cost['labor']:,}", dmg_pct=int(cost['markup']['damage']*100),
-        dmg=f"{cost['damage']:,}", total=f"{cost['total']:,}",
-        led_line=(f"ไฟ 2 ระบบ — หน้า {led['front_m']}m {led['front_w']}W (ตัวอักษร+ใบไม้+ก้าน หนุน 2cm ห่างอะคริลิค 5cm) · "
-                  f"หลัง halo {led['halo_m']}m {led['halo_w']}W (รอบขอบวงรี วอร์ม) · รวม {led['total_m']}m {led['total_w']}W → {led['transformer']['name']}"),
+        dmg=f"{cost['damage']:,}", total=f"{cost['total']:,}", led_line=led_line,
     )
 
 _TPL = '''<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -242,14 +275,14 @@ tr:nth-child(even) td{{background:#fbfdff}}
 .muted{{color:#64748b}}.plus{{color:#c2410c;font-weight:600}}.note{{font-size:11.5px;color:#64748b;margin-top:8px;font-weight:300}}
 </style></head><body><div class="sheet">
 <div class="hd"><h1>BOM Check Sheet — {job}</h1>
-<div class="sub">ป้ายตัวอักษรไฟออกหน้า ยกขอบ (กลุ่ม 4.3) · {jobid}</div>
-<div class="tags"><span class="tag">ขนาด {W:.0f}×{H:.0f} cm</span><span class="tag">ยกขอบ 5+7 cm</span><span class="tag">ไฟหน้า+หลัง halo</span><span class="tag">สแตนเลสทอง</span></div></div>
+<div class="sub">{subtitle}</div>
+<div class="tags">{tags}</div></div>
 <div class="sec finish"><h2 style="justify-content:center">ภาพสินค้าประกอบเสร็จ (Finished Product)</h2>
 <img src="data:image/png;base64,{fin}"></div>
 <div class="sec"><h2>ภาพแยกชั้น · การวางไฟ · Nesting (แยกโลหะ/อะคริลิค)</h2>
-<div class="imgcard"><div class="cap">แยกชั้นประกอบ — ① แผ่นหลัง+ขอบ5cm+halo · ② ยกขอบ ตัวอักษร+กิ่ง+ใบไม้ 7cm (โบ๋หน้า) · ③ อะคริลิคเฉพาะ ตัวอักษร+กิ่ง+ใบไม้ · ④ คิ้วเจาะโบ๋ 0.7cm</div><img src="data:image/png;base64,{exp}"></div>
-<div class="imgcard"><div class="cap">แนวการวางไฟ LED — ไฟหน้า (ตัวอักษร+ใบไม้+ก้าน) · ไฟหลัง halo อยู่ที่แผ่นฐาน</div><img src="data:image/png;base64,{ledp}"></div>
-<div class="imgcard"><div class="cap">Nesting การตัด — แยก 2 ส่วน: ตัดโลหะ (สแตนเลส) | ตัดอะคริลิค (คนละไฟล์)</div><img src="data:image/png;base64,{nest}"></div></div>
+<div class="imgcard"><div class="cap">แยกชั้นประกอบ (ตามประเภทป้าย)</div><img src="data:image/png;base64,{exp}"></div>
+<div class="imgcard"><div class="cap">แนวการวางไฟ LED (ตามประเภทป้าย)</div><img src="data:image/png;base64,{ledp}"></div>
+<div class="imgcard"><div class="cap">Nesting การตัด — แยกไฟล์ตามวัสดุ</div><img src="data:image/png;base64,{nest}"></div></div>
 <div class="sec"><h2>รายการวัสดุ (BOM) — เชื่อม ItemMaster</h2>
 <table><thead><tr><th>No.</th><th>รายการ</th><th>ขนาด/สเปก</th><th>วัสดุ</th><th>ItemCode</th><th class="r">ราคา/หน่วย</th><th class="r">ปริมาณ</th><th class="r">฿</th></tr></thead>
 <tbody>{tbody}</tbody></table>
