@@ -218,7 +218,7 @@ def _detect_corners(P, win=7, ang_deg=30.0):
     return sorted(set(cor))
 
 
-def _smooth_open(seg, smooth_px=1.2):
+def _smooth_open(seg, smooth_px=0.35):
     """fit smoothing B-spline บนช่วงโค้ง (เปิด) -> เฉลี่ย noise เป็นเส้นโค้งลื่น
     clamp ปลายทั้งสองให้ต่อเนื่องกับ segment ข้างเคียง"""
     if len(seg) < 7:
@@ -236,7 +236,7 @@ def _smooth_open(seg, smooth_px=1.2):
         return [(float(p[0]), float(p[1])) for p in seg[:-1]]
 
 
-def _smooth_closed(P, smooth_px=1.2):
+def _smooth_closed(P, smooth_px=0.35):
     """smoothing B-spline แบบวงปิด (สำหรับวงที่ไม่มีมุม เช่น o / จุด i)"""
     n = len(P)
     if n < 10:
@@ -409,18 +409,18 @@ def _mask_to_geom_potrace(mask, min_area):
         m = m.astype(np.uint8)
     H, W = m.shape[:2]
     # อัปสเกลให้ด้านยาว ~3200px (ลดขนาดขั้นบันไดพิกเซลบนเส้นโค้งลาด) + เบลอลบ aliasing
-    up = min(3.4, max(1.0, 3600.0 / max(H, W)))
+    up = min(4.0, max(1.0, 4000.0 / max(H, W)))
     if up > 1.01:
         m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
     m = cv2.bilateralFilter(m, 9, 60, 60)             # ลบ noise ขอบ (JPEG) รักษาขอบคม
-    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.6)  # sigma โต -> ขอบเนียน แต่มุมคมยังอยู่
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 0.8)  # เบลอบางๆ ลบ aliasing แต่ไม่ทำให้เพี้ยน
     _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
     bw = (m == 0)                                     # potracer: 0/False = foreground
     if bw.all() or (~bw).all():
         return None
     turd = int(max(2, (min_area * up * up) ** 0.5))
     # opttolerance 2.0 + alphamax 1.3 = fit โค้ง Bézier ยาวเนียนที่สุด (ไม่มียึกยักแม้ซูม)
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.34, opttolerance=2.6)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
     rings = []
     for c in path:
         r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]
@@ -466,7 +466,7 @@ def _mask_to_subpaths(mask, min_area):
     if m.dtype != np.uint8:
         m = m.astype(np.uint8)
     H, W = m.shape[:2]
-    up = min(3.4, max(1.0, 3600.0 / max(H, W)))
+    up = min(4.0, max(1.0, 4000.0 / max(H, W)))
     if up > 1.01:
         m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
     m = cv2.bilateralFilter(m, 9, 60, 60)
@@ -476,7 +476,7 @@ def _mask_to_subpaths(mask, min_area):
     if bw.all() or (~bw).all():
         return []
     turd = int(max(2, (min_area * up * up) ** 0.5))
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.34, opttolerance=2.6)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.0, opttolerance=0.2)
     subs = []
     for c in path:
         sp = _potrace_curve_to_subpath(c, up)
