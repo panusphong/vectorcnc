@@ -22,6 +22,11 @@ from . import bom as _bom
 from . import cost as _cost
 from . import led as _led
 
+def _ext_len(poly):
+    """ความยาวเส้นรอบรูปแบบกัน MultiPolygon/ว่าง"""
+    if poly is None or poly.is_empty: return 0.0
+    return sum(q.exterior.length for q in (poly.geoms if poly.geom_type=='MultiPolygon' else [poly]))
+
 # ---------------- geometry extraction ----------------
 def _cub(a, c1, c2, e, t):
     m = 1 - t
@@ -106,7 +111,7 @@ def _p_from(g, sc, mnx, mny):  # placeholder (unused)
 def geom_summary(g):
     u = g['u2mm']
     def Am(p): return (p.area if hasattr(p, 'area') else 0) * u * u / 1e6
-    def Lm(p): return p.exterior.length * u
+    def Lm(p): return _ext_len(p) * u
     LET, LEAF, RINGS, KW, OVAL, WLEAF = g['LET'], g['LEAF'], g['RINGS'], g['KW'], g['OVAL'], g['WLEAF']
     acr = unary_union(LET + RINGS + WLEAF).buffer(3).buffer(-3)
     return {
@@ -137,7 +142,7 @@ def led_lengths(g):
                     break
         return t
     front = (sum(fill(p) for p in LET+LEAF) + sum(p.exterior.length for p in RINGS)/2) * u/1000
-    halo = (OVAL.buffer(-8).exterior.length + OVAL.buffer(-22).exterior.length) * u/1000
+    halo = (_ext_len(OVAL.buffer(-8)) + _ext_len(OVAL.buffer(-22))) * u/1000
     return round(front, 2), round(halo, 2)
 
 # ---------------- rendering (SVG -> PNG) ----------------

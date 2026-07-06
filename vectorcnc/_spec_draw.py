@@ -108,9 +108,11 @@ def draw_exploded(g, outpath):
     PH = 50*MM
     PL += wallf(list(OVAL.exterior.coords), 0, PH, '#e79bb0', 0.95, '#e11d48', 0.5)
     PL.append(facepath(OVAL, PH, '#f3b9c8', '#e11d48', 0.97))
-    for off in (OVAL.buffer(-8), OVAL.buffer(-22)):
-        dd = 'M ' + ' L '.join(f'{iso(x,y,PH)[0]:.1f},{iso(x,y,PH)[1]:.1f}' for x, y in off.exterior.coords) + ' Z'
-        PL.append(f'<path d="{dd}" fill="none" stroke="#d97324" stroke-width="2.2" stroke-dasharray="7,5"/>')
+    for offp in (OVAL.buffer(-8), OVAL.buffer(-22)):
+        if offp.is_empty: continue
+        for off in (offp.geoms if offp.geom_type == 'MultiPolygon' else [offp]):
+            dd = 'M ' + ' L '.join(f'{iso(x,y,PH)[0]:.1f},{iso(x,y,PH)[1]:.1f}' for x, y in off.exterior.coords) + ' Z'
+            PL.append(f'<path d="{dd}" fill="none" stroke="#d97324" stroke-width="2.2" stroke-dasharray="7,5"/>')
     PL.append(LAB('1. BACK PLATE + 5cm EDGE + halo', PH*0.5, '#e11d48'))
     z2 = PH+GAP; RH = 70*MM; anchor(z2)
     BLUE = acr_sil(g)

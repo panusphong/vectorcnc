@@ -38,7 +38,7 @@ def _close_color(a, b, thr=28):
     return float(np.abs(np.array(a, float) - np.array(b, float)).max()) <= thr
 
 
-def prep_image(image_path, min_dim=1500, max_dim=3400):
+def prep_image(image_path, min_dim=1800, max_dim=3400):
     """เตรียมภาพให้คมก่อน trace: อัปสเกลภาพเล็ก + ลด noise รักษาขอบ (bilateral)
     คืน path ไฟล์ที่เตรียมแล้ว (ถ้าไม่ต้องแก้ คืน path เดิม). สเกล mm ไม่เพี้ยนเพราะ
     ppm = W/real_width_mm ปรับตาม W ที่เปลี่ยนไปเอง."""
@@ -409,18 +409,18 @@ def _mask_to_geom_potrace(mask, min_area):
         m = m.astype(np.uint8)
     H, W = m.shape[:2]
     # อัปสเกลให้ด้านยาว ~3200px (ลดขนาดขั้นบันไดพิกเซลบนเส้นโค้งลาด) + เบลอลบ aliasing
-    up = min(3.0, max(1.0, 3200.0 / max(H, W)))
+    up = min(3.4, max(1.0, 3600.0 / max(H, W)))
     if up > 1.01:
         m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
     m = cv2.bilateralFilter(m, 9, 60, 60)             # ลบ noise ขอบ (JPEG) รักษาขอบคม
-    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.4)  # sigma โต -> ขอบเนียน แต่มุมคมยังอยู่
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.6)  # sigma โต -> ขอบเนียน แต่มุมคมยังอยู่
     _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
     bw = (m == 0)                                     # potracer: 0/False = foreground
     if bw.all() or (~bw).all():
         return None
     turd = int(max(2, (min_area * up * up) ** 0.5))
     # opttolerance 2.0 + alphamax 1.3 = fit โค้ง Bézier ยาวเนียนที่สุด (ไม่มียึกยักแม้ซูม)
-    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.3, opttolerance=2.0)
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.34, opttolerance=2.6)
     rings = []
     for c in path:
         r = [(x / up, y / up) for x, y in _sample_potrace_curve(c)]
@@ -438,6 +438,97 @@ def _mask_to_geom_smooth(mask, eps, min_area):
     except Exception:
         pass
     return _mask_to_geom(mask, eps, min_area)
+
+
+# ---------- โหมด Bézier : เก็บเส้นโค้งจาก potrace (คุณภาพ Illustrator) ----------
+def _potrace_curve_to_subpath(curve, up=1.0):
+    """potrace curve -> subpath {start,segs:[('L',pt)|('C',c1,c2,e)],closed} (เก็บ Bézier)"""
+    p0 = curve.start_point
+    start = (p0.x / up, p0.y / up)
+    segs = []
+    for s in curve:
+        e = (s.end_point.x, s.end_point.y)
+        if s.is_corner:
+            c = (s.c.x, s.c.y)
+            segs.append(('L', (c[0] / up, c[1] / up)))
+            segs.append(('L', (e[0] / up, e[1] / up)))
+        else:
+            c1 = (s.c1.x, s.c1.y); c2 = (s.c2.x, s.c2.y)
+            segs.append(('C', (c1[0] / up, c1[1] / up),
+                         (c2[0] / up, c2[1] / up), (e[0] / up, e[1] / up)))
+    return {'start': start, 'segs': segs, 'closed': True}
+
+
+def _mask_to_subpaths(mask, min_area):
+    """mask (สี=nonzero) -> subpaths Bézier ด้วย potrace (prep เหมือน _mask_to_geom_potrace)"""
+    import potrace
+    m = np.asarray(mask)
+    if m.dtype != np.uint8:
+        m = m.astype(np.uint8)
+    H, W = m.shape[:2]
+    up = min(3.4, max(1.0, 3600.0 / max(H, W)))
+    if up > 1.01:
+        m = cv2.resize(m, None, fx=up, fy=up, interpolation=cv2.INTER_CUBIC)
+    m = cv2.bilateralFilter(m, 9, 60, 60)
+    m = cv2.GaussianBlur(m, (0, 0), sigmaX=up * 1.4)
+    _, m = cv2.threshold(m, 127, 255, cv2.THRESH_BINARY)
+    bw = (m == 0)
+    if bw.all() or (~bw).all():
+        return []
+    turd = int(max(2, (min_area * up * up) ** 0.5))
+    path = potrace.Bitmap(bw).trace(turdsize=turd, alphamax=1.34, opttolerance=2.6)
+    subs = []
+    for c in path:
+        sp = _potrace_curve_to_subpath(c, up)
+        if len(sp['segs']) >= 2:
+            subs.append(sp)
+    return subs
+
+
+def trace_color_bezier(image_path, n_colors=6, filter_speckle=8):
+    """คืน [(bgr, [subpaths])] ต่อสี — เก็บ Bézier ของ potrace (ไม่ sample เป็น polyline)"""
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    H, W = img.shape[:2]
+    sm = cv2.bilateralFilter(img, 7, 45, 45)
+    K = int(max(2, min(n_colors, 10)))
+    sw = 600
+    small = cv2.resize(sm, (sw, max(1, int(sw * H / W))), interpolation=cv2.INTER_AREA) if W > sw else sm
+    Z = small.reshape(-1, 3).astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 15, 1.0)
+    _, _, centers = cv2.kmeans(Z, K, None, crit, 2, cv2.KMEANS_PP_CENTERS)
+    centers = centers.astype(np.float32)
+
+    flat = sm.reshape(-1, 3).astype(np.float32)
+    best = np.zeros(flat.shape[0], np.int32)
+    bestd = None
+    for k in range(K):
+        dk = ((flat - centers[k]) ** 2).sum(1)
+        if bestd is None:
+            bestd = dk
+        else:
+            mm = dk < bestd
+            bestd = np.where(mm, dk, bestd)
+            best = np.where(mm, k, best)
+    labels = best.reshape(H, W)
+    border = np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
+    bg = int(np.bincount(border, minlength=K).argmax())
+
+    min_area = max(40.0, W * H * 8e-6)
+    ker = np.ones((3, 3), np.uint8)
+    items = []
+    for k in range(K):
+        if k == bg:
+            continue
+        mask = (labels == k).astype(np.uint8) * 255
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, ker)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, ker)
+        subs = _mask_to_subpaths(mask, min_area)
+        if subs:
+            c = centers[k]
+            items.append(((int(c[0]), int(c[1]), int(c[2])), subs))
+    return items
 
 
 # ---------- โหมด photo : VTracer (สำหรับภาพถ่าย/ไล่เฉด) ----------
