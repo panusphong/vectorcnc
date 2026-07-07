@@ -1054,6 +1054,12 @@ function wallDraw(){
     if($('wLabels').checked){ g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore(); }
     var bw=blk.fw*s.Wm, bh=blk.fh*s.Hm, lw=let_.fw*s.Wm, lh=let_.fh*s.Hm;
     var mL=blk.fx*s.Wm, mR=(1-(blk.fx+blk.fw))*s.Wm, mT=blk.fy*s.Hm, mB=(1-(blk.fy+blk.fh))*s.Hm;
+    if($('wLabels').checked){ var _bxr=BX(blk), amb='#f59e0b', _bcx=_bxr.x+_bxr.w/2, _bcy=_bxr.y+_bxr.h/2;
+      if(_bxr.x-M>16) _wDimH(g,M,_bxr.x,_bcy,mL.toFixed(1)+' cm',amb);
+      if((M+ww)-(_bxr.x+_bxr.w)>16) _wDimH(g,_bxr.x+_bxr.w,M+ww,_bcy,mR.toFixed(1)+' cm',amb);
+      if(_bxr.y-M>16) _wDimV(g,M,_bxr.y,_bcx,mT.toFixed(1)+' cm',amb);
+      if((M+wh)-(_bxr.y+_bxr.h)>16) _wDimV(g,_bxr.y+_bxr.h,M+wh,_bcx,mB.toFixed(1)+' cm',amb);
+    }
     var HH='<div style="background:var(--grad);border-radius:10px;padding:11px;color:#fff;margin-bottom:8px"><div style="font-size:11px;opacity:.92">ความสูงตัวอักษร (กรอบน้ำเงิน)</div><div style="font-weight:800;margin-top:2px"><span style="font-size:26px">'+lh.toFixed(1)+'</span> <span style="font-size:12px;opacity:.85">ซม.</span><span style="float:right;font-size:12px;opacity:.9;margin-top:12px">กว้างตัว '+lw.toFixed(1)+' ซม.</span></div></div>';
     HH+='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><td style="color:#e11d48;font-weight:700;padding:2px 0">■ บล็อกรวม (กรอบแดง)</td><td style="text-align:right"><b>'+bw.toFixed(1)+' x '+bh.toFixed(1)+' cm</b></td></tr></table>';
     HH+='<div style="font-size:11px;color:#8A99B5;margin-top:5px">ระยะขอบ (ซม.) ซ้าย <b>'+mL.toFixed(1)+'</b> · ขวา <b>'+mR.toFixed(1)+'</b> · บน <b>'+mT.toFixed(1)+'</b> · ล่าง <b>'+mB.toFixed(1)+'</b></div>';
