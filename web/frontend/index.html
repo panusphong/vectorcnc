@@ -178,6 +178,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
+    <button class="nav-btn" id="btnMeasure">📐 วัดขนาด</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -375,6 +376,64 @@ select.numin{cursor:pointer}
   </div>
 </div>
 <input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" style="display:none">
+<!-- ===== วัดขนาดตัวอักษรจากพื้นที่ (ฝังในหน้าหลัก) ===== -->
+<div class="modal" id="measOverlay"><div class="modal-card" style="max-width:900px;padding:0;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <div><b style="font-size:16px">📐 วัดขนาดตัวอักษรจากพื้นที่หน้าร้าน</b>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่พื้นที่ กว้าง×สูง → อัปโหลดภาพวางแบบ (ทั้งภาพ = พื้นที่) → ได้ขนาดตัวอักษรทันที ส่งเข้าประเมินราคาได้เลย</div></div>
+    <button class="csm-x" id="measClose" title="ปิด">✕</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0" class="meas-grid">
+    <div style="padding:20px;border-right:1px solid var(--line)">
+      <div style="display:flex;gap:12px">
+        <div style="flex:1"><label class="cslab">กว้างพื้นที่ (ซม.)</label><input class="numin" id="mAw" type="number" value="120" min="1" step="0.1"></div>
+        <div style="flex:1"><label class="cslab">สูงพื้นที่ (ซม.)</label><input class="numin" id="mAh" type="number" value="120" min="1" step="0.1"></div>
+      </div>
+      <label class="cslab" style="margin-top:12px">ภาพวางแบบ (ทั้งภาพ = ขอบเขตพื้นที่)</label>
+      <div class="drop" id="mDrop" style="margin-top:5px">ลากไฟล์มาวาง หรือคลิกเลือก<br><span style="font-size:11px">JPG · PNG · โปร่งใสได้</span>
+        <input id="mFile" type="file" accept="image/*" hidden></div>
+      <button class="btn primary" id="mGo" style="width:100%;margin-top:14px" disabled>วัดขนาด</button>
+      <div class="hint" style="margin-top:10px">💡 ให้กราฟิกตั้ง Artboard = ขนาดพื้นที่จริง แล้ววางอักษรตามตำแหน่ง → export เป็นภาพ ระบบจะคำนวณสัดส่วนให้เป๊ะ</div>
+      <div style="color:var(--red);font-size:13px;margin-top:8px" id="mErr"></div>
+    </div>
+    <div style="padding:20px">
+      <div id="mPrev" style="border-radius:12px;border:1px solid var(--line);background:var(--panel2);min-height:150px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:13px">ยังไม่มีภาพ</div>
+      <div id="mRes" style="display:none;margin-top:12px">
+        <div style="background:var(--grad);border-radius:12px;padding:14px;color:#fff">
+          <div style="font-size:12px;opacity:.92">ความสูงตัวอักษร (ตัวที่สูงสุด)</div>
+          <div style="font-weight:800;margin-top:2px"><span id="mLH" style="font-size:30px">–</span> <span style="font-size:13px;opacity:.85">ซม.</span>
+            <span style="float:right;font-size:12px;opacity:.9;margin-top:14px">กว้างตัว <b id="mLW">–</b> ซม.</span></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <div class="grp" style="flex:1"><div style="font-size:11px;color:var(--muted)">กว้างบล็อกอักษรรวม</div><div style="font-size:18px;font-weight:700"><span id="mBW">–</span> ซม.</div></div>
+          <div class="grp" style="flex:1"><div style="font-size:11px;color:var(--muted)">สูงบล็อกอักษรรวม</div><div style="font-size:18px;font-weight:700"><span id="mBH">–</span> ซม.</div></div>
+        </div>
+        <div class="hint" id="mMarg" style="margin-top:8px"></div>
+        <button class="btn primary" id="mToPrice" style="width:100%;margin-top:12px">🧮 เปิด App ประเมินราคา (ส่งขนาดอัตโนมัติ) →</button>
+        <button class="btn" id="mToCsheet" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📋 ใส่ขนาดลง BOM Check Sheet</button>
+        <div class="hint" id="mUser" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+<!-- ===== ประวัติการเข้าใช้ (Login CRM) ===== -->
+<div class="modal" id="logOverlay"><div class="modal-card" style="max-width:640px;padding:0;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <div><b style="font-size:16px">🕘 ประวัติการเข้าใช้งาน</b>
+      <div id="logWho" style="font-size:12px;color:var(--muted);margin-top:2px"></div></div>
+    <button class="csm-x" id="logClose" title="ปิด">✕</button>
+  </div>
+  <div style="padding:16px 20px">
+    <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+      <div><label class="cslab">ตั้งแต่</label><input class="numin" id="logFrom" type="date"></div>
+      <div><label class="cslab">ถึง</label><input class="numin" id="logTo" type="date"></div>
+      <button class="btn primary" id="logGo" style="padding:9px 16px">ดู</button>
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:auto"><input type="checkbox" id="logAll"> ทุกผู้ใช้</label>
+    </div>
+    <div id="logList" style="margin-top:14px;max-height:360px;overflow:auto"></div>
+    <div class="csm2-setbar" style="margin-top:12px">⚙ ลิงก์ Apps Script (Login CRM /exec):<input id="crmApiUrl" placeholder="วาง Web App URL ของชีต Login CRM ที่ลงท้าย /exec"><button class="btn ghost" id="crmApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
+  </div>
+</div></div>
 <script>
 var API='';
 var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc',lastDesignSvg='';
@@ -756,6 +815,113 @@ function csRun(){
     $('csFrame').srcdoc=j.html;
   }).catch(function(ex){ b.disabled=false; b.textContent='📋 สร้าง Check Sheet'; csMsg('ต่อ backend ไม่ได้: '+ex,true); });
 }
+
+// ---- 📐 วัดขนาด (ฝังในหน้าหลัก) + ส่งค่าไปประเมินราคา ----
+var PRICING_BASE='https://script.google.com/macros/s/AKfycbxhEXR2HHZrzggznK4DJFukCpVUT7DsrrHP_m4FQ_lPTrQKzu4_16s0VxQFPl2WxGK3vQ/exec';
+function _qp(k){try{return new URLSearchParams(location.search).get(k)||'';}catch(e){return'';}}
+var CURRENT_USER=_qp('u')||_qp('user')||_qp('username')||_qp('uid')||'';   // ชื่อผู้ใช้ที่ CRM Hub ส่งมาเปิด VectorCNC
+try{ if(CURRENT_USER){ sessionStorage.setItem('vcnc_user',CURRENT_USER); } else { CURRENT_USER=sessionStorage.getItem('vcnc_user')||''; } }catch(e){}
+(function(){ if(!CURRENT_USER) return; var nr=document.querySelector('.nav-right'); if(!nr) return;
+  var c=document.createElement('span'); c.id='userChip'; c.title='ดูประวัติการเข้าใช้';
+  c.style.cssText='display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);background:var(--panel2);border:1px solid var(--line);padding:7px 12px;border-radius:10px;cursor:pointer';
+  c.innerHTML='\u{1F464} <span class="unm">'+CURRENT_USER+'</span>';
+  c.onclick=function(){ openLogModal(); };
+  nr.insertBefore(c, nr.firstChild);
+  vcLoadNickname(); vcLogLogin();
+})();
+var measFile=null, measResult=null;
+function _updMUser(){var n=$('mUser');if(!n)return;n.innerHTML=CURRENT_USER?('👤 ผู้ใช้: <b style="color:var(--ink)">'+CURRENT_USER+'</b> — จะส่งไปกับคำขอประเมินราคา'):'⚠️ ไม่พบชื่อผู้ใช้จาก CRM Hub (เปิดหน้านี้ผ่านลิงก์ที่มี ?u=ชื่อผู้ใช้) — App ประเมินราคาจะให้ล็อกอินเอง';}
+if($('btnMeasure'))$('btnMeasure').onclick=function(){$('measOverlay').classList.add('show');_updMUser();};
+if($('measClose'))$('measClose').onclick=function(){$('measOverlay').classList.remove('show');};
+if($('mDrop')){
+  $('mDrop').onclick=function(){$('mFile').click();};
+  $('mFile').onchange=function(){if($('mFile').files[0])_mSet($('mFile').files[0]);};
+  ['dragover','dragenter'].forEach(function(e){$('mDrop').addEventListener(e,function(ev){ev.preventDefault();$('mDrop').classList.add('over');});});
+  ['dragleave','drop'].forEach(function(e){$('mDrop').addEventListener(e,function(ev){ev.preventDefault();$('mDrop').classList.remove('over');});});
+  $('mDrop').addEventListener('drop',function(ev){if(ev.dataTransfer.files[0])_mSet(ev.dataTransfer.files[0]);});
+}
+function _mSet(f){measFile=f;$('mDrop').innerHTML='📎 '+f.name+'<br><span style="font-size:11px;color:var(--brand)">พร้อมวัด</span>';$('mGo').disabled=false;}
+if($('mGo'))$('mGo').onclick=function(){
+  if(!measFile)return;
+  $('mErr').textContent='';$('mPrev').innerHTML='<div class="spinner"></div>';$('mRes').style.display='none';
+  $('mGo').disabled=true;$('mGo').textContent='กำลังวัด...';
+  var fd=new FormData();fd.append('file',measFile);fd.append('area_w_cm',$('mAw').value||'0');fd.append('area_h_cm',$('mAh').value||'0');
+  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    $('mGo').disabled=false;$('mGo').textContent='วัดขนาด';
+    if(j.error){$('mErr').textContent='ผิดพลาด: '+j.error;$('mPrev').innerHTML='ยังไม่มีภาพ';return;}
+    measResult=j;
+    $('mPrev').innerHTML='<img src="'+j.preview+'" style="width:100%;border-radius:12px;display:block">';
+    $('mLH').textContent=j.letter_h_cm;$('mLW').textContent=j.letter_w_cm;
+    $('mBW').textContent=j.block_w_cm;$('mBH').textContent=j.block_h_cm;
+    $('mMarg').innerHTML='ระยะขอบ (ซม.) ซ้าย <b>'+j.margin_left_cm+'</b> · ขวา <b>'+j.margin_right_cm+'</b> · บน <b>'+j.margin_top_cm+'</b> · ล่าง <b>'+j.margin_bottom_cm+'</b>';
+    $('mRes').style.display='block';
+  }).catch(function(e){$('mGo').disabled=false;$('mGo').textContent='วัดขนาด';$('mErr').textContent='เชื่อมต่อไม่ได้: '+e;});
+};
+if($('mToPrice'))$('mToPrice').onclick=function(){
+  if(!measResult)return;
+  var p=new URLSearchParams();
+  if(CURRENT_USER)p.set('u',CURRENT_USER);        // ส่ง username เท่านั้น (ไม่ส่งรหัสผ่านผ่าน URL)
+  p.set('src','vectorcnc');
+  p.set('letter_h_cm',measResult.letter_h_cm);p.set('letter_w_cm',measResult.letter_w_cm);
+  p.set('block_w_cm',measResult.block_w_cm);p.set('block_h_cm',measResult.block_h_cm);
+  p.set('area_w_cm',measResult.area_w_cm);p.set('area_h_cm',measResult.area_h_cm);
+  window.open(PRICING_BASE+'?'+p.toString(),'_blank');
+};
+if($('mToCsheet'))$('mToCsheet').onclick=function(){
+  if(!measResult)return;
+  if($('csW'))$('csW').value=measResult.block_w_cm;
+  if($('csH'))$('csH').value=measResult.block_h_cm;
+  $('measOverlay').classList.remove('show');
+  if($('btnCsheet'))$('btnCsheet').click();
+};
+
+
+// ---- 👤 ชื่อเล่นผู้ใช้ + เก็บ/ดูประวัติการเข้าใช้ (ผ่าน bridge ชีต Login CRM) ----
+var CRMAPI_KEY='saai_crm_api';
+function crmApiUrl(){ try{return localStorage.getItem(CRMAPI_KEY)||'';}catch(e){return '';} }
+function _crmCall(params, cb){ var base=crmApiUrl(); if(!base){ cb({ok:false,error:'no_url'}); return; }
+  csJsonp(base+(base.indexOf('?')<0?'?':'&')+params, cb); }
+function vcLoadNickname(){ if(!CURRENT_USER) return;
+  _crmCall('api=user&u='+encodeURIComponent(CURRENT_USER), function(j){
+    if(j&&j.ok&&j.nickname){ var c=$('userChip'); if(c){var n=c.querySelector('.unm'); if(n)n.textContent=j.nickname;} } }); }
+function vcLogLogin(){ if(!CURRENT_USER) return;
+  try{ var k='vcnc_logged_'+CURRENT_USER+'_'+new Date().toISOString().slice(0,10);
+       if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k,'1'); }catch(e){}
+  _crmCall('api=login&u='+encodeURIComponent(CURRENT_USER)+'&src=vectorcnc', function(){}); }
+function _today(){ return new Date().toISOString().slice(0,10); }
+function openLogModal(){
+  $('logOverlay').classList.add('show');
+  if($('crmApiUrl')) $('crmApiUrl').value=crmApiUrl();
+  $('logWho').textContent = CURRENT_USER ? ('ผู้ใช้: '+CURRENT_USER) : '';
+  if(!$('logFrom').value) $('logFrom').value=_today();
+  if(!$('logTo').value) $('logTo').value=_today();
+  vcLoadHistory();
+}
+function vcLoadHistory(){
+  var box=$('logList');
+  if(!crmApiUrl()){ box.innerHTML='<div class="csm2-empty">ยังไม่ได้ตั้งลิงก์ Apps Script (Login CRM) — วางด้านล่างแล้วกดบันทึก</div>'; return; }
+  box.innerHTML='<div style="text-align:center;padding:16px"><div class="spinner"></div></div>';
+  var all=$('logAll')&&$('logAll').checked;
+  var q='api=history&from='+($('logFrom').value||'')+'&to='+($('logTo').value||'');
+  if(!all && CURRENT_USER) q+='&u='+encodeURIComponent(CURRENT_USER);
+  _crmCall(q, function(j){
+    if(!j||!j.ok){ box.innerHTML='<div class="csm2-empty">โหลดไม่ได้: '+((j&&j.error)||'?')+'</div>'; return; }
+    var rows=j.rows||[];
+    if(!rows.length){ box.innerHTML='<div class="csm2-empty">— ไม่มีประวัติในช่วงที่เลือก —</div>'; return; }
+    box.innerHTML=rows.map(function(r){
+      var ini=(r.nickname||r.username||'?').charAt(0);
+      return '<div style="display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;background:var(--panel2)">'
+       +'<span style="width:34px;height:34px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:700;flex:0 0 auto">'+ini+'</span>'
+       +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">'+(r.nickname||r.username||'-')+(r.permission?' <span style="font-size:11px;color:var(--muted)">('+r.permission+')</span>':'')+'</div>'
+       +'<div style="font-size:11.5px;color:var(--muted)">'+(r.time||'')+(r.device?(' · '+r.device):'')+(r.src?(' · '+r.src):'')+'</div></div></div>';
+    }).join('');
+  });
+}
+if($('logClose'))$('logClose').onclick=function(){ $('logOverlay').classList.remove('show'); };
+if($('logGo'))$('logGo').onclick=vcLoadHistory;
+if($('logAll'))$('logAll').onchange=vcLoadHistory;
+if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(CRMAPI_KEY,($('crmApiUrl').value||'').trim());}catch(e){} vcLoadHistory(); vcLoadNickname(); };
+
 </script>
 </body>
 </html>
