@@ -287,30 +287,33 @@ def full_pieces_mm(path, real_width_mm=300.0, smooth=True):
             subs = []
             outers = []
             for sp in gsubs:
-                sub_mm = _sp_scale(sp, inv)               # เส้นต้นฉบับ หน่วยมม. (Y-down)
-                has_curve = any(s[0] == 'C' for s in sub_mm['segs'])
-                if smooth and not has_curve:
-                    # polyline ล้วน -> fit เส้นโค้งให้คม (คงมุมจริง, เบี่ยง < ~0.15มม.)
+                try:
+                    sub_mm = _sp_scale(sp, inv)           # เส้นต้นฉบับ หน่วยมม. (Y-down)
+                    has_curve = any(s[0] == 'C' for s in sub_mm['segs'])
+                    if smooth and not has_curve:
+                        # polyline ล้วน -> fit เส้นโค้งให้คม (คงมุมจริง, เบี่ยง < ~0.15มม.)
+                        try:
+                            from . import curvefit
+                            r = curvefit.smooth_ring(
+                                [sub_mm['start']] + [seg[1] for seg in sub_mm['segs']],
+                                err=0.08, corner_deg=18, dedup=0.03)
+                            if r:
+                                sub_mm = r
+                        except Exception:
+                            pass
+                    mm = _sp_flatten(sub_mm, 0.3)
+                    if len(mm) < 3:
+                        continue
+                    subs.append(sub_mm)
                     try:
-                        from . import curvefit
-                        r = curvefit.smooth_ring(
-                            [sub_mm['start']] + [s[1] for s in sub_mm['segs']],
-                            err=0.08, corner_deg=18, dedup=0.03)
-                        if r:
-                            sub_mm = r
+                        poly = Polygon(mm).buffer(0)
+                        if not poly.is_empty and poly.area > 1.0:
+                            outers.append(poly if poly.geom_type == 'Polygon'
+                                          else max(poly.geoms, key=lambda g: g.area))
                     except Exception:
                         pass
-                mm = _sp_flatten(sub_mm, 0.3)
-                if len(mm) < 3:
-                    continue
-                subs.append(sub_mm)
-                try:
-                    p = Polygon(mm).buffer(0)
-                    if not p.is_empty and p.area > 1.0:
-                        outers.append(p if p.geom_type == 'Polygon'
-                                      else max(p.geoms, key=lambda g: g.area))
                 except Exception:
-                    pass
+                    continue
             if not subs or not outers:
                 continue
             # footprint = เส้นนอกสุด (ตัน) -> ชิ้นไม่ถูกเจาะ, กรอบอยู่รวมกัน
