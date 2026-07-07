@@ -1,6 +1,6 @@
 """bezier_vec.py — vectorize ภาพ raster (JPG/PNG) เป็น "เส้นโค้ง Bézier แท้" เหมือน .ai
-ใช้ potrace (trace_color_bezier) -> subpaths cubic Bézier -> SVG (C) + DXF (SPLINE)
-คุณภาพเส้น = ระดับ Illustrator (โค้งคณิตศาสตร์ ไม่ใช่ polygon แซมป์)
+ใช้ vtracer (trace_vtracer) -> subpaths line+spline -> SVG (C/L) + DXF (SPLINE/LINE)
+ปรับขนาดจริงได้ 3 แบบ: กว้างป้าย / สูงป้าย / สูงตัวอักษร (สเกลทั้งชิ้น ไม่บิดสัดส่วน)
 """
 import math
 import ezdxf
@@ -43,6 +43,14 @@ def _bbox(items):
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _subpath_height(sp):
+    """ความสูง (px) ของ subpath เดียว จากจุดปลายจริง"""
+    ys = [sp['start'][1]]
+    for s in sp['segs']:
+        ys.append(s[-1][1])
+    return max(ys) - min(ys)
+
+
 def _svg(all_subs, W, H, stroke='#2563eb', unit=''):
     body = ''.join(f'<path d="{_d(sp)}"/>' for sp in all_subs if sp['segs'])
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.2f}{unit}" height="{H:.2f}{unit}" '
@@ -70,16 +78,40 @@ def _dxf(all_subs_mm, Hmm, path):
     return path
 
 
-def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None):
-    """คืน dict: svg_px, svg_mm, dxf_path, width_mm, height_mm, layers, rings
-    เส้นโค้ง Bézier แท้ (เหมือน .ai) — ขนาดจริงจาก ppm เป๊ะ"""
+def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
+                     size_by='width', size_value_mm=None):
+    """คืน dict: svg_px, svg_mm, dxf_path, width_mm, height_mm, letter_height_mm, ...
+    ปรับขนาดจริงได้ 3 โหมด (สเกลทั้งชิ้น ไม่บิดสัดส่วน):
+      size_by='width'  -> กว้างป้าย = size_value_mm (หรือ real_width_mm)
+      size_by='height' -> สูงป้าย  = size_value_mm
+      size_by='letter' -> สูงตัวอักษรที่สูงสุด = size_value_mm
+    """
     items = te.trace_vtracer(image_path, n_colors=max(2, min(12, int(n_colors))))
     if not items:
         raise ValueError('ไม่พบรูปทรงสำหรับแปลงเป็นเส้นตัด')
     mnx, mny, mxx, mxy = _bbox(items)
     Wpx = max(1.0, mxx - mnx); Hpx = max(1.0, mxy - mny)
-    ppm = Wpx / float(real_width_mm) if real_width_mm else 1.0    # px ต่อ มม.
-    Wmm = Wpx / ppm; Hmm = Hpx / ppm
+    letter_px = 1.0
+    for _, subs in items:
+        for sp in subs:
+            letter_px = max(letter_px, _subpath_height(sp))
+
+    mode = (size_by or 'width').lower()
+    try:
+        val = float(size_value_mm) if size_value_mm not in (None, '', 0) else 0.0
+    except Exception:
+        val = 0.0
+    if val <= 0:                                   # ไม่ได้ระบุค่า -> ใช้ความกว้างจาก real_width_mm
+        mode = 'width'; val = float(real_width_mm) if real_width_mm else 1200.0
+    if mode == 'height':
+        ppm = Hpx / val
+    elif mode == 'letter':
+        ppm = letter_px / val
+    else:
+        mode = 'width'; ppm = Wpx / val
+    if ppm <= 0:
+        ppm = 1.0
+    Wmm = Wpx / ppm; Hmm = Hpx / ppm; letter_mm = letter_px / ppm    # px ต่อ มม.
 
     subs_px = []; subs_mm = []; nrings = 0
     for _, subs in items:
@@ -95,5 +127,6 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None)
     return {
         'svg_px': svg_px, 'svg_mm': svg_mm, 'dxf_path': dxf_out,
         'width_mm': round(Wmm, 1), 'height_mm': round(Hmm, 1),
+        'letter_height_mm': round(letter_mm, 1), 'size_by': mode,
         'layers': len(items), 'rings': nrings, 'engine': 'vtracer (line+spline)',
     }
