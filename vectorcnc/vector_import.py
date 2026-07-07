@@ -98,7 +98,13 @@ def _extract_subpaths_pdf(path, filetype=None):
         R = page.rect
         W, H = float(R.width), float(R.height)
         layers = {}
-        for dr in page.get_drawings():
+        try:
+            _drawings = page.get_drawings()
+        except Exception:
+            _drawings = []
+        for di, dr in enumerate(_drawings):
+            if not isinstance(dr, dict):
+                continue
             ly = dr.get('layer') or '(default)'
             bucket = layers.setdefault(ly, [])
             cur = None; sp = None
@@ -107,6 +113,7 @@ def _extract_subpaths_pdf(path, filetype=None):
                 if sp and sp['segs']:
                     lp = _sp_last(sp)
                     sp['closed'] = abs(lp[0] - sp['start'][0]) < 1.0 and abs(lp[1] - sp['start'][1]) < 1.0
+                    sp['draw'] = di                       # กลุ่มเส้นที่มาจาก fill เดียวกัน (นอก+ใน = กรอบ)
                     bucket.append(sp)
 
             for it in dr.get('items', []):
@@ -123,12 +130,12 @@ def _extract_subpaths_pdf(path, filetype=None):
                 elif op == 're':
                     flush(); sp = None; cur = None
                     r = it[1]
-                    bucket.append({'start': (r.x0, r.y0), 'closed': True, 'segs': [
+                    bucket.append({'start': (r.x0, r.y0), 'closed': True, 'draw': di, 'segs': [
                         ('L', (r.x1, r.y0)), ('L', (r.x1, r.y1)), ('L', (r.x0, r.y1)), ('L', (r.x0, r.y0))]})
                 elif op == 'qu':
                     flush(); sp = None; cur = None
                     q = it[1]
-                    bucket.append({'start': (q.ul.x, q.ul.y), 'closed': True, 'segs': [
+                    bucket.append({'start': (q.ul.x, q.ul.y), 'closed': True, 'draw': di, 'segs': [
                         ('L', (q.ur.x, q.ur.y)), ('L', (q.lr.x, q.lr.y)), ('L', (q.ll.x, q.ll.y)), ('L', (q.ul.x, q.ul.y))]})
             flush()
         return layers, W, H
@@ -141,7 +148,7 @@ def _extract_subpaths_svg(path):
     paths, attrs, svg_attr = svg2paths2(path)
     xmin = ymin = 1e18; xmax = ymax = -1e18
     subs = []
-    for p in paths:
+    for pi, p in enumerate(paths):
         for sub in p.continuous_subpaths():
             if sub.length() < 0.5:
                 continue
@@ -165,7 +172,7 @@ def _extract_subpaths_svg(path):
                         z = seg.point(i / float(N)); segs.append(('L', (z.real, z.imag)))
                 st = _sp_last({'start': st, 'segs': segs})
             sp = {'start': (sub[0].start.real, sub[0].start.imag), 'segs': segs,
-                  'closed': bool(sub.isclosed())}
+                  'closed': bool(sub.isclosed()), 'draw': pi}
             subs.append(sp)
             for pt in _sp_points(sp):
                 xmin = min(xmin, pt[0]); xmax = max(xmax, pt[0]); ymin = min(ymin, pt[1]); ymax = max(ymax, pt[1])
@@ -250,38 +257,68 @@ def _load_layers(path):
     return None, 0.0, 0.0
 
 
-def full_pieces_mm(path, real_width_mm=300.0):
-    """แยกทุกชิ้น (closed subpath) เป็น dict {'poly': footprint(shapely,มม.), 'subs': [bezier subpath มม. Y-down]}
-    — สำหรับ Nesting คุณภาพ Illustrator: footprint ละเอียดเพื่อแพคชิด + subs เส้นโค้งจริงเพื่อตัดคม
+def full_pieces_mm(path, real_width_mm=300.0, smooth=True):
+    """แยก "ชิ้นตัดจริง" จากทุกเลเยอร์ที่ตัด — จัดกลุ่มตาม drawing (fill เดียวกัน):
+    เส้นนอก+เส้นในของ fill เดียว = "กรอบเดียว" (เช่น คิ้วตัวอักษร) ไม่ถูกฉีก
+      piece = {'poly': footprint(ตัน,มม.), 'subs': [ทุกเส้นของชิ้น มม. Y-down],
+               'layer', 'color', 'rgb'}
+    — แยกชั้นคนละสี + สมูทเส้น polyline ให้คม (ไม่เพี้ยน)
     """
     from shapely.geometry import Polygon
     layers, W, H = _load_layers(path)
     if not layers or W <= 0 or H <= 0:
         return []
-    keep = _auto_keep(layers, W, H)
+    keep = _auto_keep(layers, W, H)          # ทิ้งเลเยอร์ขยะ/annotation (เช่น 'g')
     if not keep:
         return []
-    best = max(keep, key=lambda ly: len(layers[ly]))     # เลเยอร์ละเอียดสุด = คิ้ว/ลายจริง
     ppm = W / float(real_width_mm) if real_width_mm else 1.0
     inv = 1.0 / ppm
+    kept_order = [ly for ly in layers if ly in keep]     # คงลำดับเลเยอร์ตามไฟล์
     pieces = []
-    for sp in layers[best]:
-        if not sp.get('closed'):
-            continue
-        sub_mm = _sp_scale(sp, inv)                       # เส้นโค้งจริง หน่วยมม.
-        pts = _sp_flatten(sp, max(0.18, 0.10 * ppm))      # footprint ละเอียด (chord ~0.1px)
-        mm = [(x * inv, y * inv) for x, y in pts]
-        if len(mm) < 3:
-            continue
-        try:
-            poly = Polygon(mm).buffer(0)
-        except Exception:
-            continue
-        if poly.is_empty or poly.area <= 1.0:
-            continue
-        if poly.geom_type == 'MultiPolygon':
-            poly = max(poly.geoms, key=lambda g: g.area)  # footprint = ชิ้นใหญ่สุด
-        pieces.append({'poly': poly, 'subs': [sub_mm]})
+    for ci, ly in enumerate(kept_order):
+        col = _PALETTE[ci % len(_PALETTE)]
+        rgb = _PALETTE_RGB[ci % len(_PALETTE_RGB)]
+        # จัดกลุ่ม subpath ปิด ตาม drawing (fill เดียวกัน = ชิ้นเดียว)
+        groups = {}
+        for sp in layers[ly]:
+            if sp.get('closed'):
+                groups.setdefault(sp.get('draw', id(sp)), []).append(sp)
+        for gsubs in groups.values():
+            subs = []
+            outers = []
+            for sp in gsubs:
+                sub_mm = _sp_scale(sp, inv)               # เส้นต้นฉบับ หน่วยมม. (Y-down)
+                has_curve = any(s[0] == 'C' for s in sub_mm['segs'])
+                if smooth and not has_curve:
+                    # polyline ล้วน -> fit เส้นโค้งให้คม (คงมุมจริง, เบี่ยง < ~0.15มม.)
+                    try:
+                        from . import curvefit
+                        r = curvefit.smooth_ring(
+                            [sub_mm['start']] + [s[1] for s in sub_mm['segs']],
+                            err=0.08, corner_deg=18, dedup=0.03)
+                        if r:
+                            sub_mm = r
+                    except Exception:
+                        pass
+                mm = _sp_flatten(sub_mm, 0.3)
+                if len(mm) < 3:
+                    continue
+                subs.append(sub_mm)
+                try:
+                    p = Polygon(mm).buffer(0)
+                    if not p.is_empty and p.area > 1.0:
+                        outers.append(p if p.geom_type == 'Polygon'
+                                      else max(p.geoms, key=lambda g: g.area))
+                except Exception:
+                    pass
+            if not subs or not outers:
+                continue
+            # footprint = เส้นนอกสุด (ตัน) -> ชิ้นไม่ถูกเจาะ, กรอบอยู่รวมกัน
+            outer = max(outers, key=lambda p: p.area)
+            foot = Polygon(outer.exterior)
+            if foot.is_empty or foot.area <= 1.0:
+                continue
+            pieces.append({'poly': foot, 'subs': subs, 'layer': ly, 'color': col, 'rgb': rgb})
     return pieces
 
 
