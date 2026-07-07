@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="max-width:1000px;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → export PDF/JPG · <b style="color:#16a34a">v2</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคาในตัว → export PDF/JPG · <b style="color:#16a34a">v3</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:300px 1fr;gap:0">
@@ -479,16 +479,14 @@ select.numin{cursor:pointer}
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <button class="btn" id="wToPrice" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">🧮 เปิด App ประเมินราคา (ส่งขนาดป้าย) →</button>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (realtime)</div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (ในตัว · realtime)</div>
         <label class="cslab">ประเภทป้าย</label>
-        <select class="numin" id="wPType"><option value="">— เลือก หรือกรอกราคาเอง —</option></select>
-        <label class="cslab" style="margin-top:8px">ราคาต่อ ตร.ม. (บาท)</label>
-        <input class="numin" id="wPPer" type="number" value="0" step="10">
-        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="wPLight"> ป้ายไฟ (+หม้อแปลง 1,000)</label>
-        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPColor"> สีไม่ใช่ขาว/ดำ (+1,500)</label>
-        <label class="cslab" style="margin-top:8px">โครงยึดป้าย</label><select class="numin" id="wPFrame"><option value="0">ไม่มีโครง</option><option value="1800">โครงเหล็ก (1,800/ตร.ม.)</option><option value="4800">โครงสแตนเลส (4,800/ตร.ม.)</option></select>
-        <div id="wPResult" style="margin-top:10px;background:var(--grad);color:#fff;border-radius:10px;padding:10px;font-size:13px">พื้นที่ – → <b>0 บาท</b></div>
-        <div class="csm2-setbar" style="margin-top:8px">⚙ ลิงก์ Apps Script (ตารางราคา /exec):<input id="wPApiUrl" placeholder="วาง /exec ของชีตราคา"><button class="btn ghost" id="wPApiSave" style="padding:5px 12px;font-size:11.5px">โหลดราคา</button></div>
+        <select class="numin" id="wPType"><option value="">— เลือกประเภทป้าย —</option></select>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="wPColor"> สีพิเศษ (ไม่ใช่ขาว/ดำ) +1,500</label>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPLight" disabled> ป้ายไฟ (+หม้อแปลง 1,000 · auto)</label>
+        <label class="cslab" style="margin-top:8px">โครงยึดป้าย</label><select class="numin" id="wPFrame"><option value="none">ไม่มีโครง</option><option value="steel">โครงเหล็ก (1,800/ตร.ม.)</option><option value="stainless">โครงสแตนเลส (4,800/ตร.ม.)</option></select>
+        <div id="wPResult" style="margin-top:10px;background:var(--grad);color:#fff;border-radius:10px;padding:10px;font-size:13px">เลือกประเภทป้าย → <b>0 บาท</b></div>
+        <button class="btn" id="wPCopy" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📋 คัดลอกใบเสนอราคา</button>
       </div>
       <div style="margin-top:12px">
         <button class="btn" id="wAddText" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">➕ เพิ่มกล่องข้อความ</button>
@@ -1188,27 +1186,55 @@ if($('wCut'))$('wCut').addEventListener('change',function(){ if(!_wallSignOrig)r
   else { _wallLoad(_wallSignOrig,'ภาพเต็ม (ไม่ตัดพื้นหลัง)'); }
 });
 var PRICEAPI_KEY='saai_price_api';
-function priceApiUrl(){ try{return localStorage.getItem(PRICEAPI_KEY)||'';}catch(e){return '';} }
 function wallSignAreaSqm(){ var s=wallSignReal(); var w,h; if(WMODE==='measure'){ w=measBoxes[0].fw*s.Wm; h=measBoxes[0].fh*s.Hm; } else { w=s.w; h=s.h; } return {w:w,h:h,sqm:(w*h)/10000}; }
+// ===== App ประเมินราคา ในตัว (embedded catalog + สูตรตรงกับ calcSignPrice · ไม่พึ่งแอปเดิม) =====
+var WCAT={"Print Blacklit Film":{"t":"f","p":720},"Print Blacklit Sticker":{"t":"f","p":720},"Print Photo Glossy":{"t":"f","p":720},"Print Canvas":{"t":"f","p":720},"Print Canvas + โครงไม้":{"t":"f","p":1800},"Print ไวนิล inkjet":{"t":"f","p":240},"Print ไวนิล UV":{"t":"f","p":480},"Print ไวนิล โปร่งแสง UV":{"t":"f","p":600},"Print ไวนิล + โครงไม้":{"t":"f","p":840},"Print ไวนิล + โครงเหล็ก":{"t":"f","p":2040},"Print ไวนิล พิมพ์ UV":{"t":"f","p":480},"Print ไวนิล พิมพ์ UV + โครงไม้":{"t":"f","p":1800},"Print ไวนิล พิมพ์ UV + โครงเหล็ก":{"t":"f","p":2400},"Print ไวนิลโปร่งแสง พิมพ์ Solvent":{"t":"f","p":600},"Print ไวนิลโปร่งแสง พิมพ์ Solvent + โครงไม้":{"t":"f","p":1200},"Print ไวนิลโปร่งแสง พิมพ์ Solvent + โครงเหล็ก":{"t":"f","p":2400},"Print ไวนิลโปร่งแสง พิมพ์ UV":{"t":"f","p":600},"Print ไวนิลโปร่งแสง พิมพ์ UV + โครงไม้":{"t":"f","p":1200},"Print ไวนิลโปร่งแสง พิมพ์ UV + โครงเหล็ก":{"t":"f","p":2400},"Print สติ๊กเกอร์ 3M -ij1220 เป็นแบบ Remove ได้":{"t":"f","p":960},"Print สติ๊กเกอร์ 3M -ij38 เหมาะสำหรับติดผนังที่พื้นผิวไม่เรียบ":{"t":"f","p":960},"Print สติ๊กเกอร์ C2":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC + ฟิวเจอร์บอร์ด 3 mm.":{"t":"f","p":600},"Print สติ๊กเกอร์ PP ฟิวเจอร์บอร์ด 5 mm.":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC + แผ่น HIP 1 mm.":{"t":"f","p":1080},"Print แผ่น HIP 1 mm. พิมพ์ UV":{"t":"f","p":1200},"Print สติ๊กเกอร์ PP PVC + แผ่นริจิ 0.4 mm.":{"t":"f","p":1200},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 10 mm.":{"t":"f","p":3600},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 3 mm.":{"t":"f","p":2400},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 5 mm.":{"t":"f","p":3000},"Print สติ๊กเกอร์ PP PVC + โฟมบอร์ด 5 mm.":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 20-30 cm.":{"t":"f","p":21600},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 31-50 cm.":{"t":"f","p":21600},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 51-70 cm.":{"t":"f","p":18000},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 71-100 cm.":{"t":"f","p":14400},"Print สติ๊กเกอร์ PVC + ฟิวเจอร์บอร์ด 5 mm.":{"t":"f","p":960},"Print สติ๊กเกอร์ PVC แบบทึบ-แบบใส":{"t":"f","p":720},"Print สติ๊กเกอร์ พิมพ์ UV":{"t":"f","p":1320},"สติ๊กเกอร์กล่องไฟ (Blacklit)":{"t":"f","p":600},"กล่องไฟ ผ้า 3P":{"t":"f","p":10800},"ป้ายไฟ Slim":{"t":"f","p":10800},"คอมโพสิต + โครงเหล็ก":{"t":"f","p":3600},"คอมโพสิต + ฉลุแผ่น + โครงเหล็ก":{"t":"f","p":4800},"โครง สแตนเลสยึดป้าย":{"t":"f","p":4800},"โครงเหล็กยึดป้าย":{"t":"f","p":1800},"แผ่นหลัง + พลาสวูด 10 mm":{"t":"f","p":3000},"แผ่นหลัง + พลาสวูด 5 mm":{"t":"f","p":1800},"แผ่นหลัง Metal Sheet":{"t":"f","p":3600},"ซิงค์-กล่องไฟไวนิล":{"t":"f","p":10800},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":18000},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":21600},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":15600},"ซิงค์-โลโก้-กล่องฉลุหน้า ไม่มีแขน ไม่มีไฟ":{"t":"f","p":12000},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":15600},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":18000},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":14400},"ซิงค์-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":10800},"ซิงค์-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":7200},"ซิงค์-แผ่นหลัง + โครงเหล็กทำสี":{"t":"f","p":3600},"ซิงค์-อักษรแบน":{"t":"t","ti":[24840,18360,14640,12240,10800,9480,8640,7920,7200,6480]},"ซิงค์-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[26520,19560,15600,12960,11520,10080,9240,8400,7680,6960]},"ซิงค์-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[44160,32520,26040,21600,19200,16800,15360,13920,12720,11520]},"ซิงค์-อักษรยกขอบ ไฟปิงปอง ไฟกระสุน":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[39840,29280,23400,19440,17280,15120,13920,12600,11520,10320]},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":23400},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":28080},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":20280},"สแตนเลสเงิน-โลโก้-กล่องฉลุหน้า ไม่มีแขน ไม่มีไฟ":{"t":"f","p":16224},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":20280},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":23400},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":18720},"สแตนเลสเงิน-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":14040},"สแตนเลสเงิน-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":9360},"สแตนเลสเงิน-กล่องไฟไวนิล":{"t":"f","p":32400},"สแตนเลสเงิน-แผ่นหลัง":{"t":"f","p":7200},"สแตนเลสเงิน พิมพ์ UV":{"t":"f","p":6000},"สแตนเลสเงิน-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[0,31680,25320,21120,18720,16440,15000,13680,12360,11160]},"สแตนเลสเงิน-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[34560,25320,20280,16920,15000,13200,12000,10920,9960,9000]},"สแตนเลสเงิน-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[43080,31680,25320,21120,18720,16440,15000,13680,12360,11160]},"สแตนเลสเงิน-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[71760,52800,42240,35160,31200,27360,24960,22680,20640,18600]},"สแตนเลสเงิน-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[57480,42240,33840,28080,24960,21840,20040,18120,16560,14880]},"สแตนเลสเงิน-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[71760,52800,42240,35160,31200,27360,24960,22680,20640,18600]},"สแตนเลสเงิน-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[48840,35880,28800,23880,21240,18600,17040,15480,14040,12720]},"สแตนเลสเงิน-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[51720,38040,30480,25320,22560,19680,18000,16320,14880,13440]},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":30420},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":36504},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":26364},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":26364},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":30420},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":24336},"สแตนเลสทอง-โรสโกลด์-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":18252},"สแตนเลสทอง-โรสโกลด์-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":12168},"สแตนเลสทอง -โรสโกลด์-กล่องไฟไวนิล":{"t":"f","p":33600},"สแตนเลสทอง-โรสโกลด์-อักษรแบน":{"t":"t","ti":[42000,30960,24840,20640,18360,16080,14640,13320,12120,10920]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[56040,41160,33000,27480,24360,21360,19560,17760,16080,14520]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[44880,33000,26400,21960,19560,17040,15600,14160,12960,11640]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[56040,41160,33000,27480,24360,21360,19560,17760,16080,14520]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[93360,68640,54960,45720,40560,35520,32520,29520,26880,24240]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[74640,54840,43920,36600,32520,28440,26040,23640,21480,19320]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[93360,68640,54960,45720,40560,35520,32520,29520,26880,24240]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[63480,46680,37320,31080,27600,24240,22080,20040,18240,16440]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[67200,49440,39600,32880,29280,25560,23400,21240,19320,17400]},"อลูมิเนียม-กล่องไฟไวนิล":{"t":"f","p":26400},"อลูมิเนียม-แผ่นหลังทำสี":{"t":"f","p":5400},"อะคริลิค 3 mm. พิมพ์ UV":{"t":"f","p":3000},"อะคริลิค 5 mm. พิมพ์ UV":{"t":"f","p":4200},"อะคริลิค 8 mm. พิมพ์ UV":{"t":"f","p":6000},"อะคริลิค 10 mm. พิมพ์ UV":{"t":"f","p":7800},"อะคริลิค-กล่องใสใส่ไฟนีออน":{"t":"f","p":14400},"อะคริลิค-ป้ายไฟนีออน เส้นคู่":{"t":"f","p":16800},"อะคริลิค-ป้ายไฟนีออน เส้นเดี่ยว":{"t":"f","p":12600},"อะคริลิค-อะคริลิค 5 mm. +Sticker ไม่มีไฟ":{"t":"f","p":6600},"อะคริลิค-อะคริลิค 5 mm. พิมพ์ UV มีไฟหลัง":{"t":"f","p":12000},"อะคริลิค-อะคริลิค 8 mm. +Sticker ไม่มีไฟ":{"t":"f","p":9600},"อะคริลิค-อะคริลิค 8 mm. พิมพ์ UV มีไฟหลัง":{"t":"f","p":14400},"อะคริลิค-อักษรอะคริลิค 5 mm. ไม่มีไฟ":{"t":"f","p":5400},"อะคริลิค-อักษรอะคริลิค 8 mm. ไม่มีไฟ":{"t":"f","p":8400},"อะคริลิค-อักษรอะคริลิค 10 mm. ไม่มีไฟ":{"t":"f","p":11400},"อักษร อะคริลิค ปั้มนูนขึ้นขอบไฟออกรอบ":{"t":"f","p":31200},"อักษร อะคริลิค ขึ้นขอบไฟออกรอบ":{"t":"f","p":31200},"พลาสวูด 3 mm. พิมพ์ UV":{"t":"f","p":2280},"พลาสวูด 5 mm. พิมพ์ UV":{"t":"f","p":2520},"พลาสวูด 10 mm พิมพ์ UV + ไดคัท":{"t":"f","p":4800},"พลาสวูด 10 mm. ไม่มีไฟ":{"t":"f","p":3600},"พลาสวูด 10 mm. เดินเส้นนีออนเฟล็กซ์ เส้นเดี่ยว":{"t":"f","p":12000},"พลาสวูด 10 mm. เดินเส้นนีออนเฟล็กซ์ เส้นคู่":{"t":"f","p":12000},"ตัวอักษรพลาสวูด 10 mm. +Sticker ไม่มีไฟ":{"t":"f","p":4800},"ตัวอักษรพลาสวูด 10 mm. ยกขอบ Stanless เงิน":{"t":"f","p":5400},"อักษรพลาสวูด 10 mm. ไฟออกหลัง":{"t":"f","p":5400},"อักษรพลาสวูด 10 mm. ไม่มีไฟ":{"t":"f","p":4800}};
+var WTIER=['10-15','16-20','21-25','26-30','31-35','36-40','41-45','46-50','51-55','55-80'];
+function wTierIdx(h){ if(h<16)return 0;if(h<21)return 1;if(h<26)return 2;if(h<31)return 3;if(h<36)return 4;if(h<41)return 5;if(h<46)return 6;if(h<51)return 7;if(h<55)return 8;return 9; }
+function wIsPrint(k){ return !!k&&(k.indexOf('\u0e1e\u0e34\u0e21\u0e1e\u0e4c')>=0||/print/i.test(k)); }
+function wIsLight(k){ if(!k)return false; if(k.indexOf('\u0e44\u0e21\u0e48\u0e21\u0e35\u0e44\u0e1f')>=0)return false; return k.indexOf('\u0e44\u0e1f')>=0||k.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0; }
+function wIsLetter(k){ return !!k&&k.indexOf('\u0e2d\u0e31\u0e01\u0e29\u0e23')>=0; }
+function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey){
+  var item=WCAT[itemKey]; if(!item)return {error:'\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22'};
+  if(wIsLetter(itemKey)&&heightM*100>60)return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21.)'};
+  var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey);
+  if(itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0 && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
+  var colorFee=(!isPrint&&colorSpecial)?1500:0;
+  var transFee=isLight?1000:0;
+  var frameRate={none:0,steel:1800,stainless:4800}[frameKey||'none']||0;
+  var rawArea=widthM*heightM;
+  var isLBN=(itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0||itemKey.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0);
+  var minA=isLBN&&rawArea>0&&rawArea<0.3; var billable=minA?0.3:rawArea;
+  var per=0,tier='\u2014';
+  if(item.t==='t'){ var ix=wTierIdx(parseFloat(letterHeightCm)||20); tier=WTIER[ix]+' cm'; per=item.ti[ix]||0; }
+  else per=item.p||0;
+  var material=billable*per, framePrice=billable*frameRate;
+  var rawTotal=material+colorFee+transFee+framePrice;
+  var minTot=isPrint&&rawTotal>0&&rawTotal<300; var total=minTot?300:rawTotal;
+  return {isPrint:isPrint,isLight:isLight,rawArea:rawArea,billable:billable,minA:minA,tier:tier,per:per,material:material,colorFee:colorFee,transFee:transFee,frameRate:frameRate,framePrice:framePrice,rawTotal:rawTotal,minTot:minTot,total:total,tiered:(item.t==='t')};
+}
+var _wLast=null;
 function wallPrice(){ if(!$('wPResult'))return; var a=wallSignAreaSqm(); var name=($('wPType')&&$('wPType').value)||'';
-  var isLightbox=name.indexOf('กล่องไฟ')>=0, isNeon=name.indexOf('นีออน')>=0;
-  var isPrint=/Print|ไวนิล|สติ๊กเกอร์|Canvas|Photo|Blacklit/i.test(name);
-  var raw=a.sqm; var billable=((isLightbox||isNeon)&&raw>0&&raw<0.3)?0.3:raw;
-  if(isLightbox && raw>=2.88){ $('wPResult').innerHTML='⛔ กล่องไฟ ≥ 2.88 ตร.ม. — ต้องขอราคาผ่านผู้บริหาร'; return; }
-  var per=parseFloat($('wPPer').value)||0; var material=billable*per;
-  var colorFee=($('wPColor')&&$('wPColor').checked&&!isPrint)?1500:0;
-  var transFee=($('wPLight')&&$('wPLight').checked)?1000:0;
-  var frameRate=parseFloat(($('wPFrame')&&$('wPFrame').value)||0)||0; var frameFee=billable*frameRate;
-  var total=material+colorFee+transFee+frameFee;
-  if(isPrint && total>0 && total<300) total=300;
-  var ex=['วัสดุ '+Math.round(material).toLocaleString()]; if(transFee)ex.push('หม้อแปลง 1,000'); if(colorFee)ex.push('สีพิเศษ 1,500'); if(frameFee)ex.push('โครง '+Math.round(frameFee).toLocaleString());
-  $('wPResult').innerHTML='พื้นที่ <b>'+billable.toFixed(3)+'</b> ตร.ม.'+(billable!==raw?' <span style="font-size:10px">(ขั้นต่ำ 0.3)</span>':'')+'<br><span style="font-size:11px;opacity:.9">'+ex.join(' · ')+'</span> → <b style="font-size:18px">'+Math.round(total).toLocaleString()+' บาท</b>'; }
-['wPPer','wPLight','wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallPrice; el.onchange=wallPrice; } });
-if($('wPType'))$('wPType').onchange=function(){ var o=this.options[this.selectedIndex]; if(o&&o.getAttribute('data-price'))$('wPPer').value=o.getAttribute('data-price'); var n=this.value||''; var light=(n.indexOf('ไม่มีไฟ')<0)&&(n.indexOf('ไฟ')>=0||n.indexOf('นีออน')>=0); if($('wPLight'))$('wPLight').checked=light; wallPrice(); };
-if($('wPApiSave'))$('wPApiSave').onclick=function(){ try{localStorage.setItem(PRICEAPI_KEY,($('wPApiUrl').value||'').trim());}catch(e){} loadPriceTable(); };
-function loadPriceTable(){ var url=priceApiUrl(); if(!url){ alert('วางลิงก์ /exec ของชีตราคาก่อน'); return; } if($('wPApiUrl'))$('wPApiUrl').value=url;
-  csJsonp(url+(url.indexOf('?')<0?'?':'&')+'api=prices',function(j){ if(!j||!j.rows){ alert('โหลดราคาไม่ได้ (เช็คลิงก์/สิทธิ์ Anyone)'); return; } var sel=$('wPType'); sel.innerHTML='<option value="">— เลือกประเภทป้าย —</option>'; j.rows.forEach(function(r){ if(!r.name)return; var op=document.createElement('option'); op.value=r.name; op.textContent=r.name+' ('+Number(r.price).toLocaleString()+'/ตร.ม.)'; op.setAttribute('data-price',r.price); sel.appendChild(op); }); }); }
-(function(){ var u=priceApiUrl(); if(u){ if($('wPApiUrl'))$('wPApiUrl').value=u; loadPriceTable(); } })();
+  if($('wPLight'))$('wPLight').checked=wIsLight(name);
+  if(!name){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; return; }
+  var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
+  var colorSpecial=!!($('wPColor')&&$('wPColor').checked);
+  var s=wallSignReal();
+  var letterH=(WMODE==='measure')?(measBoxes[1].fh*s.Hm):a.h;
+  var r=wCalcPrice(name, a.w/100, a.h/100, letterH, colorSpecial, frameKey);
+  if(r.error){ $('wPResult').innerHTML='\u26d4 '+r.error; _wLast=null; return; }
+  var ex=['\u0e27\u0e31\u0e2a\u0e14\u0e38 '+Math.round(r.material).toLocaleString()+' ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'];
+  if(r.transFee)ex.push('\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07 1,000'); if(r.colorFee)ex.push('\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 1,500'); if(r.framePrice)ex.push('\u0e42\u0e04\u0e23\u0e07 '+Math.round(r.framePrice).toLocaleString());
+  var note=''; if(r.minA)note=' <span style="font-size:10px">(\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33 0.3)</span>'; if(r.minTot)note=' <span style="font-size:10px">(\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33\u0e07\u0e32\u0e19\u0e1e\u0e34\u0e21\u0e1e\u0e4c 300)</span>';
+  var tierTxt=r.tiered?('<br><span style="font-size:11px;opacity:.85">\u0e23\u0e30\u0e14\u0e31\u0e1a\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23: '+r.tier+' ('+Math.round(letterH)+' \u0e0b\u0e21.)</span>'):'';
+  $('wPResult').innerHTML='\u0e02\u0e19\u0e32\u0e14 <b>'+Math.round(a.w)+'\u00d7'+Math.round(a.h)+'</b> \u0e0b\u0e21. \u00b7 \u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 <b>'+r.billable.toFixed(3)+'</b> \u0e15\u0e23.\u0e21.'+note+tierTxt+'<br><span style="font-size:11px;opacity:.9">'+ex.join(' \u00b7 ')+'</span> \u2192 <b style="font-size:18px">'+Math.round(r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>';
+  _wLast={name:name,w:Math.round(a.w),h:Math.round(a.h),r:r};
+}
+['wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallPrice; el.onchange=wallPrice; } });
+if($('wPType'))$('wPType').onchange=wallPrice;
+(function(){ var sel=$('wPType'); if(!sel)return; sel.innerHTML='<option value="">\u2014 \u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2014</option>';
+  Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var lbl=k+(it.t==='f'?(' ('+it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'):' (\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23)'); var o=document.createElement('option'); o.value=k; o.textContent=lbl; sel.appendChild(o); });
+})();
 var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0};
 var GFONTS=['Prompt','Sarabun','Kanit','Mitr','Bai Jamjuree','Chonburi','Charm','Mali','Sriracha','K2D','Taviraj','Roboto','Montserrat','Poppins','Playfair Display','Pacifico','Lobster','Oswald','Bebas Neue','Dancing Script','Great Vibes','Cinzel','Anton','Cormorant Garamond'];
 function loadGFont(f){ var id='gf-'+f.replace(/[^a-zA-Z0-9]/g,''); if(document.getElementById(id))return; var l=document.createElement('link'); l.id=id; l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+':wght@400;700&display=swap'; document.head.appendChild(l); }
@@ -1222,6 +1248,22 @@ function openTextEdit(){ var e=$('wTextEdit'); if(_txtSel<0||!textBoxes[_txtSel]
 if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.45,text:'ข้อความ',font:'Prompt',sizeCm:20,color:'#333333'}); _txtSel=textBoxes.length-1; loadGFont('Prompt'); openTextEdit(); setTimeout(wallDraw,60); };
 ['wTxt','wTxtFont','wTxtSize','wTxtColor'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; loadGFont(t.font); setTimeout(wallDraw,30); }; el.onchange=el.oninput; });
 if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
+if($('wPCopy'))$('wPCopy').onclick=function(){
+  if(!_wLast){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
+  var r=_wLast.r; var L=[];
+  L.push('\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC');
+  L.push('\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17: '+_wLast.name);
+  L.push('\u0e02\u0e19\u0e32\u0e14: '+_wLast.w+'\u00d7'+_wLast.h+' \u0e0b\u0e21. ('+r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.)');
+  L.push('\u0e27\u0e31\u0e2a\u0e14\u0e38: '+Math.round(r.material).toLocaleString()+' \u0e1a\u0e32\u0e17 ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)');
+  if(r.transFee)L.push('\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07: 1,000 \u0e1a\u0e32\u0e17');
+  if(r.colorFee)L.push('\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29: 1,500 \u0e1a\u0e32\u0e17');
+  if(r.framePrice)L.push('\u0e42\u0e04\u0e23\u0e07: '+Math.round(r.framePrice).toLocaleString()+' \u0e1a\u0e32\u0e17');
+  L.push('\u0e23\u0e27\u0e21: '+Math.round(r.total).toLocaleString()+' \u0e1a\u0e32\u0e17');
+  var txt=L.join('\n');
+  function done(){ var b=$('wPCopy'); var t=b.textContent; b.textContent='\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e41\u0e25\u0e49\u0e27 \u2713'; setTimeout(function(){b.textContent=t;},1500); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,function(){ alert(txt); }); }
+  else { alert(txt); }
+};
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
