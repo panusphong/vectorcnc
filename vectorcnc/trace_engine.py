@@ -1020,6 +1020,12 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     g = img
     if g.ndim == 3:
         g = _cv.cvtColor(g, _cv.COLOR_BGR2GRAY)
+    # supersample: อัปสเกลภาพเล็ก/กลางให้ด้านยาว ~2600px ก่อน trace
+    # -> ขอบ diagonal/โค้ง เนียนตรงขึ้น (ลด stair-step ของ JPEG) + เส้นบางไม่หลุด
+    _long = max(g.shape[:2])
+    if _long < 2600:
+        _sc = 2600.0 / float(_long)
+        g = _cv.resize(g, None, fx=_sc, fy=_sc, interpolation=_cv.INTER_CUBIC)
     g = _cv.bilateralFilter(g, 7, 45, 45)
     # พื้นหลัง = สว่างเด่นที่ขอบ -> ตั้ง threshold ให้จับเส้นที่เข้มกว่าพื้นเล็กน้อย (เก็บเส้นจาง)
     border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])

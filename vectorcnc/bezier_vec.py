@@ -128,5 +128,5 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
         'svg_px': svg_px, 'svg_mm': svg_mm, 'dxf_path': dxf_out,
         'width_mm': round(Wmm, 1), 'height_mm': round(Hmm, 1),
         'letter_height_mm': round(letter_mm, 1), 'size_by': mode,
-        'layers': len(items), 'rings': nrings, 'engine': 'vtracer (line+spline)',
+        'layers': len(items), 'rings': nrings, 'engine': 'vtracer line+spline v3 (ss+straight)',
     }
