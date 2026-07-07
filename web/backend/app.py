@@ -47,6 +47,8 @@ async def vectorize(
     tool_mm: float = Form(6.0),
     tabs: int = Form(0),
     mode: str = Form("auto"),
+    size_by: str = Form("width"),
+    size_value_mm: float = Form(0.0),
 ):
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "input.png")
@@ -61,7 +63,8 @@ async def vectorize(
         try:
             from vectorcnc import bezier_vec
             bz = bezier_vec.vectorize_bezier(inp, real_width_mm=float(real_width_mm),
-                                             n_colors=max(2, min(12, int(n_colors))), dxf_out=out_dxf)
+                                             n_colors=max(2, min(12, int(n_colors))), dxf_out=out_dxf,
+                                             size_by=str(size_by), size_value_mm=float(size_value_mm))
             dxf_b64 = ""
             try:
                 with open(out_dxf, "rb") as f:
@@ -71,6 +74,7 @@ async def vectorize(
             return {
                 "svg": bz["svg_px"], "svg_mm": bz["svg_mm"], "dxf_base64": dxf_b64,
                 "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
+                "letter_height_mm": bz.get("letter_height_mm"), "size_by": bz.get("size_by"),
                 "layers": bz["layers"], "rings": bz["rings"], "layer_info": [{"color": "#2563EB"}],
                 "detected": {"kind": "logo", "notes": "vtracer engine — เส้นตรงตรง โค้งเนียน มุมคม"},
                 "used_mode": "cutout", "engine": bz["engine"],
@@ -424,3 +428,35 @@ async def api_checksheet(
                 "drive_payload": payload}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "trace": traceback.format_exc()[-900:]}, status_code=400)
+
+
+# ================= วัดขนาดตัวอักษรจากพื้นที่หน้าร้าน (สำหรับทีมขาย) =================
+MEASURE_PAGE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "measure.html")
+
+
+@app.get("/measure")
+def measure_page():
+    if os.path.exists(MEASURE_PAGE):
+        return FileResponse(MEASURE_PAGE)
+    return {"msg": "measure.html not found"}
+
+
+@app.post("/api/measure")
+async def api_measure(
+    file: UploadFile = File(...),
+    area_w_cm: float = Form(...),
+    area_h_cm: float = Form(...),
+):
+    """ทั้งภาพ = พื้นที่ -> วัด กว้าง×สูง บล็อกอักษร, สูงตัวอักษรที่สูงสุด, ระยะขอบ (ซม.)"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "input.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import measure as _measure
+        return _measure.measure(inp, float(area_w_cm), float(area_h_cm))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
