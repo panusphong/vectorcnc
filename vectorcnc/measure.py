@@ -163,13 +163,38 @@ def cutout_rgba(path):
     return np.dstack([img, alpha])
 
 
+def _fg_for_measure(path):
+    """เลือก mask ที่ 'เหมือนตัวป้ายจริง' — ถ้าแบบสีจับได้เกือบทั้งภาพ (พื้นคอนทราสต์ต่ำ)
+    สลับไปใช้ edge/gradient (จับป้ายนูน emboss บนพื้นเรียบได้ดีกว่า)"""
+    mask_c, img = _foreground_mask(path)
+    H, W = mask_c.shape[:2]
+    fc = float((mask_c > 0).mean())
+    # edge-based
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    g = cv2.bilateralFilter(g, 7, 40, 40)
+    gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+    mag = cv2.magnitude(gx, gy)
+    mag = np.clip(mag / (mag.max() + 1e-6) * 255.0, 0, 255).astype(np.uint8)
+    _t, me = cv2.threshold(mag, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kk = max(9, int(min(H, W) * 0.02) | 1)
+    me = cv2.morphologyEx(me, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk, kk)))
+    me = cv2.morphologyEx(me, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk, kk)))
+    me = cv2.morphologyEx(me, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    fe = float((me > 0).mean())
+    # เลือก: ถ้าสีจับเต็มภาพ (>0.7) หรือแทบไม่เจอ (<0.02) และ edge ดูสมเหตุผล -> ใช้ edge
+    if (fc > 0.7 or fc < 0.02) and 0.02 < fe < 0.85:
+        return me, img
+    return mask_c, img
+
+
 def measure_parts(image_path, area_w_cm, area_h_cm):
     """แยกวัดเป็นส่วนๆ (logo/ตัวอักษร) + รวมทั้งป้าย ตาม scale ผนัง
     ใช้ horizontal projection แบ่งแถบตามช่องว่างแนวนอน"""
     aw = float(area_w_cm); ah = float(area_h_cm)
     if aw <= 0 or ah <= 0:
         raise ValueError('พื้นที่ผนัง กว้าง×สูง ต้อง > 0')
-    mask, img = _foreground_mask(image_path)
+    mask, img = _fg_for_measure(image_path)
     H, W = mask.shape[:2]
     ys, xs = np.nonzero(mask)
     if len(xs) < 10:
