@@ -473,10 +473,35 @@ select.numin{cursor:pointer}
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="wCut" checked> ✂ ตัดพื้นหลังอัตโนมัติ (ปิดถ้าโลโก้คอนทราสต์ต่ำ)</label>
       <button class="btn" id="wEditBg" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);display:none">✏️ แก้พื้นหลังเอง (ระบายลบ/คืน)</button>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><span style="font-size:12px;color:var(--muted)">จัดกึ่งกลาง:</span><button class="chip" id="wCenX" type="button">⟷ แนวนอน</button><button class="chip" id="wCenY" type="button">↕ แนวตั้ง</button></div>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <button class="btn" id="wToPrice" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">🧮 เปิด App ประเมินราคา (ส่งขนาดป้าย) →</button>
+      <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (realtime)</div>
+        <label class="cslab">ประเภทป้าย</label>
+        <select class="numin" id="wPType"><option value="">— เลือก หรือกรอกราคาเอง —</option></select>
+        <label class="cslab" style="margin-top:8px">ราคาต่อ ตร.ม. (บาท)</label>
+        <input class="numin" id="wPPer" type="number" value="0" step="10">
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="wPLight"> ป้ายไฟ (+หม้อแปลง 1,000)</label>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPColor"> สีไม่ใช่ขาว/ดำ (+1,500)</label>
+        <label class="cslab" style="margin-top:8px">โครงยึดป้าย</label><select class="numin" id="wPFrame"><option value="0">ไม่มีโครง</option><option value="1800">โครงเหล็ก (1,800/ตร.ม.)</option><option value="4800">โครงสแตนเลส (4,800/ตร.ม.)</option></select>
+        <div id="wPResult" style="margin-top:10px;background:var(--grad);color:#fff;border-radius:10px;padding:10px;font-size:13px">พื้นที่ – → <b>0 บาท</b></div>
+        <div class="csm2-setbar" style="margin-top:8px">⚙ ลิงก์ Apps Script (ตารางราคา /exec):<input id="wPApiUrl" placeholder="วาง /exec ของชีตราคา"><button class="btn ghost" id="wPApiSave" style="padding:5px 12px;font-size:11.5px">โหลดราคา</button></div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn" id="wAddText" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">➕ เพิ่มกล่องข้อความ</button>
+        <div id="wTextEdit" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel2)">
+          <label class="cslab">ข้อความ</label><input class="numin" id="wTxt" value="ข้อความ">
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <div style="flex:2"><label class="cslab">ฟอนต์ (Google)</label><select class="numin" id="wTxtFont"></select></div>
+            <div style="width:74px"><label class="cslab">สูง(cm)</label><input class="numin" id="wTxtSize" type="number" value="20"></div>
+            <div><label class="cslab">สี</label><input type="color" id="wTxtColor" value="#333333" style="width:38px;height:34px;border:1px solid var(--line);border-radius:8px;background:none"></div>
+          </div>
+          <button class="btn ghost" id="wTxtDel" style="margin-top:8px;padding:5px 12px;font-size:12px;color:var(--red)">🗑 ลบข้อความนี้</button>
+        </div>
+      </div>
       <div class="hint" id="wInfo" style="margin-top:10px"></div>
     </div>
     <div style="padding:16px;background:#eef1f6;display:flex;align-items:center;justify-content:center;overflow:auto">
@@ -994,6 +1019,8 @@ if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(
 
 // ---- 🖼️ จำลองป้ายบนผนัง (canvas, client-side) ----
 var wallImg=null, wallPos={fx:0.5,fy:0.5}, wallDrag=false;
+var wLockX=false, wLockY=false;
+setTimeout(function(){ if($('wCenX'))$('wCenX').onclick=function(){ wLockX=!wLockX; this.classList.toggle('on',wLockX); wallDraw(); }; if($('wCenY'))$('wCenY').onclick=function(){ wLockY=!wLockY; this.classList.toggle('on',wLockY); wallDraw(); }; },0);
 var WMODE='design', measParts=null;
 var measResult=null;
 var measBoxes=[{fx:0.15,fy:0.15,fw:0.70,fh:0.70,name:'บล็อกรวม',color:'#e11d48'},{fx:0.30,fy:0.35,fw:0.40,fh:0.25,name:'ตัวอักษร',color:'#2563eb'}];
@@ -1002,7 +1029,7 @@ var measBoxes=[{fx:0.15,fy:0.15,fw:0.70,fh:0.70,name:'บล็อกรวม',
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
   function BR(b){ var g=G(); return {x:g.M+b.fx*g.ww,y:g.M+b.fy*g.wh,w:b.fw*g.ww,h:b.fh*g.wh}; }
-  cv.addEventListener('mousedown',function(e){ if(WMODE!=='measure')return; var p=P(e); act=null;corner=-1;bi=-1;
+  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(P(e)))return; if(WMODE!=='measure')return; var p=P(e); act=null;corner=-1;bi=-1;
     for(var k=0;k<measBoxes.length&&!act;k++){ var b=BR(measBoxes[k]),cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]; for(var i=0;i<4;i++){ if(Math.abs(p.x-cs[i][0])<13&&Math.abs(p.y-cs[i][1])<13){bi=k;corner=i;act='resize';break;} } }
     if(!act){ for(var ke=0;ke<measBoxes.length&&!act;ke++){ var be=BR(measBoxes[ke]); var inX=p.x>=be.x-9&&p.x<=be.x+be.w+9, inY=p.y>=be.y-9&&p.y<=be.y+be.h+9;
       if(Math.abs(p.y-be.y)<9&&inX){bi=ke;corner=4;act='resize';} else if(Math.abs(p.x-(be.x+be.w))<9&&inY){bi=ke;corner=5;act='resize';} else if(Math.abs(p.y-(be.y+be.h))<9&&inX){bi=ke;corner=6;act='resize';} else if(Math.abs(p.x-be.x)<9&&inY){bi=ke;corner=7;act='resize';} } }
@@ -1037,6 +1064,7 @@ function wallDraw(){
   if(wallBgImg){ var iw=wallBgImg.width,ih=wallBgImg.height,sc=Math.max(ww/iw,wh/ih),dw=iw*sc,dh=ih*sc; g.save(); g.beginPath(); g.rect(M,M,ww,wh); g.clip(); g.drawImage(wallBgImg,M+(ww-dw)/2,M+(wh-dh)/2,dw,dh); g.restore(); }
   else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
+  try{wallPrice();}catch(_e){}
   if(WMODE==='measure'){
     var BX=function(b){return {x:M+b.fx*ww,y:M+b.fy*wh,w:b.fw*ww,h:b.fh*wh};};
     var blk=measBoxes[0], let_=measBoxes[1];
@@ -1064,11 +1092,13 @@ function wallDraw(){
     HH+='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><td style="color:#e11d48;font-weight:700;padding:2px 0">■ บล็อกรวม (กรอบแดง)</td><td style="text-align:right"><b>'+bw.toFixed(1)+' x '+bh.toFixed(1)+' cm</b></td></tr></table>';
     HH+='<div style="font-size:11px;color:#8A99B5;margin-top:5px">ระยะขอบ (ซม.) ซ้าย <b>'+mL.toFixed(1)+'</b> · ขวา <b>'+mR.toFixed(1)+'</b> · บน <b>'+mT.toFixed(1)+'</b> · ล่าง <b>'+mB.toFixed(1)+'</b></div>';
     HH+='<div style="font-size:11px;color:#8A99B5;margin-top:4px">ลากกรอบ/มุม/กลางขอบ ปรับได้อิสระทุกด้าน · 🎯 ตรวจจับให้เริ่มต้น</div>';
+    drawTextBoxes(g,M,ww,wh,ppm);
     if($('wInfo'))$('wInfo').innerHTML=HH;
     return;
   }
   var sw=Math.max(1,s.w*ppm), sh=Math.max(1,s.h*ppm);
   var cx=M+wallPos.fx*ww, cy=M+wallPos.fy*wh;
+  if(wLockX){cx=M+ww/2; wallPos.fx=0.5;} if(wLockY){cy=M+wh/2; wallPos.fy=0.5;}
   cx=Math.min(M+ww-sw/2,Math.max(M+sw/2,cx)); cy=Math.min(M+wh-sh/2,Math.max(M+sh/2,cy));
   wallPos.fx=(cx-M)/ww; wallPos.fy=(cy-M)/wh;
   var sx=cx-sw/2, sy=cy-sh/2;
@@ -1092,6 +1122,7 @@ function wallDraw(){
     if(sy-M>16) _wDimV(g,M,sy,cx,mTcm.toFixed(1)+' cm',amb);
     if((M+wh)-(sy+sh)>16) _wDimV(g,sy+sh,M+wh,cx,mBcm.toFixed(1)+' cm',amb);
   }
+  drawTextBoxes(g,M,ww,wh,ppm);
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
   $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
 }
@@ -1127,8 +1158,8 @@ function wallSetImg(f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(WMODE!=='design')return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
-  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; wallPos.fx=(p.x-M)/(s.Wm*ppm); wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
+  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design')return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
+  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
   window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
@@ -1156,6 +1187,41 @@ if($('wCut'))$('wCut').addEventListener('change',function(){ if(!_wallSignOrig)r
   if(this.checked){ try{ fetch(_wallSignOrig).then(function(r){return r.blob();}).then(function(b){ wallSetImg(new File([b],'sign.png',{type:(b.type||'image/png')})); }); }catch(e){ _wallLoad(_wallSignOrig,'ภาพเต็ม'); } }
   else { _wallLoad(_wallSignOrig,'ภาพเต็ม (ไม่ตัดพื้นหลัง)'); }
 });
+var PRICEAPI_KEY='saai_price_api';
+function priceApiUrl(){ try{return localStorage.getItem(PRICEAPI_KEY)||'';}catch(e){return '';} }
+function wallSignAreaSqm(){ var s=wallSignReal(); var w,h; if(WMODE==='measure'){ w=measBoxes[0].fw*s.Wm; h=measBoxes[0].fh*s.Hm; } else { w=s.w; h=s.h; } return {w:w,h:h,sqm:(w*h)/10000}; }
+function wallPrice(){ if(!$('wPResult'))return; var a=wallSignAreaSqm(); var name=($('wPType')&&$('wPType').value)||'';
+  var isLightbox=name.indexOf('กล่องไฟ')>=0, isNeon=name.indexOf('นีออน')>=0;
+  var isPrint=/Print|ไวนิล|สติ๊กเกอร์|Canvas|Photo|Blacklit/i.test(name);
+  var raw=a.sqm; var billable=((isLightbox||isNeon)&&raw>0&&raw<0.3)?0.3:raw;
+  if(isLightbox && raw>=2.88){ $('wPResult').innerHTML='⛔ กล่องไฟ ≥ 2.88 ตร.ม. — ต้องขอราคาผ่านผู้บริหาร'; return; }
+  var per=parseFloat($('wPPer').value)||0; var material=billable*per;
+  var colorFee=($('wPColor')&&$('wPColor').checked&&!isPrint)?1500:0;
+  var transFee=($('wPLight')&&$('wPLight').checked)?1000:0;
+  var frameRate=parseFloat(($('wPFrame')&&$('wPFrame').value)||0)||0; var frameFee=billable*frameRate;
+  var total=material+colorFee+transFee+frameFee;
+  if(isPrint && total>0 && total<300) total=300;
+  var ex=['วัสดุ '+Math.round(material).toLocaleString()]; if(transFee)ex.push('หม้อแปลง 1,000'); if(colorFee)ex.push('สีพิเศษ 1,500'); if(frameFee)ex.push('โครง '+Math.round(frameFee).toLocaleString());
+  $('wPResult').innerHTML='พื้นที่ <b>'+billable.toFixed(3)+'</b> ตร.ม.'+(billable!==raw?' <span style="font-size:10px">(ขั้นต่ำ 0.3)</span>':'')+'<br><span style="font-size:11px;opacity:.9">'+ex.join(' · ')+'</span> → <b style="font-size:18px">'+Math.round(total).toLocaleString()+' บาท</b>'; }
+['wPPer','wPLight','wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallPrice; el.onchange=wallPrice; } });
+if($('wPType'))$('wPType').onchange=function(){ var o=this.options[this.selectedIndex]; if(o&&o.getAttribute('data-price'))$('wPPer').value=o.getAttribute('data-price'); var n=this.value||''; var light=(n.indexOf('ไม่มีไฟ')<0)&&(n.indexOf('ไฟ')>=0||n.indexOf('นีออน')>=0); if($('wPLight'))$('wPLight').checked=light; wallPrice(); };
+if($('wPApiSave'))$('wPApiSave').onclick=function(){ try{localStorage.setItem(PRICEAPI_KEY,($('wPApiUrl').value||'').trim());}catch(e){} loadPriceTable(); };
+function loadPriceTable(){ var url=priceApiUrl(); if(!url){ alert('วางลิงก์ /exec ของชีตราคาก่อน'); return; } if($('wPApiUrl'))$('wPApiUrl').value=url;
+  csJsonp(url+(url.indexOf('?')<0?'?':'&')+'api=prices',function(j){ if(!j||!j.rows){ alert('โหลดราคาไม่ได้ (เช็คลิงก์/สิทธิ์ Anyone)'); return; } var sel=$('wPType'); sel.innerHTML='<option value="">— เลือกประเภทป้าย —</option>'; j.rows.forEach(function(r){ if(!r.name)return; var op=document.createElement('option'); op.value=r.name; op.textContent=r.name+' ('+Number(r.price).toLocaleString()+'/ตร.ม.)'; op.setAttribute('data-price',r.price); sel.appendChild(op); }); }); }
+(function(){ var u=priceApiUrl(); if(u){ if($('wPApiUrl'))$('wPApiUrl').value=u; loadPriceTable(); } })();
+var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0};
+var GFONTS=['Prompt','Sarabun','Kanit','Mitr','Bai Jamjuree','Chonburi','Charm','Mali','Sriracha','K2D','Taviraj','Roboto','Montserrat','Poppins','Playfair Display','Pacifico','Lobster','Oswald','Bebas Neue','Dancing Script','Great Vibes','Cinzel','Anton','Cormorant Garamond'];
+function loadGFont(f){ var id='gf-'+f.replace(/[^a-zA-Z0-9]/g,''); if(document.getElementById(id))return; var l=document.createElement('link'); l.id=id; l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+':wght@400;700&display=swap'; document.head.appendChild(l); }
+(function(){ var sel=$('wTxtFont'); if(sel){ GFONTS.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent=f; sel.appendChild(o); loadGFont(f); }); } })();
+function drawTextBoxes(g,M,ww,wh,ppm){ for(var i=0;i<textBoxes.length;i++){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm); g.font='700 '+px+'px "'+t.font+'", sans-serif'; g.textAlign='left'; g.textBaseline='top'; g.fillStyle=t.color; var x=M+t.fx*ww, y=M+t.fy*wh; g.fillText(t.text||'',x,y); if(i===_txtSel){ var w=g.measureText(t.text||'').width; g.strokeStyle='#2563eb'; g.lineWidth=1; g.setLineDash([4,3]); g.strokeRect(x-3,y-3,w+6,px+6); g.setLineDash([]); } } g.textBaseline='alphabetic'; }
+function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return false; var g=cv.getContext('2d'); var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
+  for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm); g.font='700 '+px+'px "'+t.font+'"'; var w=g.measureText(t.text||'').width; var x=M+t.fx*ww,y=M+t.fy*wh; if(p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+px+5){ _txtSel=i;_txtDrag=true;_txtOff={x:p.x-x,y:p.y-y}; openTextEdit(); wallDraw(); return true; } } return false; }
+window.addEventListener('mousemove',function(e){ if(!_txtDrag||_txtSel<0)return; var cv=$('wCanvas'); if(!cv)return; var r=cv.getBoundingClientRect(); var px=((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, py=((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; textBoxes[_txtSel].fx=(px-_txtOff.x-M)/ww; textBoxes[_txtSel].fy=(py-_txtOff.y-M)/wh; wallDraw(); });
+window.addEventListener('mouseup',function(){ _txtDrag=false; });
+function openTextEdit(){ var e=$('wTextEdit'); if(_txtSel<0||!textBoxes[_txtSel]){ if(e)e.style.display='none'; return; } var t=textBoxes[_txtSel]; if(e)e.style.display='block'; if($('wTxt'))$('wTxt').value=t.text; if($('wTxtFont'))$('wTxtFont').value=t.font; if($('wTxtSize'))$('wTxtSize').value=t.sizeCm; if($('wTxtColor'))$('wTxtColor').value=t.color; }
+if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.45,text:'ข้อความ',font:'Prompt',sizeCm:20,color:'#333333'}); _txtSel=textBoxes.length-1; loadGFont('Prompt'); openTextEdit(); setTimeout(wallDraw,60); };
+['wTxt','wTxtFont','wTxtSize','wTxtColor'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; loadGFont(t.font); setTimeout(wallDraw,30); }; el.onchange=el.oninput; });
+if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
