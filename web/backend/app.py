@@ -35,7 +35,7 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.0"}
+    return {"ok": True, "service": "VectorCNC", "version": "1.1-nestfix", "build": "2026-07-07-ai-nest"}
 
 
 @app.post("/api/vectorize")
@@ -233,7 +233,7 @@ async def nest_ep(
                 qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600)
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM)
                 r = nesting.nest([(p["poly"], qn) for p in nest_pieces], float(sheet_w), float(sheet_h),
-                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90, 180, 270))
+                                 margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
             sheets_items = []
             for sheet in r["placements"]:
                 items = []
@@ -248,7 +248,10 @@ async def nest_ep(
                 sheets_items.append(items)
             svgs = [nesting.sheet_svg_bezier(it, float(sheet_w), float(sheet_h)) for it in sheets_items]
             dxf_path = os.path.join(tmp, "nest.dxf")
-            nesting.write_dxf_bezier(sheets_items, dxf_path, float(sheet_w), float(sheet_h))
+            # DXF แบบ BLOCK+INSERT (เล็ก+เร็ว) — ใช้ geometry ต้นฉบับต่อชิ้น + ตำแหน่งจาก nest
+            piece_groups = [p["groups"] for p in nest_pieces]
+            nesting.write_dxf_bezier_blocks(piece_groups, r["placements"], dxf_path,
+                                            float(sheet_w), float(sheet_h))
             n_pieces = len(nest_pieces)
         else:
             # -------- ภาพ raster (JPG/PNG): เส้นจากการ trace (polyline) --------
