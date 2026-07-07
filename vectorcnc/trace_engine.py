@@ -941,39 +941,65 @@ def _sample_subpath(sp, step=1.2):
     return pts
 
 
-def _regularize_subpath(sp, sig=1.6, corner_ang=30.0, straight_tol=1.15, curve_err=0.5):
-    """vtracer subpath (spline ตามพิกเซล) -> subpath ที่:
-       ก้านตรง = LINE ตรงเป๊ะ (ลบระลอก JPEG) · ส่วนโค้ง = Bézier เนียนคณิตศาสตร์ · มุม = คม"""
-    from . import bezier_fit
-    pts = _sample_subpath(sp)
-    if len(pts) < 10:
+def _seg_is_straight_cubic(p0, c1, c2, e, tol=0.9):
+    """cubic นี้ 'เกือบตรง' ไหม — control point เกาะคอร์ด (start->end) ในระยะ tol px
+    และไม่ยื่นเกินปลาย (กัน S-curve/overshoot). ถ้าใช่ -> แทนด้วยเส้นตรงได้เป๊ะ"""
+    ax, ay = float(p0[0]), float(p0[1]); bx, by = float(e[0]), float(e[1])
+    vx, vy = bx - ax, by - ay
+    L = (vx*vx + vy*vy) ** 0.5
+    if L < 1e-6:
+        return False
+    nx, ny = -vy / L, vx / L            # normal
+    for c in (c1, c2):
+        cx, cy = float(c[0]) - ax, float(c[1]) - ay
+        if abs(cx*nx + cy*ny) > tol:    # ระยะตั้งฉากจากคอร์ด
+            return False
+        t = (cx*vx + cy*vy) / (L*L)     # ตำแหน่งตามแนวคอร์ด
+        if t < -0.25 or t > 1.25:
+            return False
+    return True
+
+
+def _merge_collinear(start, segs, tol=0.6):
+    """รวมเส้นตรงต่อเนื่องที่อยู่แนวเดียวกันเป็นเส้นเดียว (DXF สะอาด ไม่มีจุดหักปลอม)"""
+    out = []
+    cur = start
+    for s in segs:
+        if s[0] == 'L' and out and out[-1][0] == 'L':
+            a = cur_pts[-2]; b = out[-1][1]; c = s[1]
+            vx, vy = b[0]-a[0], b[1]-a[1]; L = (vx*vx+vy*vy)**0.5
+            if L > 1e-6:
+                nx, ny = -vy/L, vx/L
+                if abs((c[0]-a[0])*nx + (c[1]-a[1])*ny) <= tol:   # c อยู่แนวเดียว a->b
+                    out[-1] = ('L', s[1]); cur_pts[-1] = s[1]; continue
+        out.append(s)
+        cur_pts.append(s[-1])
+    return out
+
+
+def _regularize_subpath(sp, tol=0.9, **_):
+    """ทำให้ 'ตรง=ตรงเป๊ะ' โดยไม่แตะเส้นโค้งของ vtracer (คงความแนบต้นฉบับ ไม่มีโก่ง):
+    - segment โค้งที่ 'เกือบตรง' -> แทนด้วย LINE เป๊ะ
+    - segment โค้งจริง -> เก็บ cubic เดิมของ vtracer ทั้งดุ้น (ไม่ resample/smooth/refit)"""
+    segs_in = sp.get('segs') or []
+    if not segs_in:
         return sp
-    P = np.asarray(_smooth_ring(pts, sig), float)   # low-pass ตามเส้น -> ripple หาย
-    if len(P) < 8:
-        return sp
-    win = int(max(4, round(sig * 3)))
-    cor = _detect_corners(P, win=win, ang_deg=corner_ang)
-    if len(cor) < 2:                                  # ทั้งวงโค้ง (o, จุด, วงกลม)
-        r = bezier_fit.fit_ring(P, max_error=curve_err)
-        return r if (r and len(r['segs']) >= 2) else sp
-    start = (float(P[cor[0]][0]), float(P[cor[0]][1]))
-    segs = []; m = len(cor)
-    for k in range(m):
-        a = cor[k]; b = cor[(k + 1) % m]
-        span = P[a:b + 1] if b > a else np.vstack([P[a:], P[:b + 1]])
-        if len(span) < 3:
-            segs.append(('L', (float(P[b][0]), float(P[b][1])))); continue
-        if _is_straight(span, abs_tol=straight_tol):
-            segs.append(('L', (float(span[-1][0]), float(span[-1][1]))))   # ตรง=ตรงเป๊ะ
+    prev = sp['start']
+    raw = []
+    for s in segs_in:
+        if s[0] == 'C':
+            if _seg_is_straight_cubic(prev, s[1], s[2], s[3], tol):
+                raw.append(('L', s[3]))
+            else:
+                raw.append(s)
+            prev = s[3]
         else:
-            for cseg in bezier_fit.fit_segments(span, max_error=curve_err):  # โค้ง=Bézier
-                segs.append(cseg)
-    if len(segs) < 2:
-        return sp
-    return {'start': start, 'segs': segs, 'closed': True}
-
-
-# ---------- โหมด vtracer : เครื่องยนต์ vectorize สมัยใหม่ (เส้นตรง=line, โค้ง=spline, มุมคม) ----------
+            raw.append(s); prev = s[1]
+    # รวมเส้นตรงแนวเดียวกัน
+    global cur_pts
+    cur_pts = [sp['start']]
+    merged = _merge_collinear(sp['start'], raw, tol=max(0.5, tol*0.7))
+    return {'start': sp['start'], 'segs': merged, 'closed': sp.get('closed', True)}
 def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
                   length_threshold=2.5, splice_threshold=45, path_precision=6,
                   regularize=True):
@@ -1056,11 +1082,11 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     if not subs:
         raise ValueError('vtracer ไม่พบรูปทรง')
     if regularize:
-        sig = max(1.2, min(3.0, max(canvas.shape) / 900.0))   # ระดับ low-pass ตามความละเอียด
+        tol = max(0.6, min(1.4, max(canvas.shape) / 1200.0))   # เกณฑ์ 'เกือบตรง' ตามความละเอียด
         reg = []
         for sp in subs:
             try:
-                reg.append(_regularize_subpath(sp, sig=sig))
+                reg.append(_regularize_subpath(sp, tol=tol))
             except Exception:
                 reg.append(sp)                                 # กันพลาด: คงเส้นเดิมไว้ ไม่ให้หาย
         subs = [s for s in reg if s and s.get('segs')]
