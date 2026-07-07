@@ -471,6 +471,7 @@ select.numin{cursor:pointer}
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">✂ ตัดพื้นหลังอัตโนมัติ</span><input id="wFile" type="file" accept="image/*" hidden></div>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="wCut" checked> ✂ ตัดพื้นหลังอัตโนมัติ (ปิดถ้าโลโก้คอนทราสต์ต่ำ)</label>
+      <button class="btn" id="wEditBg" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);display:none">✏️ แก้พื้นหลังเอง (ระบายลบ/คืน)</button>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
@@ -481,6 +482,25 @@ select.numin{cursor:pointer}
     <div style="padding:16px;background:#eef1f6;display:flex;align-items:center;justify-content:center;overflow:auto">
       <canvas id="wCanvas" style="max-width:100%;max-height:74vh;box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:grab;background:#fff"></canvas>
     </div>
+  </div>
+</div></div>
+<!-- ===== แก้พื้นหลังเอง (brush) ===== -->
+<div class="modal" id="eraseOverlay"><div class="modal-card" style="max-width:840px;padding:0;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <b style="font-size:15px">✏️ แก้พื้นหลัง — ระบายเพื่อ ลบ / คืน</b>
+    <button class="csm-x" id="ecClose" title="ปิด">✕</button></div>
+  <div style="padding:14px 18px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button class="chip on" id="ecErase">🩹 ลบพื้นหลัง</button>
+      <button class="chip" id="ecRestore">↩ คืนภาพ</button>
+      <label style="font-size:12px;color:var(--muted)">แปรง</label><input type="range" id="ecSize" min="8" max="140" value="36" style="width:120px">
+      <button class="btn ghost" id="ecReset" style="padding:5px 12px;font-size:12px">รีเซ็ต</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="ecDone" style="padding:8px 18px">✓ ใช้ภาพนี้</button>
+    </div>
+    <div style="background:conic-gradient(#e2e6ee 0 25%,#fff 0 50%,#e2e6ee 0 75%,#fff 0) 0/22px 22px;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:64vh;display:flex;justify-content:center;align-items:center;padding:6px">
+      <canvas id="ecCanvas" style="cursor:crosshair;max-width:100%;display:block"></canvas></div>
+    <div class="hint" style="margin-top:8px">ลากเมาส์ = ระบาย · "ลบพื้นหลัง" ลบส่วนที่ไม่ต้องการ · "คืนภาพ" เอาส่วนที่ลบเกินกลับมา · ขอบแปรงนุ่ม</div>
   </div>
 </div></div>
 <script>
@@ -1067,7 +1087,9 @@ if($('wDrop')){ $('wDrop').onclick=function(){$('wFile').click();}; $('wFile').o
   $('wDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetImg(ev.dataTransfer.files[0]); }); }
 function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+label; if($('wImgClear'))$('wImgClear').style.display='inline'; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=src; }
 if($('wImgClear'))$('wImgClear').onclick=function(){ wallImg=null; if($('wFile'))$('wFile').value=''; if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">\u2702 ตัดพื้นหลังอัตโนมัติ</span>'; this.style.display='none'; wallDraw(); };
+var _wallSignOrig=null;
 function wallSetImg(f){
+  var _ro=new FileReader(); _ro.onload=function(){ _wallSignOrig=_ro.result; if($('wEditBg'))$('wEditBg').style.display='block'; }; _ro.readAsDataURL(f);
   if($('wCut') && !$('wCut').checked){ var rr=new FileReader(); rr.onload=function(){ _wallLoad(rr.result, f.name); }; rr.readAsDataURL(f); return; }
   $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังตัดพื้นหลัง...</div>';
   var fd=new FormData(); fd.append('file',f);
@@ -1094,6 +1116,30 @@ if($('wBgClear'))$('wBgClear').onclick=function(){ wallBgImg=null; if($('wBgDrop
 if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ s={w:measBox.fw*s.Wm,h:measBox.fh*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
+
+
+// ---- ✏️ แก้พื้นหลังเอง (brush erase/restore) ----
+var _ecOrig=null,_ecMode='erase',_ecDraw=false;
+function openEraser(){ if(!_wallSignOrig){ alert('อัปโหลดภาพป้ายก่อน'); return; }
+  var im=new Image(); im.onload=function(){ _ecOrig=im; var cap=1400,w=im.width,h=im.height,sc=Math.min(1,cap/Math.max(w,h)); var cw=Math.round(w*sc),ch=Math.round(h*sc);
+    var ec=$('ecCanvas'); ec.width=cw; ec.height=ch; var g=ec.getContext('2d'); g.clearRect(0,0,cw,ch);
+    if(wallImg){ g.drawImage(wallImg,0,0,cw,ch); } else { g.drawImage(im,0,0,cw,ch); }
+    $('eraseOverlay').classList.add('show'); }; im.src=_wallSignOrig; }
+if($('wEditBg'))$('wEditBg').onclick=openEraser;
+if($('ecClose'))$('ecClose').onclick=function(){ $('eraseOverlay').classList.remove('show'); };
+if($('ecErase'))$('ecErase').onclick=function(){ _ecMode='erase'; this.classList.add('on'); if($('ecRestore'))$('ecRestore').classList.remove('on'); };
+if($('ecRestore'))$('ecRestore').onclick=function(){ _ecMode='restore'; this.classList.add('on'); if($('ecErase'))$('ecErase').classList.remove('on'); };
+if($('ecReset'))$('ecReset').onclick=function(){ var ec=$('ecCanvas'),g=ec.getContext('2d'); g.clearRect(0,0,ec.width,ec.height); g.drawImage(_ecOrig,0,0,ec.width,ec.height); };
+(function(){ var ec=$('ecCanvas'); if(!ec) return;
+  function pt(e){ var r=ec.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*ec.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*ec.height/r.height, s:ec.width/r.width}; }
+  function paint(p){ var g=ec.getContext('2d'); var R=(+$('ecSize').value)*p.s;
+    if(_ecMode==='erase'){ g.save(); g.globalCompositeOperation='destination-out'; var gr=g.createRadialGradient(p.x,p.y,0,p.x,p.y,R); gr.addColorStop(0,'rgba(0,0,0,1)'); gr.addColorStop(.65,'rgba(0,0,0,1)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.beginPath(); g.arc(p.x,p.y,R,0,7); g.fill(); g.restore(); }
+    else { g.save(); g.beginPath(); g.arc(p.x,p.y,R,0,7); g.clip(); g.drawImage(_ecOrig,0,0,ec.width,ec.height); g.restore(); } }
+  ec.addEventListener('mousedown',function(e){ _ecDraw=true; paint(pt(e)); e.preventDefault(); });
+  window.addEventListener('mousemove',function(e){ if(_ecDraw && $('eraseOverlay').classList.contains('show')) paint(pt(e)); });
+  window.addEventListener('mouseup',function(){ _ecDraw=false; });
+})();
+if($('ecDone'))$('ecDone').onclick=function(){ var ec=$('ecCanvas'); if($('wCut'))$('wCut').checked=false; _wallLoad(ec.toDataURL('image/png'),'แก้พื้นหลังเอง'); $('eraseOverlay').classList.remove('show'); };
 
 </script>
 </body>
