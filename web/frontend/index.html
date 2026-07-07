@@ -1066,6 +1066,7 @@ function wallDraw(){
   cx=Math.min(M+ww-sw/2,Math.max(M+sw/2,cx)); cy=Math.min(M+wh-sh/2,Math.max(M+sh/2,cy));
   wallPos.fx=(cx-M)/ww; wallPos.fy=(cy-M)/wh;
   var sx=cx-sw/2, sy=cy-sh/2;
+  var mLcm=(sx-M)/ppm, mRcm=((M+ww)-(sx+sw))/ppm, mTcm=(sy-M)/ppm, mBcm=((M+wh)-(sy+sh))/ppm;
   if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
   else { g.fillStyle='rgba(37,99,235,.12)'; g.fillRect(sx,sy,sw,sh); g.strokeStyle='#2563eb'; g.setLineDash([7,7]); g.strokeRect(sx,sy,sw,sh); g.setLineDash([]); g.fillStyle='#2563eb'; g.font='16px sans-serif'; g.textAlign='center'; g.fillText('อัปโหลดภาพป้าย',cx,cy); }
   if($('wLabels').checked){
@@ -1079,9 +1080,14 @@ function wallDraw(){
     var right=(sx+sw+40)<=(M+ww); var hx=right?(sx+sw+26):(sx-26);
     g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx+(right?sw:0),sy); g.lineTo(hx,sy); g.moveTo(sx+(right?sw:0),sy+sh); g.lineTo(hx,sy+sh); g.stroke();
     _wDimV(g,sy,sy+sh,hx,s.h.toFixed(1)+' cm',dc);
+    var amb='#f59e0b';
+    if(sx-M>16) _wDimH(g,M,sx,cy,mLcm.toFixed(1)+' cm',amb);
+    if((M+ww)-(sx+sw)>16) _wDimH(g,sx+sw,M+ww,cy,mRcm.toFixed(1)+' cm',amb);
+    if(sy-M>16) _wDimV(g,M,sy,cx,mTcm.toFixed(1)+' cm',amb);
+    if((M+wh)-(sy+sh)>16) _wDimV(g,sy+sh,M+wh,cx,mBcm.toFixed(1)+' cm',amb);
   }
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
-  $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm';
+  $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
 }
 if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); };
 if($('wallClose'))$('wallClose').onclick=function(){ $('wallOverlay').classList.remove('show'); };
@@ -1140,6 +1146,10 @@ function wallAutoMeasure(){
 if($('wAutoDetect'))$('wAutoDetect').onclick=wallAutoMeasure;
 if($('wBgClear'))$('wBgClear').onclick=function(){ wallBgImg=null; if($('wBgDrop'))$('wBgDrop').innerHTML='ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)'; this.style.display='none'; wallDraw(); };
 if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ s={w:measBoxes[0].fw*s.Wm,h:measBoxes[0].fh*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
+if($('wCut'))$('wCut').addEventListener('change',function(){ if(!_wallSignOrig)return;
+  if(this.checked){ try{ fetch(_wallSignOrig).then(function(r){return r.blob();}).then(function(b){ wallSetImg(new File([b],'sign.png',{type:(b.type||'image/png')})); }); }catch(e){ _wallLoad(_wallSignOrig,'ภาพเต็ม'); } }
+  else { _wallLoad(_wallSignOrig,'ภาพเต็ม (ไม่ตัดพื้นหลัง)'); }
+});
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
