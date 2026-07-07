@@ -489,3 +489,24 @@ async def api_cutout(file: UploadFile = File(...)):
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/measure_parts")
+async def api_measure_parts(
+    file: UploadFile = File(...),
+    area_w_cm: float = Form(...),
+    area_h_cm: float = Form(...),
+):
+    """แยกวัด logo/ตัวอักษร + รวมทั้งป้าย ตาม scale ผนัง (ทั้งภาพ = ผนัง)"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "input.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import measure as _measure
+        return _measure.measure_parts(inp, float(area_w_cm), float(area_h_cm))
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
