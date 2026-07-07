@@ -994,18 +994,22 @@ if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(
 
 // ---- 🖼️ จำลองป้ายบนผนัง (canvas, client-side) ----
 var wallImg=null, wallPos={fx:0.5,fy:0.5}, wallDrag=false;
-var WMODE='design', measBox={fx:0.32,fy:0.34,fw:0.36,fh:0.28}, measParts=null;
+var WMODE='design', measParts=null;
+var measBoxes=[{fx:0.30,fy:0.14,fw:0.40,fh:0.34,name:'โลโก้/กราฟิก',color:'#16a34a'},{fx:0.28,fy:0.56,fw:0.44,fh:0.16,name:'ตัวอักษร',color:'#ea580c'}];
 (function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); measParts=null; if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; wallDraw(); if(WMODE==='measure'&&typeof _wallBgFile!=='undefined'&&_wallBgFile){ wallAutoMeasure(); } }; }})();
-(function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,st=null;
+(function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,bi=-1,st=null;
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
-  function BR(){ var g=G(); return {x:g.M+measBox.fx*g.ww,y:g.M+measBox.fy*g.wh,w:measBox.fw*g.ww,h:measBox.fh*g.wh,g:g}; }
-  cv.addEventListener('mousedown',function(e){ if(WMODE!=='measure')return; var p=P(e),b=BR(),cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]; corner=-1; for(var i=0;i<4;i++){ if(Math.abs(p.x-cs[i][0])<13&&Math.abs(p.y-cs[i][1])<13){corner=i;break;} } if(corner>=0){act='resize';} else if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){act='move';st={x:p.x,y:p.y,fx:measBox.fx,fy:measBox.fy};} cv.style.cursor=act?'grabbing':'crosshair'; });
-  window.addEventListener('mousemove',function(e){ if(WMODE!=='measure'||!act)return; var p=P(e),g=G(); var fx=Math.max(0,Math.min(1,(p.x-g.M)/g.ww)),fy=Math.max(0,Math.min(1,(p.y-g.M)/g.wh));
-    if(act==='move'){ measBox.fx=Math.max(0,Math.min(1-measBox.fw,st.fx+(p.x-st.x)/g.ww)); measBox.fy=Math.max(0,Math.min(1-measBox.fh,st.fy+(p.y-st.y)/g.wh)); }
-    else { var x0=measBox.fx,y0=measBox.fy,x1=measBox.fx+measBox.fw,y1=measBox.fy+measBox.fh; if(corner===0){x0=fx;y0=fy;}else if(corner===1){x1=fx;y0=fy;}else if(corner===2){x0=fx;y1=fy;}else{x1=fx;y1=fy;} var nx=Math.min(x0,x1),ny=Math.min(y0,y1),nw=Math.abs(x1-x0),nh=Math.abs(y1-y0); if(nw>0.02&&nh>0.02){measBox.fx=nx;measBox.fy=ny;measBox.fw=nw;measBox.fh=nh;} }
+  function BR(b){ var g=G(); return {x:g.M+b.fx*g.ww,y:g.M+b.fy*g.wh,w:b.fw*g.ww,h:b.fh*g.wh}; }
+  cv.addEventListener('mousedown',function(e){ if(WMODE!=='measure')return; var p=P(e); act=null;corner=-1;bi=-1;
+    for(var k=0;k<measBoxes.length&&!act;k++){ var b=BR(measBoxes[k]),cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]; for(var i=0;i<4;i++){ if(Math.abs(p.x-cs[i][0])<13&&Math.abs(p.y-cs[i][1])<13){bi=k;corner=i;act='resize';break;} } }
+    if(!act){ for(var k2=measBoxes.length-1;k2>=0;k2--){ var b2=BR(measBoxes[k2]); if(p.x>=b2.x&&p.x<=b2.x+b2.w&&p.y>=b2.y&&p.y<=b2.y+b2.h){ bi=k2;act='move';st={x:p.x,y:p.y,fx:measBoxes[k2].fx,fy:measBoxes[k2].fy};break; } } }
+    cv.style.cursor=act?'grabbing':'crosshair'; });
+  window.addEventListener('mousemove',function(e){ if(WMODE!=='measure'||!act||bi<0)return; var p=P(e),g=G(),mb=measBoxes[bi]; var fx=Math.max(0,Math.min(1,(p.x-g.M)/g.ww)),fy=Math.max(0,Math.min(1,(p.y-g.M)/g.wh));
+    if(act==='move'){ mb.fx=Math.max(0,Math.min(1-mb.fw,st.fx+(p.x-st.x)/g.ww)); mb.fy=Math.max(0,Math.min(1-mb.fh,st.fy+(p.y-st.y)/g.wh)); }
+    else { var x0=mb.fx,y0=mb.fy,x1=mb.fx+mb.fw,y1=mb.fy+mb.fh; if(corner===0){x0=fx;y0=fy;}else if(corner===1){x1=fx;y0=fy;}else if(corner===2){x0=fx;y1=fy;}else{x1=fx;y1=fy;} var nx=Math.min(x0,x1),ny=Math.min(y0,y1),nw=Math.abs(x1-x0),nh=Math.abs(y1-y0); if(nw>0.02&&nh>0.02){mb.fx=nx;mb.fy=ny;mb.fw=nw;mb.fh=nh;} }
     wallDraw(); });
-  window.addEventListener('mouseup',function(){ act=null;corner=-1; if($('wCanvas')&&WMODE==='measure')$('wCanvas').style.cursor='crosshair'; });
+  window.addEventListener('mouseup',function(){ act=null;corner=-1;bi=-1; if($('wCanvas')&&WMODE==='measure')$('wCanvas').style.cursor='crosshair'; });
 })();
 var WALL_M=70, WALL_TARGET=1100;
 function wallParseRatio(v){ v=(''+v).trim(); if(v.indexOf('/')>-1){var a=v.split('/');var n=parseFloat(a[0]),d=parseFloat(a[1]); if(d>0)return n/d;} var x=parseFloat(v); if(!(x>0))return 0.33; return x>1?1/x:x; }
@@ -1031,35 +1035,29 @@ function wallDraw(){
   else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
   if(WMODE==='measure'){
-    if(measParts && measParts.overall){
-      var COLS=['#e11d48','#0891b2','#16a34a','#9333ea'];
-      var BX=function(o){return {x:M+o.fx*ww,y:M+o.fy*wh,w:o.fw*ww,h:o.fh*wh};};
-      var ob=BX(measParts.overall);
-      g.strokeStyle='#2563eb'; g.lineWidth=2; g.setLineDash([8,4]); g.strokeRect(ob.x,ob.y,ob.w,ob.h); g.setLineDash([]);
-      g.fillStyle='#2563eb'; g.font='bold 13px sans-serif'; g.textAlign='left'; g.fillText('รวม '+measParts.overall.w_cm.toFixed(0)+'x'+measParts.overall.h_cm.toFixed(0)+' cm', ob.x+4, Math.max(M+14,ob.y-6));
-      (measParts.parts||[]).forEach(function(pp,i){ var c=COLS[i%COLS.length], b=BX(pp); g.strokeStyle=c; g.lineWidth=2; g.strokeRect(b.x,b.y,b.w,b.h); g.fillStyle=c; g.font='bold 13px sans-serif'; g.textAlign='left'; g.fillText((pp.name||'')+' '+pp.w_cm.toFixed(0)+'x'+pp.h_cm.toFixed(0), b.x+4, b.y+16); });
-      if($('wLabels').checked){ g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore(); }
-      var H2='<b>ผลวัด (scale ผนัง '+Math.round(s.Wm)+'x'+Math.round(s.Hm)+' cm):</b><table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse">';
-      H2+='<tr><td style="color:#2563eb;font-weight:700;padding:2px 0">■ รวมทั้งป้าย</td><td style="text-align:right"><b>'+measParts.overall.w_cm.toFixed(1)+' x '+measParts.overall.h_cm.toFixed(1)+' cm</b></td></tr>';
-      (measParts.parts||[]).forEach(function(pp,i){ H2+='<tr><td style="color:'+COLS[i%COLS.length]+';font-weight:600;padding:2px 0">■ '+(pp.name||'ส่วน')+'</td><td style="text-align:right"><b>'+pp.w_cm.toFixed(1)+' x '+pp.h_cm.toFixed(1)+' cm</b></td></tr>'; });
-      H2+='</table>';
-      if($('wInfo'))$('wInfo').innerHTML=H2;
-      return;
-    }
-    var mb={x:M+measBox.fx*ww,y:M+measBox.fy*wh,w:measBox.fw*ww,h:measBox.fh*wh};
-    g.strokeStyle='#2563eb'; g.lineWidth=2; g.setLineDash([7,4]); g.strokeRect(mb.x,mb.y,mb.w,mb.h); g.setLineDash([]);
-    g.fillStyle='#2563eb'; [[mb.x,mb.y],[mb.x+mb.w,mb.y],[mb.x,mb.y+mb.h],[mb.x+mb.w,mb.y+mb.h]].forEach(function(c){ g.fillRect(c[0]-5,c[1]-5,10,10); });
-    var rw=measBox.fw*s.Wm, rh=measBox.fh*s.Hm, dc='#e11d48', sx=mb.x,sy=mb.y,sw2=mb.w,sh2=mb.h;
-    if($('wLabels').checked){
-      var below=(sy+sh2+40)<=(M+wh), wy=below?(sy+sh2+26):(sy-26);
-      g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx,sy+(below?sh2:0)); g.lineTo(sx,wy); g.moveTo(sx+sw2,sy+(below?sh2:0)); g.lineTo(sx+sw2,wy); g.stroke();
-      _wDimH(g,sx,sx+sw2,wy,rw.toFixed(1)+' cm',dc);
-      var right=(sx+sw2+40)<=(M+ww), hx=right?(sx+sw2+26):(sx-26);
-      g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx+(right?sw2:0),sy); g.lineTo(hx,sy); g.moveTo(sx+(right?sw2:0),sy+sh2); g.lineTo(hx,sy+sh2); g.stroke();
-      _wDimV(g,sy,sy+sh2,hx,rh.toFixed(1)+' cm',dc);
-      g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore();
-    }
-    $('wInfo').innerHTML='ป้าย(วัดจากภาพ): <b>'+rw.toFixed(1)+' × '+rh.toFixed(1)+' cm</b> · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm';
+    var BX=function(b){return {x:M+b.fx*ww,y:M+b.fy*wh,w:b.fw*ww,h:b.fh*wh};};
+    var ux0=1,uy0=1,ux1=0,uy1=0;
+    measBoxes.forEach(function(b){ ux0=Math.min(ux0,b.fx);uy0=Math.min(uy0,b.fy);ux1=Math.max(ux1,b.fx+b.fw);uy1=Math.max(uy1,b.fy+b.fh); });
+    var ob={x:M+ux0*ww,y:M+uy0*wh,w:(ux1-ux0)*ww,h:(uy1-uy0)*wh};
+    g.strokeStyle='#2563eb'; g.lineWidth=2; g.setLineDash([9,4]); g.strokeRect(ob.x,ob.y,ob.w,ob.h); g.setLineDash([]);
+    g.fillStyle='#2563eb'; g.font='bold 12px sans-serif'; g.textAlign='left'; g.textBaseline='alphabetic'; g.fillText('รวม '+((ux1-ux0)*s.Wm).toFixed(0)+'x'+((uy1-uy0)*s.Hm).toFixed(0)+' cm', ob.x+3, Math.max(M+12,ob.y-5));
+    measBoxes.forEach(function(b){ var bx=BX(b), c=b.color, rw=b.fw*s.Wm, rh=b.fh*s.Hm;
+      g.strokeStyle=c; g.lineWidth=2; g.strokeRect(bx.x,bx.y,bx.w,bx.h);
+      g.fillStyle=c; [[bx.x,bx.y],[bx.x+bx.w,bx.y],[bx.x,bx.y+bx.h],[bx.x+bx.w,bx.y+bx.h]].forEach(function(cc){ g.fillRect(cc[0]-4,cc[1]-4,8,8); });
+      g.font='bold 12px sans-serif'; g.textAlign='left'; g.fillText(b.name, bx.x+4, bx.y+15);
+      if($('wLabels').checked){
+        var below=(bx.y+bx.h+34)<=(M+wh), wy=below?(bx.y+bx.h+22):(bx.y-22);
+        _wDimH(g,bx.x,bx.x+bx.w,wy,rw.toFixed(1)+' cm',c);
+        var right=(bx.x+bx.w+34)<=(M+ww), hx=right?(bx.x+bx.w+22):(bx.x-22);
+        _wDimV(g,bx.y,bx.y+bx.h,hx,rh.toFixed(1)+' cm',c);
+      }
+    });
+    if($('wLabels').checked){ g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore(); }
+    var H2='<b>ผลวัด (scale ผนัง '+Math.round(s.Wm)+'x'+Math.round(s.Hm)+' cm):</b><table style="width:100%;font-size:12px;margin-top:6px;border-collapse:collapse">';
+    H2+='<tr><td style="color:#2563eb;font-weight:700;padding:2px 0">■ รวมทั้งป้าย</td><td style="text-align:right"><b>'+((ux1-ux0)*s.Wm).toFixed(1)+' x '+((uy1-uy0)*s.Hm).toFixed(1)+' cm</b></td></tr>';
+    measBoxes.forEach(function(b){ H2+='<tr><td style="color:'+b.color+';font-weight:600;padding:2px 0">■ '+b.name+'</td><td style="text-align:right"><b>'+(b.fw*s.Wm).toFixed(1)+' x '+(b.fh*s.Hm).toFixed(1)+' cm</b></td></tr>'; });
+    H2+='</table><div style="font-size:11px;color:#8A99B5;margin-top:5px">ลากกรอบ/มุมให้ทาบโลโก้และตัวอักษร · กด 🎯 ให้ระบบวางกรอบให้อัตโนมัติ (แล้วปรับต่อได้)</div>';
+    if($('wInfo'))$('wInfo').innerHTML=H2;
     return;
   }
   var sw=Math.max(1,s.w*ppm), sh=Math.max(1,s.h*ppm);
@@ -1134,13 +1132,17 @@ function wallAutoMeasure(){
   var fd=new FormData(); fd.append('file',_wallBgFile); fd.append('area_w_cm',$('wWall').value||'0'); fd.append('area_h_cm',$('hWall').value||'0');
   if($('wInfo'))$('wInfo').innerHTML='🔎 กำลังตรวจจับป้าย...';
   fetch((API||'')+'/api/measure_parts',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-    if(j.error){ measParts=null; if($('wInfo'))$('wInfo').innerHTML='ตรวจจับอัตโนมัติไม่ได้ ('+j.error+') — ลากกรอบเองได้เลย'; wallDraw(); return; }
-    measParts=j; wallDraw();
+    if(j.error||!j.parts||!j.parts.length){ wallDraw(); return; }
+    var ps=j.parts, A=ps[0];
+    measBoxes[0].fx=A.fx;measBoxes[0].fy=A.fy;measBoxes[0].fw=A.fw;measBoxes[0].fh=A.fh; if(A.name)measBoxes[0].name=A.name;
+    var B=ps[ps.length-1];
+    if(ps.length>=2){ measBoxes[1].fx=B.fx;measBoxes[1].fy=B.fy;measBoxes[1].fw=B.fw;measBoxes[1].fh=B.fh; if(B.name)measBoxes[1].name=B.name; }
+    wallDraw();
   }).catch(function(e){ if($('wInfo'))$('wInfo').innerHTML='เชื่อมต่อไม่ได้: '+e; });
 }
 if($('wAutoDetect'))$('wAutoDetect').onclick=wallAutoMeasure;
 if($('wBgClear'))$('wBgClear').onclick=function(){ wallBgImg=null; if($('wBgDrop'))$('wBgDrop').innerHTML='ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)'; this.style.display='none'; wallDraw(); };
-if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ s=(measParts&&measParts.overall)?{w:measParts.overall.w_cm,h:measParts.overall.h_cm}:{w:measBox.fw*s.Wm,h:measBox.fh*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
+if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ var qx0=1,qy0=1,qx1=0,qy1=0; measBoxes.forEach(function(b){qx0=Math.min(qx0,b.fx);qy0=Math.min(qy0,b.fy);qx1=Math.max(qx1,b.fx+b.fw);qy1=Math.max(qy1,b.fy+b.fh);}); s={w:(qx1-qx0)*s.Wm,h:(qy1-qy0)*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
