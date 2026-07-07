@@ -141,19 +141,20 @@ def cutout_rgba(path):
         m_gc = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 1, 0).astype(np.uint8)
     except Exception:
         m_gc = None
+    # รวม (union) color-distance + GrabCut -> ไม่ทิ้งตัวอักษร/ชิ้นเล็กที่คอนทราสต์ต่ำ
     mask = m_col
-    if m_gc is not None:
-        fr = float(m_gc.mean())
-        if 0.03 < fr < 0.92:                 # GrabCut ให้ผลสมเหตุผล -> ใช้ (คมกว่า)
-            mask = m_gc
+    if m_gc is not None and 0.02 < float(m_gc.mean()) < 0.95:
+        mask = ((m_col | m_gc) > 0).astype(np.uint8)
     mask = _clean((mask * 255).astype(np.uint8))
-    # เก็บเฉพาะกลุ่มใหญ่ ๆ (ลบเศษพื้นหลังที่หลุด)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))  # เชื่อมเส้นตัวอักษร
+    # ลบเฉพาะเศษจุดเล็กจิ๋ว (เก็บตัวอักษรไว้ — เกณฑ์ต่ำ)
     n, lab, st, _ = cv2.connectedComponentsWithStats(mask, 8)
     if n > 1:
         keep = np.zeros_like(mask)
-        amax = st[1:, cv2.CC_STAT_AREA].max() if n > 1 else 0
+        minA = max(40, H * W * 0.0003)
         for i in range(1, n):
-            if st[i, cv2.CC_STAT_AREA] >= max(80, amax * 0.02):
+            if st[i, cv2.CC_STAT_AREA] >= minA:
                 keep[lab == i] = 255
         mask = keep
     k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
