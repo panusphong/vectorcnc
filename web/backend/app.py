@@ -466,3 +466,26 @@ async def api_measure(
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/cutout")
+async def api_cutout(file: UploadFile = File(...)):
+    """ตัดพื้นหลังออก -> คืน PNG โปร่งใส (base64) สำหรับวางบนผนังให้สวย"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "input.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        import cv2
+        from vectorcnc import measure as _measure
+        bgra = _measure.cutout_rgba(inp)               # BGRA (alpha เนียน + GrabCut)
+        ok, buf = cv2.imencode(".png", bgra)
+        if not ok:
+            return JSONResponse({"error": "encode png ไม่ได้"}, status_code=400)
+        import base64 as _b64
+        return {"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode()}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
