@@ -5,7 +5,7 @@ VectorCNC API — FastAPI หุ้ม vectorcnc.pipeline.process
 API : POST http://localhost:8000/api/vectorize   (multipart: file, n_colors)
 CORS เปิดหมด -> Claude Design / เว็บที่ไหนก็เรียกได้
 """
-import os, sys, tempfile, base64, re, json
+import os, sys, tempfile, base64, re, json, traceback
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
