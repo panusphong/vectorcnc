@@ -468,8 +468,9 @@ select.numin{cursor:pointer}
         <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
       <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
-      <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย)</label>
+      <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">✂ ตัดพื้นหลังอัตโนมัติ</span><input id="wFile" type="file" accept="image/*" hidden></div>
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="wCut" checked> ✂ ตัดพื้นหลังอัตโนมัติ (ปิดถ้าโลโก้คอนทราสต์ต่ำ)</label>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
@@ -1064,8 +1065,10 @@ if($('wDrop')){ $('wDrop').onclick=function(){$('wFile').click();}; $('wFile').o
   ['dragover','dragenter'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.add('over');});});
   ['dragleave','drop'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.remove('over');});});
   $('wDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetImg(ev.dataTransfer.files[0]); }); }
-function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+label; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=src; }
+function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+label; if($('wImgClear'))$('wImgClear').style.display='inline'; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=src; }
+if($('wImgClear'))$('wImgClear').onclick=function(){ wallImg=null; if($('wFile'))$('wFile').value=''; if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">\u2702 ตัดพื้นหลังอัตโนมัติ</span>'; this.style.display='none'; wallDraw(); };
 function wallSetImg(f){
+  if($('wCut') && !$('wCut').checked){ var rr=new FileReader(); rr.onload=function(){ _wallLoad(rr.result, f.name); }; rr.readAsDataURL(f); return; }
   $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังตัดพื้นหลัง...</div>';
   var fd=new FormData(); fd.append('file',f);
   fetch((API||'')+'/api/cutout',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
