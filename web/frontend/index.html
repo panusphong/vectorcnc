@@ -178,8 +178,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
-    <button class="nav-btn" id="btnMeasure">📐 วัดขนาด</button>
-    <button class="nav-btn" id="btnWall">🖼️ จำลองบนผนัง</button>
+    <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -444,8 +443,10 @@ select.numin{cursor:pointer}
   </div>
   <div style="display:grid;grid-template-columns:300px 1fr;gap:0">
     <div style="padding:16px 18px;border-right:1px solid var(--line);max-height:76vh;overflow:auto">
-      <label class="cslab">ผนัง — กว้าง × สูง (เมตร)</label>
-      <div style="display:flex;gap:8px"><input class="numin" id="wWall" type="number" value="4" step="0.1" min="0.1"><input class="numin" id="hWall" type="number" value="3" step="0.1" min="0.1"></div>
+      <label class="cslab">ผนัง — กว้าง (cm)</label>
+      <div style="display:flex;gap:8px;align-items:center"><input class="numin" id="wWall" type="number" value="400" step="5" min="10" style="width:88px"><input type="range" id="wWallS" min="30" max="1200" step="5" value="400" style="flex:1"></div>
+      <label class="cslab" style="margin-top:10px">ผนัง — สูง (cm)</label>
+      <div style="display:flex;gap:8px;align-items:center"><input class="numin" id="hWall" type="number" value="300" step="5" min="10" style="width:88px"><input type="range" id="hWallS" min="30" max="1200" step="5" value="300" style="flex:1"></div>
       <label class="cslab" style="margin-top:12px">อ้างอิงสเกลป้ายจาก</label>
       <select class="numin" id="wMode">
         <option value="width">ความกว้าง (× กว้างผนัง)</option>
@@ -462,7 +463,7 @@ select.numin{cursor:pointer}
         <input type="color" id="wColor" value="#efeae1" style="width:44px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
         <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย)</label>
-      <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<input id="wFile" type="file" accept="image/*" hidden></div>
+      <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">✂ ตัดพื้นหลังอัตโนมัติ</span><input id="wFile" type="file" accept="image/*" hidden></div>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
@@ -976,6 +977,9 @@ function wallSignReal(){
   else { var A=r*Wm*Hm; h=Math.sqrt(A/ar); w=ar*h; }
   return {w:w,h:h,Wm:Wm,Hm:Hm,r:r,mode:mode,ppm:WALL_TARGET/Math.max(Wm,Hm)};
 }
+function _wArrow(g,x,y,fx,fy){ var a=Math.atan2(y-fy,x-fx),L=7.5; g.beginPath(); g.moveTo(x,y); g.lineTo(x-L*Math.cos(a-0.42),y-L*Math.sin(a-0.42)); g.lineTo(x-L*Math.cos(a+0.42),y-L*Math.sin(a+0.42)); g.closePath(); g.fill(); }
+function _wDimH(g,x1,x2,y,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x1,y); g.lineTo(x2,y); g.stroke(); _wArrow(g,x1,y,x2,y); _wArrow(g,x2,y,x1,y); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect((x1+x2)/2-tw/2-4,y-20,tw+8,17); g.fillStyle=col; g.fillText(txt,(x1+x2)/2,y-5); g.textBaseline='alphabetic'; }
+function _wDimV(g,y1,y2,x,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x,y1); g.lineTo(x,y2); g.stroke(); _wArrow(g,x,y1,x,y2); _wArrow(g,x,y2,x,y1); g.save(); g.translate(x,(y1+y2)/2); g.rotate(-Math.PI/2); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect(-tw/2-4,-20,tw+8,17); g.fillStyle=col; g.fillText(txt,0,-5); g.restore(); g.textBaseline='alphabetic'; }
 function wallDraw(){
   var cv=$('wCanvas'); if(!cv) return; var g=cv.getContext('2d');
   var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
@@ -993,18 +997,28 @@ function wallDraw(){
   else { g.fillStyle='rgba(37,99,235,.12)'; g.fillRect(sx,sy,sw,sh); g.strokeStyle='#2563eb'; g.setLineDash([7,7]); g.strokeRect(sx,sy,sw,sh); g.setLineDash([]); g.fillStyle='#2563eb'; g.font='16px sans-serif'; g.textAlign='center'; g.fillText('อัปโหลดภาพป้าย',cx,cy); }
   if($('wLabels').checked){
     g.fillStyle='#334155'; g.textAlign='center'; g.font='bold 20px sans-serif';
-    g.fillText(s.Wm.toFixed(2)+' m', M+ww/2, M-24);
-    g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(s.Hm.toFixed(2)+' m',0,0); g.restore();
-    g.fillStyle='#2563eb'; g.font='bold 16px sans-serif'; g.fillText(s.w.toFixed(2)+' × '+s.h.toFixed(2)+' m', cx, Math.max(M+14, sy-8));
+    g.fillText(Math.round(s.Wm)+' cm', M+ww/2, M-24);
+    g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore();
+    var dc='#e11d48';
+    var below=(sy+sh+40)<=(M+wh); var wy=below?(sy+sh+26):(sy-26);
+    g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx,sy+(below?sh:0)); g.lineTo(sx,wy); g.moveTo(sx+sw,sy+(below?sh:0)); g.lineTo(sx+sw,wy); g.stroke();
+    _wDimH(g,sx,sx+sw,wy,s.w.toFixed(1)+' cm',dc);
+    var right=(sx+sw+40)<=(M+ww); var hx=right?(sx+sw+26):(sx-26);
+    g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx+(right?sw:0),sy); g.lineTo(hx,sy); g.moveTo(sx+(right?sw:0),sy+sh); g.lineTo(hx,sy+sh); g.stroke();
+    _wDimV(g,sy,sy+sh,hx,s.h.toFixed(1)+' cm',dc);
   }
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
-  $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(2)+' × '+s.h.toFixed(2)+' m</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+s.Wm+'×'+s.Hm+' m';
+  $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm';
 }
 if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); };
 if($('wallClose'))$('wallClose').onclick=function(){ $('wallOverlay').classList.remove('show'); };
 ['wWall','hWall','wMode','wRatio','wColor','wLabels'].forEach(function(id){ var el=$(id); if(!el)return;
   el.oninput=function(){ if(id==='wRatio'){var v=wallParseRatio($('wRatio').value); if($('wSlider'))$('wSlider').value=Math.round(v*100);} wallDraw(); }; el.onchange=wallDraw; });
 if($('wSlider'))$('wSlider').oninput=function(){ $('wRatio').value=(this.value/100).toFixed(2); wallDraw(); };
+if($('wWallS'))$('wWallS').oninput=function(){ $('wWall').value=this.value; wallDraw(); };
+if($('hWallS'))$('hWallS').oninput=function(){ $('hWall').value=this.value; wallDraw(); };
+if($('wWall'))$('wWall').addEventListener('input',function(){ if($('wWallS'))$('wWallS').value=this.value; });
+if($('hWall'))$('hWall').addEventListener('input',function(){ if($('hWallS'))$('hWallS').value=this.value; });
 (function(){var ch=document.querySelectorAll('#wChips .chip'); for(var i=0;i<ch.length;i++){ ch[i].onclick=function(){ $('wRatio').value=this.getAttribute('data-r'); var v=wallParseRatio(this.getAttribute('data-r')); if($('wSlider'))$('wSlider').value=Math.round(v*100); wallDraw(); }; }})();
 function wallInitSwatch(){ var box=$('wSwatches'); if(!box||box.getAttribute('data-done'))return; box.setAttribute('data-done','1');
   ['#efeae1','#ffffff','#d9d2c5','#c8ccd0','#2b2f36','#1e3a5f','#7a5c3e','#e8dcc8'].forEach(function(c){ var b=document.createElement('button'); b.type='button'; b.style.cssText='width:22px;height:22px;border-radius:5px;border:1px solid var(--line);background:'+c+';cursor:pointer'; b.onclick=function(){ $('wColor').value=c; wallDraw(); }; box.appendChild(b); }); }
@@ -1012,7 +1026,15 @@ if($('wDrop')){ $('wDrop').onclick=function(){$('wFile').click();}; $('wFile').o
   ['dragover','dragenter'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.add('over');});});
   ['dragleave','drop'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.remove('over');});});
   $('wDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetImg(ev.dataTransfer.files[0]); }); }
-function wallSetImg(f){ var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+f.name; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=rd.result; }; rd.readAsDataURL(f); }
+function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+label; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=src; }
+function wallSetImg(f){
+  $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังตัดพื้นหลัง...</div>';
+  var fd=new FormData(); fd.append('file',f);
+  fetch((API||'')+'/api/cutout',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.png){ _wallLoad(j.png, f.name+' ✂ ตัดพื้นหลังแล้ว'); }
+    else { var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name+' (พื้นหลังเดิม)'); }; rd.readAsDataURL(f); }
+  }).catch(function(){ var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name); }; rd.readAsDataURL(f); });
+}
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
