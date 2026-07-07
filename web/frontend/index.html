@@ -179,6 +179,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <button class="nav-btn" id="btnMeasure">📐 วัดขนาด</button>
+    <button class="nav-btn" id="btnWall">🖼️ จำลองบนผนัง</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -432,6 +433,45 @@ select.numin{cursor:pointer}
     </div>
     <div id="logList" style="margin-top:14px;max-height:360px;overflow:auto"></div>
     <div class="csm2-setbar" style="margin-top:12px">⚙ ลิงก์ Apps Script (Login CRM /exec):<input id="crmApiUrl" placeholder="วาง Web App URL ของชีต Login CRM ที่ลงท้าย /exec"><button class="btn ghost" id="crmApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
+  </div>
+</div></div>
+<!-- ===== จำลองป้ายบนผนังตามสเกลจริง ===== -->
+<div class="modal" id="wallOverlay"><div class="modal-card" style="max-width:1000px;padding:0;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → export PDF/JPG</div></div>
+    <button class="csm-x" id="wallClose" title="ปิด">✕</button>
+  </div>
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:0">
+    <div style="padding:16px 18px;border-right:1px solid var(--line);max-height:76vh;overflow:auto">
+      <label class="cslab">ผนัง — กว้าง × สูง (เมตร)</label>
+      <div style="display:flex;gap:8px"><input class="numin" id="wWall" type="number" value="4" step="0.1" min="0.1"><input class="numin" id="hWall" type="number" value="3" step="0.1" min="0.1"></div>
+      <label class="cslab" style="margin-top:12px">อ้างอิงสเกลป้ายจาก</label>
+      <select class="numin" id="wMode">
+        <option value="width">ความกว้าง (× กว้างผนัง)</option>
+        <option value="height">ความสูง (× สูงผนัง)</option>
+        <option value="area">พื้นที่ (× พื้นที่ผนัง)</option></select>
+      <label class="cslab" style="margin-top:12px">สัดส่วน (ป้าย : ผนัง) — พิมพ์ 1/3 หรือ 0.33</label>
+      <input class="numin" id="wRatio" value="1/3">
+      <div style="display:flex;gap:6px;margin-top:6px" id="wChips">
+        <button class="chip" data-r="1/2">1/2</button><button class="chip" data-r="1/3">1/3</button>
+        <button class="chip" data-r="1/4">1/4</button><button class="chip" data-r="1/5">1/5</button></div>
+      <input type="range" id="wSlider" min="5" max="90" value="33" style="width:100%;margin-top:8px">
+      <label class="cslab" style="margin-top:12px">สีผนัง</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="color" id="wColor" value="#efeae1" style="width:44px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
+        <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
+      <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย)</label>
+      <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<input id="wFile" type="file" accept="image/*" hidden></div>
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
+        <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
+      <div class="hint" id="wInfo" style="margin-top:10px"></div>
+    </div>
+    <div style="padding:16px;background:#eef1f6;display:flex;align-items:center;justify-content:center;overflow:auto">
+      <canvas id="wCanvas" style="max-width:100%;max-height:74vh;box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:grab;background:#fff"></canvas>
+    </div>
   </div>
 </div></div>
 <script>
@@ -921,6 +961,68 @@ if($('logClose'))$('logClose').onclick=function(){ $('logOverlay').classList.rem
 if($('logGo'))$('logGo').onclick=vcLoadHistory;
 if($('logAll'))$('logAll').onchange=vcLoadHistory;
 if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(CRMAPI_KEY,($('crmApiUrl').value||'').trim());}catch(e){} vcLoadHistory(); vcLoadNickname(); };
+
+
+// ---- 🖼️ จำลองป้ายบนผนัง (canvas, client-side) ----
+var wallImg=null, wallPos={fx:0.5,fy:0.5}, wallDrag=false;
+var WALL_M=70, WALL_TARGET=1100;
+function wallParseRatio(v){ v=(''+v).trim(); if(v.indexOf('/')>-1){var a=v.split('/');var n=parseFloat(a[0]),d=parseFloat(a[1]); if(d>0)return n/d;} var x=parseFloat(v); if(!(x>0))return 0.33; return x>1?1/x:x; }
+function wallSignReal(){
+  var Wm=parseFloat($('wWall').value)||1, Hm=parseFloat($('hWall').value)||1;
+  var r=wallParseRatio($('wRatio').value), mode=$('wMode').value;
+  var ar=wallImg?(wallImg.width/wallImg.height):1, w, h;
+  if(mode==='width'){ w=r*Wm; h=w/ar; }
+  else if(mode==='height'){ h=r*Hm; w=h*ar; }
+  else { var A=r*Wm*Hm; h=Math.sqrt(A/ar); w=ar*h; }
+  return {w:w,h:h,Wm:Wm,Hm:Hm,r:r,mode:mode,ppm:WALL_TARGET/Math.max(Wm,Hm)};
+}
+function wallDraw(){
+  var cv=$('wCanvas'); if(!cv) return; var g=cv.getContext('2d');
+  var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
+  var ww=Math.round(s.Wm*ppm), wh=Math.round(s.Hm*ppm);
+  cv.width=ww+2*M; cv.height=wh+2*M;
+  g.fillStyle='#ffffff'; g.fillRect(0,0,cv.width,cv.height);
+  g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh);
+  g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
+  var sw=Math.max(1,s.w*ppm), sh=Math.max(1,s.h*ppm);
+  var cx=M+wallPos.fx*ww, cy=M+wallPos.fy*wh;
+  cx=Math.min(M+ww-sw/2,Math.max(M+sw/2,cx)); cy=Math.min(M+wh-sh/2,Math.max(M+sh/2,cy));
+  wallPos.fx=(cx-M)/ww; wallPos.fy=(cy-M)/wh;
+  var sx=cx-sw/2, sy=cy-sh/2;
+  if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
+  else { g.fillStyle='rgba(37,99,235,.12)'; g.fillRect(sx,sy,sw,sh); g.strokeStyle='#2563eb'; g.setLineDash([7,7]); g.strokeRect(sx,sy,sw,sh); g.setLineDash([]); g.fillStyle='#2563eb'; g.font='16px sans-serif'; g.textAlign='center'; g.fillText('อัปโหลดภาพป้าย',cx,cy); }
+  if($('wLabels').checked){
+    g.fillStyle='#334155'; g.textAlign='center'; g.font='bold 20px sans-serif';
+    g.fillText(s.Wm.toFixed(2)+' m', M+ww/2, M-24);
+    g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(s.Hm.toFixed(2)+' m',0,0); g.restore();
+    g.fillStyle='#2563eb'; g.font='bold 16px sans-serif'; g.fillText(s.w.toFixed(2)+' × '+s.h.toFixed(2)+' m', cx, Math.max(M+14, sy-8));
+  }
+  var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
+  $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(2)+' × '+s.h.toFixed(2)+' m</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+s.Wm+'×'+s.Hm+' m';
+}
+if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); };
+if($('wallClose'))$('wallClose').onclick=function(){ $('wallOverlay').classList.remove('show'); };
+['wWall','hWall','wMode','wRatio','wColor','wLabels'].forEach(function(id){ var el=$(id); if(!el)return;
+  el.oninput=function(){ if(id==='wRatio'){var v=wallParseRatio($('wRatio').value); if($('wSlider'))$('wSlider').value=Math.round(v*100);} wallDraw(); }; el.onchange=wallDraw; });
+if($('wSlider'))$('wSlider').oninput=function(){ $('wRatio').value=(this.value/100).toFixed(2); wallDraw(); };
+(function(){var ch=document.querySelectorAll('#wChips .chip'); for(var i=0;i<ch.length;i++){ ch[i].onclick=function(){ $('wRatio').value=this.getAttribute('data-r'); var v=wallParseRatio(this.getAttribute('data-r')); if($('wSlider'))$('wSlider').value=Math.round(v*100); wallDraw(); }; }})();
+function wallInitSwatch(){ var box=$('wSwatches'); if(!box||box.getAttribute('data-done'))return; box.setAttribute('data-done','1');
+  ['#efeae1','#ffffff','#d9d2c5','#c8ccd0','#2b2f36','#1e3a5f','#7a5c3e','#e8dcc8'].forEach(function(c){ var b=document.createElement('button'); b.type='button'; b.style.cssText='width:22px;height:22px;border-radius:5px;border:1px solid var(--line);background:'+c+';cursor:pointer'; b.onclick=function(){ $('wColor').value=c; wallDraw(); }; box.appendChild(b); }); }
+if($('wDrop')){ $('wDrop').onclick=function(){$('wFile').click();}; $('wFile').onchange=function(){ if($('wFile').files[0])wallSetImg($('wFile').files[0]); };
+  ['dragover','dragenter'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.add('over');});});
+  ['dragleave','drop'].forEach(function(e){$('wDrop').addEventListener(e,function(ev){ev.preventDefault();$('wDrop').classList.remove('over');});});
+  $('wDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetImg(ev.dataTransfer.files[0]); }); }
+function wallSetImg(f){ var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+f.name; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=rd.result; }; rd.readAsDataURL(f); }
+(function(){ var cv=$('wCanvas'); if(!cv) return;
+  function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
+  function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
+  cv.addEventListener('mousedown',function(e){ if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
+  window.addEventListener('mousemove',function(e){ if(!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; wallPos.fx=(p.x-M)/(s.Wm*ppm); wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
+  window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
+})();
+if($('wJpg'))$('wJpg').onclick=function(){ var cv=$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
+function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
+if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
 </script>
 </body>
