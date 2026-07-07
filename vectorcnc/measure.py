@@ -113,3 +113,50 @@ def _preview(img, bbox, stats, tall_idx, res):
 
     ok, buf = cv2.imencode('.png', vis)
     return 'data:image/png;base64,' + base64.b64encode(buf.tobytes()).decode() if ok else ''
+
+
+def cutout_rgba(path):
+    """ตัดพื้นหลัง -> BGRA (alpha เนียน). ทนพื้นหลังคอนทราสต์ต่ำด้วย GrabCut + color distance"""
+    raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    img = analyze.load_image(path)          # BGR (composite ขาว)
+    H, W = img.shape[:2]
+    # 1) มี alpha จริง -> ใช้เลย
+    if raw is not None and raw.ndim == 3 and raw.shape[2] == 4 and int(raw[:, :, 3].min()) < 240:
+        a = raw[:, :, 3].astype(np.uint8)
+        return np.dstack([img, _clean(a)])
+    # 2) color distance จากสีพื้นหลัง (ขอบภาพ)
+    bd = np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]]).reshape(-1, 3)
+    bcol = np.median(bd, axis=0)
+    dist = np.sqrt(((img.astype(np.float32) - bcol) ** 2).sum(2))
+    dn = np.clip(dist, 0, 255).astype(np.uint8)
+    _t, m_col = cv2.threshold(dn, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    m_col = (m_col > 0).astype(np.uint8)
+    # 3) GrabCut (rect กลางภาพ) — ช่วยพื้นหลังคอนทราสต์ต่ำ/ลายเยอะ
+    m_gc = None
+    try:
+        gc = np.zeros((H, W), np.uint8)
+        rect = (int(W * 0.05), int(H * 0.05), int(W * 0.90), int(H * 0.90))
+        cv2.grabCut(img, gc, rect, np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64),
+                    4, cv2.GC_INIT_WITH_RECT)
+        m_gc = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 1, 0).astype(np.uint8)
+    except Exception:
+        m_gc = None
+    mask = m_col
+    if m_gc is not None:
+        fr = float(m_gc.mean())
+        if 0.03 < fr < 0.92:                 # GrabCut ให้ผลสมเหตุผล -> ใช้ (คมกว่า)
+            mask = m_gc
+    mask = _clean((mask * 255).astype(np.uint8))
+    # เก็บเฉพาะกลุ่มใหญ่ ๆ (ลบเศษพื้นหลังที่หลุด)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(mask, 8)
+    if n > 1:
+        keep = np.zeros_like(mask)
+        amax = st[1:, cv2.CC_STAT_AREA].max() if n > 1 else 0
+        for i in range(1, n):
+            if st[i, cv2.CC_STAT_AREA] >= max(80, amax * 0.02):
+                keep[lab == i] = 255
+        mask = keep
+    k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    mask = cv2.erode(mask, k3, iterations=1)
+    alpha = cv2.GaussianBlur(mask, (0, 0), 1.0)
+    return np.dstack([img, alpha])
