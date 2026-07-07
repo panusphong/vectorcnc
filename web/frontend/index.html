@@ -443,6 +443,10 @@ select.numin{cursor:pointer}
   </div>
   <div style="display:grid;grid-template-columns:300px 1fr;gap:0">
     <div style="padding:16px 18px;border-right:1px solid var(--line);max-height:76vh;overflow:auto">
+      <div style="display:flex;gap:6px;margin-bottom:12px" id="wModeTabs">
+        <button class="chip on" data-wm="design" style="flex:1">🎨 ออกแบบ (วาง logo)</button>
+        <button class="chip" data-wm="measure" style="flex:1">📷 วัดจากภาพ</button></div>
+      <div id="wMeasHint" class="hint" style="display:none;margin-bottom:10px">อัปโหลดภาพผนัง+ป้าย ที่ช่อง "ภาพพื้นหลังผนัง" ด้านล่าง → ลากกรอบทาบตัวป้าย → อ่านขนาดจริง</div>
       <label class="cslab">ผนัง — กว้าง (cm)</label>
       <div style="display:flex;gap:8px;align-items:center"><input class="numin" id="wWall" type="number" value="400" step="5" min="10" style="width:88px"><input type="range" id="wWallS" min="30" max="1200" step="5" value="400" style="flex:1"></div>
       <label class="cslab" style="margin-top:10px">ผนัง — สูง (cm)</label>
@@ -462,12 +466,15 @@ select.numin{cursor:pointer}
       <div style="display:flex;gap:8px;align-items:center">
         <input type="color" id="wColor" value="#efeae1" style="width:44px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
         <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
+      <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
+      <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย)</label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">✂ ตัดพื้นหลังอัตโนมัติ</span><input id="wFile" type="file" accept="image/*" hidden></div>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
+      <button class="btn" id="wToPrice" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">🧮 เปิด App ประเมินราคา (ส่งขนาดป้าย) →</button>
       <div class="hint" id="wInfo" style="margin-top:10px"></div>
     </div>
     <div style="padding:16px;background:#eef1f6;display:flex;align-items:center;justify-content:center;overflow:auto">
@@ -966,6 +973,19 @@ if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(
 
 // ---- 🖼️ จำลองป้ายบนผนัง (canvas, client-side) ----
 var wallImg=null, wallPos={fx:0.5,fy:0.5}, wallDrag=false;
+var WMODE='design', measBox={fx:0.32,fy:0.34,fw:0.36,fh:0.28};
+(function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; wallDraw(); }; }})();
+(function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,st=null;
+  function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
+  function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
+  function BR(){ var g=G(); return {x:g.M+measBox.fx*g.ww,y:g.M+measBox.fy*g.wh,w:measBox.fw*g.ww,h:measBox.fh*g.wh,g:g}; }
+  cv.addEventListener('mousedown',function(e){ if(WMODE!=='measure')return; var p=P(e),b=BR(),cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]; corner=-1; for(var i=0;i<4;i++){ if(Math.abs(p.x-cs[i][0])<13&&Math.abs(p.y-cs[i][1])<13){corner=i;break;} } if(corner>=0){act='resize';} else if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){act='move';st={x:p.x,y:p.y,fx:measBox.fx,fy:measBox.fy};} cv.style.cursor=act?'grabbing':'crosshair'; });
+  window.addEventListener('mousemove',function(e){ if(WMODE!=='measure'||!act)return; var p=P(e),g=G(); var fx=Math.max(0,Math.min(1,(p.x-g.M)/g.ww)),fy=Math.max(0,Math.min(1,(p.y-g.M)/g.wh));
+    if(act==='move'){ measBox.fx=Math.max(0,Math.min(1-measBox.fw,st.fx+(p.x-st.x)/g.ww)); measBox.fy=Math.max(0,Math.min(1-measBox.fh,st.fy+(p.y-st.y)/g.wh)); }
+    else { var x0=measBox.fx,y0=measBox.fy,x1=measBox.fx+measBox.fw,y1=measBox.fy+measBox.fh; if(corner===0){x0=fx;y0=fy;}else if(corner===1){x1=fx;y0=fy;}else if(corner===2){x0=fx;y1=fy;}else{x1=fx;y1=fy;} var nx=Math.min(x0,x1),ny=Math.min(y0,y1),nw=Math.abs(x1-x0),nh=Math.abs(y1-y0); if(nw>0.02&&nh>0.02){measBox.fx=nx;measBox.fy=ny;measBox.fw=nw;measBox.fh=nh;} }
+    wallDraw(); });
+  window.addEventListener('mouseup',function(){ act=null;corner=-1; if($('wCanvas')&&WMODE==='measure')$('wCanvas').style.cursor='crosshair'; });
+})();
 var WALL_M=70, WALL_TARGET=1100;
 function wallParseRatio(v){ v=(''+v).trim(); if(v.indexOf('/')>-1){var a=v.split('/');var n=parseFloat(a[0]),d=parseFloat(a[1]); if(d>0)return n/d;} var x=parseFloat(v); if(!(x>0))return 0.33; return x>1?1/x:x; }
 function wallSignReal(){
@@ -986,8 +1006,26 @@ function wallDraw(){
   var ww=Math.round(s.Wm*ppm), wh=Math.round(s.Hm*ppm);
   cv.width=ww+2*M; cv.height=wh+2*M;
   g.fillStyle='#ffffff'; g.fillRect(0,0,cv.width,cv.height);
-  g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh);
+  if(wallBgImg){ var iw=wallBgImg.width,ih=wallBgImg.height,sc=Math.max(ww/iw,wh/ih),dw=iw*sc,dh=ih*sc; g.save(); g.beginPath(); g.rect(M,M,ww,wh); g.clip(); g.drawImage(wallBgImg,M+(ww-dw)/2,M+(wh-dh)/2,dw,dh); g.restore(); }
+  else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
+  if(WMODE==='measure'){
+    var mb={x:M+measBox.fx*ww,y:M+measBox.fy*wh,w:measBox.fw*ww,h:measBox.fh*wh};
+    g.strokeStyle='#2563eb'; g.lineWidth=2; g.setLineDash([7,4]); g.strokeRect(mb.x,mb.y,mb.w,mb.h); g.setLineDash([]);
+    g.fillStyle='#2563eb'; [[mb.x,mb.y],[mb.x+mb.w,mb.y],[mb.x,mb.y+mb.h],[mb.x+mb.w,mb.y+mb.h]].forEach(function(c){ g.fillRect(c[0]-5,c[1]-5,10,10); });
+    var rw=measBox.fw*s.Wm, rh=measBox.fh*s.Hm, dc='#e11d48', sx=mb.x,sy=mb.y,sw2=mb.w,sh2=mb.h;
+    if($('wLabels').checked){
+      var below=(sy+sh2+40)<=(M+wh), wy=below?(sy+sh2+26):(sy-26);
+      g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx,sy+(below?sh2:0)); g.lineTo(sx,wy); g.moveTo(sx+sw2,sy+(below?sh2:0)); g.lineTo(sx+sw2,wy); g.stroke();
+      _wDimH(g,sx,sx+sw2,wy,rw.toFixed(1)+' cm',dc);
+      var right=(sx+sw2+40)<=(M+ww), hx=right?(sx+sw2+26):(sx-26);
+      g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx+(right?sw2:0),sy); g.lineTo(hx,sy); g.moveTo(sx+(right?sw2:0),sy+sh2); g.lineTo(hx,sy+sh2); g.stroke();
+      _wDimV(g,sy,sy+sh2,hx,rh.toFixed(1)+' cm',dc);
+      g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore();
+    }
+    $('wInfo').innerHTML='ป้าย(วัดจากภาพ): <b>'+rw.toFixed(1)+' × '+rh.toFixed(1)+' cm</b> · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm';
+    return;
+  }
   var sw=Math.max(1,s.w*ppm), sh=Math.max(1,s.h*ppm);
   var cx=M+wallPos.fx*ww, cy=M+wallPos.fy*wh;
   cx=Math.min(M+ww-sw/2,Math.max(M+sw/2,cx)); cy=Math.min(M+wh-sh/2,Math.max(M+sh/2,cy));
@@ -1038,11 +1076,19 @@ function wallSetImg(f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
-  window.addEventListener('mousemove',function(e){ if(!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; wallPos.fx=(p.x-M)/(s.Wm*ppm); wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
+  cv.addEventListener('mousedown',function(e){ if(WMODE!=='design')return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
+  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; wallPos.fx=(p.x-M)/(s.Wm*ppm); wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
   window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
+var wallBgImg=null;
+if($('wBgDrop')){ $('wBgDrop').onclick=function(){$('wBgFile').click();}; $('wBgFile').onchange=function(){ if($('wBgFile').files[0])wallSetBg($('wBgFile').files[0]); };
+  ['dragover','dragenter'].forEach(function(e){$('wBgDrop').addEventListener(e,function(ev){ev.preventDefault();$('wBgDrop').classList.add('over');});});
+  ['dragleave','drop'].forEach(function(e){$('wBgDrop').addEventListener(e,function(ev){ev.preventDefault();$('wBgDrop').classList.remove('over');});});
+  $('wBgDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetBg(ev.dataTransfer.files[0]); }); }
+function wallSetBg(f){ var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){ wallBgImg=im; $('wBgDrop').innerHTML='📎 '+f.name; if($('wBgClear'))$('wBgClear').style.display='inline'; wallDraw(); }; im.src=rd.result; }; rd.readAsDataURL(f); }
+if($('wBgClear'))$('wBgClear').onclick=function(){ wallBgImg=null; if($('wBgDrop'))$('wBgDrop').innerHTML='ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)'; this.style.display='none'; wallDraw(); };
+if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ s={w:measBox.fw*s.Wm,h:measBox.fh*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
