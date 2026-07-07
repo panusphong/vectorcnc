@@ -1099,3 +1099,50 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
         if not subs:
             subs = reg
     return [((0, 0, 0), subs)]
+
+
+def nest_shapes_mm(image_path, real_width_mm=300.0, n_colors=6, max_dim=900):
+    """ดึง 'รูปทรง footprint' จากภาพ raster แบบเร็ว (สำหรับ Nesting) — ย่อภาพ + threshold +
+    findContours + approxPolyDP -> shapely polygons (มม.). เร็วกว่า trace_color ~10 เท่า"""
+    from shapely.geometry import Polygon
+    try:
+        from . import analyze
+        img = analyze.load_image(image_path)
+    except Exception:
+        img = cv2.imread(image_path)
+    if img is None:
+        return []
+    H, W = img.shape[:2]
+    if max(H, W) > max_dim:
+        sc = max_dim / float(max(H, W))
+        img = cv2.resize(img, (int(W * sc), int(H * sc)), interpolation=cv2.INTER_AREA)
+    h, w = img.shape[:2]
+    ppm = w / float(real_width_mm) if real_width_mm else 1.0   # px ต่อ มม. (ภาพย่อ)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    gray = cv2.medianBlur(gray, 3)
+    border = np.concatenate([gray[0], gray[-1], gray[:, 0], gray[:, -1]])
+    bg = float(np.median(border))
+    if bg >= 128:
+        m = (gray < bg - 40).astype(np.uint8) * 255
+    else:
+        m = (gray > bg + 40).astype(np.uint8) * 255
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = w * h * 3e-4
+    eps = max(1.0, w / 400.0)
+    polys = []
+    for cnt in cnts:
+        if cv2.contourArea(cnt) < min_area:
+            continue
+        ap = cv2.approxPolyDP(cnt, eps, True).reshape(-1, 2)
+        if len(ap) < 3:
+            continue
+        try:
+            pg = Polygon([(float(x) / ppm, float(y) / ppm) for x, y in ap]).buffer(0)
+            if not pg.is_empty and pg.area > 4.0:
+                polys.append(pg if pg.geom_type == 'Polygon' else max(pg.geoms, key=lambda z: z.area))
+        except Exception:
+            pass
+    polys.sort(key=lambda p: -p.area)
+    return polys[:60]
