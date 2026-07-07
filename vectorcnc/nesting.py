@@ -54,7 +54,7 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
     """parts = [(footprint_polygon_mm, qty), ...]
     คืน dict: placements=[[{part,rot,dx,dy,cx,cy}...] ต่อแผ่น], utilization, n_sheets, n_parts, unplaced"""
     # จำกัดจำนวนเซลล์กริด -> คุมหน่วยความจำ/เวลา (กัน 502/OOM บนเซิร์ฟเวอร์ฟรี)
-    CELL_CAP = 90000
+    CELL_CAP = 150000
     grows = int((sheet_h - 2 * margin) / res)
     gcols = int((sheet_w - 2 * margin) / res)
     if grows * gcols > CELL_CAP:
@@ -65,11 +65,15 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
         return {'placements': [], 'utilization': 0, 'n_sheets': 0, 'n_parts': 0, 'unplaced': 0}
     uw, uh = sheet_w - 2 * margin, sheet_h - 2 * margin
 
+    def _bbox_area(p):
+        b = p.bounds
+        return (b[2] - b[0]) * (b[3] - b[1])
+
     inst = []   # (part_idx, footprint)
     for idx, (poly, qty) in enumerate(parts):
         for _ in range(int(qty)):
             inst.append((idx, poly))
-    inst.sort(key=lambda t: -t[1].area)
+    inst.sort(key=lambda t: -_bbox_area(t[1]))   # กรอบใหญ่ก่อน (วงแหวนวางก่อน -> เติมชิ้นเล็กในรู)
 
     placements = [[]]
     occs = [np.zeros((grows, gcols), np.float32)]
@@ -161,48 +165,119 @@ def _sp_d(sp):
     return ' '.join(d)
 
 
-def sheet_svg_bezier(subs_list, sheet_w, sheet_h, stroke='#0EA5A5'):
-    """subs_list = list ของ [subpath,...] (แต่ละชิ้นบนแผ่น) — เส้นโค้ง Bézier จริง เนียนทุกซูม"""
+def sheet_svg_bezier(items, sheet_w, sheet_h, stroke='#0EA5A5'):
+    """items = list ของ (subs, color_hex) ต่อชิ้นบนแผ่น — เส้นโค้ง Bézier จริง แยกสีต่อเลเยอร์"""
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
          f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
-         f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>',
-         f'<g fill="none" stroke="{stroke}" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">']
-    for subs in subs_list:
+         f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>']
+    for it in items:
+        subs = it[0]; col = it[1] if len(it) > 1 and it[1] else stroke
+        s.append(f'<g fill="none" stroke="{col}" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">')
         for sp in subs:
             if len(sp['segs']) < 1:
                 continue
             s.append(f'  <path d="{_sp_d(sp)}"/>')
-    s.append('</g></svg>')
+        s.append('</g>')
+    s.append('</svg>')
     return '\n'.join(s)
 
 
-def write_dxf_bezier(sheets_subs, path, sheet_w, sheet_h, gap_between=50.0):
-    """DXF หน่วยมม. — SPLINE(โค้ง)+LINE(ตรง) · เรียงแผ่นในแกน X (Y ชี้ขึ้นแบบ CAD)"""
+def write_dxf_bezier(sheets_items, path, sheet_w, sheet_h, gap_between=50.0):
+    """DXF หน่วยมม. — SPLINE(โค้ง)+LINE(ตรง) · แยกเลเยอร์ CUT_<ชื่อ> คนละสี ต่อแหล่งเลเยอร์
+    sheets_items = list ต่อแผ่น ของ (subs, rgb, layer_name)"""
     doc = ezdxf.new('R2010')
     doc.units = ezdxf.units.MM
     msp = doc.modelspace()
-    for si, subs_list in enumerate(sheets_subs):
+    for si, items in enumerate(sheets_items):
         ox = si * (sheet_w + gap_between)
-        ly = 'SHEET_%d' % (si + 1)
-        if ly not in doc.layers:
-            doc.layers.add(ly)
+        bl = 'SHEET_%d' % (si + 1)
+        if bl not in doc.layers:
+            doc.layers.add(bl)
         msp.add_lwpolyline([(ox, 0), (ox + sheet_w, 0), (ox + sheet_w, sheet_h), (ox, sheet_h)],
-                           close=True, dxfattribs={'layer': ly, 'color': 8})
+                           close=True, dxfattribs={'layer': bl, 'color': 8})
 
         def tf(p):
             return (ox + p[0], sheet_h - p[1])   # flip Y (ระบบ CAD)
 
-        for subs in subs_list:
+        for it in items:
+            subs = it[0]
+            rgb = it[2] if len(it) > 2 else None
+            lname = it[3] if len(it) > 3 and it[3] else 'CUT'
+            lyname = 'CUT_' + str(lname)
+            if lyname not in doc.layers:
+                lay = doc.layers.add(lyname)
+                if rgb:
+                    try: lay.rgb = rgb
+                    except Exception: pass
             for sp in subs:
-                cur = sp['start']
+                # flatten ทั้ง subpath เป็น LWPOLYLINE เดียว (เล็ก+เร็ว) — โค้ง sample chord ~0.3mm
+                cur = sp['start']; pts = [tf(cur)]
                 for s in sp['segs']:
                     if s[0] == 'L':
-                        msp.add_line(tf(cur), tf(s[1]), dxfattribs={'layer': ly})
-                        cur = s[1]
+                        pts.append(tf(s[1])); cur = s[1]
                     else:
-                        msp.add_open_spline([tf(cur), tf(s[1]), tf(s[2]), tf(s[3])],
-                                            degree=3, dxfattribs={'layer': ly})
-                        cur = s[3]
+                        c1, c2, e = s[1], s[2], s[3]
+                        L = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1]) +
+                             abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
+                        N = int(min(100, max(4, L / 0.3)))
+                        for i in range(1, N + 1):
+                            t = i / float(N); mt = 1.0 - t
+                            x = mt*mt*mt*cur[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t*t*t*e[0]
+                            y = mt*mt*mt*cur[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*e[1]
+                            pts.append(tf((x, y)))
+                        cur = e
+                if len(pts) >= 2:
+                    msp.add_lwpolyline(pts, close=bool(sp.get('closed', True)),
+                                       dxfattribs={'layer': lyname})
+    doc.saveas(path)
+    return path
+
+
+def write_dxf_bezier_blocks(pieces, placements, path, sheet_w, sheet_h, gap_between=50.0):
+    """DXF ขนาดเล็กด้วย BLOCK+INSERT — นิยาม 1 บล็อกต่อชิ้น (spline เต็มคุณภาพ) แล้ว INSERT ซ้ำ
+    pieces[i]   = list ของ (subs, color, rgb, layer_name)  (geometry ต้นฉบับ ยังไม่ transform)
+    placements  = [[{part,rot,dx,dy,cx,cy}, ...] ต่อแผ่น]  (จาก nest())"""
+    doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM
+    msp = doc.modelspace()
+    blocks = {}
+    for idx, groups in enumerate(pieces):
+        bname = 'PIECE_%d' % idx
+        blk = doc.blocks.new(name=bname)
+        for grp in groups:
+            subs = grp[0]; rgb = grp[2] if len(grp) > 2 else None
+            lname = grp[3] if len(grp) > 3 and grp[3] else 'CUT'
+            lyname = 'CUT_' + str(lname)
+            if lyname not in doc.layers:
+                lay = doc.layers.add(lyname)
+                if rgb:
+                    try: lay.rgb = rgb
+                    except Exception: pass
+            for sp in subs:
+                cur = sp['start']
+                for seg in sp['segs']:
+                    if seg[0] == 'L':
+                        blk.add_line(cur, seg[1], dxfattribs={'layer': lyname}); cur = seg[1]
+                    else:
+                        blk.add_open_spline([cur, seg[1], seg[2], seg[3]], degree=3,
+                                            dxfattribs={'layer': lyname}); cur = seg[3]
+        blocks[idx] = bname
+    for si, sheet in enumerate(placements):
+        ox = si * (sheet_w + gap_between)
+        bl = 'SHEET_%d' % (si + 1)
+        if bl not in doc.layers:
+            doc.layers.add(bl)
+        msp.add_lwpolyline([(ox, 0), (ox + sheet_w, 0), (ox + sheet_w, sheet_h), (ox, sheet_h)],
+                           close=True, dxfattribs={'layer': bl, 'color': 8})
+        for pl in sheet:
+            bname = blocks.get(pl['part'])
+            if not bname:
+                continue
+            th = math.radians(pl['rot']); cs = math.cos(th); sn = math.sin(th)
+            cx, cy, dx, dy = pl['cx'], pl['cy'], pl['dx'], pl['dy']
+            ix = ox - cs * cx + sn * cy + cx + dx            # ให้ตรงกับ tf(place_subs) เป๊ะ
+            iy = sheet_h + sn * cx + cs * cy - cy - dy        # (flip Y = yscale -1, rotation -rot)
+            msp.add_blockref(bname, (ix, iy), dxfattribs={
+                'rotation': -pl['rot'], 'xscale': 1.0, 'yscale': -1.0})
     doc.saveas(path)
     return path
 
