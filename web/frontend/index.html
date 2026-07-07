@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="max-width:1000px;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคาในตัว → export PDF/JPG · <b style="color:#16a34a">v3</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 (ค้นหาได้) → export PDF/JPG · <b style="color:#16a34a">v5</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:300px 1fr;gap:0">
@@ -480,8 +480,11 @@ select.numin{cursor:pointer}
       <button class="btn" id="wToPrice" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">🧮 เปิด App ประเมินราคา (ส่งขนาดป้าย) →</button>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (ในตัว · realtime)</div>
-        <label class="cslab">ประเภทป้าย</label>
-        <select class="numin" id="wPType"><option value="">— เลือกประเภทป้าย —</option></select>
+        <label id="wPSameRow" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px"><input type="checkbox" id="wPSame" checked> 🔴🔵 ใช้ประเภทเดียวกันทั้ง 2 กรอบ (เลือกที่เดียว)</label>
+        <label class="cslab" id="wPTypeLbl">ประเภทป้าย</label>
+        <input class="numin" id="wPType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย" autocomplete="off"><datalist id="wPTypeList"></datalist>
+        <div id="wPType2Row" style="display:none;margin-top:8px"><label class="cslab">🔵 ประเภทป้าย (กรอบน้ำเงิน)</label>
+        <input class="numin" id="wPType2" list="wPType2List" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย" autocomplete="off"><datalist id="wPType2List"></datalist></div>
         <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="wPColor"> สีพิเศษ (ไม่ใช่ขาว/ดำ) +1,500</label>
         <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPLight" disabled> ป้ายไฟ (+หม้อแปลง 1,000 · auto)</label>
         <label class="cslab" style="margin-top:8px">โครงยึดป้าย</label><select class="numin" id="wPFrame"><option value="none">ไม่มีโครง</option><option value="steel">โครงเหล็ก (1,800/ตร.ม.)</option><option value="stainless">โครงสแตนเลส (4,800/ตร.ม.)</option></select>
@@ -1160,7 +1163,31 @@ function wallSetImg(f){
   window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
   window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
-if($('wJpg'))$('wJpg').onclick=function(){ var cv=$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
+function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null; try{loadGFont('Prompt');}catch(_e){}
+  if(typeof _wLast==='undefined'||!_wLast||!_wLast.lines) return cv;   // ยังไม่ได้คิดราคา → export ภาพผนังอย่างเดียว
+  var W=cv.width;
+  var lh=Math.max(14,Math.round(W*0.022)), pad=Math.round(W*0.022);
+  var rows=[{t:'ใบเสนอราคา — VectorCNC',c:'#ffffff',w:'700',f:0.98}];
+  _wLast.lines.forEach(function(l){ if(!l.r)return;
+    rows.push({t:(l.label?l.label+'  ':'')+l.type,c:'#e2e8f0',w:'700',f:0.68});
+    rows.push({t:'   '+l.w+'×'+l.h+' ซม. · '+l.r.billable.toFixed(3)+' ตร.ม.'+(l.r.tiered?(' · '+l.r.tier):''),c:'#cbd5e1',w:'400',f:0.6});
+    rows.push({t:'   '+_pDetail(l.r)+' = '+Math.round(l.r.total).toLocaleString()+' บาท',c:'#94a3b8',w:'400',f:0.58});
+  });
+  var tfs=Math.round(W*0.05);
+  var bh=pad*2 + lh*rows.length + Math.round(W*0.03);
+  var out=document.createElement('canvas'); out.width=W; out.height=cv.height+bh;
+  var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height); g.drawImage(cv,0,0);
+  var by=cv.height; g.fillStyle='#0f172a'; g.fillRect(0,by,W,bh);
+  g.fillStyle='#16a34a'; g.fillRect(0,by,W,Math.max(3,Math.round(W*0.006)));
+  g.textBaseline='top'; g.textAlign='left';
+  var y=by+pad+Math.round(W*0.006); rows.forEach(function(R){ g.font=R.w+' '+Math.round(lh*R.f)+'px "Prompt",sans-serif'; g.fillStyle=R.c; g.fillText(R.t,pad,y); y+=lh; });
+  g.textAlign='right'; g.fillStyle='#4ade80'; g.font='800 '+tfs+'px "Prompt",sans-serif';
+  g.fillText(Math.round(_wLast.total).toLocaleString()+' บาท', W-pad, by+pad+Math.round(W*0.006));
+  g.fillStyle='#94a3b8'; g.font='400 '+Math.round(tfs*0.3)+'px "Prompt",sans-serif';
+  g.fillText((_wLast.measure?'ราคารวม ':'')+'(ยังไม่รวม VAT)', W-pad, by+pad+tfs+Math.round(W*0.01));
+  g.textAlign='left'; return out;
+}
+if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
 var wallBgImg=null;
 if($('wBgDrop')){ $('wBgDrop').onclick=function(){$('wBgFile').click();}; $('wBgFile').onchange=function(){ if($('wBgFile').files[0])wallSetBg($('wBgFile').files[0]); };
   ['dragover','dragenter'].forEach(function(e){$('wBgDrop').addEventListener(e,function(ev){ev.preventDefault();$('wBgDrop').classList.add('over');});});
@@ -1214,26 +1241,47 @@ function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey)
   return {isPrint:isPrint,isLight:isLight,rawArea:rawArea,billable:billable,minA:minA,tier:tier,per:per,material:material,colorFee:colorFee,transFee:transFee,frameRate:frameRate,framePrice:framePrice,rawTotal:rawTotal,minTot:minTot,total:total,tiered:(item.t==='t')};
 }
 var _wLast=null;
-function wallPrice(){ if(!$('wPResult'))return; var a=wallSignAreaSqm(); var name=($('wPType')&&$('wPType').value)||'';
-  if($('wPLight'))$('wPLight').checked=wIsLight(name);
-  if(!name){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; return; }
-  var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
-  var colorSpecial=!!($('wPColor')&&$('wPColor').checked);
-  var s=wallSignReal();
-  var letterH=(WMODE==='measure')?(measBoxes[1].fh*s.Hm):a.h;
-  var r=wCalcPrice(name, a.w/100, a.h/100, letterH, colorSpecial, frameKey);
-  if(r.error){ $('wPResult').innerHTML='\u26d4 '+r.error; _wLast=null; return; }
-  var ex=['\u0e27\u0e31\u0e2a\u0e14\u0e38 '+Math.round(r.material).toLocaleString()+' ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'];
+function _pDetail(r){ var ex=['\u0e27\u0e31\u0e2a\u0e14\u0e38 '+Math.round(r.material).toLocaleString()+' ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'];
   if(r.transFee)ex.push('\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07 1,000'); if(r.colorFee)ex.push('\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 1,500'); if(r.framePrice)ex.push('\u0e42\u0e04\u0e23\u0e07 '+Math.round(r.framePrice).toLocaleString());
-  var note=''; if(r.minA)note=' <span style="font-size:10px">(\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33 0.3)</span>'; if(r.minTot)note=' <span style="font-size:10px">(\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33\u0e07\u0e32\u0e19\u0e1e\u0e34\u0e21\u0e1e\u0e4c 300)</span>';
-  var tierTxt=r.tiered?('<br><span style="font-size:11px;opacity:.85">\u0e23\u0e30\u0e14\u0e31\u0e1a\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23: '+r.tier+' ('+Math.round(letterH)+' \u0e0b\u0e21.)</span>'):'';
-  $('wPResult').innerHTML='\u0e02\u0e19\u0e32\u0e14 <b>'+Math.round(a.w)+'\u00d7'+Math.round(a.h)+'</b> \u0e0b\u0e21. \u00b7 \u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 <b>'+r.billable.toFixed(3)+'</b> \u0e15\u0e23.\u0e21.'+note+tierTxt+'<br><span style="font-size:11px;opacity:.9">'+ex.join(' \u00b7 ')+'</span> \u2192 <b style="font-size:18px">'+Math.round(r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>';
-  _wLast={name:name,w:Math.round(a.w),h:Math.round(a.h),r:r};
+  if(r.minA)ex.push('\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33 0.3'); if(r.minTot)ex.push('\u0e02\u0e31\u0e49\u0e19\u0e15\u0e48\u0e33\u0e1e\u0e34\u0e21\u0e1e\u0e4c 300'); return ex.join(' \u00b7 '); }
+function wallPrice(){ if(!$('wPResult'))return;
+  var s=wallSignReal(), isMeasure=(WMODE==='measure');
+  var same=!($('wPSame')&&!$('wPSame').checked);
+  var t1=($('wPType')&&$('wPType').value)||'';
+  var t2= same? t1 : (($('wPType2')&&$('wPType2').value)||'');
+  var colorSpecial=!!($('wPColor')&&$('wPColor').checked);
+  var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
+  if($('wPSameRow'))$('wPSameRow').style.display=isMeasure?'flex':'none';
+  if($('wPType2Row'))$('wPType2Row').style.display=(isMeasure&&!same)?'block':'none';
+  if($('wPTypeLbl'))$('wPTypeLbl').textContent=(isMeasure&&!same)?'\ud83d\udd34 \u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 (\u0e01\u0e23\u0e2d\u0e1a\u0e41\u0e14\u0e07)':'\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22';
+  if($('wPLight'))$('wPLight').checked=wIsLight(t1)||wIsLight(t2);
+  var lines=[], total=0;
+  function addLine(label,type,a){ if(!type){ lines.push({label:label,empty:true}); return; }
+    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, frameKey);
+    if(r.error){ lines.push({label:label,error:r.error}); return; }
+    lines.push({label:label,type:type,w:Math.round(a.w),h:Math.round(a.h),r:r}); total+=r.total; }
+  if(isMeasure){
+    addLine('\ud83d\udd34 \u0e01\u0e23\u0e2d\u0e1a\u0e41\u0e14\u0e07', t1, {w:measBoxes[0].fw*s.Wm,h:measBoxes[0].fh*s.Hm});
+    addLine('\ud83d\udd35 \u0e01\u0e23\u0e2d\u0e1a\u0e19\u0e49\u0e33\u0e40\u0e07\u0e34\u0e19', t2, {w:measBoxes[1].fw*s.Wm,h:measBoxes[1].fh*s.Hm});
+  } else { var a=wallSignAreaSqm(); addLine('', t1, {w:a.w,h:a.h}); }
+  if(!lines.some(function(l){return l.r;})){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; return; }
+  var html=lines.map(function(l){
+    if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
+    if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
+    var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
+    var tail=isMeasure?(' \u2192 <b>'+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>'):'';
+    return '<div style="margin-bottom:3px">'+head+'<br><span style="font-size:11px;opacity:.9">'+_pDetail(l.r)+'</span>'+tail+'</div>'; }).join('');
+  html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px">\ud83d\udcb0 <b>'+(isMeasure?'\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21':'\u0e23\u0e32\u0e04\u0e32')+'</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+  $('wPResult').innerHTML=html;
+  _wLast={lines:lines,total:total,measure:isMeasure};
 }
 ['wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallPrice; el.onchange=wallPrice; } });
-if($('wPType'))$('wPType').onchange=wallPrice;
-(function(){ var sel=$('wPType'); if(!sel)return; sel.innerHTML='<option value="">\u2014 \u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2014</option>';
-  Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var lbl=k+(it.t==='f'?(' ('+it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'):' (\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23)'); var o=document.createElement('option'); o.value=k; o.textContent=lbl; sel.appendChild(o); });
+if($('wPType')){ $('wPType').onchange=wallPrice; $('wPType').oninput=wallPrice; }
+if($('wPType2')){ $('wPType2').onchange=wallPrice; $('wPType2').oninput=wallPrice; }
+if($('wPSame'))$('wPSame').onchange=wallPrice;
+(function(){ var opts='';
+  Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var hint=(it.t==='f'?(it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.'):'\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23'); opts+='<option value="'+k.replace(/"/g,'&quot;')+'">'+hint+'</option>'; });
+  if($('wPTypeList'))$('wPTypeList').innerHTML=opts; if($('wPType2List'))$('wPType2List').innerHTML=opts;
 })();
 var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0};
 var GFONTS=['Prompt','Sarabun','Kanit','Mitr','Bai Jamjuree','Chonburi','Charm','Mali','Sriracha','K2D','Taviraj','Roboto','Montserrat','Poppins','Playfair Display','Pacifico','Lobster','Oswald','Bebas Neue','Dancing Script','Great Vibes','Cinzel','Anton','Cormorant Garamond'];
@@ -1249,48 +1297,54 @@ if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.4
 ['wTxt','wTxtFont','wTxtSize','wTxtColor'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; loadGFont(t.font); setTimeout(wallDraw,30); }; el.onchange=el.oninput; });
 if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
 if($('wPCopy'))$('wPCopy').onclick=function(){
-  if(!_wLast){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
-  var r=_wLast.r; var L=[];
-  L.push('\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC');
-  L.push('\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17: '+_wLast.name);
-  L.push('\u0e02\u0e19\u0e32\u0e14: '+_wLast.w+'\u00d7'+_wLast.h+' \u0e0b\u0e21. ('+r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.)');
-  L.push('\u0e27\u0e31\u0e2a\u0e14\u0e38: '+Math.round(r.material).toLocaleString()+' \u0e1a\u0e32\u0e17 ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)');
-  if(r.transFee)L.push('\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07: 1,000 \u0e1a\u0e32\u0e17');
-  if(r.colorFee)L.push('\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29: 1,500 \u0e1a\u0e32\u0e17');
-  if(r.framePrice)L.push('\u0e42\u0e04\u0e23\u0e07: '+Math.round(r.framePrice).toLocaleString()+' \u0e1a\u0e32\u0e17');
-  L.push('\u0e23\u0e27\u0e21: '+Math.round(r.total).toLocaleString()+' \u0e1a\u0e32\u0e17');
+  if(!_wLast||!_wLast.lines){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
+  var L=['\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC'];
+  _wLast.lines.forEach(function(l){ if(!l.r)return;
+    L.push((l.label?l.label+' ':'')+l.type);
+    L.push('  \u0e02\u0e19\u0e32\u0e14 '+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):''));
+    L.push('  '+_pDetail(l.r)+' = '+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17'); });
+  L.push('\u0e23\u0e27\u0e21: '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17 (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e23\u0e27\u0e21 VAT)');
   var txt=L.join('\n');
   function done(){ var b=$('wPCopy'); var t=b.textContent; b.textContent='\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e41\u0e25\u0e49\u0e27 \u2713'; setTimeout(function(){b.textContent=t;},1500); }
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,function(){ alert(txt); }); }
   else { alert(txt); }
 };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
-if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
+if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=wallExportCanvas()||$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
 
 // ---- ✏️ แก้พื้นหลังเอง (brush erase/restore) ----
 var _ecOrig=null,_ecMode='erase',_ecDraw=false;
 function openEraser(){ if(!_wallSignOrig){ alert('อัปโหลดภาพป้ายก่อน'); return; }
-  var im=new Image(); im.onload=function(){ _ecOrig=im; var cap=1400,w=im.width,h=im.height,sc=Math.min(1,cap/Math.max(w,h)); var cw=Math.round(w*sc),ch=Math.round(h*sc);
-    var ec=$('ecCanvas'); ec.width=cw; ec.height=ch; var g=ec.getContext('2d'); g.clearRect(0,0,cw,ch);
-    if(wallImg){ g.drawImage(wallImg,0,0,cw,ch); } else { g.drawImage(im,0,0,cw,ch); }
-    $('eraseOverlay').classList.add('show'); }; im.src=_wallSignOrig; }
-if($('wEditBg'))$('wEditBg').onclick=openEraser;
-if($('ecClose'))$('ecClose').onclick=function(){ $('eraseOverlay').classList.remove('show'); };
+  var im=new Image(); im.onload=function(){ _ecOrig=im;
+    var cap=1400,w=im.width,h=im.height,sc=Math.min(1,cap/Math.max(w,h));
+    var cw=Math.round(w*sc),ch=Math.round(h*sc);
+    var cv=$('ecCanvas'); if(!cv)return; cv.width=cw; cv.height=ch;
+    var g=cv.getContext('2d'); g.clearRect(0,0,cw,ch); g.drawImage(im,0,0,cw,ch);
+    _ecMode='erase'; if($('ecErase'))$('ecErase').classList.add('on'); if($('ecRestore'))$('ecRestore').classList.remove('on');
+    if($('eraseOverlay'))$('eraseOverlay').classList.add('show');
+  }; im.src=_wallSignOrig;
+}
+function _ecPos(e){ var cv=$('ecCanvas'),r=cv.getBoundingClientRect(); var sx=cv.width/r.width,sy=cv.height/r.height; var cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left, cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:cx*sx,y:cy*sy}; }
+function _ecPaint(p){ var cv=$('ecCanvas'); if(!cv)return; var g=cv.getContext('2d'); var rad=(parseInt(($('ecSize')&&$('ecSize').value)||36,10))/2;
+  g.save(); g.beginPath(); g.arc(p.x,p.y,rad,0,Math.PI*2); g.closePath(); g.clip();
+  if(_ecMode==='erase'){ g.clearRect(p.x-rad,p.y-rad,rad*2,rad*2); }
+  else if(_ecOrig){ g.drawImage(_ecOrig,0,0,cv.width,cv.height); }
+  g.restore();
+}
+(function(){ var cv=$('ecCanvas'); if(!cv)return;
+  function down(e){ _ecDraw=true; _ecPaint(_ecPos(e)); e.preventDefault(); }
+  function move(e){ if(_ecDraw){ _ecPaint(_ecPos(e)); e.preventDefault(); } }
+  function up(){ _ecDraw=false; }
+  cv.addEventListener('mousedown',down); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
+})();
 if($('ecErase'))$('ecErase').onclick=function(){ _ecMode='erase'; this.classList.add('on'); if($('ecRestore'))$('ecRestore').classList.remove('on'); };
 if($('ecRestore'))$('ecRestore').onclick=function(){ _ecMode='restore'; this.classList.add('on'); if($('ecErase'))$('ecErase').classList.remove('on'); };
-if($('ecReset'))$('ecReset').onclick=function(){ var ec=$('ecCanvas'),g=ec.getContext('2d'); g.clearRect(0,0,ec.width,ec.height); g.drawImage(_ecOrig,0,0,ec.width,ec.height); };
-(function(){ var ec=$('ecCanvas'); if(!ec) return;
-  function pt(e){ var r=ec.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*ec.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*ec.height/r.height, s:ec.width/r.width}; }
-  function paint(p){ var g=ec.getContext('2d'); var R=(+$('ecSize').value)*p.s;
-    if(_ecMode==='erase'){ g.save(); g.globalCompositeOperation='destination-out'; var gr=g.createRadialGradient(p.x,p.y,0,p.x,p.y,R); gr.addColorStop(0,'rgba(0,0,0,1)'); gr.addColorStop(.65,'rgba(0,0,0,1)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.beginPath(); g.arc(p.x,p.y,R,0,7); g.fill(); g.restore(); }
-    else { g.save(); g.beginPath(); g.arc(p.x,p.y,R,0,7); g.clip(); g.drawImage(_ecOrig,0,0,ec.width,ec.height); g.restore(); } }
-  ec.addEventListener('mousedown',function(e){ _ecDraw=true; paint(pt(e)); e.preventDefault(); });
-  window.addEventListener('mousemove',function(e){ if(_ecDraw && $('eraseOverlay').classList.contains('show')) paint(pt(e)); });
-  window.addEventListener('mouseup',function(){ _ecDraw=false; });
-})();
-if($('ecDone'))$('ecDone').onclick=function(){ var ec=$('ecCanvas'); if($('wCut'))$('wCut').checked=false; _wallLoad(ec.toDataURL('image/png'),'แก้พื้นหลังเอง'); $('eraseOverlay').classList.remove('show'); };
-
+if($('ecReset'))$('ecReset').onclick=function(){ if(!_ecOrig)return; var cv=$('ecCanvas'),g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height); g.drawImage(_ecOrig,0,0,cv.width,cv.height); };
+if($('ecClose'))$('ecClose').onclick=function(){ if($('eraseOverlay'))$('eraseOverlay').classList.remove('show'); };
+if($('ecDone'))$('ecDone').onclick=function(){ var cv=$('ecCanvas'); if(!cv)return; var url=cv.toDataURL('image/png'); _wallSignOrig=url; if($('wCut'))$('wCut').checked=false; _wallLoad(url,'แก้พื้นหลังแล้ว ✓'); if($('eraseOverlay'))$('eraseOverlay').classList.remove('show'); };
+if($('wEditBg'))$('wEditBg').onclick=openEraser;
 </script>
 </body>
 </html>
