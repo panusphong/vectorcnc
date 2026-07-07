@@ -79,7 +79,14 @@ def measure(image_path, area_w_cm, area_h_cm, want_preview=True):
         'margin_top_cm': round(mny / ppy, 1),
         'margin_bottom_cm': round((H - 1 - mxy) / ppy, 1),
         'img_w_px': W, 'img_h_px': H,
+        'block_fx': round(mnx / float(W), 4), 'block_fy': round(mny / float(H), 4),
+        'block_fw': round((mxx - mnx + 1) / float(W), 4), 'block_fh': round((mxy - mny + 1) / float(H), 4),
     }
+    if tall_idx > 0:
+        res['letter_fx'] = round(int(stats[tall_idx, cv2.CC_STAT_LEFT]) / float(W), 4)
+        res['letter_fy'] = round(int(stats[tall_idx, cv2.CC_STAT_TOP]) / float(H), 4)
+        res['letter_fw'] = round(int(stats[tall_idx, cv2.CC_STAT_WIDTH]) / float(W), 4)
+        res['letter_fh'] = round(int(stats[tall_idx, cv2.CC_STAT_HEIGHT]) / float(H), 4)
     if want_preview:
         res['preview'] = _preview(img, (mnx, mny, mxx, mxy), stats, tall_idx, res)
     return res
