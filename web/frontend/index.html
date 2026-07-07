@@ -995,8 +995,9 @@ if($('crmApiSave'))$('crmApiSave').onclick=function(){ try{localStorage.setItem(
 // ---- 🖼️ จำลองป้ายบนผนัง (canvas, client-side) ----
 var wallImg=null, wallPos={fx:0.5,fy:0.5}, wallDrag=false;
 var WMODE='design', measParts=null;
+var measResult=null;
 var measBoxes=[{fx:0.30,fy:0.14,fw:0.40,fh:0.34,name:'โลโก้/กราฟิก',color:'#16a34a'},{fx:0.28,fy:0.56,fw:0.44,fh:0.16,name:'ตัวอักษร',color:'#ea580c'}];
-(function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); measParts=null; if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; wallDraw(); if(WMODE==='measure'&&typeof _wallBgFile!=='undefined'&&_wallBgFile){ wallAutoMeasure(); } }; }})();
+(function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); measParts=null; measResult=null; if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; wallDraw(); if(WMODE==='measure'&&typeof _wallBgFile!=='undefined'&&_wallBgFile){ wallAutoMeasure(); } }; }})();
 (function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,bi=-1,st=null;
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
@@ -1035,6 +1036,19 @@ function wallDraw(){
   else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
   if(WMODE==='measure'){
+    if(measResult && measResult.block_fw){
+      var mr=measResult;
+      var BB={x:M+mr.block_fx*ww,y:M+mr.block_fy*wh,w:mr.block_fw*ww,h:mr.block_fh*wh};
+      g.strokeStyle='#e11d48'; g.lineWidth=2; g.strokeRect(BB.x,BB.y,BB.w,BB.h);
+      g.fillStyle='#e11d48'; g.font='bold 12px sans-serif'; g.textAlign='left'; g.textBaseline='alphabetic'; g.fillText('Block '+mr.block_w_cm.toFixed(1)+'x'+mr.block_h_cm.toFixed(1)+' cm', BB.x+4, Math.max(M+12,BB.y-5));
+      if(mr.letter_fw){ var LB={x:M+mr.letter_fx*ww,y:M+mr.letter_fy*wh,w:mr.letter_fw*ww,h:mr.letter_fh*wh}; g.strokeStyle='#2563eb'; g.lineWidth=2; g.strokeRect(LB.x,LB.y,LB.w,LB.h); g.fillStyle='#2563eb'; g.fillText('Letter H='+mr.letter_h_cm.toFixed(1), LB.x+4, LB.y+14); }
+      if($('wLabels').checked){ g.fillStyle='#334155'; g.textAlign='center'; g.textBaseline='alphabetic'; g.font='bold 20px sans-serif'; g.fillText(Math.round(s.Wm)+' cm',M+ww/2,M-24); g.save(); g.translate(M-28,M+wh/2); g.rotate(-Math.PI/2); g.fillText(Math.round(s.Hm)+' cm',0,0); g.restore(); }
+      var HH='<div style="background:var(--grad);border-radius:10px;padding:11px;color:#fff;margin-bottom:8px"><div style="font-size:11px;opacity:.92">ความสูงตัวอักษร (ตัวที่สูงสุด)</div><div style="font-weight:800;margin-top:2px"><span style="font-size:26px">'+mr.letter_h_cm.toFixed(1)+'</span> <span style="font-size:12px;opacity:.85">ซม.</span><span style="float:right;font-size:12px;opacity:.9;margin-top:12px">กว้างตัว '+mr.letter_w_cm.toFixed(1)+' ซม.</span></div></div>';
+      HH+='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><td style="color:#e11d48;font-weight:700;padding:2px 0">■ บล็อกอักษรรวม</td><td style="text-align:right"><b>'+mr.block_w_cm.toFixed(1)+' x '+mr.block_h_cm.toFixed(1)+' cm</b></td></tr></table>';
+      HH+='<div style="font-size:11px;color:#8A99B5;margin-top:5px">ระยะขอบ (ซม.) ซ้าย <b>'+mr.margin_left_cm+'</b> · ขวา <b>'+mr.margin_right_cm+'</b> · บน <b>'+mr.margin_top_cm+'</b> · ล่าง <b>'+mr.margin_bottom_cm+'</b></div>';
+      if($('wInfo'))$('wInfo').innerHTML=HH;
+      return;
+    }
     var BX=function(b){return {x:M+b.fx*ww,y:M+b.fy*wh,w:b.fw*ww,h:b.fh*wh};};
     var ux0=1,uy0=1,ux1=0,uy1=0;
     measBoxes.forEach(function(b){ ux0=Math.min(ux0,b.fx);uy0=Math.min(uy0,b.fy);ux1=Math.max(ux1,b.fx+b.fw);uy1=Math.max(uy1,b.fy+b.fh); });
@@ -1125,24 +1139,20 @@ if($('wBgDrop')){ $('wBgDrop').onclick=function(){$('wBgFile').click();}; $('wBg
   ['dragleave','drop'].forEach(function(e){$('wBgDrop').addEventListener(e,function(ev){ev.preventDefault();$('wBgDrop').classList.remove('over');});});
   $('wBgDrop').addEventListener('drop',function(ev){ if(ev.dataTransfer.files[0])wallSetBg(ev.dataTransfer.files[0]); }); }
 var _wallBgFile=null;
-function wallSetBg(f){ _wallBgFile=f; measParts=null; var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){ wallBgImg=im; $('wBgDrop').innerHTML='📎 '+f.name; if($('wBgClear'))$('wBgClear').style.display='inline'; wallDraw(); if(WMODE==='measure') wallAutoMeasure(); }; im.src=rd.result; }; rd.readAsDataURL(f); }
+function wallSetBg(f){ _wallBgFile=f; measParts=null; measResult=null; var rd=new FileReader(); rd.onload=function(){ var im=new Image(); im.onload=function(){ wallBgImg=im; $('wBgDrop').innerHTML='📎 '+f.name; if($('wBgClear'))$('wBgClear').style.display='inline'; wallDraw(); if(WMODE==='measure') wallAutoMeasure(); }; im.src=rd.result; }; rd.readAsDataURL(f); }
 function wallAutoMeasure(){
   if(WMODE!=='measure'){ return; }
   if(!_wallBgFile){ alert('อัปโหลดภาพผนัง+ป้าย ที่ช่อง "ภาพพื้นหลังผนัง" ก่อน'); return; }
   var fd=new FormData(); fd.append('file',_wallBgFile); fd.append('area_w_cm',$('wWall').value||'0'); fd.append('area_h_cm',$('hWall').value||'0');
   if($('wInfo'))$('wInfo').innerHTML='🔎 กำลังตรวจจับป้าย...';
-  fetch((API||'')+'/api/measure_parts',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-    if(j.error||!j.parts||!j.parts.length){ wallDraw(); return; }
-    var ps=j.parts, A=ps[0];
-    measBoxes[0].fx=A.fx;measBoxes[0].fy=A.fy;measBoxes[0].fw=A.fw;measBoxes[0].fh=A.fh; if(A.name)measBoxes[0].name=A.name;
-    var B=ps[ps.length-1];
-    if(ps.length>=2){ measBoxes[1].fx=B.fx;measBoxes[1].fy=B.fy;measBoxes[1].fw=B.fw;measBoxes[1].fh=B.fh; if(B.name)measBoxes[1].name=B.name; }
-    wallDraw();
+  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){ measResult=null; if($('wInfo'))$('wInfo').innerHTML='ตรวจจับไม่ได้ ('+j.error+') — ลากกรอบเองได้'; wallDraw(); return; }
+    measResult=j; wallDraw();
   }).catch(function(e){ if($('wInfo'))$('wInfo').innerHTML='เชื่อมต่อไม่ได้: '+e; });
 }
 if($('wAutoDetect'))$('wAutoDetect').onclick=wallAutoMeasure;
 if($('wBgClear'))$('wBgClear').onclick=function(){ wallBgImg=null; if($('wBgDrop'))$('wBgDrop').innerHTML='ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)'; this.style.display='none'; wallDraw(); };
-if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ var qx0=1,qy0=1,qx1=0,qy1=0; measBoxes.forEach(function(b){qx0=Math.min(qx0,b.fx);qy0=Math.min(qy0,b.fy);qx1=Math.max(qx1,b.fx+b.fw);qy1=Math.max(qy1,b.fy+b.fh);}); s={w:(qx1-qx0)*s.Wm,h:(qy1-qy0)*s.Hm}; } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
+if($('wToPrice'))$('wToPrice').onclick=function(){ var s=wallSignReal(); if(WMODE==='measure'){ if(measResult&&measResult.block_fw){ s={w:measResult.block_w_cm,h:measResult.block_h_cm}; } else { var qx0=1,qy0=1,qx1=0,qy1=0; measBoxes.forEach(function(b){qx0=Math.min(qx0,b.fx);qy0=Math.min(qy0,b.fy);qx1=Math.max(qx1,b.fx+b.fw);qy1=Math.max(qy1,b.fy+b.fh);}); s={w:(qx1-qx0)*s.Wm,h:(qy1-qy0)*s.Hm}; } } var pr=new URLSearchParams(); if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)pr.set('u',CURRENT_USER); pr.set('src','vectorcnc'); pr.set('block_w_cm',s.w.toFixed(1)); pr.set('block_h_cm',s.h.toFixed(1)); pr.set('letter_h_cm',s.h.toFixed(1)); pr.set('letter_w_cm',s.w.toFixed(1)); var base=(typeof PRICING_BASE!=='undefined')?PRICING_BASE:''; if(base) window.open(base+'?'+pr.toString(),'_blank'); };
 function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
 if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
 
