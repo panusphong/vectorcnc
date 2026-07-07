@@ -215,7 +215,7 @@ async def nest_ep(
                 # ทั้งป้ายเป็นชิ้นเดียว -> จัดกลุ่ม subs ตามเลเยอร์ (คงสี) แล้วปูซ้ำ
                 grp = {}
                 for pc in bez_pieces:
-                    g = grp.setdefault(pc["layer"], {"subs": [], "color": pc["color"], "rgb": pc["rgb"]})
+                    g = grp.setdefault(pc.get("layer", "(default)"), {"subs": [], "color": pc.get("color", "#2563EB"), "rgb": pc.get("rgb", (37, 99, 235))})
                     g["subs"].extend(pc["subs"])
                 hull = full_mm.convex_hull
                 if hull.geom_type != "Polygon":
@@ -228,7 +228,7 @@ async def nest_ep(
             else:
                 # แยกทุกชิ้นย่อยทุกเลเยอร์ -> แพคชิด (แต่ละชิ้นถือสี/เลเยอร์ของตัวเอง)
                 nest_pieces = [{"poly": pc["poly"],
-                                "groups": [(pc["subs"], pc["color"], pc["rgb"], pc["layer"])]}
+                                "groups": [(pc.get("subs", []), pc.get("color", "#2563EB"), pc.get("rgb", (37, 99, 235)), pc.get("layer", "(default)"))]}
                                for pc in bez_pieces]
                 qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600)
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM)
@@ -288,7 +288,7 @@ async def nest_ep(
             "sheets_svg": svgs, "dxf_base64": dxf_b64,
         }
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
 @app.post("/api/nest-batch")
