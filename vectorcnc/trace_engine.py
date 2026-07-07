@@ -916,9 +916,67 @@ def _chaikin(pts, closed):
     return q
 
 
+# ---------- Regularize vtracer output: ตรง=ตรงเป๊ะ · โค้ง=Bézier เนียน (ลบ ripple) ----------
+def _sample_subpath(sp, step=1.2):
+    """subpath (vtracer) -> ชุดจุดถี่ตามเส้นจริง (px) สำหรับวิเคราะห์ความตรง/โค้ง"""
+    cur = (float(sp['start'][0]), float(sp['start'][1]))
+    pts = [cur]
+    for s in sp['segs']:
+        if s[0] == 'L':
+            e = (float(s[1][0]), float(s[1][1]))
+            d = float(np.hypot(e[0] - cur[0], e[1] - cur[1]))
+            n = int(max(1, d / step))
+            for i in range(1, n + 1):
+                t = i / float(n)
+                pts.append((cur[0] + (e[0] - cur[0]) * t, cur[1] + (e[1] - cur[1]) * t))
+            cur = e
+        else:
+            c1, c2, e = s[1], s[2], s[3]
+            poly = (abs(c1[0]-cur[0]) + abs(c1[1]-cur[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1]) +
+                    abs(e[0]-c2[0]) + abs(e[1]-c2[1]))
+            n = int(min(1200, max(4, poly / step)))
+            for i in range(1, n + 1):
+                pts.append(_cubic_pt(cur, c1, c2, e, i / float(n)))
+            cur = (float(e[0]), float(e[1]))
+    return pts
+
+
+def _regularize_subpath(sp, sig=1.6, corner_ang=30.0, straight_tol=1.15, curve_err=0.5):
+    """vtracer subpath (spline ตามพิกเซล) -> subpath ที่:
+       ก้านตรง = LINE ตรงเป๊ะ (ลบระลอก JPEG) · ส่วนโค้ง = Bézier เนียนคณิตศาสตร์ · มุม = คม"""
+    from . import bezier_fit
+    pts = _sample_subpath(sp)
+    if len(pts) < 10:
+        return sp
+    P = np.asarray(_smooth_ring(pts, sig), float)   # low-pass ตามเส้น -> ripple หาย
+    if len(P) < 8:
+        return sp
+    win = int(max(4, round(sig * 3)))
+    cor = _detect_corners(P, win=win, ang_deg=corner_ang)
+    if len(cor) < 2:                                  # ทั้งวงโค้ง (o, จุด, วงกลม)
+        r = bezier_fit.fit_ring(P, max_error=curve_err)
+        return r if (r and len(r['segs']) >= 2) else sp
+    start = (float(P[cor[0]][0]), float(P[cor[0]][1]))
+    segs = []; m = len(cor)
+    for k in range(m):
+        a = cor[k]; b = cor[(k + 1) % m]
+        span = P[a:b + 1] if b > a else np.vstack([P[a:], P[:b + 1]])
+        if len(span) < 3:
+            segs.append(('L', (float(P[b][0]), float(P[b][1])))); continue
+        if _is_straight(span, abs_tol=straight_tol):
+            segs.append(('L', (float(span[-1][0]), float(span[-1][1]))))   # ตรง=ตรงเป๊ะ
+        else:
+            for cseg in bezier_fit.fit_segments(span, max_error=curve_err):  # โค้ง=Bézier
+                segs.append(cseg)
+    if len(segs) < 2:
+        return sp
+    return {'start': start, 'segs': segs, 'closed': True}
+
+
 # ---------- โหมด vtracer : เครื่องยนต์ vectorize สมัยใหม่ (เส้นตรง=line, โค้ง=spline, มุมคม) ----------
-def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
-                  length_threshold=3.0, splice_threshold=45, path_precision=6):
+def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
+                  length_threshold=2.5, splice_threshold=45, path_precision=6,
+                  regularize=True):
     """คืน [(bgr, [subpaths])] — ใช้ vtracer (VisionCortex) คุณภาพเส้นตัดระดับมืออาชีพ
     เส้นตรง = ตรงจริง · โค้ง = spline เนียน · มุม = คม · ขนาดพิกัด = px ต้นฉบับ"""
     import tempfile, re
@@ -944,8 +1002,9 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
         thr = max(40.0, bg - 45.0); mask = (g < thr).astype(np.uint8) * 255
     else:                               # พื้นเข้ม วัตถุสว่าง
         thr = min(215.0, bg + 45.0); mask = (g > thr).astype(np.uint8) * 255
-    k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (3, 3))
-    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, k)   # เชื่อมรอยขาดเส้นบาง
+    k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (5, 5))
+    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, k)   # เชื่อมรอยขาด/ปิดปลายเส้นเรียว
+    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (3, 3)))
     canvas = np.full(mask.shape, 255, np.uint8); canvas[mask > 0] = 0   # ดำบนขาว
     tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, canvas)
     outsvg = tempfile.mktemp(suffix='.svg')
@@ -968,7 +1027,7 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
         sc = re.search(r'scale\(\s*([-\d.eE]+)(?:[ ,]+([-\d.eE]+))?', tag)
         if sc:
             sx = float(sc.group(1)); sy = float(sc.group(2)) if sc.group(2) else sx
-        def X(pt):
+        def X(pt, sx=sx, sy=sy, tx=tx, ty=ty):
             return (pt.real * sx + tx, pt.imag * sy + ty)
         try:
             path = parse_path(dm.group(1))
@@ -986,8 +1045,8 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
                 elif cn == 'CubicBezier':
                     segs.append(('C', X(seg.control1), X(seg.control2), X(seg.end)))
                 elif cn == 'QuadraticBezier':
-                    c1 = seg.start + (2.0/3.0)*(seg.control - seg.start)
-                    c2 = seg.end + (2.0/3.0)*(seg.control - seg.end)
+                    c1 = seg.start + (2.0 / 3.0) * (seg.control - seg.start)
+                    c2 = seg.end + (2.0 / 3.0) * (seg.control - seg.end)
                     segs.append(('C', X(c1), X(c2), X(seg.end)))
                 elif cn == 'Arc':
                     for t in (0.25, 0.5, 0.75, 1.0):
@@ -996,4 +1055,15 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=4,
                 subs.append({'start': st, 'segs': segs, 'closed': True})
     if not subs:
         raise ValueError('vtracer ไม่พบรูปทรง')
+    if regularize:
+        sig = max(1.2, min(3.0, max(canvas.shape) / 900.0))   # ระดับ low-pass ตามความละเอียด
+        reg = []
+        for sp in subs:
+            try:
+                reg.append(_regularize_subpath(sp, sig=sig))
+            except Exception:
+                reg.append(sp)                                 # กันพลาด: คงเส้นเดิมไว้ ไม่ให้หาย
+        subs = [s for s in reg if s and s.get('segs')]
+        if not subs:
+            subs = reg
     return [((0, 0, 0), subs)]
