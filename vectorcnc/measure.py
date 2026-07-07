@@ -161,3 +161,58 @@ def cutout_rgba(path):
     mask = cv2.erode(mask, k3, iterations=1)
     alpha = cv2.GaussianBlur(mask, (0, 0), 1.0)
     return np.dstack([img, alpha])
+
+
+def measure_parts(image_path, area_w_cm, area_h_cm):
+    """แยกวัดเป็นส่วนๆ (logo/ตัวอักษร) + รวมทั้งป้าย ตาม scale ผนัง
+    ใช้ horizontal projection แบ่งแถบตามช่องว่างแนวนอน"""
+    aw = float(area_w_cm); ah = float(area_h_cm)
+    if aw <= 0 or ah <= 0:
+        raise ValueError('พื้นที่ผนัง กว้าง×สูง ต้อง > 0')
+    mask, img = _foreground_mask(image_path)
+    H, W = mask.shape[:2]
+    ys, xs = np.nonzero(mask)
+    if len(xs) < 10:
+        raise ValueError('ไม่พบป้ายในภาพ')
+    ppx = W / aw; ppy = H / ah
+
+    def pack(x0, y0, x1, y1, name=None):
+        return {'name': name, 'fx': float(x0) / W, 'fy': float(y0) / H,
+                'fw': float(x1 - x0 + 1) / W, 'fh': float(y1 - y0 + 1) / H,
+                'w_cm': round((x1 - x0 + 1) / ppx, 1), 'h_cm': round((y1 - y0 + 1) / ppy, 1)}
+
+    overall = pack(int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()), 'รวมทั้งป้าย')
+    # แบ่งแถบตามแนวนอน (ช่องว่างระหว่าง logo กับ ตัวอักษร)
+    rowsum = (mask > 0).sum(axis=1).astype(float)
+    on = rowsum > max(1.0, rowsum.max() * 0.02)
+    bands = []; i = 0
+    while i < H:
+        if on[i]:
+            j = i
+            while j < H and on[j]:
+                j += 1
+            bands.append([i, j]); i = j
+        else:
+            i += 1
+    merged = []
+    for b in bands:
+        if merged and (b[0] - merged[-1][1]) < 0.04 * H:
+            merged[-1][1] = b[1]
+        else:
+            merged.append(b[:])
+    bands = [b for b in merged if (b[1] - b[0]) > 0.02 * H]
+    parts = []
+    for (y0, y1) in bands:
+        yy, xx = np.nonzero(mask[y0:y1])
+        if len(xx) < 10:
+            continue
+        parts.append(pack(int(xx.min()), int(y0 + yy.min()), int(xx.max()), int(y0 + yy.max())))
+    if len(parts) >= 2:
+        parts.sort(key=lambda p: p['fy'])
+        parts[0]['name'] = 'โลโก้/กราฟิก'
+        parts[-1]['name'] = 'ตัวอักษร'
+        for k in range(1, len(parts) - 1):
+            parts[k]['name'] = 'ส่วนที่ %d' % (k + 1)
+    elif len(parts) == 1:
+        parts[0]['name'] = 'ป้าย'
+    return {'area_w_cm': round(aw, 1), 'area_h_cm': round(ah, 1), 'overall': overall, 'parts': parts}
