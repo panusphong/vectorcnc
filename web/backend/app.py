@@ -238,10 +238,13 @@ async def nest_ep(
             for sheet in r["placements"]:
                 items = []
                 for pl in sheet:
-                    pc = nest_pieces[pl["part"]]
-                    for subs, color, rgb, layer in pc["groups"]:
-                        ts = nesting.place_subs(subs, pl)
-                        items.append((ts, color, rgb, layer))       # (subs, color_hex, rgb, layer)
+                    try:
+                        pc = nest_pieces[pl["part"]]
+                        for subs, color, rgb, layer in pc["groups"]:
+                            ts = nesting.place_subs(subs, pl)
+                            items.append((ts, color, rgb, layer))   # (subs, color_hex, rgb, layer)
+                    except Exception:
+                        continue                                    # ข้ามชิ้นมีปัญหา ไม่ล้มทั้งงาน
                 sheets_items.append(items)
             svgs = [nesting.sheet_svg_bezier(it, float(sheet_w), float(sheet_h)) for it in sheets_items]
             dxf_path = os.path.join(tmp, "nest.dxf")
