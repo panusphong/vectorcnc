@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v12</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v13</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -1202,8 +1202,8 @@ function wallSetImg(f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design')return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
-  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
+  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||_wSplit())return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
+  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||_wSplit()||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
   window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null; try{loadGFont('Prompt');}catch(_e){}
