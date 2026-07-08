@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v22</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v23</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -446,7 +446,7 @@ select.numin{cursor:pointer}
     <div style="padding:16px 18px;border-right:1px solid var(--line);height:100%;overflow:auto">
       <div style="display:flex;gap:6px;margin-bottom:12px" id="wModeTabs">
         <button class="chip on" data-wm="design" style="flex:1">🎨 ออกแบบ (วาง logo)</button>
-        <button class="chip" data-wm="measure" style="flex:1">📷 วัดจากภาพ</button></div>
+        <button class="chip" data-wm="measure" style="flex:1">📷 วางภาพทั้งผนังและป้าย</button></div>
       <div id="wDsgnHint" class="hint" style="margin-bottom:10px">วางโลโก้แล้วติ๊ก "แยกโลโก้/ตัวอักษร" เพื่อคิดราคาแยก 2 ส่วน · ลากกรอบปรับเองได้<br><label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="wDsgnSplit"> 🔴🔵 แยกโลโก้ + ตัวอักษร (คิดราคาแยก)</label><br><button class="btn ghost" id="wDsgnDetect" style="padding:5px 12px;font-size:12px;margin-top:6px">🎯 ตรวจจับโลโก้/ตัวอักษรจากภาพ</button></div>
       <div id="wMeasHint" class="hint" style="display:none;margin-bottom:10px">อัปโหลดภาพผนัง+ป้าย ที่ช่อง "ภาพพื้นหลังผนัง" ด้านล่าง → ระบบตรวจจับป้ายให้อัตโนมัติ (ลากมุมปรับเองได้)<br><button class="btn ghost" id="wAutoDetect" style="padding:5px 12px;font-size:12px;margin-top:6px">🎯 ตรวจจับป้ายอัตโนมัติ</button></div>
       <label class="cslab">ผนัง — กว้าง (cm)</label>
@@ -509,6 +509,7 @@ select.numin{cursor:pointer}
           <label class="cslab" style="margin-top:8px">ประเภทป้าย (คิดราคาตัวอักษร)</label>
           <input class="numin" id="wTxtType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภท" autocomplete="off">
           <div id="wTxtInfo" style="margin-top:8px;background:var(--grad);color:#fff;border-radius:8px;padding:8px;font-size:12px">ขนาด – → 0 บาท</div>
+          <div style="display:flex;gap:6px;margin-top:8px"><button class="btn ghost" id="wTxtCenterH" style="flex:1;padding:5px;font-size:12px">↔ กึ่งกลางแนวนอน</button><button class="btn ghost" id="wTxtCenterV" style="flex:1;padding:5px;font-size:12px">↕ กึ่งกลางแนวตั้ง</button></div>
           <button class="btn ghost" id="wTxtDel" style="margin-top:8px;padding:5px 12px;font-size:12px;color:var(--red)">🗑 ลบข้อความนี้</button>
         </div>
       </div>
@@ -1407,15 +1408,30 @@ var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0};
 var GFONTS=['Prompt','Sarabun','Kanit','Mitr','Bai Jamjuree','Chonburi','Charm','Mali','Sriracha','K2D','Taviraj','Roboto','Montserrat','Poppins','Playfair Display','Pacifico','Lobster','Oswald','Bebas Neue','Dancing Script','Great Vibes','Cinzel','Anton','Cormorant Garamond'];
 function loadGFont(f){ var id='gf-'+f.replace(/[^a-zA-Z0-9]/g,''); if(document.getElementById(id))return; var l=document.createElement('link'); l.id=id; l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+':wght@400;700&display=swap'; document.head.appendChild(l); }
 (function(){ var sel=$('wTxtFont'); if(sel){ GFONTS.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent=f; sel.appendChild(o); loadGFont(f); }); } })();
-function drawTextBoxes(g,M,ww,wh,ppm){ for(var i=0;i<textBoxes.length;i++){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm); g.font='700 '+px+'px "'+t.font+'", sans-serif'; g.textAlign='left'; g.textBaseline='top'; g.fillStyle=t.color; var x=M+t.fx*ww, y=M+t.fy*wh; g.fillText(t.text||'',x,y);
-  var w=g.measureText(t.text||'').width; t._wcm=w/ppm; t._hcm=t.sizeCm;
-  g.save(); g.strokeStyle='#7c3aed'; g.fillStyle='#7c3aed'; g.lineWidth=1; g.setLineDash([3,2]);
-  g.strokeRect(x,y,w,px); g.setLineDash([]);
-  g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(t._wcm)+' ซม.', x+w/2, y-2);
-  g.textAlign='left'; g.textBaseline='middle'; g.fillText(Math.round(t._hcm)+' ซม.', x+w+5, y+px/2); g.restore();
-  if(i===_txtSel){ g.strokeStyle='#2563eb'; g.lineWidth=1.5; g.setLineDash([4,3]); g.strokeRect(x-3,y-3,w+6,px+6); g.setLineDash([]); } } g.textBaseline='alphabetic'; g.textAlign='left'; }
-function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return false; var g=cv.getContext('2d'); var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
-  for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm); g.font='700 '+px+'px "'+t.font+'"'; var w=g.measureText(t.text||'').width; var x=M+t.fx*ww,y=M+t.fy*wh; if(p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+px+5){ _txtSel=i;_txtDrag=true;_txtOff={x:p.x-x,y:p.y-y}; openTextEdit(); wallDraw(); return true; } } return false; }
+function _wTxtMargins(g,M,ww,wh,ppm,x,y,iw,ih){ if(!$('wLabels')||!$('wLabels').checked)return;
+  var amb='#f59e0b', cx=x+iw/2, cy=y+ih/2;
+  var mL=(x-M)/ppm, mR=((M+ww)-(x+iw))/ppm, mT=(y-M)/ppm, mB=((M+wh)-(y+ih))/ppm;
+  if(x-M>16)_wDimH(g,M,x,cy,mL.toFixed(1)+' cm',amb);
+  if((M+ww)-(x+iw)>16)_wDimH(g,x+iw,M+ww,cy,mR.toFixed(1)+' cm',amb);
+  if(y-M>16)_wDimV(g,M,y,cx,mT.toFixed(1)+' cm',amb);
+  if((M+wh)-(y+ih)>16)_wDimV(g,y+ih,M+wh,cx,mB.toFixed(1)+' cm',amb); }
+function drawTextBoxes(g,M,ww,wh,ppm){ for(var i=0;i<textBoxes.length;i++){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm);
+    g.font='700 '+px+'px "'+t.font+'", sans-serif'; g.textAlign='left'; g.textBaseline='alphabetic';
+    var m=g.measureText(t.text||'');
+    var asc=(m.actualBoundingBoxAscent||px*0.72), desc=(m.actualBoundingBoxDescent||px*0.04);
+    var lft=(m.actualBoundingBoxLeft||0), rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
+    var iw=Math.max(1,lft+rgt), ih=Math.max(1,asc+desc);
+    var x=M+t.fx*ww, y=M+t.fy*wh;
+    g.fillStyle=t.color; g.fillText(t.text||'', x+lft, y+asc);
+    t._wcm=iw/ppm; t._hcm=ih/ppm; t._iw=iw; t._ih=ih;
+    g.save(); g.strokeStyle='#7c3aed'; g.lineWidth=1; g.setLineDash([3,2]); g.strokeRect(x,y,iw,ih); g.setLineDash([]);
+    g.fillStyle='#7c3aed'; g.font='11px system-ui,sans-serif';
+    g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(t._wcm)+' ซม.', x+iw/2, y-2);
+    g.textAlign='left'; g.textBaseline='middle'; g.fillText(Math.round(t._hcm)+' ซม.', x+iw+5, y+ih/2); g.restore();
+    if(i===_txtSel){ g.strokeStyle='#2563eb'; g.lineWidth=1.5; g.setLineDash([4,3]); g.strokeRect(x-3,y-3,iw+6,ih+6); g.setLineDash([]); _wTxtMargins(g,M,ww,wh,ppm,x,y,iw,ih); }
+  } g.textBaseline='alphabetic'; g.textAlign='left'; }
+function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return false; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
+  for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i]; var x=M+t.fx*ww,y=M+t.fy*wh, iw=t._iw||(t.sizeCm*ppm), ih=t._ih||(t.sizeCm*ppm); if(p.x>=x-5&&p.x<=x+iw+5&&p.y>=y-5&&p.y<=y+ih+5){ _txtSel=i;_txtDrag=true;_txtOff={x:p.x-x,y:p.y-y}; openTextEdit(); wallDraw(); return true; } } return false; }
 window.addEventListener('mousemove',function(e){ if(!_txtDrag||_txtSel<0)return; var cv=$('wCanvas'); if(!cv)return; var r=cv.getBoundingClientRect(); var px=((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, py=((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; textBoxes[_txtSel].fx=(px-_txtOff.x-M)/ww; textBoxes[_txtSel].fy=(py-_txtOff.y-M)/wh; wallDraw(); });
 window.addEventListener('mouseup',function(){ _txtDrag=false; });
 function txtPrice(t){ if(!t||!t.type||!t._wcm||!t._hcm)return null; var colorSpecial=!!($('wPColor')&&$('wPColor').checked); return wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none', 'text'); }
@@ -1426,6 +1442,8 @@ function updateTxtInfo(){ var el=$('wTxtInfo'); if(!el)return; if(_txtSel<0||!te
 function openTextEdit(){ var e=$('wTextEdit'); if(_txtSel<0||!textBoxes[_txtSel]){ if(e)e.style.display='none'; return; } var t=textBoxes[_txtSel]; if(e)e.style.display='block'; if($('wTxt'))$('wTxt').value=t.text; if($('wTxtFont'))$('wTxtFont').value=t.font; if($('wTxtSize'))$('wTxtSize').value=t.sizeCm; if($('wTxtColor'))$('wTxtColor').value=t.color; if($('wTxtType'))$('wTxtType').value=t.type||''; updateTxtInfo(); }
 if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.45,text:'ข้อความ',font:'Prompt',sizeCm:20,color:'#333333'}); _txtSel=textBoxes.length-1; loadGFont('Prompt'); openTextEdit(); setTimeout(wallDraw,60); };
 ['wTxt','wTxtFont','wTxtSize','wTxtColor','wTxtType'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; if($('wTxtType'))t.type=$('wTxtType').value; loadGFont(t.font); setTimeout(wallDraw,30); }; el.onchange=el.oninput; });
+if($('wTxtCenterH'))$('wTxtCenterH').onclick=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; var s=wallSignReal(),ww=s.Wm*s.ppm; t.fx=0.5-((t._iw||0)/2)/ww; wallDraw(); };
+if($('wTxtCenterV'))$('wTxtCenterV').onclick=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; var s=wallSignReal(),wh=s.Hm*s.ppm; t.fy=0.5-((t._ih||0)/2)/wh; wallDraw(); };
 if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
 if($('wPCopy'))$('wPCopy').onclick=function(){
   if(!_wLast||!_wLast.lines){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
