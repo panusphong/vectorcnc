@@ -4,6 +4,7 @@
 VTracer/svgpathtools/skimage = import แบบ lazy (โหลดเฉพาะตอนใช้ -> สตาร์ทเร็ว)
 """
 import re
+import math
 import numpy as np
 import cv2
 from shapely.geometry import Polygon
@@ -977,10 +978,42 @@ def _merge_collinear(start, segs, tol=0.6):
     return out
 
 
+def _snap_axis(start, segs, ang_deg=3.5, max_dev=8.0, closed=True):
+    """ดัดเส้นตรงที่ 'เกือบ' แนวนอน/แนวตั้ง ให้ตรงเป๊ะตามแกน (ลบอาการยึกยัก/บิดเบี้ยว)
+    - snap เฉพาะ segment 'L' ที่ทำมุมกับแกน <= ang_deg องศา และเบี่ยง <= max_dev px
+    - เส้นทแยงจริง (เช่น ขา A/V/W) มุมมาก -> ไม่แตะ
+    - segment ปิดรูป (กลับมาที่จุดเริ่ม) -> ไม่แตะ เพื่อคงการปิดรูป"""
+    if not segs:
+        return segs
+    thr = math.tan(math.radians(ang_deg))
+    ax, ay = float(start[0]), float(start[1])
+    sx, sy = ax, ay
+    out = []
+    for s in segs:
+        if s[0] == 'L':
+            ex, ey = float(s[1][0]), float(s[1][1])
+            is_close = closed and abs(ex - ax) < 1.0 and abs(ey - ay) < 1.0
+            if not is_close:
+                dx, dy = ex - sx, ey - sy
+                adx, ady = abs(dx), abs(dy)
+                if adx > 1e-6 or ady > 1e-6:
+                    if ady <= max_dev and ady <= adx * thr:      # เกือบแนวนอน -> ปรับ y ให้ตรง
+                        ey = sy
+                    elif adx <= max_dev and adx <= ady * thr:    # เกือบแนวตั้ง -> ปรับ x ให้ตรง
+                        ex = sx
+            out.append(('L', (ex, ey)))
+            sx, sy = ex, ey
+        else:
+            out.append(s)
+            sx, sy = float(s[3][0]), float(s[3][1])
+    return out
+
+
 def _regularize_subpath(sp, tol=0.9, **_):
     """ทำให้ 'ตรง=ตรงเป๊ะ' โดยไม่แตะเส้นโค้งของ vtracer (คงความแนบต้นฉบับ ไม่มีโก่ง):
     - segment โค้งที่ 'เกือบตรง' -> แทนด้วย LINE เป๊ะ
-    - segment โค้งจริง -> เก็บ cubic เดิมของ vtracer ทั้งดุ้น (ไม่ resample/smooth/refit)"""
+    - segment โค้งจริง -> เก็บ cubic เดิมของ vtracer ทั้งดุ้น (ไม่ resample/smooth/refit)
+    - เส้นตรงที่เกือบแนวนอน/แนวตั้ง -> snap ให้ตรงตามแกนเป๊ะ (ลบยึกยัก)"""
     segs_in = sp.get('segs') or []
     if not segs_in:
         return sp
@@ -995,11 +1028,16 @@ def _regularize_subpath(sp, tol=0.9, **_):
             prev = s[3]
         else:
             raw.append(s); prev = s[1]
+    closed = sp.get('closed', True)
     # รวมเส้นตรงแนวเดียวกัน
     global cur_pts
     cur_pts = [sp['start']]
     merged = _merge_collinear(sp['start'], raw, tol=max(0.5, tol*0.7))
-    return {'start': sp['start'], 'segs': merged, 'closed': sp.get('closed', True)}
+    # snap แนวนอน/แนวตั้ง แล้วรวมเส้นแนวเดียวกันซ้ำ (fuse ที่เพิ่งตรงกัน)
+    snapped = _snap_axis(sp['start'], merged, closed=closed)
+    cur_pts = [sp['start']]
+    snapped = _merge_collinear(sp['start'], snapped, tol=max(0.5, tol*0.7))
+    return {'start': sp['start'], 'segs': snapped, 'closed': closed}
 def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
                   length_threshold=2.5, splice_threshold=45, path_precision=6,
                   regularize=True):
