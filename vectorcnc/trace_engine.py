@@ -1184,3 +1184,76 @@ def nest_shapes_mm(image_path, real_width_mm=300.0, n_colors=6, max_dim=900):
             pass
     polys.sort(key=lambda p: -p.area)
     return polys[:60]
+
+
+def bezier_pieces_mm(image_path, real_width_mm=300.0, n_colors=6, max_pieces=60):
+    """สร้าง 'ชิ้นสำหรับ Nesting' จากภาพ raster ด้วยเครื่องยนต์ vtracer (เส้นโค้ง Bézier + เส้นตรง snap)
+    -> คืน list ของ {poly, subs, color, rgb, layer} หน่วยมม. (Y ชี้ลง) รูปแบบเดียวกับ vector_import
+    ทำให้ Nesting ของภาพ raster 'เนียนกริบ' เท่ากับเครื่องยนต์ตัด (เขียน DXF เป็น SPLINE จริง)
+    - จับคู่รู (holes) เข้ากับชิ้นแม่อัตโนมัติ (ตัว O/P/R/A ฯลฯ)"""
+    from shapely.geometry import Polygon
+    layers = trace_vtracer(image_path, n_colors=n_colors)
+    subs = []
+    for _rgb, sps in (layers or []):
+        subs.extend(sps or [])
+    if not subs:
+        return []
+    # bbox รวม (px) จากจุด sample
+    xs = []; ys = []
+    sampled = []
+    for sp in subs:
+        pts = _sample_subpath(sp, step=2.0)
+        sampled.append(pts)
+        for x, y in pts:
+            xs.append(x); ys.append(y)
+    if not xs:
+        return []
+    mnx, mny, mxx = min(xs), min(ys), max(xs)
+    Wpx = (mxx - mnx) or 1.0
+    ppm = Wpx / float(real_width_mm or 1.0) or 1.0
+
+    def S(p):
+        return ((p[0] - mnx) / ppm, (p[1] - mny) / ppm)
+
+    def scale_sub(sp):
+        segs = [('L', S(s[1])) if s[0] == 'L' else ('C', S(s[1]), S(s[2]), S(s[3])) for s in sp['segs']]
+        return {'start': S(sp['start']), 'segs': segs, 'closed': sp.get('closed', True)}
+
+    msubs = [scale_sub(sp) for sp in subs]
+    # polygon footprint ต่อ subpath (sample ละเอียดตามโค้ง) สำหรับเช็ค 'รู' + nest
+    polys = []
+    for sp in msubs:
+        pts = _sample_subpath(sp, step=0.8)
+        try:
+            pg = Polygon(pts).buffer(0)
+            polys.append(pg if (pg and not pg.is_empty) else None)
+        except Exception:
+            polys.append(None)
+    order = [i for i, p in enumerate(polys) if p is not None and p.area > 1.0]
+    order.sort(key=lambda i: -polys[i].area)     # ใหญ่ก่อน = ชิ้นแม่ก่อนรู
+    used = set(); pieces = []
+    for i in order:
+        if i in used:
+            continue
+        outer = polys[i]; hole_subs = []; hole_rings = []
+        for j in order:
+            if j == i or j in used:
+                continue
+            try:
+                if outer.contains(polys[j].representative_point()):
+                    used.add(j); hole_subs.append(msubs[j]); hole_rings.append(polys[j])
+            except Exception:
+                pass
+        used.add(i)
+        try:
+            piece_poly = Polygon(list(outer.exterior.coords),
+                                 [list(h.exterior.coords) for h in hole_rings]).buffer(0)
+            if piece_poly.is_empty:
+                piece_poly = outer
+        except Exception:
+            piece_poly = outer
+        pieces.append({'poly': piece_poly, 'subs': [msubs[i]] + hole_subs,
+                       'color': '#2563EB', 'rgb': (37, 99, 235), 'layer': 'CUT'})
+        if len(pieces) >= max_pieces:
+            break
+    return pieces
