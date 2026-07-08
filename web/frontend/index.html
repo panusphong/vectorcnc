@@ -419,7 +419,7 @@ select.numin{cursor:pointer}
 <!-- ===== ประวัติการเข้าใช้ (Login CRM) ===== -->
 <div class="modal" id="logOverlay"><div class="modal-card" style="max-width:640px;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel2)">
-    <div><b style="font-size:16px">🕘 ประวัติการเข้าใช้งาน</b>
+    <div><b style="font-size:16px">🕘 ประวัติเข้าเมนู ขนาดป้าย + จำลองผนัง</b>
       <div id="logWho" style="font-size:12px;color:var(--muted);margin-top:2px"></div></div>
     <button class="csm-x" id="logClose" title="ปิด">✕</button>
   </div>
@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v20</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v21</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1022,8 +1022,8 @@ function vcLoadHistory(){
   if(!all && CURRENT_USER) q+='&u='+encodeURIComponent(CURRENT_USER);
   _crmCall(q, function(j){
     if(!j||!j.ok){ box.innerHTML='<div class="csm2-empty">โหลดไม่ได้: '+((j&&j.error)||'?')+'</div>'; return; }
-    var rows=j.rows||[];
-    if(!rows.length){ box.innerHTML='<div class="csm2-empty">— ไม่มีประวัติในช่วงที่เลือก —</div>'; return; }
+    var rows=(j.rows||[]).filter(function(r){ return String(r.device||'').toLowerCase().indexOf('simulator')>=0; });   // เฉพาะเมนูขนาดป้าย+จำลองผนัง
+    if(!rows.length){ box.innerHTML='<div class="csm2-empty">— ไม่มีประวัติเข้าเมนูจำลองผนังในช่วงที่เลือก —</div>'; return; }
     box.innerHTML=rows.map(function(r){
       var ini=(r.nickname||r.username||'?').charAt(0);
       return '<div style="display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;background:var(--panel2)">'
