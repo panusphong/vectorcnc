@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v7</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v8</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -479,10 +479,10 @@ select.numin{cursor:pointer}
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (ในตัว · realtime)</div>
-        <label id="wPSameRow" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px"><input type="checkbox" id="wPSame" checked> 🔴🔵 ใช้ประเภทเดียวกันทั้ง 2 กรอบ (เลือกที่เดียว)</label>
+        <label id="wPSameRow" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px"><input type="checkbox" id="wPSame" checked> 🔴 โลโก้ + 🔵 ตัวอักษร ใช้ประเภทเดียวกัน</label>
         <label class="cslab" id="wPTypeLbl">ประเภทป้าย</label>
         <input class="numin" id="wPType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย" autocomplete="off"><datalist id="wPTypeList"></datalist>
-        <div id="wPType2Row" style="display:none;margin-top:8px"><label class="cslab">🔵 ประเภทป้าย (กรอบน้ำเงิน)</label>
+        <div id="wPType2Row" style="display:none;margin-top:8px"><label class="cslab">🔵 ประเภทป้าย (ตัวอักษร)</label>
         <input class="numin" id="wPType2" list="wPType2List" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย" autocomplete="off"><datalist id="wPType2List"></datalist></div>
         <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" id="wPColor"> สีพิเศษ (ไม่ใช่ขาว/ดำ) +1,500</label>
         <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPLight" disabled> ป้ายไฟ (+หม้อแปลง 1,000 · auto)</label>
@@ -1126,19 +1126,24 @@ function wallDraw(){
     if((M+wh)-(sy+sh)>16) _wDimV(g,sy+sh,M+wh,cx,mBcm.toFixed(1)+' cm',amb);
   }
   drawTextBoxes(g,M,ww,wh,ppm);
-  try{ if(typeof _wLast!=='undefined'&&_wLast&&_wLast.total>0){
-    var _pt=Math.round(_wLast.total).toLocaleString()+' บาท';
-    var _fh=Math.max(18,Math.round(ww*0.036));
-    g.save(); g.textBaseline='top';
-    g.font='bold '+_fh+'px sans-serif'; var _tw=g.measureText(_pt).width;
-    g.font='12px sans-serif'; var _sw2=g.measureText('ราคารวมประเมิน (ยังไม่รวม VAT)').width;
-    var _bw=Math.max(_tw,_sw2)+28, _bh=_fh+42;
-    var _bx=M+ww-_bw-12, _by=M+wh-_bh-12;
-    if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,12); g.fillStyle='rgba(15,23,42,.92)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.92)'; g.fillRect(_bx,_by,_bw,_bh); }
-    g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,4);
-    g.textAlign='left'; g.fillStyle='#9fb0c9'; g.font='12px sans-serif'; g.fillText('ราคารวมประเมิน (ยังไม่รวม VAT)',_bx+14,_by+11);
-    g.fillStyle='#ffffff'; g.font='bold '+_fh+'px sans-serif'; g.fillText(_pt,_bx+14,_by+27);
-    g.restore();
+  try{ if(typeof _wLast!=='undefined'&&_wLast&&_wLast.lines){
+    var _vl=_wLast.lines.filter(function(l){return l.r;});
+    if(_vl.length){
+      var _fh=Math.max(17,Math.round(ww*0.03)), _lf=Math.max(12,Math.round(ww*0.019)), _lh=_lf+7;
+      var _rows=[];
+      if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+': '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
+      _rows.push({t:(_vl.length>1?'ราคารวม':'ราคาประเมิน')+' (ยังไม่รวม VAT)', f:_lf, c:'#9fb0c9', b:false});
+      _rows.push({t:Math.round(_wLast.total).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
+      g.save(); g.textBaseline='top';
+      var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=28;
+      var _bh=20; _rows.forEach(function(r){ _bh+=(r.b?r.f+8:_lh); });
+      var _bx=M+ww-_bw-12, _by=M+wh-_bh-12;
+      if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,12); g.fillStyle='rgba(15,23,42,.93)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.93)'; g.fillRect(_bx,_by,_bw,_bh); }
+      g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,4);
+      g.textAlign='left'; var _yy=_by+12;
+      _rows.forEach(function(r){ g.fillStyle=r.c; g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; g.fillText(r.t,_bx+14,_yy); _yy+=(r.b?r.f+8:_lh); });
+      g.restore();
+    }
   } }catch(_e){}
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
   $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
@@ -1236,11 +1241,12 @@ function wTierIdx(h){ if(h<16)return 0;if(h<21)return 1;if(h<26)return 2;if(h<31
 function wIsPrint(k){ return !!k&&(k.indexOf('\u0e1e\u0e34\u0e21\u0e1e\u0e4c')>=0||/print/i.test(k)); }
 function wIsLight(k){ if(!k)return false; if(k.indexOf('\u0e44\u0e21\u0e48\u0e21\u0e35\u0e44\u0e1f')>=0)return false; return k.indexOf('\u0e44\u0e1f')>=0||k.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0; }
 function wIsLetter(k){ return !!k&&k.indexOf('\u0e2d\u0e31\u0e01\u0e29\u0e23')>=0; }
-function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey){
+function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey,role){
   var item=WCAT[itemKey]; if(!item)return {error:'\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22'};
-  if(wIsLetter(itemKey)&&heightM*100>60)return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21.)'};
+  var isText=(role==='text')||(!role&&wIsLetter(itemKey)), isLogo=(role==='logo');
+  if(isText && heightM*100>60) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21.)'};
   var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey);
-  if(itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0 && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
+  if((isLogo||itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0) && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
   var colorFee=(!isPrint&&colorSpecial)?1500:0;
   var transFee=isLight?1000:0;
   var frameRate={none:0,steel:1800,stainless:4800}[frameKey||'none']||0;
@@ -1268,18 +1274,18 @@ function wallPrice(){ if(!$('wPResult'))return;
   var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
   if($('wPSameRow'))$('wPSameRow').style.display=isMeasure?'flex':'none';
   if($('wPType2Row'))$('wPType2Row').style.display=(isMeasure&&!same)?'block':'none';
-  if($('wPTypeLbl'))$('wPTypeLbl').textContent=(isMeasure&&!same)?'\ud83d\udd34 \u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 (\u0e01\u0e23\u0e2d\u0e1a\u0e41\u0e14\u0e07)':'\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22';
+  if($('wPTypeLbl'))$('wPTypeLbl').textContent=(isMeasure&&!same)?'\ud83d\udd34 \u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 (\u0e42\u0e25\u0e42\u0e01\u0e49)':'\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22';
   if($('wPLight'))$('wPLight').checked=wIsLight(t1)||wIsLight(t2);
   var lines=[], total=0;
-  function addLine(label,type,a){ if(!type){ lines.push({label:label,empty:true}); return; }
-    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, frameKey);
+  function addLine(label,type,a,role){ if(!type){ lines.push({label:label,empty:true}); return; }
+    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, frameKey, role);
     if(r.error){ lines.push({label:label,error:r.error}); return; }
     lines.push({label:label,type:type,w:Math.round(a.w),h:Math.round(a.h),r:r}); total+=r.total; }
   if(isMeasure){
-    addLine('\ud83d\udd34 \u0e01\u0e23\u0e2d\u0e1a\u0e41\u0e14\u0e07', t1, {w:measBoxes[0].fw*s.Wm,h:measBoxes[0].fh*s.Hm});
-    addLine('\ud83d\udd35 \u0e01\u0e23\u0e2d\u0e1a\u0e19\u0e49\u0e33\u0e40\u0e07\u0e34\u0e19', t2, {w:measBoxes[1].fw*s.Wm,h:measBoxes[1].fh*s.Hm});
+    addLine('\ud83d\udd34 \u0e42\u0e25\u0e42\u0e01\u0e49', t1, {w:measBoxes[0].fw*s.Wm,h:measBoxes[0].fh*s.Hm}, 'logo');
+    addLine('\ud83d\udd35 \u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23', t2, {w:measBoxes[1].fw*s.Wm,h:measBoxes[1].fh*s.Hm}, 'text');
   } else { var a=wallSignAreaSqm(); addLine('', t1, {w:a.w,h:a.h}); }
-  if(typeof textBoxes!=='undefined'&&textBoxes.length){ textBoxes.forEach(function(t){ if(!t.type||!t._wcm||!t._hcm)return; var rr=wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none'); if(rr&&!rr.error){ lines.push({label:'\ud83d\udcdd "'+(t.text||'')+'"',type:t.type,w:Math.round(t._wcm),h:Math.round(t._hcm),r:rr}); total+=rr.total; } }); }
+  if(typeof textBoxes!=='undefined'&&textBoxes.length){ textBoxes.forEach(function(t){ if(!t.type||!t._wcm||!t._hcm)return; var rr=wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none', 'text'); if(rr&&!rr.error){ lines.push({label:'\ud83d\udcdd "'+(t.text||'')+'"',type:t.type,w:Math.round(t._wcm),h:Math.round(t._hcm),r:rr}); total+=rr.total; } }); }
   var _valid=lines.filter(function(l){return l.r;});
   if(!_valid.length){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; try{updateTxtInfo();}catch(_e){} return; }
   var multi=_valid.length>1;
@@ -1317,7 +1323,7 @@ function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return f
   for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i], px=Math.max(4,t.sizeCm*ppm); g.font='700 '+px+'px "'+t.font+'"'; var w=g.measureText(t.text||'').width; var x=M+t.fx*ww,y=M+t.fy*wh; if(p.x>=x-5&&p.x<=x+w+5&&p.y>=y-5&&p.y<=y+px+5){ _txtSel=i;_txtDrag=true;_txtOff={x:p.x-x,y:p.y-y}; openTextEdit(); wallDraw(); return true; } } return false; }
 window.addEventListener('mousemove',function(e){ if(!_txtDrag||_txtSel<0)return; var cv=$('wCanvas'); if(!cv)return; var r=cv.getBoundingClientRect(); var px=((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, py=((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; textBoxes[_txtSel].fx=(px-_txtOff.x-M)/ww; textBoxes[_txtSel].fy=(py-_txtOff.y-M)/wh; wallDraw(); });
 window.addEventListener('mouseup',function(){ _txtDrag=false; });
-function txtPrice(t){ if(!t||!t.type||!t._wcm||!t._hcm)return null; var colorSpecial=!!($('wPColor')&&$('wPColor').checked); return wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none'); }
+function txtPrice(t){ if(!t||!t.type||!t._wcm||!t._hcm)return null; var colorSpecial=!!($('wPColor')&&$('wPColor').checked); return wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none', 'text'); }
 function updateTxtInfo(){ var el=$('wTxtInfo'); if(!el)return; if(_txtSel<0||!textBoxes[_txtSel]){ el.innerHTML='—'; return; } var t=textBoxes[_txtSel]; var wc=Math.round(t._wcm||0), hc=Math.round(t._hcm||t.sizeCm);
   if(!t.type){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · เลือกประเภทเพื่อคิดราคา'; return; }
   var r=txtPrice(t); if(!r||r.error){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · ⛔ '+((r&&r.error)||''); return; }
