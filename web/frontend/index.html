@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v31</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v33</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -519,12 +519,17 @@ select.numin{cursor:pointer}
         </div>
       </div>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
-        <div style="font-weight:700;font-size:13px;margin-bottom:6px">⬛ รูปทรงวางดูตำแหน่ง (ไม่คิดราคา)</div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px">⬛ รูปทรง / แผ่นหลัง (คิดราคาได้)</div>
         <div style="display:flex;gap:6px"><button class="btn ghost" id="wShapeRect" style="flex:1;padding:6px;font-size:12px">▭ สี่เหลี่ยม</button><button class="btn ghost" id="wShapeCircle" style="flex:1;padding:6px;font-size:12px">◯ วงกลม</button></div>
         <div id="wShapeEdit" style="display:none;margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap">
           <label class="cslab" style="margin:0">สี</label><input type="color" id="wShapeColor" value="#e11d48" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;background:none">
           <button class="btn ghost" id="wShapeCenterH" style="flex:1;padding:5px;font-size:11.5px">↔ กลาง</button><button class="btn ghost" id="wShapeCenterV" style="flex:1;padding:5px;font-size:11.5px">↕ กลาง</button>
           <button class="btn ghost" id="wShapeDel" style="padding:5px 9px;font-size:12px;color:var(--red)">🗑</button>
+        </div>
+        <div id="wShapeMatRow" style="display:none;margin-top:8px">
+          <label class="cslab">วัสดุแผ่นหลัง (คิดราคา · เว้นว่าง = ไม่คิด)</label>
+          <input class="numin" id="wShapeMat" list="wPTypeList" placeholder="🔍 อะคริลิค / คอมโพสิต / สแตนเลส เงิน-ทอง-โรสโกลด์" autocomplete="off">
+          <div id="wShapeInfo" style="margin-top:6px;background:var(--grad);color:#fff;border-radius:8px;padding:7px;font-size:12px">ขนาด – → 0 บาท</div>
         </div>
       </div>
       <div class="hint" id="wInfo" style="margin-top:10px"></div>
@@ -1103,7 +1108,18 @@ var WALL_M=70, WALL_TARGET=1100;
     wallDraw(); });
   window.addEventListener('mouseup',function(){ if(act){ act=null;corner=-1;si=-1; } window._shpAct=false; window._wBoxAct=false; });
 })();
-function openShapeEdit(){ var e=$('wShapeEdit'); if(_shpSel<0||!shapes[_shpSel]){ if(e)e.style.display='none'; return; } if(e)e.style.display='flex'; if($('wShapeColor'))$('wShapeColor').value=shapes[_shpSel].color; }
+function shpPrice(sp){ if(!sp||!sp.mat)return null; var it=WCAT[sp.mat]; if(!it)return {error:'ไม่พบวัสดุ'};
+  var Wc=parseFloat($('wWall').value)||0, Hc=parseFloat($('hWall').value)||0; var wcm=sp.fw*Wc, hcm=sp.fh*Hc;
+  var per=(it.t==='t')?(it.ti[wTierIdx(hcm)]||0):(it.p||0);
+  var areaSqm=(sp.type==='circle'?(Math.PI/4):1)*(wcm/100)*(hcm/100);
+  var isPrint=wIsPrint(sp.mat), material=areaSqm*per, total=material, minTot=isPrint&&total>0&&total<300; if(minTot)total=300;
+  return { mat:sp.mat, w:Math.round(wcm), h:Math.round(hcm), areaSqm:areaSqm, per:per, material:Math.round(material), total:Math.round(total), minTot:minTot, shape:sp.type }; }
+function updateShapeInfo(){ var el=$('wShapeInfo'); if(!el)return; if(_shpSel<0||!shapes[_shpSel]){ el.innerHTML='—'; return; } var sp=shapes[_shpSel]; var Wc=parseFloat($('wWall').value)||0,Hc=parseFloat($('hWall').value)||0; var wc=Math.round(sp.fw*Wc),hc=Math.round(sp.fh*Hc);
+  if(!sp.mat){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · เลือกวัสดุเพื่อคิดราคา'; return; }
+  var r=shpPrice(sp); if(!r||r.error){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · ⛔ '+((r&&r.error)||''); return; }
+  el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · '+r.areaSqm.toFixed(3)+' ตร.ม. × '+r.per.toLocaleString()+' → <b>'+r.total.toLocaleString()+' บาท</b>'; }
+if($('wShapeMat')){ $('wShapeMat').oninput=$('wShapeMat').onchange=function(){ if(_shpSel<0)return; shapes[_shpSel].mat=this.value; updateShapeInfo(); wallDraw(); }; }
+function openShapeEdit(){ var e=$('wShapeEdit'), m=$('wShapeMatRow'); if(_shpSel<0||!shapes[_shpSel]){ if(e)e.style.display='none'; if(m)m.style.display='none'; return; } if(e)e.style.display='flex'; if(m)m.style.display='block'; if($('wShapeColor'))$('wShapeColor').value=shapes[_shpSel].color; if($('wShapeMat'))$('wShapeMat').value=shapes[_shpSel].mat||''; updateShapeInfo(); }
 function _shpAdd(type){ var col=($('wShapeColor')&&$('wShapeColor').value)||(type==='circle'?'#2563eb':'#e11d48'); shapes.push({type:type,fx:0.4,fy:0.4,fw:0.2,fh:0.2,color:col}); _shpSel=shapes.length-1; openShapeEdit(); wallDraw(); }
 if($('wShapeRect'))$('wShapeRect').onclick=function(){ _shpAdd('rect'); };
 if($('wShapeCircle'))$('wShapeCircle').onclick=function(){ _shpAdd('circle'); };
@@ -1125,22 +1141,28 @@ function _wArrow(g,x,y,fx,fy){ var a=Math.atan2(y-fy,x-fx),L=7.5; g.beginPath();
 function _wDimH(g,x1,x2,y,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x1,y); g.lineTo(x2,y); g.stroke(); _wArrow(g,x1,y,x2,y); _wArrow(g,x2,y,x1,y); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect((x1+x2)/2-tw/2-4,y-20,tw+8,17); g.fillStyle=col; g.fillText(txt,(x1+x2)/2,y-5); g.textBaseline='alphabetic'; }
 function _wDimV(g,y1,y2,x,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x,y1); g.lineTo(x,y2); g.stroke(); _wArrow(g,x,y1,x,y2); _wArrow(g,x,y2,x,y1); g.save(); g.translate(x,(y1+y2)/2); g.rotate(-Math.PI/2); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect(-tw/2-4,-20,tw+8,17); g.fillStyle=col; g.fillText(txt,0,-5); g.restore(); g.textBaseline='alphabetic'; }
 function _wFrameKind(){ var v=($('wPFrame')&&$('wPFrame').value)||'none'; return (v==='steel'||v==='stainless')?v:''; }
+var _armTopFy=0;   // ตำแหน่งบนสุดของแขนโครง (0 = ฝ้าเพดาน) — ลากปรับได้
 function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm){
-  var col='#141414';                       // โครงเหล็กสีดำ
-  var top=M;                               // ฝ้าเพดาน = ขอบบนของผนัง
+  var col='#141414';
+  var signTopFy=(sy-M)/wh;
+  var topFy=Math.max(0, Math.min(_armTopFy, signTopFy-0.01));
+  var top=M+topFy*wh;                      // บนสุดของแขน (ลากได้)
   var armW=Math.max(3,Math.round(sw*0.014));
-  var armLen=sy-top;                       // ระยะฝ้าเพดาน → ขอบบนป้าย (ยืด/หดตามตำแหน่งป้าย)
-  g.save(); g.fillStyle=col; g.strokeStyle=col;
-  // กรอบกล่องดำรอบตัวป้าย
-  g.lineWidth=Math.max(2,armW*0.8); g.strokeRect(sx-2,sy-2,sw+4,sh+4);
+  var armLen=sy-top;
+  g.save();
+  // แผ่นโครงหลังป้าย (เล็กกว่าป้าย → ถูกป้ายบังไว้ ไม่มีขอบยื่นรอบป้าย)
+  g.fillStyle='#1b1b1b'; g.fillRect(sx+3, sy+3, Math.max(1,sw-6), Math.max(1,sh-6));
+  g.fillStyle=col; g.strokeStyle=col;
   if(armLen>3){
     var xs=[sx+sw*0.16, sx+sw*0.84-armW];
     if(signWcm>400) xs.splice(1,0, sx+sw/2-armW/2);   // ป้ายกว้าง > 4 ม. เพิ่มแขนกลาง
-    xs.forEach(function(ax){ g.fillRect(ax, top, armW, armLen); g.fillRect(ax-armW*0.9, top-4, armW*2.8, 6); }); // แขน + แป้นยึดฝ้า
-    if($('wLabels')&&$('wLabels').checked){
-      _wDimV(g, top, sy, xs[0]-14, (armLen/ppm).toFixed(1)+' cm', col);   // ระยะฝ้า→ป้าย (=ความยาวแขน)
-    }
-  }
+    xs.forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
+    g.fillRect(sx+sw*0.10, top-armW*0.6, sw*0.80, Math.max(3,armW)); // คานบนเชื่อมแขน
+    var hx=sx+sw/2;                          // handle ลากปรับความยาวแขน
+    window._armHandle={x:hx-9,y:top-9,w:18,h:18};
+    g.fillStyle='#2563eb'; g.fillRect(hx-6,top-6,12,12); g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(hx-6,top-6,12,12); g.fillStyle=col;
+    if($('wLabels')&&$('wLabels').checked){ _wDimV(g, top, sy, xs[0]-16, (armLen/ppm).toFixed(1)+' cm', col); }
+  } else { window._armHandle=null; }
   g.restore();
 }
 function _wDrawSplit(g,M,ww,wh){
@@ -1253,7 +1275,7 @@ function wallDraw(){
 if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} try{vcStartPresence();}catch(_e){} };
 if($('wHistLink'))$('wHistLink').onclick=function(){ try{openLogModal();}catch(_e){} };
 function wallReset(){ if(!confirm('เคลียร์ทุกอย่างให้ว่างเหมือนเปิดครั้งแรก?'))return;
-  wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false;
+  wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false; _armTopFy=0;
   textBoxes=[]; _txtSel=-1; if($('wTextEdit'))$('wTextEdit').style.display='none';
   shapes=[]; _shpSel=-1; if($('wShapeEdit'))$('wShapeEdit').style.display='none';
   measBoxes=[{fx:0.15,fy:0.10,fw:0.70,fh:0.52,name:'โลโก้',color:'#e11d48',type:'',role:'logo'},{fx:0.20,fy:0.66,fw:0.60,fh:0.22,name:'ตัวอักษร',color:'#2563eb',type:'',role:'text'}];
@@ -1304,9 +1326,13 @@ function wallSetImg(f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||window._wBoxAct)return; if(inSign(pos(e))){wallDrag=true;cv.style.cursor='grabbing';} });
-  window.addEventListener('mousemove',function(e){ if(WMODE!=='design'||window._wBoxAct||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
-  window.addEventListener('mouseup',function(){ if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
+  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||window._wBoxAct)return; var _p=pos(e);
+    if(window._armHandle && _p.x>=window._armHandle.x && _p.x<=window._armHandle.x+window._armHandle.w && _p.y>=window._armHandle.y && _p.y<=window._armHandle.y+window._armHandle.h){ window._armDrag=true; cv.style.cursor='ns-resize'; return; }
+    if(inSign(_p)){wallDrag=true;cv.style.cursor='grabbing';} });
+  window.addEventListener('mousemove',function(e){
+    if(window._armDrag){ var pa=pos(e),sa=wallSignReal(),wha=sa.Hm*sa.ppm; _armTopFy=Math.max(0,(pa.y-WALL_M)/wha); wallDraw(); return; }
+    if(WMODE!=='design'||window._wBoxAct||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
+  window.addEventListener('mouseup',function(){ if(window._armDrag){window._armDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   var pv=_shpSel,pt=_txtSel; _shpSel=-1; _txtSel=-1;          // ซ่อนจุดจับตอน export
@@ -1436,8 +1462,9 @@ function wallPrice(){ if(!$('wPResult'))return;
   } else { var a=wallSignAreaSqm(); addLine('', (($('wPType')&&$('wPType').value)||''), {w:a.w,h:a.h}); }
   if(typeof textBoxes!=='undefined'&&textBoxes.length){ textBoxes.forEach(function(t){ if(!t.type||!t._wcm||!t._hcm)return; if(wIsLight(t.type))anyLight=true; var rr=wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none', 'text'); if(rr&&!rr.error){ lines.push({label:'\ud83d\udcdd "'+(t.text||'')+'"',type:t.type,w:Math.round(t._wcm),h:Math.round(t._hcm),r:rr}); total+=rr.total; } }); }
   if($('wPLight'))$('wPLight').checked=anyLight;
+  if(typeof shapes!=='undefined'&&shapes.length){ shapes.forEach(function(sp){ var rp=shpPrice(sp); if(rp&&!rp.error){ lines.push({label:(sp.type==='circle'?'◯':'▭')+' แผ่นหลัง',type:rp.mat,w:rp.w,h:rp.h,r:{billable:rp.areaSqm,tiered:false,total:rp.total,material:rp.material,per:rp.per,transFee:0,colorFee:0,framePrice:0,minA:false,minTot:rp.minTot}}); total+=rp.total; } }); }
   var _valid=lines.filter(function(l){return l.r;});
-  if(!_valid.length){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; try{updateTxtInfo();}catch(_e){} return; }
+  if(!_valid.length){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} return; }
   var multi=_valid.length>1;
   var html=lines.map(function(l){
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
@@ -1448,7 +1475,7 @@ function wallPrice(){ if(!$('wPResult'))return;
   html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px">\ud83d\udcb0 <b>'+(multi?'\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21':'\u0e23\u0e32\u0e04\u0e32')+'</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
   $('wPResult').innerHTML=html;
   _wLast={lines:lines,total:total,measure:isMeasure};
-  try{updateTxtInfo();}catch(_e){}
+  try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){}
 }
 ['wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallDraw; el.onchange=wallDraw; } });
 if($('wPType')){ $('wPType').onchange=wallDraw; $('wPType').oninput=wallDraw; }
