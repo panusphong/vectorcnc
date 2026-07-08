@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v18</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v19</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -1019,7 +1019,7 @@ function vcLoadHistory(){
       return '<div style="display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;background:var(--panel2)">'
        +'<span style="width:34px;height:34px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:700;flex:0 0 auto">'+ini+'</span>'
        +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13.5px">'+(r.nickname||r.username||'-')+(r.permission?' <span style="font-size:11px;color:var(--muted)">('+r.permission+')</span>':'')+'</div>'
-       +'<div style="font-size:11.5px;color:var(--muted)">'+(r.time||'')+(r.device?(' · '+r.device):'')+(r.src?(' · '+r.src):'')+'</div></div></div>';
+       +'<div style="font-size:11.5px;color:var(--muted)">'+(r.time||'')+((r.src||r.source)?(' · '+(r.src||r.source)):'')+(r.device?(' · '+r.device):'')+'</div></div></div>';
     }).join('');
   });
 }
@@ -1260,6 +1260,7 @@ function wallAutoMeasure(){
         else { measBoxes[0].fx=bx; measBoxes[0].fy=by; measBoxes[0].fw=bw2; measBoxes[0].fh=bh2; } }
     }
     if(typeof renderBoxRows==='function')renderBoxRows(); wallDraw();
+    try{ var _b=measBoxes[0]||{}; vcLogSim('จับสเกลจากภาพ (วัด) '+Math.round((_b.fw||0)*(parseFloat($('wWall').value)||0))+'x'+Math.round((_b.fh||0)*(parseFloat($('hWall').value)||0))+' ซม.'); }catch(_e){}
   }).catch(function(e){ if($('wInfo'))$('wInfo').innerHTML='เชื่อมต่อไม่ได้: '+e; });
 }
 if($('wAutoDetect'))$('wAutoDetect').onclick=wallAutoMeasure;
@@ -1294,6 +1295,7 @@ function wallDetectDesign(){
         var G2=mp(gx,gy,gw,gh); measBoxes[0].fx=G2.fx;measBoxes[0].fy=G2.fy;measBoxes[0].fw=G2.fw;measBoxes[0].fh=G2.fh; }
     }
     if($('wDsgnSplit'))$('wDsgnSplit').checked=true; if(typeof renderBoxRows==='function')renderBoxRows(); wallDraw();
+    try{ vcLogSim('จับสเกลจากภาพ (ออกแบบ) '+Math.round(s.w)+'x'+Math.round(s.h)+' ซม.'); }catch(_e){}
   }).catch(function(e){ if($('wInfo'))$('wInfo').innerHTML='เชื่อมต่อไม่ได้: '+e; });
 }
 if($('wDsgnDetect'))$('wDsgnDetect').onclick=wallDetectDesign;
@@ -1416,7 +1418,7 @@ if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.4
 if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
 if($('wPCopy'))$('wPCopy').onclick=function(){
   if(!_wLast||!_wLast.lines){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
-  try{vcLogSim('\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19\u0e23\u0e32\u0e04\u0e32 '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17');}catch(_e){}
+  try{ var _l0=(_wLast.lines.filter(function(l){return l.r;})[0])||{}; vcLogSim('\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19\u0e23\u0e32\u0e04\u0e32 '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17'+(_l0.w?(' \u00b7 '+_l0.w+'x'+_l0.h+' \u0e0b\u0e21.'):'')+(_l0.type?(' \u00b7 '+_l0.type):'')); }catch(_e){}
   var L=['\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC'];
   _wLast.lines.forEach(function(l){ if(!l.r)return;
     L.push((l.label?l.label+' ':'')+l.type);
