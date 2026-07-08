@@ -37,7 +37,7 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.2-measure-parts", "build": "2026-07-08-measure-multiregion"}
+    return {"ok": True, "service": "VectorCNC", "version": "1.3-sharp-sizing", "build": "2026-07-08-sharp-straight+letterheight"}
 
 
 @app.post("/api/vectorize")
