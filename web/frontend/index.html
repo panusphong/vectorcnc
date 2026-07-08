@@ -220,9 +220,11 @@ select.numin{cursor:pointer}
           <label>จำนวนสี / เลเยอร์ <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
 
-          <label>ขนาดจริงของงาน (กว้าง, มม.)</label>
+          <label>กำหนดขนาดจาก</label>
+          <select class="numin" id="sizeBy" onchange="var m={width:'ค่าความกว้างรวม (มม.)',height:'ค่าความสูงรวม (มม.)',letter:'ค่าความสูงตัวอักษร (มม.)'};var e=document.getElementById('sizeLbl');if(e)e.textContent=m[this.value]||m.width;if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}"><option value="width">กว้างรวม (มม.)</option><option value="height">สูงรวม (มม.)</option><option value="letter">สูงตัวอักษร (มม.)</option></select>
+          <label id="sizeLbl" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
-          <div class="hint" id="sizeHint">กำหนดความกว้างจริง → ระบบสเกลไฟล์ให้พอดี (ลด/เพิ่มขนาดก่อนตัด)</div>
+          <div class="hint" id="sizeHint">กำหนดค่า → ระบบสเกลไฟล์ให้พอดี (คงสัดส่วน ไม่บิดเบี้ยว) · แสดงผล กว้าง×สูง หลังแปลง</div>
 
           <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
           <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
@@ -748,6 +750,8 @@ $('go').onclick=function(){
   fd.append('file',fileObj);
   fd.append('n_colors',$('nColors').value);
   fd.append('real_width_mm',$('realW').value||'1200');
+  fd.append('size_by',($('sizeBy')?$('sizeBy').value:'width'));
+  fd.append('size_value_mm',$('realW').value||'1200');
   fd.append('kerf_mm',$('kerf').value);
   fd.append('tool_mm',$('tool').value);
   fd.append('tabs',$('tabs').checked?'3':'0');
@@ -759,7 +763,7 @@ $('go').onclick=function(){
     $('after').innerHTML=j.svg;
     $('sMat').textContent=MATERIAL;
     $('sLayers').textContent=j.layers;$('sRings').textContent=j.rings;
-    $('sSize').textContent=(j.width_mm||0)+'×'+(j.height_mm||0)+' มม.';
+    $('sSize').textContent=(j.width_mm||0)+'×'+(j.height_mm||0)+' มม.'+(j.letter_height_mm?(' · สูงตัวอักษร '+j.letter_height_mm+' มม.'):'');
     if(j.detected){var dk={flat:'โลโก้/ป้ายสีเรียบ',lineart:'ตัวอักษร/เส้นบาง',photo:'ภาพถ่าย'}[j.detected.kind]||j.detected.kind;$('modeHint').innerHTML='🔎 ตรวจพบ: <b style="color:#2563eb">'+dk+'</b> → เครื่องยนต์ '+(j.engine||'')+(j.detected.notes?('<br><span style="color:#8a99b5;font-size:11px">'+j.detected.notes+'</span>'):'');}
     var lh=(j.layer_info||[]).map(function(l,i){return '<div class="layer-row"><span class="sw" style="background:'+(l.color||'#2563EB')+'"></span><span class="n">เลเยอร์ '+(i+1)+'</span><span style="font-size:11px;color:#8A99B5">ตัด</span></div>';}).join('');
     $('layers').innerHTML=lh||'<div class="muted-note">ไม่พบเลเยอร์</div>';
