@@ -87,6 +87,40 @@ def measure(image_path, area_w_cm, area_h_cm, want_preview=True):
         res['letter_fy'] = round(int(stats[tall_idx, cv2.CC_STAT_TOP]) / float(H), 4)
         res['letter_fw'] = round(int(stats[tall_idx, cv2.CC_STAT_WIDTH]) / float(W), 4)
         res['letter_fh'] = round(int(stats[tall_idx, cv2.CC_STAT_HEIGHT]) / float(H), 4)
+    # --- multi-region: จัดกลุ่ม components เป็นแถบแนวนอน (โลโก้ + หลายบรรทัดตัวอักษร) ---
+    comps = []
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < min_area:
+            continue
+        x = int(stats[i, cv2.CC_STAT_LEFT]); y = int(stats[i, cv2.CC_STAT_TOP])
+        w = int(stats[i, cv2.CC_STAT_WIDTH]); h = int(stats[i, cv2.CC_STAT_HEIGHT])
+        comps.append((x, y, w, h, int(stats[i, cv2.CC_STAT_AREA])))
+    parts = []
+    if comps:
+        comps.sort(key=lambda c: c[1] + c[3] * 0.5)          # เรียงตามกึ่งกลางแนวตั้ง
+        bands = []                                            # [x1,y1,x2,y2,area]
+        for (cx, cy, cw, ch, ca) in comps:
+            cx2, cy2 = cx + cw, cy + ch
+            placed = False
+            for b in bands:
+                oy = min(b[3], cy2) - max(b[1], cy)
+                if oy > 0.35 * min(b[3] - b[1], ch):          # เหลื่อมแนวตั้ง = บรรทัดเดียวกัน
+                    b[0] = min(b[0], cx); b[1] = min(b[1], cy)
+                    b[2] = max(b[2], cx2); b[3] = max(b[3], cy2); b[4] += ca
+                    placed = True
+                    break
+            if not placed:
+                bands.append([cx, cy, cx2, cy2, ca])
+        bands.sort(key=lambda b: b[1])                        # บนลงล่าง
+        logo_bi = int(np.argmax([b[3] - b[1] for b in bands]))  # แถบสูงสุด = โลโก้
+        for bi, b in enumerate(bands[:6]):
+            parts.append({
+                'fx': round(b[0] / float(W), 4), 'fy': round(b[1] / float(H), 4),
+                'fw': round((b[2] - b[0]) / float(W), 4), 'fh': round((b[3] - b[1]) / float(H), 4),
+                'role': 'logo' if bi == logo_bi else 'text',
+                'w_cm': round((b[2] - b[0]) / ppx, 1), 'h_cm': round((b[3] - b[1]) / ppy, 1),
+            })
+    res['parts'] = parts
     if want_preview:
         res['preview'] = _preview(img, (mnx, mny, mxx, mxy), stats, tall_idx, res)
     return res
