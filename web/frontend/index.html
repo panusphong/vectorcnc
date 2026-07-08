@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v14</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v15</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -1079,6 +1079,25 @@ function _wDrawSplit(g,M,ww,wh){
     var right=(x+w+34)<=(M+ww); _wDimV(g,y,y+h, right?(x+w+22):(x-14), hcm.toFixed(1)+' cm', c);
   });
 }
+function _wPriceBanner(g,M,ww,wh){
+  try{ if(typeof _wLast==='undefined'||!_wLast||!_wLast.lines)return;
+    var _vl=_wLast.lines.filter(function(l){return l.r;}); if(!_vl.length)return;
+    var _fh=Math.max(17,Math.round(ww*0.03)), _lf=Math.max(12,Math.round(ww*0.019)), _lh=_lf+7;
+    var _rows=[];
+    if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+': '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
+    _rows.push({t:(_vl.length>1?'ราคารวม':'ราคาประเมิน')+' (ยังไม่รวม VAT)', f:_lf, c:'#9fb0c9', b:false});
+    _rows.push({t:Math.round(_wLast.total).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
+    g.save(); g.textBaseline='top';
+    var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=28;
+    var _bh=20; _rows.forEach(function(r){ _bh+=(r.b?r.f+8:_lh); });
+    var _bx=M+ww-_bw-12, _by=M+wh-_bh-12;
+    if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,12); g.fillStyle='rgba(15,23,42,.93)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.93)'; g.fillRect(_bx,_by,_bw,_bh); }
+    g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,4);
+    g.textAlign='left'; var _yy=_by+12;
+    _rows.forEach(function(r){ g.fillStyle=r.c; g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; g.fillText(r.t,_bx+14,_yy); _yy+=(r.b?r.f+8:_lh); });
+    g.restore();
+  }catch(_e){}
+}
 function wallDraw(){
   var cv=$('wCanvas'); if(!cv) return; var g=cv.getContext('2d');
   var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
@@ -1117,6 +1136,7 @@ function wallDraw(){
     HH+='<div style="font-size:11px;color:#8A99B5;margin-top:5px">ระยะขอบ (ซม.) ซ้าย <b>'+mL.toFixed(1)+'</b> · ขวา <b>'+mR.toFixed(1)+'</b> · บน <b>'+mT.toFixed(1)+'</b> · ล่าง <b>'+mB.toFixed(1)+'</b></div>';
     HH+='<div style="font-size:11px;color:#8A99B5;margin-top:4px">ลากกรอบ/มุม/กลางขอบ ปรับได้อิสระทุกด้าน · 🎯 ตรวจจับให้เริ่มต้น</div>';
     drawTextBoxes(g,M,ww,wh,ppm);
+    _wPriceBanner(g,M,ww,wh);
     if($('wInfo'))$('wInfo').innerHTML=HH;
     return;
   }
@@ -1148,25 +1168,7 @@ function wallDraw(){
   }
   if(WMODE==='design' && $('wDsgnSplit') && $('wDsgnSplit').checked){ _wDrawSplit(g,M,ww,wh); }
   drawTextBoxes(g,M,ww,wh,ppm);
-  try{ if(typeof _wLast!=='undefined'&&_wLast&&_wLast.lines){
-    var _vl=_wLast.lines.filter(function(l){return l.r;});
-    if(_vl.length){
-      var _fh=Math.max(17,Math.round(ww*0.03)), _lf=Math.max(12,Math.round(ww*0.019)), _lh=_lf+7;
-      var _rows=[];
-      if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+': '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
-      _rows.push({t:(_vl.length>1?'ราคารวม':'ราคาประเมิน')+' (ยังไม่รวม VAT)', f:_lf, c:'#9fb0c9', b:false});
-      _rows.push({t:Math.round(_wLast.total).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
-      g.save(); g.textBaseline='top';
-      var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=28;
-      var _bh=20; _rows.forEach(function(r){ _bh+=(r.b?r.f+8:_lh); });
-      var _bx=M+ww-_bw-12, _by=M+wh-_bh-12;
-      if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,12); g.fillStyle='rgba(15,23,42,.93)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.93)'; g.fillRect(_bx,_by,_bw,_bh); }
-      g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,4);
-      g.textAlign='left'; var _yy=_by+12;
-      _rows.forEach(function(r){ g.fillStyle=r.c; g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; g.fillText(r.t,_bx+14,_yy); _yy+=(r.b?r.f+8:_lh); });
-      g.restore();
-    }
-  } }catch(_e){}
+  _wPriceBanner(g,M,ww,wh);
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
   $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
 }
