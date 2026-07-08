@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v16</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v18</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -475,7 +475,7 @@ select.numin{cursor:pointer}
       <button class="btn" id="wEditBg" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);display:none">✏️ แก้พื้นหลังเอง (ระบายลบ/คืน)</button>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
       <div style="display:flex;gap:6px;align-items:center;margin-top:8px"><span style="font-size:12px;color:var(--muted)">จัดกึ่งกลาง:</span><button class="chip" id="wCenX" type="button">⟷ แนวนอน</button><button class="chip" id="wCenY" type="button">↕ แนวตั้ง</button></div>
-      <div style="display:flex;gap:8px;margin-top:14px">
+      <div style="display:none;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
@@ -991,6 +991,9 @@ function vcLogLogin(){ if(!CURRENT_USER) return;
   try{ var k='vcnc_logged_'+CURRENT_USER+'_'+new Date().toISOString().slice(0,10);
        if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k,'1'); }catch(e){}
   _crmCall('api=login&u='+encodeURIComponent(CURRENT_USER)+'&src=vectorcnc', function(){}); }
+function vcLogSim(action){ if(!CURRENT_USER||!crmApiUrl()) return;
+  try{ var k='vcnc_sim_'+action+'_'+CURRENT_USER, now=Date.now(), last=+(sessionStorage.getItem(k)||0); if(now-last<600000) return; sessionStorage.setItem(k,String(now)); }catch(e){}
+  _crmCall('api=login&u='+encodeURIComponent(CURRENT_USER)+'&src='+encodeURIComponent(action)+'&device=simulator', function(){}); }
 function _today(){ return new Date().toISOString().slice(0,10); }
 function openLogModal(){
   $('logOverlay').classList.add('show');
@@ -1172,7 +1175,7 @@ function wallDraw(){
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
   $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
 }
-if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); };
+if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} };
 if($('wallClose'))$('wallClose').onclick=function(){ $('wallOverlay').classList.remove('show'); };
 ['wWall','hWall','wMode','wRatio','wColor','wLabels'].forEach(function(id){ var el=$(id); if(!el)return;
   el.oninput=function(){ if(id==='wRatio'){var v=wallParseRatio($('wRatio').value); if($('wSlider'))$('wSlider').value=Math.round(v*100);} wallDraw(); }; el.onchange=wallDraw; });
@@ -1413,6 +1416,7 @@ if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.4
 if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
 if($('wPCopy'))$('wPCopy').onclick=function(){
   if(!_wLast||!_wLast.lines){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
+  try{vcLogSim('\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19\u0e23\u0e32\u0e04\u0e32 '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17');}catch(_e){}
   var L=['\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC'];
   _wLast.lines.forEach(function(l){ if(!l.r)return;
     L.push((l.label?l.label+' ':'')+l.type);
