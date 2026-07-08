@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v13</b></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → export PDF/JPG · <b style="color:#16a34a">v14</b></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
   <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 66px)">
@@ -1362,15 +1362,15 @@ function wallPrice(){ if(!$('wPResult'))return;
   _wLast={lines:lines,total:total,measure:isMeasure};
   try{updateTxtInfo();}catch(_e){}
 }
-['wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallPrice; el.onchange=wallPrice; } });
-if($('wPType')){ $('wPType').onchange=wallPrice; $('wPType').oninput=wallPrice; }
+['wPColor','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallDraw; el.onchange=wallDraw; } });
+if($('wPType')){ $('wPType').onchange=wallDraw; $('wPType').oninput=wallDraw; }
 function renderBoxRows(){ var c=$('wPBoxRows'); if(!c)return; c.innerHTML='';
   measBoxes.forEach(function(b,i){ var row=document.createElement('div'); row.style.cssText='display:flex;gap:5px;align-items:center;margin-bottom:5px';
     var sw=document.createElement('span'); sw.style.cssText='width:12px;height:12px;border-radius:3px;flex:none;background:'+b.color; row.appendChild(sw);
     var lab=document.createElement('span'); lab.style.cssText='font-size:11px;color:var(--muted);flex:none;min-width:52px'; lab.textContent=b.name||('\u0e01\u0e23\u0e2d\u0e1a'+(i+1)); row.appendChild(lab);
     var inp=document.createElement('input'); inp.className='numin'; inp.setAttribute('list','wPTypeList'); inp.setAttribute('autocomplete','off'); inp.placeholder='\ud83d\udd0d \u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17'; inp.value=b.type||''; inp.style.flex='1';
-    inp.oninput=inp.onchange=function(){ measBoxes[i].type=this.value; wallPrice(); }; row.appendChild(inp);
-    if(i>=2){ var del=document.createElement('button'); del.className='btn ghost'; del.textContent='\ud83d\uddd1'; del.style.cssText='padding:3px 7px;font-size:11px;flex:none'; del.onclick=function(){ measBoxes.splice(i,1); renderBoxRows(); wallDraw(); }; row.appendChild(del); }
+    inp.oninput=inp.onchange=function(){ measBoxes[i].type=this.value; wallDraw(); }; row.appendChild(inp);
+    if(measBoxes.length>1){ var del=document.createElement('button'); del.className='btn ghost'; del.textContent='\ud83d\uddd1'; del.title='\u0e25\u0e1a\u0e01\u0e23\u0e2d\u0e1a\u0e19\u0e35\u0e49'; del.style.cssText='padding:3px 7px;font-size:11px;flex:none'; del.onclick=function(){ measBoxes.splice(i,1); renderBoxRows(); wallDraw(); }; row.appendChild(del); }
     c.appendChild(row);
   });
 }
