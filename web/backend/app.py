@@ -42,8 +42,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "1.9-nest-safe",
-            "build": "2026-07-09-nest-bounded+curvefaithful", "engine": eng}
+    return {"ok": True, "service": "VectorCNC", "version": "2.0-ai-wall",
+            "build": "2026-07-09-ai-import-wall+nest-bounded", "engine": eng}
 
 
 @app.post("/api/vectorize")
@@ -495,6 +495,69 @@ async def api_cutout(file: UploadFile = File(...)):
             return JSONResponse({"error": "encode png ไม่ได้"}, status_code=400)
         import base64 as _b64
         return {"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode()}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/rasterize")
+async def api_rasterize(file: UploadFile = File(...), max_px: int = Form(2000)):
+    """แปลงไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> PNG โปร่งใส (ตัดขอบว่าง) สำหรับวางบนผนัง+สเกล
+    เหมือน JPG แต่คมกว่า (มาจากเวกเตอร์)"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "input.ai")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        import numpy as np, cv2, base64 as _b64
+        ext = os.path.splitext(inp)[1].lower()
+        mpx = max(400, min(4000, int(max_px)))
+        if ext == ".svg":
+            import cairosvg
+            png_bytes = cairosvg.svg2png(url=inp, output_width=mpx)
+        else:
+            import fitz
+            src = inp
+            if ext in (".eps", ".ps"):
+                try:
+                    from vectorcnc import vector_import as _vi
+                    src = _vi._to_pdf_via_gs(inp)
+                except Exception:
+                    src = inp
+            doc = fitz.open(src)
+            page = doc[0]
+            r = page.rect
+            sc = mpx / max(1.0, max(r.width, r.height))
+            pix = page.get_pixmap(matrix=fitz.Matrix(sc, sc), alpha=True)
+            png_bytes = pix.tobytes("png")
+        img = cv2.imdecode(np.frombuffer(png_bytes, np.uint8), cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return JSONResponse({"error": "render เวกเตอร์ไม่ได้"}, status_code=400)
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+        elif img.shape[2] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+        H, W = img.shape[:2]
+        alpha = img[:, :, 3]
+        if int(alpha.min()) < 250:                      # มี transparency จริง -> ใช้ alpha
+            mask = alpha > 8
+        else:                                           # ทึบ -> ถือว่าพื้นขาว = โปร่ง
+            gray = cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY)
+            mask = gray < 245
+            img[:, :, 3] = np.where(mask, 255, 0).astype(np.uint8)
+        ys, xs = np.where(mask)
+        if len(xs) and len(ys):
+            pad = 2
+            x0 = max(0, int(xs.min()) - pad); y0 = max(0, int(ys.min()) - pad)
+            x1 = min(W - 1, int(xs.max()) + pad); y1 = min(H - 1, int(ys.max()) + pad)
+            img = img[y0:y1 + 1, x0:x1 + 1]
+        ok, buf = cv2.imencode(".png", img)
+        if not ok:
+            return JSONResponse({"error": "encode png ไม่ได้"}, status_code=400)
+        return {"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
+                "w": int(img.shape[1]), "h": int(img.shape[0])}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
     finally:
