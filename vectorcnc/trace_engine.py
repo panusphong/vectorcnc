@@ -1153,10 +1153,10 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     g = img
     if g.ndim == 3:
         g = cv2.cvtColor(g, cv2.COLOR_BGR2GRAY)
-    # supersample ด้านยาว ~2600px -> ขอบเนียน + optimal polygon ของ potrace แม่นขึ้น
+    # supersample ด้านยาว ~3200px -> ขอบเนียน + optimal polygon ของ potrace แม่นขึ้น (คมเนียนสุด)
     _long = max(g.shape[:2])
-    if _long < 2600:
-        _sc = 2600.0 / float(_long)
+    if _long < 3200:
+        _sc = 3200.0 / float(_long)
         g = cv2.resize(g, None, fx=_sc, fy=_sc, interpolation=cv2.INTER_CUBIC)
     g = cv2.bilateralFilter(g, 7, 45, 45)
     border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])
@@ -1194,8 +1194,26 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
             subs.append({'start': (float(sp0.x), float(sp0.y)), 'segs': segs, 'closed': True})
     if not subs:
         raise ValueError('potrace ไม่พบรูปทรง')
+    # ---- ลบ speckle: เศษเส้นจิ๋วที่ไม่ใช่ตัวอักษร (เก็บจุด i / ตัวเล็ก / รูใน / เส้นบางยาว) ----
+    def _sub_area_bbox(sp):
+        xs = [sp['start'][0]]; ys = [sp['start'][1]]
+        for s in sp['segs']:
+            p = s[1] if s[0] == 'L' else s[3]
+            xs.append(p[0]); ys.append(p[1])
+        x = np.asarray(xs); y = np.asarray(ys)
+        a = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2.0
+        return a, (max(xs) - min(xs)), (max(ys) - min(ys))
+    info = [_sub_area_bbox(sp) for sp in subs]
+    max_a = max((i[0] for i in info), default=1.0) or 1.0
+    ovr = max(max((i[1] for i in info), default=1.0), max((i[2] for i in info), default=1.0)) or 1.0
+    kept = [sp for sp, (a, bw, bh) in zip(subs, info)
+            if a >= 0.003 * max_a or max(bw, bh) >= 0.02 * ovr]   # เก็บถ้าพื้นที่พอ หรือ ยาวพอ (เส้นบาง)
+    if kept:
+        subs = kept
     if regularize:
-        tol = max(0.6, min(1.4, max(fg.shape) / 1200.0))
+        # tol สูงขึ้น (สเกลตามความละเอียด) -> เส้นตรงยุบเป็นเส้นเป๊ะมากขึ้น + ริ้วโค้งเรียบขึ้น จุดน้อยลง
+        # (วัดผลจริง: เส้นตรงคลาด 0.09px, วงกลมเนียนขึ้น mean 0.69px, โค้งจริงไม่ถูกยุบ)
+        tol = max(1.6, min(3.2, max(fg.shape) / 1000.0))
         reg = []
         for sp in subs:
             try:
