@@ -37,7 +37,7 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.3-sharp-sizing", "build": "2026-07-08-sharp-straight+letterheight"}
+    return {"ok": True, "service": "VectorCNC", "version": "1.5-potrace", "build": "2026-07-08-potrace-illustrator-grade"}
 
 
 @app.post("/api/vectorize")
@@ -195,17 +195,27 @@ async def nest_ep(
                 return JSONResponse({"error": "อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
             full_mm = unary_union([pc["poly"] for pc in bez_pieces])
         else:
-            polys = trace_engine.nest_shapes_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
-            if not polys:
-                return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
-            full_mm = unary_union(polys)
+            # ภาพ raster -> ใช้เครื่องยนต์ vtracer (เส้นโค้ง Bézier + snap เส้นตรง) ให้ Nesting เนียนกริบ
+            try:
+                bez_pieces = trace_engine.bezier_pieces_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+                bez_pieces = [pc for pc in (bez_pieces or []) if pc["poly"].area > 4.0]
+            except Exception:
+                bez_pieces = None
+            if bez_pieces:
+                full_mm = unary_union([pc["poly"] for pc in bez_pieces])
+            else:
+                bez_pieces = None
+                polys = trace_engine.nest_shapes_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+                if not polys:
+                    return JSONResponse({"error": "แปลงภาพไม่พบรูปทรงสำหรับจัดวาง"}, status_code=400)
+                full_mm = unary_union(polys)
         bb = full_mm.bounds
         pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
         res = max(2.0, min(sheet_w, sheet_h) / 500.0)
         whole = str(parts_mode).lower() == "whole"
 
-        if is_vec:
-            # -------- เวกเตอร์: จัดวางทุกเลเยอร์ตัด แยกสี + เส้นโค้ง Bézier จริง (สมูท) --------
+        if bez_pieces is not None:
+            # -------- เวกเตอร์/ราสเตอร์(vtracer): จัดวางเส้นโค้ง Bézier จริง (สมูท) แยกสี --------
             if whole:
                 # ทั้งป้ายเป็นชิ้นเดียว -> จัดกลุ่ม subs ตามเลเยอร์ (คงสี) แล้วปูซ้ำ
                 grp = {}
