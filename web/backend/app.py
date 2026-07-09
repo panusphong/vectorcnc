@@ -50,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.5-psd-fast",
-            "build": "2026-07-09-psd-topil-fast", "engine": eng, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "2.6-psd-lowmem",
+            "build": "2026-07-09-psd-topil+skipbg-77mb", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -614,14 +614,23 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
                 try:
                     from psd_tools import PSDImage
                     psd = PSDImage.open(inp)
+                    _canvas = float(max(1, psd.width) * max(1, psd.height))
                     for ly in list(psd)[:40]:
                         try:
                             if hasattr(ly, "is_visible") and not ly.is_visible():
                                 continue
-                            lim = ly.topil()             # เร็วกว่า composite() ~36x (พิกเซลเลเยอร์ที่ bbox) กัน timeout
+                            try:                          # ข้ามเลเยอร์พื้นหลังเต็มแคนวาส (ไม่ใช่ชิ้นที่อยากได้ + กิน RAM หนัก)
+                                _bb = ly.bbox
+                                if max(0, _bb[2] - _bb[0]) * max(0, _bb[3] - _bb[1]) > 0.88 * _canvas:
+                                    continue
+                            except Exception:
+                                pass
+                            lim = ly.topil()             # เร็วกว่า composite() ~36x + ข้าม bg = peak RAM ต่ำ กัน OOM/timeout
                             if lim is None:
                                 continue
+                            lim.thumbnail((mpx, mpx))    # ย่อใน PIL ก่อนแปลง numpy -> ลด peak RAM ~40% กัน OOM
                             crop = cv2.cvtColor(np.array(lim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
+                            del lim
                             if crop.size == 0 or int(crop[:, :, 3].max()) == 0:
                                 continue
                             _ys, _xs = np.where(crop[:, :, 3] > 8)
