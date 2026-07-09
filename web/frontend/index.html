@@ -440,7 +440,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วาง logo ตามสเกล → ประเมินราคา 🔴🔵 + 📝 ข้อความ → ประเมินราคา · <b style="color:#16a34a">v33</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้/ป้ายตามสเกล (ลาก+ย่อขยายอิสระ) → ประเมินราคา · <b style="color:#16a34a">v34</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1073,6 +1073,7 @@ var measResult=null;
 var measBoxes=[{fx:0.15,fy:0.10,fw:0.70,fh:0.52,name:'โลโก้',color:'#e11d48',type:'',role:'logo'},{fx:0.20,fy:0.66,fw:0.60,fh:0.22,name:'ตัวอักษร',color:'#2563eb',type:'',role:'text'}];
 var WBOXCOLORS=['#e11d48','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2'];
 var shapes=[], _shpSel=-1;
+var wLogos=[], _lgSel=-1, _lgDrag=false, _lgMode='move', _lgCorner=-1, _lgOff={x:0,y:0}, _lgClose=null;
 (function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); measParts=null; measResult=null; if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; if($('wDsgnHint'))$('wDsgnHint').style.display=(WMODE==='design')?'block':'none'; if(typeof renderBoxRows==='function')renderBoxRows(); wallDraw(); if(WMODE==='measure'&&typeof _wallBgFile!=='undefined'&&_wallBgFile){ wallAutoMeasure(); } }; }})();
 (function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,bi=-1,st=null;
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
@@ -1282,6 +1283,7 @@ function wallReset(){ if(!confirm('เคลียร์ทุกอย่าง
   wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false; _armTopFy=0;
   textBoxes=[]; _txtSel=-1; if($('wTextEdit'))$('wTextEdit').style.display='none';
   shapes=[]; _shpSel=-1; if($('wShapeEdit'))$('wShapeEdit').style.display='none';
+  wLogos=[]; _lgSel=-1; _lgDrag=false; _lgClose=null;
   measBoxes=[{fx:0.15,fy:0.10,fw:0.70,fh:0.52,name:'โลโก้',color:'#e11d48',type:'',role:'logo'},{fx:0.20,fy:0.66,fw:0.60,fh:0.22,name:'ตัวอักษร',color:'#2563eb',type:'',role:'text'}];
   measResult=null; measParts=null; WMODE='design';
   var tabs=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('on', tabs[i].getAttribute('data-wm')==='design'); }
@@ -1353,30 +1355,32 @@ function _wallPickPieces(pieces, f){
   ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
   var box=document.createElement('div');
   box.style.cssText='background:#fff;border-radius:14px;max-width:900px;width:100%;max-height:86vh;overflow:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.3)';
-  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:15px">พบ '+pieces.length+' ชิ้นในไฟล์ — เลือกชิ้นที่ต้องการวางบนผนัง</b><button id="wPieceX" style="border:none;background:#eef;border-radius:8px;padding:4px 10px;cursor:pointer">ปิด</button></div>'
-    +'<div style="font-size:12px;color:#5A6B8C;margin-bottom:10px">คลิกชิ้นที่ต้องการ (เช่น เฉพาะโลโก้/ป้าย) · หรือใช้ทั้งแผ่นรวม</div>'
+  var _added=0;
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:15px">พบ '+pieces.length+' ชิ้นในไฟล์ — คลิกเพื่อเพิ่มลงบนผนัง (เลือกได้หลายชิ้น)</b><button id="wPieceX" style="border:none;background:#2563eb;color:#fff;border-radius:8px;padding:6px 16px;cursor:pointer;font-weight:600">เสร็จ</button></div>'
+    +'<div style="font-size:12px;color:#5A6B8C;margin-bottom:10px">คลิกชิ้นที่ต้องการ (คลิกซ้ำได้เพื่อเพิ่มหลายชิ้น) → กด "เสร็จ" แล้ว <b>ลากจัดวาง</b> และ <b>ลากมุมเพื่อย่อ/ขยาย</b> แต่ละชิ้นได้อิสระ (สเกลเดียวกัน) · <span id="wPieceCnt" style="color:#16a34a;font-weight:700"></span></div>'
     +'<div id="wPieceGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>'
-    +'<div style="margin-top:12px;text-align:center"><button id="wPieceAll" style="border:1px solid var(--line);background:#f8fafc;border-radius:9px;padding:8px 16px;cursor:pointer;font-size:13px">📄 ใช้ทั้งแผ่นรวม</button></div>';
+    +'<div style="margin-top:12px;text-align:center"><button id="wPieceAll" style="border:1px solid var(--line);background:#f8fafc;border-radius:9px;padding:8px 16px;cursor:pointer;font-size:13px">📄 ใช้ทั้งแผ่นรวมเป็นชิ้นเดียว</button></div>';
   ov.appendChild(box); document.body.appendChild(ov);
   var grid=box.querySelector('#wPieceGrid');
+  function _updCnt(){ var el=box.querySelector('#wPieceCnt'); if(el)el.textContent=_added?('✓ เพิ่มแล้ว '+_added+' ชิ้น'):''; }
   pieces.forEach(function(p,idx){
     var c=document.createElement('button');
     c.type='button';
-    c.style.cssText='border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.15s';
+    c.style.cssText='border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.15s;position:relative';
     c.onmouseover=function(){c.style.borderColor='#2563eb';c.style.boxShadow='0 2px 10px rgba(37,99,235,.25)';};
     c.onmouseout=function(){c.style.borderColor='var(--line)';c.style.boxShadow='none';};
     c.innerHTML='<div style="width:100%;height:100px;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/16px 16px;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div><span style="font-size:11px;color:#5A6B8C">ชิ้น '+(idx+1)+' · '+p.w+'×'+p.h+'</span>';
-    c.onclick=function(){ _wallSignOrig=p.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(p.png, (f.name||'')+' · ชิ้น '+(idx+1)); ov.remove(); };
+    c.onclick=function(){ _wallAddLogo(p.png,'ชิ้น '+(idx+1)); _added++; _updCnt(); c.style.borderColor='#16a34a'; c.style.background='#f0fdf4'; var bd=c.querySelector('._wab'); if(!bd){ bd=document.createElement('span'); bd.className='_wab'; bd.style.cssText='position:absolute;top:4px;right:6px;font-size:11px;color:#16a34a;font-weight:800'; c.appendChild(bd);} bd.textContent='✓'; };
     grid.appendChild(c);
   });
-  box.querySelector('#wPieceX').onclick=function(){ ov.remove(); if($('wFile'))$('wFile').value=''; $('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg ก็ได้)'; };
+  box.querySelector('#wPieceX').onclick=function(){ ov.remove(); if($('wFile'))$('wFile').value=''; $('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg .psd ก็ได้)'; };
   box.querySelector('#wPieceAll').onclick=function(){ ov.remove(); _wallRasterWhole(f); };
   ov.addEventListener('click',function(ev){ if(ev.target===ov) ov.remove(); });
 }
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||window._wBoxAct)return; var _p=pos(e);
+  cv.addEventListener('mousedown',function(e){ if(typeof _lgHitDrag==='function'&&_lgHitDrag(pos(e)))return; if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||window._wBoxAct)return; var _p=pos(e);
     if(window._armHandle && _p.x>=window._armHandle.x && _p.x<=window._armHandle.x+window._armHandle.w && _p.y>=window._armHandle.y && _p.y<=window._armHandle.y+window._armHandle.h){ window._armDrag=true; cv.style.cursor='ns-resize'; return; }
     if(inSign(_p)){wallDrag=true;cv.style.cursor='grabbing';} });
   window.addEventListener('mousemove',function(e){
@@ -1385,11 +1389,11 @@ function _wallPickPieces(pieces, f){
   window.addEventListener('mouseup',function(){ if(window._armDrag){window._armDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
-  var pv=_shpSel,pt=_txtSel; _shpSel=-1; _txtSel=-1;          // ซ่อนจุดจับตอน export
+  var pv=_shpSel,pt=_txtSel,pl=_lgSel; _shpSel=-1; _txtSel=-1; _lgSel=-1;   // ซ่อนจุดจับตอน export
   window._wNoBanner=true; try{ wallDraw(); }catch(_e){}       // วาดใหม่แบบไม่มีราคา (คงเส้นระยะ)
   var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height;
   var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height); g.drawImage(cv,0,0);
-  window._wNoBanner=false; _shpSel=pv; _txtSel=pt; try{ wallDraw(); }catch(_e){}
+  window._wNoBanner=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
   return out;
 }
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
@@ -1593,7 +1597,8 @@ function drawTextBoxes(g,M,ww,wh,ppm){ var Wc=parseFloat($('wWall').value)||0, H
       g.fillStyle='#2563eb'; [[x,y],[x+bw,y],[x,y+bh],[x+bw,y+bh],[x+bw/2,y],[x+bw,y+bh/2],[x+bw/2,y+bh],[x,y+bh/2]].forEach(function(p){ g.fillRect(p[0]-4,p[1]-4,8,8); }); g.restore();
       _wTxtMargins(g,M,ww,wh,ppm,x,y,bw,bh); }
   } g.textBaseline='alphabetic'; g.textAlign='left';
-  try{ drawShapes(g,M,ww,wh,ppm); }catch(_e){} }
+  try{ drawShapes(g,M,ww,wh,ppm); }catch(_e){}
+  try{ drawLogos(g,M,ww,wh,ppm); }catch(_e){} }
 function drawShapes(g,M,ww,wh,ppm){ if(!shapes.length)return; var Wc=parseFloat($('wWall').value)||0, Hc=parseFloat($('hWall').value)||0;
   for(var i=0;i<shapes.length;i++){ var s=shapes[i]; var x=M+s.fx*ww,y=M+s.fy*wh,w=s.fw*ww,h=s.fh*wh;
     g.save();
@@ -1614,6 +1619,48 @@ function drawShapes(g,M,ww,wh,ppm){ if(!shapes.length)return; var Wc=parseFloat(
     } else { g.save(); g.fillStyle=s.color; g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, y-3); g.restore(); }
   }
 }
+function drawLogos(g,M,ww,wh,ppm){
+  for(var i=0;i<wLogos.length;i++){ var L=wLogos[i];
+    if(!L.img||!L.img.complete||!L.img.width)continue;
+    var w=Math.max(4,L.wCm*ppm), h=w*(L.ar||(L.img.height/L.img.width||1));
+    var x=M+L.fx*ww, y=M+L.fy*wh;
+    g.drawImage(L.img,x,y,w,h);
+    var wcm=w/ppm, hcm=h/ppm;
+    if(i===_lgSel){
+      g.save(); g.strokeStyle='#7c3aed'; g.lineWidth=2; g.setLineDash([5,4]); g.strokeRect(x,y,w,h); g.setLineDash([]);
+      g.fillStyle='#7c3aed'; [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(function(p){ g.fillRect(p[0]-5,p[1]-5,10,10); });
+      var cxb=x+w, cyb=y; _lgClose={x:cxb-11,y:cyb-11,w:22,h:22,i:i};   // ปุ่มลบ ✕
+      g.fillStyle='#ef4444'; g.beginPath(); g.arc(cxb,cyb,10,0,6.283); g.fill(); g.strokeStyle='#fff'; g.lineWidth=2; g.beginPath(); g.moveTo(cxb-4,cyb-4); g.lineTo(cxb+4,cyb+4); g.moveTo(cxb+4,cyb-4); g.lineTo(cxb-4,cyb+4); g.stroke();
+      g.restore();
+      var below=(y+h+34)<=(M+wh); _wDimH(g,x,x+w, below?(y+h+22):(y-14), wcm.toFixed(1)+' cm', '#7c3aed');
+      var right=(x+w+34)<=(M+ww); _wDimV(g,y,y+h, right?(x+w+22):(x-14), hcm.toFixed(1)+' cm', '#7c3aed');
+    } else {
+      g.save(); g.fillStyle='#7c3aed'; g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, Math.max(M+10,y-3)); g.restore();
+    }
+  }
+}
+function _lgHitDrag(p){ var cv=$('wCanvas'); if(!cv||!wLogos.length)return false; if(WMODE!=='design')return false; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
+  if(_lgClose && _lgSel>=0 && p.x>=_lgClose.x&&p.x<=_lgClose.x+_lgClose.w&&p.y>=_lgClose.y&&p.y<=_lgClose.y+_lgClose.h){ wLogos.splice(_lgClose.i,1); _lgSel=-1; _lgClose=null; wallDraw(); return true; }
+  for(var i=wLogos.length-1;i>=0;i--){ var L=wLogos[i]; var w=Math.max(4,L.wCm*ppm), h=w*(L.ar||1); var x=M+L.fx*ww, y=M+L.fy*wh;
+    var cs=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]];
+    for(var c=0;c<4;c++){ if(Math.abs(p.x-cs[c][0])<13&&Math.abs(p.y-cs[c][1])<13){ _lgSel=i;_lgDrag=true;_lgMode='resize';_lgCorner=c; wallDraw(); return true; } }
+    if(p.x>=x&&p.x<=x+w&&p.y>=y&&p.y<=y+h){ _lgSel=i;_lgDrag=true;_lgMode='move';_lgOff={x:p.x-x,y:p.y-y}; wallDraw(); return true; }
+  } return false;
+}
+window.addEventListener('mousemove',function(e){ if(!_lgDrag||_lgSel<0)return; var cv=$('wCanvas'); if(!cv)return; var r=cv.getBoundingClientRect(); var px=((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, py=((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; var L=wLogos[_lgSel]; if(!L)return;
+  if(_lgMode==='move'){ L.fx=(px-_lgOff.x-M)/ww; L.fy=(py-_lgOff.y-M)/wh; }
+  else { var x=M+L.fx*ww, y=M+L.fy*wh, w=L.wCm*ppm, h=w*(L.ar||1);
+    var ax=(_lgCorner===1||_lgCorner===3)?x:x+w, ay=(_lgCorner===2||_lgCorner===3)?y:y+h;   // มุมยึด (ตรงข้าม)
+    var nw=Math.abs(px-ax); if(nw<8)nw=8; var nh=nw*(L.ar||1);
+    L.wCm=nw/ppm;
+    var tlx=(_lgCorner===1||_lgCorner===3)?ax:(ax-nw);
+    var tly=(_lgCorner===2||_lgCorner===3)?ay:(ay-nh);
+    L.fx=(tlx-M)/ww; L.fy=(tly-M)/wh;
+  }
+  wallDraw();
+});
+window.addEventListener('mouseup',function(){ _lgDrag=false; });
+function _wallAddLogo(src,name){ var im=new Image(); im.onload=function(){ var s=wallSignReal(); var ar=(im.height/im.width)||1; var defW=Math.max(8,Math.min(s.Wm*0.4,s.Wm*0.28)); var n=wLogos.length; wLogos.push({img:im,src:src,name:name||'โลโก้',ar:ar,wCm:defW,fx:Math.min(0.68,0.12+0.06*(n%5)),fy:Math.min(0.68,0.12+0.06*(n%5))}); _lgSel=wLogos.length-1; wallDraw(); }; im.src=src; }
 function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return false; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
   for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i]; var x=M+t.fx*ww,y=M+t.fy*wh, bw=t._iw||(t.fw*ww)||40, bh=t._ih||(t.fh*wh)||20;
     var cs=[[x,y],[x+bw,y],[x,y+bh],[x+bw,y+bh]];
