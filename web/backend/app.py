@@ -50,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.8-kerf-fillet",
-            "build": "2026-07-09-cut-kerf+fillet-offset", "engine": eng, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "3.1-detailkeep",
+            "build": "2026-07-09-detailkeep+img-enhance", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -65,6 +65,7 @@ async def vectorize(
     mode: str = Form("auto"),
     size_by: str = Form("width"),
     size_value_mm: float = Form(0.0),
+    enhance: int = Form(0),
 ):
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "input.png")
@@ -73,7 +74,40 @@ async def vectorize(
     data = await file.read()
     with open(inp, "wb") as f:
         f.write(data)
+    # ---- .PSD/.PSB -> composite เป็น PNG (พื้นขาว) แล้วเข้าเครื่องยนต์ตัดเหมือนรูปภาพ ----
+    if str(inp).lower().endswith((".psd", ".psb")):
+        try:
+            from PIL import Image
+            Image.MAX_IMAGE_PIXELS = None
+            pim = Image.open(inp); pim.thumbnail((3200, 3200))
+            pim = pim.convert("RGBA")
+            flat = Image.new("RGB", pim.size, (255, 255, 255))
+            flat.paste(pim, mask=pim.split()[3])       # วางบนพื้นขาว (คงรูปทรงจริง)
+            png = os.path.join(tmp, "psd_flat.png"); flat.save(png); inp = png
+        except Exception as e:
+            return JSONResponse({"error": "อ่านไฟล์ PSD ไม่ได้: " + str(e)}, status_code=400)
     _isimg = str(inp).lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"))
+    # ---- ✨ ปรับคุณภาพภาพก่อนแปลง (auto·ปลอดภัย): ขยายรูปเล็ก + ลด noise เก็บขอบ + คอนทราสต์เบา ----
+    if _isimg and int(enhance):
+        try:
+            import cv2 as _cv, numpy as _np
+            im = _cv.imread(inp, _cv.IMREAD_COLOR)
+            if im is not None:
+                lng = max(im.shape[:2])
+                im = _cv.medianBlur(im, 3)                       # ลบ speckle/จุด noise (สำคัญกับรูปเบลอ/JPEG)
+                if lng < 1000:                                   # รูปเล็ก -> ขยายคมด้วย LANCZOS
+                    sc = 1500.0 / lng
+                    im = _cv.resize(im, None, fx=sc, fy=sc, interpolation=_cv.INTER_LANCZOS4)
+                im = _cv.bilateralFilter(im, 9, 75, 75)          # ลด noise เก็บขอบคม
+                gray = _cv.cvtColor(im, _cv.COLOR_BGR2GRAY)      # ปรับพื้นหลังให้ขาวสะอาด (คอนทราสต์เบา)
+                brd = _np.concatenate([gray[0], gray[-1], gray[:, 0], gray[:, -1]])
+                bgv = float(_np.median(brd))
+                if bgv >= 150:
+                    lo, hi = float(_np.percentile(gray, 4)), max(bgv - 4, 60.0)
+                    im = _np.clip((im.astype(_np.float32) - lo) * (255.0 / max(20.0, hi - lo)), 0, 255).astype(_np.uint8)
+                enh = os.path.join(tmp, "enhanced.png"); _cv.imwrite(enh, im); inp = enh
+        except Exception:
+            pass
     # ---- raster + "ตัดชิ้น" -> vtracer (เส้นตรง=line, โค้ง=spline, มุมคม) คุณภาพเวกเตอร์มืออาชีพ ----
     if _isimg and str(mode).lower() == "cutout":
         try:
