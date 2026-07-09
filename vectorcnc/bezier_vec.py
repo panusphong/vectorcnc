@@ -147,61 +147,72 @@ def _scale_sub(sp, s):
 
 
 def _offset_subs(subs_mm, kerf_mm, tool_mm):
-    """ชดเชย kerf (ขยายชิ้น/หดรู kerf/2) + ปัดมุมในตามดอกกัด (tool) -> คืน subpaths polyline (มม.)"""
+    """ชดเชย kerf + ปัดมุมในตามดอกกัด — แบบ 'ทีละเส้น ตามชั้น (nesting)' เก็บทุกเส้นไว้ครบ.
+    สำคัญ: ห้ามรวมทุกเส้นเป็นก้อนทึบเดียว (โมเดลเก่าจับตัวอักษร/เส้นบางที่อยู่ในกรอบเป็น 'รู'
+    แล้วดูดหายตอน buffer -> ลายเส้นหายหมด). ที่นี่: เส้นชั้นนอก(คู่)=ขยายออก, เส้นชั้นใน(คี่)=หดเข้า,
+    ทำ buffer เฉพาะรูปของตัวเอง ไม่ยุ่งกับเส้นอื่น -> โลโก้ลายเส้น/ตัวอักษรบางอยู่ครบ."""
     from shapely.geometry import Polygon
-    from shapely.ops import unary_union
-    polys = []
+    d = max(0.0, float(kerf_mm or 0)) / 2.0
+    r = max(0.0, float(tool_mm or 0)) / 2.0
+    if d <= 0 and r <= 0:
+        return subs_mm
+    polys, srcs = [], []
     for sp in subs_mm:
         pts = _sp_points(sp, 0.3)
         if len(pts) >= 3:
             try:
                 pg = Polygon(pts).buffer(0)
-                if pg and not pg.is_empty:
-                    polys.append(pg)
+                if pg and not pg.is_empty and pg.geom_type == 'Polygon':
+                    polys.append(pg); srcs.append(sp)
             except Exception:
-                pass
-    if not polys:
-        return subs_mm
-    polys.sort(key=lambda p: -p.area); used = set(); pieces = []
-    for i, po in enumerate(polys):
-        if i in used:
-            continue
-        holes = []
-        for j in range(i + 1, len(polys)):
-            if j in used:
+                polys.append(None); srcs.append(sp)
+        else:
+            polys.append(None); srcs.append(sp)
+    reps = [(p.representative_point() if p is not None else None) for p in polys]
+    areas = [(p.area if p is not None else 0.0) for p in polys]
+
+    def _ring_to_sub(ring):
+        if len(ring) < 3:
+            return None
+        segs = [('L', (float(x), float(y))) for x, y in ring[1:]]
+        return {'start': (float(ring[0][0]), float(ring[0][1])), 'segs': segs, 'closed': True}
+
+    out = []
+    for i, p in enumerate(polys):
+        if p is None:
+            out.append(srcs[i]); continue          # เส้นที่ทำ polygon ไม่ได้ -> คงเดิม (ไม่ทิ้ง)
+        # ชั้นความลึก = จำนวนรูปที่ใหญ่กว่าและครอบจุดนี้ไว้ (คู่=ขอบนอก, คี่=รู/ขอบใน)
+        depth = 0
+        for j, q in enumerate(polys):
+            if j == i or q is None or areas[j] <= areas[i]:
                 continue
             try:
-                if po.contains(polys[j].representative_point()):
-                    used.add(j); holes.append(list(polys[j].exterior.coords))
+                if q.contains(reps[i]):
+                    depth += 1
             except Exception:
                 pass
+        sgn = 1.0 if (depth % 2 == 0) else -1.0     # นอก=ขยาย, ใน=หด (ชดเชย kerf ทั้งสองด้าน)
+        g = p
         try:
-            pieces.append(Polygon(list(po.exterior.coords), holes).buffer(0))
+            if d > 0:
+                g = g.buffer(sgn * d, join_style=1, resolution=24)
+            if r > 0 and depth % 2 == 0:            # ปัดมุมในเฉพาะรูปทึบชั้นนอก
+                g = g.buffer(-r, join_style=1, resolution=24).buffer(r, join_style=1, resolution=24)
         except Exception:
-            pieces.append(po)
-    geom = unary_union(pieces)
-    try:
-        d = max(0.0, float(kerf_mm)) / 2.0
-        if d > 0:
-            geom = geom.buffer(d, join_style=1, resolution=24)          # ชดเชย kerf (มุมโค้งมน)
-        r = max(0.0, float(tool_mm)) / 2.0
-        if r > 0:
-            geom = geom.buffer(-r, join_style=1, resolution=24).buffer(r, join_style=1, resolution=24)  # ปัดมุมในตามดอก
-    except Exception:
-        return subs_mm
-    if geom.is_empty:
-        return subs_mm
-    out = []
-    gs = list(geom.geoms) if geom.geom_type in ('MultiPolygon', 'GeometryCollection') else [geom]
-    for g in gs:
-        if getattr(g, 'geom_type', '') != 'Polygon' or g.is_empty:
-            continue
-        rings = [list(g.exterior.coords)] + [list(r.coords) for r in g.interiors]
-        for ring in rings:
-            if len(ring) < 3:
+            g = p
+        if g is None or g.is_empty:
+            out.append(srcs[i]); continue           # หดจนหาย -> คงเส้นเดิมไว้ (ยังตัดได้)
+        gs = list(g.geoms) if g.geom_type in ('MultiPolygon', 'GeometryCollection') else [g]
+        added = False
+        for gg in gs:
+            if getattr(gg, 'geom_type', '') != 'Polygon' or gg.is_empty:
                 continue
-            segs = [('L', (float(x), float(y))) for x, y in ring[1:]]
-            out.append({'start': (float(ring[0][0]), float(ring[0][1])), 'segs': segs, 'closed': True})
+            for ring in [list(gg.exterior.coords)] + [list(h.coords) for h in gg.interiors]:
+                s = _ring_to_sub(ring)
+                if s:
+                    out.append(s); added = True
+        if not added:
+            out.append(srcs[i])
     return out or subs_mm
 
 
