@@ -190,7 +190,7 @@ select.numin{cursor:pointer}
       <span class="app-title">app.vectorcnc.io · <span class="mono" id="fname">ยังไม่ได้เลือกไฟล์</span></span></div>
     <div class="app-body">
       <div class="side">
-        <div class="drop" id="drop"><div class="ic">📤</div><b>ลากไฟล์มาวาง</b><span>รูป (JPG PNG) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
+        <div class="drop" id="drop"><div class="ic">📤</div><b>ลากไฟล์มาวาง</b><span>รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
 
         <div class="grp">
@@ -227,6 +227,7 @@ select.numin{cursor:pointer}
           <label>ขนาดดอกกัด / ปัดมุม <span class="v" id="vT">6</span></label>
           <input type="range" id="tool" min="0" max="16" step="0.5" value="6">
           <label class="chk"><input type="checkbox" id="tabs"> ใส่ tabs (สะพานกันชิ้นหล่น)</label>
+          <label class="chk"><input type="checkbox" id="enhance"> ✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)</label>
         </div>
         <button class="btn primary" id="go" disabled>⚡ แปลงเป็นเส้นตัด</button>
       </div>
@@ -373,7 +374,7 @@ select.numin{cursor:pointer}
     <div class="csm2-setbar">⚙ ลิงก์ Apps Script (/exec):<input id="csApiUrl" placeholder="วาง Web App URL ของใบสั่งผลิต Auto ที่ลงท้าย /exec"><button class="btn ghost" id="csApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
   </div>
 </div>
-<input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" style="display:none">
+<input type="file" id="fileInput" accept="image/*,.ai,.pdf,.eps,.ps,.svg,.psd,.psb,application/pdf,application/postscript,application/illustrator,image/svg+xml,image/vnd.adobe.photoshop" style="display:none">
 <!-- ===== วัดขนาดตัวอักษรจากพื้นที่ (ฝังในหน้าหลัก) ===== -->
 <div class="modal" id="measOverlay"><div class="modal-card" style="max-width:900px;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel2)">
@@ -436,7 +437,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v37</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v39</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -779,6 +780,7 @@ $('go').onclick=function(){
   fd.append('kerf_mm',$('kerf').value);
   fd.append('tool_mm',$('tool').value);
   fd.append('tabs',$('tabs').checked?'3':'0');
+  fd.append('enhance',($('enhance')&&$('enhance').checked)?'1':'0');
   fd.append('mode',MODE);
   fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('go').disabled=false;paintMode();
