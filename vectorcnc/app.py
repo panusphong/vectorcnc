@@ -37,7 +37,13 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.4-smooth-nest", "build": "2026-07-08-smooth-nesting-bezier"}
+    try:
+        from vectorcnc import trace_engine
+        eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
+    except Exception as e:
+        eng = "import-error: " + str(e)
+    return {"ok": True, "service": "VectorCNC", "version": "1.8-factory-spline",
+            "build": "2026-07-09-curvefaithful+closed-spline-per-contour", "engine": eng}
 
 
 @app.post("/api/vectorize")
@@ -78,7 +84,7 @@ async def vectorize(
                 "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
                 "letter_height_mm": bz.get("letter_height_mm"), "size_by": bz.get("size_by"),
                 "layers": bz["layers"], "rings": bz["rings"], "layer_info": [{"color": "#2563EB"}],
-                "detected": {"kind": "logo", "notes": "vtracer engine — เส้นตรงตรง โค้งเนียน มุมคม"},
+                "detected": {"kind": "logo", "notes": bz["engine"] + " — เส้นตรงตรง โค้งเนียน มุมคม"},
                 "used_mode": "cutout", "engine": bz["engine"],
             }
         except Exception as e:
