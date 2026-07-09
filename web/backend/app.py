@@ -37,7 +37,13 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.8-factory-spline", "build": "2026-07-09-curvefaithful+closed-spline-per-contour"}
+    try:
+        from vectorcnc import trace_engine
+        eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
+    except Exception as e:
+        eng = "import-error: " + str(e)
+    return {"ok": True, "service": "VectorCNC", "version": "1.9-nest-safe",
+            "build": "2026-07-09-nest-bounded+curvefaithful", "engine": eng}
 
 
 @app.post("/api/vectorize")
