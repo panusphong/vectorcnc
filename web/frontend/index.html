@@ -1318,13 +1318,15 @@ function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg
 if($('wImgClear'))$('wImgClear').onclick=function(){ wallImg=null; if($('wFile'))$('wFile').value=''; if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">\u2702 ตัดพื้นหลังอัตโนมัติ</span>'; this.style.display='none'; wallDraw(); };
 var _wallSignOrig=null;
 function wallSetImg(f){
-  // ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> ให้ backend แปลงเป็น PNG โปร่งใสก่อน แล้ววางเหมือน JPG
+  // ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> แตกเป็นชิ้นย่อยให้เลือก แล้ววางเหมือน JPG
   if(/\.(ai|pdf|eps|ps|svg)$/i.test(f.name||'')){
-    $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแปลงไฟล์เวกเตอร์...</div>';
-    var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','2200');
-    fetch((API||'')+'/api/rasterize',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.png){ _wallSignOrig=j.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(j.png, f.name+' (เวกเตอร์)'); }
-      else { $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">แปลงไฟล์เวกเตอร์ไม่ได้: '+((j&&j.error)||'ไม่ทราบสาเหตุ')+'</span>'; }
+    $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแตกชิ้นจากไฟล์เวกเตอร์...</div>';
+    var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','1600');
+    fetch((API||'')+'/api/ai-split',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.pieces&&j.count>0){
+        if(j.count===1){ var p=j.pieces[0]; _wallSignOrig=p.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(p.png, f.name+' (เวกเตอร์)'); }
+        else { _wallPickPieces(j.pieces, f); }
+      } else { _wallRasterWhole(f); }
     }).catch(function(e){ $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">ต่อ backend ไม่ได้ '+e+'</span>'; });
     return;
   }
@@ -1336,6 +1338,40 @@ function wallSetImg(f){
     if(j&&j.png){ _wallLoad(j.png, f.name+' ✂ ตัดพื้นหลังแล้ว'); }
     else { var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name+' (พื้นหลังเดิม)'); }; rd.readAsDataURL(f); }
   }).catch(function(){ var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name); }; rd.readAsDataURL(f); });
+}
+function _wallRasterWhole(f){
+  $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div>';
+  var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','2200');
+  fetch((API||'')+'/api/rasterize',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.png){ _wallSignOrig=j.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(j.png, (f.name||'ไฟล์')+' (ทั้งแผ่น)'); }
+    else { $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">แปลงไม่ได้: '+((j&&j.error)||'?')+'</span>'; }
+  }).catch(function(e){ $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">ต่อ backend ไม่ได้</span>'; });
+}
+function _wallPickPieces(pieces, f){
+  var ov=document.getElementById('wPiecePop'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='wPiecePop';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:14px;max-width:900px;width:100%;max-height:86vh;overflow:auto;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.3)';
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:15px">พบ '+pieces.length+' ชิ้นในไฟล์ — เลือกชิ้นที่ต้องการวางบนผนัง</b><button id="wPieceX" style="border:none;background:#eef;border-radius:8px;padding:4px 10px;cursor:pointer">ปิด</button></div>'
+    +'<div style="font-size:12px;color:#5A6B8C;margin-bottom:10px">คลิกชิ้นที่ต้องการ (เช่น เฉพาะโลโก้/ป้าย) · หรือใช้ทั้งแผ่นรวม</div>'
+    +'<div id="wPieceGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>'
+    +'<div style="margin-top:12px;text-align:center"><button id="wPieceAll" style="border:1px solid var(--line);background:#f8fafc;border-radius:9px;padding:8px 16px;cursor:pointer;font-size:13px">📄 ใช้ทั้งแผ่นรวม</button></div>';
+  ov.appendChild(box); document.body.appendChild(ov);
+  var grid=box.querySelector('#wPieceGrid');
+  pieces.forEach(function(p,idx){
+    var c=document.createElement('button');
+    c.type='button';
+    c.style.cssText='border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.15s';
+    c.onmouseover=function(){c.style.borderColor='#2563eb';c.style.boxShadow='0 2px 10px rgba(37,99,235,.25)';};
+    c.onmouseout=function(){c.style.borderColor='var(--line)';c.style.boxShadow='none';};
+    c.innerHTML='<div style="width:100%;height:100px;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/16px 16px;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div><span style="font-size:11px;color:#5A6B8C">ชิ้น '+(idx+1)+' · '+p.w+'×'+p.h+'</span>';
+    c.onclick=function(){ _wallSignOrig=p.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(p.png, (f.name||'')+' · ชิ้น '+(idx+1)); ov.remove(); };
+    grid.appendChild(c);
+  });
+  box.querySelector('#wPieceX').onclick=function(){ ov.remove(); if($('wFile'))$('wFile').value=''; $('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg ก็ได้)'; };
+  box.querySelector('#wPieceAll').onclick=function(){ ov.remove(); _wallRasterWhole(f); };
+  ov.addEventListener('click',function(ev){ if(ev.target===ov) ov.remove(); });
 }
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
