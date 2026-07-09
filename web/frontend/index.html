@@ -1321,7 +1321,7 @@ function wallSetImg(f){
   // ไฟล์เวกเตอร์/PSD (.ai/.pdf/.eps/.ps/.svg/.psd) -> แตกเป็นชิ้น/เลเยอร์ให้เลือก แล้ววางเหมือน JPG
   if(/\.(ai|pdf|eps|ps|svg|psd|psb)$/i.test(f.name||'')){
     $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแตกชิ้นจากไฟล์เวกเตอร์...</div>';
-    var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','1600');
+    var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','1200');
     fetch((API||'')+'/api/ai-split',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
       if(j&&j.pieces&&j.count>0){
         if(j.count===1){ var p=j.pieces[0]; _wallSignOrig=p.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(p.png, f.name+' (เวกเตอร์)'); }
