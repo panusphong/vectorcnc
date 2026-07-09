@@ -473,7 +473,7 @@ select.numin{cursor:pointer}
       <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
-      <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span><input id="wFile" type="file" accept="image/*" hidden></div>
+      <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg ก็ได้)<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง หรือไฟล์เวกเตอร์ .ai · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span><input id="wFile" type="file" accept="image/*,.ai,.pdf,.eps,.ps,.svg,application/pdf,application/postscript,application/illustrator,image/svg+xml" hidden></div>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="wCut"> ✂ ตัดพื้นหลังอัตโนมัติ (กดเลือกเองเมื่อต้องการ)</label>
       <button class="btn" id="wEditBg" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);display:none">✏️ แก้พื้นหลังเอง (ระบายลบ/คืน)</button>
       <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="wLabels" checked> แสดงตัวเลขขนาด</label>
@@ -1318,6 +1318,16 @@ function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg
 if($('wImgClear'))$('wImgClear').onclick=function(){ wallImg=null; if($('wFile'))$('wFile').value=''; if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">\u2702 ตัดพื้นหลังอัตโนมัติ</span>'; this.style.display='none'; wallDraw(); };
 var _wallSignOrig=null;
 function wallSetImg(f){
+  // ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.ps/.svg) -> ให้ backend แปลงเป็น PNG โปร่งใสก่อน แล้ววางเหมือน JPG
+  if(/\.(ai|pdf|eps|ps|svg)$/i.test(f.name||'')){
+    $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแปลงไฟล์เวกเตอร์...</div>';
+    var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','2200');
+    fetch((API||'')+'/api/rasterize',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.png){ _wallSignOrig=j.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(j.png, f.name+' (เวกเตอร์)'); }
+      else { $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">แปลงไฟล์เวกเตอร์ไม่ได้: '+((j&&j.error)||'ไม่ทราบสาเหตุ')+'</span>'; }
+    }).catch(function(e){ $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">ต่อ backend ไม่ได้ '+e+'</span>'; });
+    return;
+  }
   var _ro=new FileReader(); _ro.onload=function(){ _wallSignOrig=_ro.result; if($('wEditBg'))$('wEditBg').style.display='block'; }; _ro.readAsDataURL(f);
   if($('wCut') && !$('wCut').checked){ var rr=new FileReader(); rr.onload=function(){ _wallLoad(rr.result, f.name); }; rr.readAsDataURL(f); return; }
   $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังตัดพื้นหลัง...</div>';
