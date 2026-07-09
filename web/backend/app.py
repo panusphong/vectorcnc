@@ -50,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.7-cutout-hq",
-            "build": "2026-07-09-cutout-softmatte-hq", "engine": eng, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "2.8-kerf-fillet",
+            "build": "2026-07-09-cut-kerf+fillet-offset", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -80,7 +80,8 @@ async def vectorize(
             from vectorcnc import bezier_vec
             bz = bezier_vec.vectorize_bezier(inp, real_width_mm=float(real_width_mm),
                                              n_colors=max(2, min(12, int(n_colors))), dxf_out=out_dxf,
-                                             size_by=str(size_by), size_value_mm=float(size_value_mm))
+                                             size_by=str(size_by), size_value_mm=float(size_value_mm),
+                                             kerf_mm=float(kerf_mm), tool_mm=float(tool_mm))
             dxf_b64 = ""
             try:
                 with open(out_dxf, "rb") as f:
