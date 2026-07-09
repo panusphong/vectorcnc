@@ -42,8 +42,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.1-ai-split",
-            "build": "2026-07-09-ai-split-pieces+wall+nest-bounded", "engine": eng}
+    return {"ok": True, "service": "VectorCNC", "version": "2.2-psd",
+            "build": "2026-07-09-psd-layers+ai-split+wall", "engine": eng}
 
 
 @app.post("/api/vectorize")
@@ -514,9 +514,18 @@ async def api_rasterize(file: UploadFile = File(...), max_px: int = Form(2000)):
         import numpy as np, cv2, base64 as _b64
         ext = os.path.splitext(inp)[1].lower()
         mpx = max(400, min(4000, int(max_px)))
-        if ext == ".svg":
+        img = None
+        if ext in (".psd", ".psb"):
+            from PIL import Image
+            pim = Image.open(inp).convert("RGBA")               # composite (รวมทุกเลเยอร์)
+            if max(pim.size) > mpx:
+                _r = mpx / float(max(pim.size))
+                pim = pim.resize((max(1, int(pim.width * _r)), max(1, int(pim.height * _r))))
+            img = cv2.cvtColor(np.array(pim), cv2.COLOR_RGBA2BGRA)
+        elif ext == ".svg":
             import cairosvg
             png_bytes = cairosvg.svg2png(url=inp, output_width=mpx)
+            img = cv2.imdecode(np.frombuffer(png_bytes, np.uint8), cv2.IMREAD_UNCHANGED)
         else:
             import fitz
             src = inp
@@ -531,10 +540,9 @@ async def api_rasterize(file: UploadFile = File(...), max_px: int = Form(2000)):
             r = page.rect
             sc = mpx / max(1.0, max(r.width, r.height))
             pix = page.get_pixmap(matrix=fitz.Matrix(sc, sc), alpha=True)
-            png_bytes = pix.tobytes("png")
-        img = cv2.imdecode(np.frombuffer(png_bytes, np.uint8), cv2.IMREAD_UNCHANGED)
+            img = cv2.imdecode(np.frombuffer(pix.tobytes("png"), np.uint8), cv2.IMREAD_UNCHANGED)
         if img is None:
-            return JSONResponse({"error": "render เวกเตอร์ไม่ได้"}, status_code=400)
+            return JSONResponse({"error": "render ไฟล์ไม่ได้"}, status_code=400)
         if img.ndim == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
         elif img.shape[2] == 3:
@@ -579,7 +587,49 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
         mpx = max(500, min(2600, int(max_px)))
         fr = max(0.006, min(0.06, float(frac)))
         rasters = []                                    # [(page_index, BGRA image)]
-        if ext == ".svg":
+        pieces = []
+        if ext in (".psd", ".psb"):
+            # PSD -> แตกตาม 'เลเยอร์' โดยตรง (ชิ้นย่อยตามธรรมชาติ). ล้มเหลว -> composite + จับกลุ่ม
+            try:
+                from psd_tools import PSDImage
+                psd = PSDImage.open(inp)
+                for ly in list(psd):
+                    try:
+                        if hasattr(ly, "is_visible") and not ly.is_visible():
+                            continue
+                        lim = ly.composite()
+                        if lim is None:
+                            continue
+                        crop = cv2.cvtColor(np.array(lim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
+                        if crop.size == 0 or int(crop[:, :, 3].max()) == 0:
+                            continue
+                        _ys, _xs = np.where(crop[:, :, 3] > 8)      # ตัดขอบโปร่งของเลเยอร์ให้พอดีเนื้อหา
+                        if len(_xs) and len(_ys):
+                            crop = crop[int(_ys.min()):int(_ys.max()) + 1, int(_xs.min()):int(_xs.max()) + 1]
+                        h0, w0 = crop.shape[:2]
+                        if h0 * w0 < 64:
+                            continue
+                        if max(h0, w0) > mpx:
+                            _r = mpx / float(max(h0, w0))
+                            crop = cv2.resize(crop, (max(1, int(w0 * _r)), max(1, int(h0 * _r))))
+                        ok, buf = cv2.imencode(".png", crop)
+                        if ok:
+                            pieces.append({"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
+                                           "w": int(crop.shape[1]), "h": int(crop.shape[0]),
+                                           "page": 0, "area": int(crop.shape[0] * crop.shape[1])})
+                    except Exception:
+                        continue
+            except Exception:
+                pieces = []
+            if pieces:
+                pieces.sort(key=lambda p: -p["area"]); pieces = pieces[:24]
+                return {"count": len(pieces), "pieces": pieces}
+            from PIL import Image                          # fallback: composite -> จับกลุ่มเชิงพื้นที่
+            pim = Image.open(inp).convert("RGBA")
+            if max(pim.size) > mpx:
+                _r = mpx / float(max(pim.size)); pim = pim.resize((int(pim.width * _r), int(pim.height * _r)))
+            rasters.append((0, cv2.cvtColor(np.array(pim), cv2.COLOR_RGBA2BGRA)))
+        elif ext == ".svg":
             import cairosvg
             png = cairosvg.svg2png(url=inp, output_width=mpx)
             im = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_UNCHANGED)
@@ -599,7 +649,6 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
                 sc = mpx / max(1.0, max(r.width, r.height))
                 im = cv2.imdecode(np.frombuffer(pg.get_pixmap(matrix=fitz.Matrix(sc, sc), alpha=True).tobytes("png"), np.uint8), cv2.IMREAD_UNCHANGED)
                 rasters.append((pno, im))
-        pieces = []
         for pno, img in rasters:
             if img is None:
                 continue
