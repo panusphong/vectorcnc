@@ -50,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.6-psd-lowmem",
-            "build": "2026-07-09-psd-topil+skipbg-77mb", "engine": eng, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "2.7-cutout-hq",
+            "build": "2026-07-09-cutout-softmatte-hq", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
