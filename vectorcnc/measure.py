@@ -157,51 +157,59 @@ def _preview(img, bbox, stats, tall_idx, res):
 
 
 def cutout_rgba(path):
-    """ตัดพื้นหลัง -> BGRA (alpha เนียน). ทนพื้นหลังคอนทราสต์ต่ำด้วย GrabCut + color distance"""
+    """ตัดพื้นหลัง -> BGRA คุณภาพสูง 'เนียนกริบ':
+    soft-alpha matting (smoothstep จากระยะสีพื้นหลัง) + เติมรูใน + จำกัดขอบเขต + GrabCut กันพื้นรก
+    + เก็บขอบ anti-alias + ลบสีเจือขอบ (decontaminate)"""
     raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     img = analyze.load_image(path)          # BGR (composite ขาว)
     H, W = img.shape[:2]
-    # 1) มี alpha จริง -> ใช้เลย
+    # 1) มี alpha จริง (PNG/PSD/AI โปร่ง) -> ใช้เลย เนียนสุด
     if raw is not None and raw.ndim == 3 and raw.shape[2] == 4 and int(raw[:, :, 3].min()) < 240:
-        a = raw[:, :, 3].astype(np.uint8)
-        return np.dstack([img, _clean(a)])
-    # 2) color distance จากสีพื้นหลัง (ขอบภาพ)
+        return np.dstack([img, _clean(raw[:, :, 3].astype(np.uint8))])
+    f = img.astype(np.float32)
+    # 2) สีพื้นหลัง = median ของขอบภาพ
     bd = np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]]).reshape(-1, 3)
     bcol = np.median(bd, axis=0)
-    dist = np.sqrt(((img.astype(np.float32) - bcol) ** 2).sum(2))
+    dist = np.sqrt(((f - bcol) ** 2).sum(2))
     dn = np.clip(dist, 0, 255).astype(np.uint8)
-    _t, m_col = cv2.threshold(dn, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    m_col = (m_col > 0).astype(np.uint8)
-    # 3) GrabCut (rect กลางภาพ) — ช่วยพื้นหลังคอนทราสต์ต่ำ/ลายเยอะ
-    m_gc = None
+    thr, _m = cv2.threshold(dn, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # 3) soft alpha (smoothstep) รอบ threshold -> ขอบ anti-alias เนียน ไม่มีคราบ
+    lo, hi = thr * 0.55, thr * 1.15
+    a = np.clip((dist - lo) / max(1.0, (hi - lo)), 0, 1)
+    a = a * a * (3 - 2 * a)                 # smoothstep
+    a8 = (a * 255).astype(np.uint8)
+    # 4) hard mask (>110) -> ปิดรู + เติมรูใน (floodfill)
+    hard = (a8 > 110).astype(np.uint8) * 255
+    hard = cv2.morphologyEx(hard, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+    ff = hard.copy(); mff = np.zeros((H + 2, W + 2), np.uint8)
+    cv2.floodFill(ff, mff, (0, 0), 255)
+    hard = cv2.bitwise_or(hard, cv2.bitwise_not(ff))
+    # 5) GrabCut union -> เก็บส่วนคอนทราสต์ต่ำ/พื้นหลังรก
     try:
         gc = np.zeros((H, W), np.uint8)
-        rect = (int(W * 0.05), int(H * 0.05), int(W * 0.90), int(H * 0.90))
+        rect = (int(W * 0.04), int(H * 0.04), int(W * 0.92), int(H * 0.92))
         cv2.grabCut(img, gc, rect, np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64),
-                    4, cv2.GC_INIT_WITH_RECT)
-        m_gc = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 1, 0).astype(np.uint8)
+                    3, cv2.GC_INIT_WITH_RECT)
+        fg = np.where((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+        if 0.02 < float(fg.mean()) / 255.0 < 0.95:
+            fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+            hard = cv2.bitwise_or(hard, fg)
     except Exception:
-        m_gc = None
-    # รวม (union) color-distance + GrabCut -> ไม่ทิ้งตัวอักษร/ชิ้นเล็กที่คอนทราสต์ต่ำ
-    mask = m_col
-    if m_gc is not None and 0.02 < float(m_gc.mean()) < 0.95:
-        mask = ((m_col | m_gc) > 0).astype(np.uint8)
-    mask = _clean((mask * 255).astype(np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
-                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))  # เชื่อมเส้นตัวอักษร
-    # ลบเฉพาะเศษจุดเล็กจิ๋ว (เก็บตัวอักษรไว้ — เกณฑ์ต่ำ)
-    n, lab, st, _ = cv2.connectedComponentsWithStats(mask, 8)
+        pass
+    # 6) ลบเศษจุดเล็ก
+    n, lab, st, _ = cv2.connectedComponentsWithStats(hard, 8)
     if n > 1:
-        keep = np.zeros_like(mask)
-        minA = max(40, H * W * 0.0003)
+        keep = np.zeros_like(hard); minA = max(60, H * W * 0.0004)
         for i in range(1, n):
             if st[i, cv2.CC_STAT_AREA] >= minA:
                 keep[lab == i] = 255
-        mask = keep
-    k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    mask = cv2.erode(mask, k3, iterations=1)
-    alpha = cv2.GaussianBlur(mask, (0, 0), 1.0)
-    return np.dstack([img, alpha])
+        hard = keep
+    # 7) จำกัด soft alpha ให้อยู่ในขอบเขตวัตถุ (นอกขอบ = 0 สนิท) + ภายในเต็ม
+    region = cv2.dilate(hard, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    a8 = np.where(region > 0, a8, 0).astype(np.uint8)
+    a8 = np.maximum(a8, cv2.erode(hard, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
+    a8 = cv2.GaussianBlur(a8, (0, 0), 0.7)  # anti-alias ขอบเนียน
+    return np.dstack([img, a8])
 
 
 def _fg_for_measure(path):
