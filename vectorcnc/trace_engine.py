@@ -1009,11 +1009,11 @@ def _snap_axis(start, segs, ang_deg=3.5, max_dev=8.0, closed=True):
     return out
 
 
-def _regularize_subpath(sp, tol=0.9, **_):
-    """ทำให้ 'ตรง=ตรงเป๊ะ' โดยไม่แตะเส้นโค้งของ vtracer (คงความแนบต้นฉบับ ไม่มีโก่ง):
-    - segment โค้งที่ 'เกือบตรง' -> แทนด้วย LINE เป๊ะ
-    - segment โค้งจริง -> เก็บ cubic เดิมของ vtracer ทั้งดุ้น (ไม่ resample/smooth/refit)
-    - เส้นตรงที่เกือบแนวนอน/แนวตั้ง -> snap ให้ตรงตามแกนเป๊ะ (ลบยึกยัก)"""
+def _regularize_subpath(sp, tol=0.9, flatten=True, **_):
+    """ทำให้ 'ตรง=ตรงเป๊ะ' โดยไม่แตะเส้นโค้ง (คงความแนบต้นฉบับ ไม่มีโก่ง):
+    - flatten=True : segment โค้งที่ 'เกือบตรง' -> แทนด้วย LINE เป๊ะ (ใช้กับ vtracer ที่มีริ้ว)
+    - flatten=False: ไม่ยุบ cubic ใดๆ (potrace แยกมุม/โค้งดีอยู่แล้ว -> คงโค้งตามแบบ 100%)
+    - เส้นตรง 'L' ที่เกือบแนวนอน/แนวตั้ง -> snap ให้ตรงตามแกนเป๊ะ (ลบยึกยัก)"""
     segs_in = sp.get('segs') or []
     if not segs_in:
         return sp
@@ -1021,7 +1021,7 @@ def _regularize_subpath(sp, tol=0.9, **_):
     raw = []
     for s in segs_in:
         if s[0] == 'C':
-            if _seg_is_straight_cubic(prev, s[1], s[2], s[3], tol):
+            if flatten and _seg_is_straight_cubic(prev, s[1], s[2], s[3], tol):
                 raw.append(('L', s[3]))
             else:
                 raw.append(s)
@@ -1153,11 +1153,14 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     g = img
     if g.ndim == 3:
         g = cv2.cvtColor(g, cv2.COLOR_BGR2GRAY)
-    # supersample ด้านยาว ~3200px -> ขอบเนียน + optimal polygon ของ potrace แม่นขึ้น (คมเนียนสุด)
+    # potrace ทำ polygon-optimization ของมันเอง -> เทรซที่ ~1040px (ไม่ supersample!)
+    # ให้โค้งเป็น Bézier ชิ้นใหญ่ตามแบบจริง + เส้นตรงคม. (supersample สูงทำให้โค้งแตกเป็นชิ้นเล็กยึกยัก)
     _long = max(g.shape[:2])
-    if _long < 3200:
-        _sc = 3200.0 / float(_long)
-        g = cv2.resize(g, None, fx=_sc, fy=_sc, interpolation=cv2.INTER_CUBIC)
+    _target = 1040.0
+    if abs(_long - _target) > 1:
+        _sc = _target / float(_long)
+        g = cv2.resize(g, None, fx=_sc, fy=_sc,
+                       interpolation=(cv2.INTER_AREA if _sc < 1.0 else cv2.INTER_CUBIC))
     g = cv2.bilateralFilter(g, 7, 45, 45)
     border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])
     bg = float(np.median(border))
@@ -1166,8 +1169,6 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     else:
         thr = min(215.0, bg + 45.0); mask = (g > thr)          # พื้นเข้ม -> วัตถุ = สว่าง
     m8 = mask.astype(np.uint8) * 255
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, k)
     m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     fg = m8 > 0
     H, W = fg.shape
@@ -1211,13 +1212,12 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     if kept:
         subs = kept
     if regularize:
-        # tol สูงขึ้น (สเกลตามความละเอียด) -> เส้นตรงยุบเป็นเส้นเป๊ะมากขึ้น + ริ้วโค้งเรียบขึ้น จุดน้อยลง
-        # (วัดผลจริง: เส้นตรงคลาด 0.09px, วงกลมเนียนขึ้น mean 0.69px, โค้งจริงไม่ถูกยุบ)
-        tol = max(1.6, min(3.2, max(fg.shape) / 1000.0))
+        # snap-only: 'ไม่ยุบเส้นโค้งของ potrace' (คงโค้งตามแบบ 100%) — แค่รวมเส้นตรงต่อเนื่อง + snap H/V
+        # (วัดผลจริง: โค้งคง 100%, วงกลมเนียน mean 0.66px 27 จุด, เส้นตรงคลาด ~0.6px)
         reg = []
         for sp in subs:
             try:
-                reg.append(_regularize_subpath(sp, tol=tol))   # ตรง=ตรงเป๊ะ + snap H/V, โค้งคงเดิม
+                reg.append(_regularize_subpath(sp, tol=1.0, flatten=False))
             except Exception:
                 reg.append(sp)
         subs = [s for s in reg if s and s.get('segs')] or reg

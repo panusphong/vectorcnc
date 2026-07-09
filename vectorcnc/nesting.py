@@ -233,6 +233,44 @@ def write_dxf_bezier(sheets_items, path, sheet_w, sheet_h, gap_between=50.0):
     return path
 
 
+def _add_contour_dxf(layout, sp, layer, tf=None):
+    """เขียน 1 คอนทัวร์เป็นสไปลน์ปิด degree-3 เส้นเดียว (มาตรฐานไฟล์ตัดโรงงาน/laser fiber)
+    - ตรงล้วน -> LWPOLYLINE ปิด · มีโค้ง -> B-spline ปิดเส้นเดียว (เส้นตรง = cubic คุมจุดบนคอร์ด = ตรงเป๊ะ)"""
+    import ezdxf.path as _ep
+    from ezdxf.math import BSpline as _BSpline
+    if tf is None:
+        tf = lambda p: (p[0], p[1])
+    segs = sp.get('segs') or []
+    if not segs:
+        return
+    start = sp['start']
+    if not any(s[0] == 'C' for s in segs):
+        pts = [tf(start)] + [tf(s[1]) for s in segs]
+        layout.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer}); return
+    p = _ep.Path(tf(start)); cur = start
+    for s in segs:
+        if s[0] == 'L':
+            e = s[1]
+            c1 = (cur[0] + (e[0]-cur[0])/3.0, cur[1] + (e[1]-cur[1])/3.0)
+            c2 = (cur[0] + 2.0*(e[0]-cur[0])/3.0, cur[1] + 2.0*(e[1]-cur[1])/3.0)
+            p.curve4_to(tf(e), tf(c1), tf(c2)); cur = e
+        else:
+            p.curve4_to(tf(s[3]), tf(s[1]), tf(s[2])); cur = s[3]
+    p.close()
+    items = list(_ep.to_bsplines_and_vertices(p))
+    single = (len(items) == 1)
+    for item in items:
+        if isinstance(item, _BSpline):
+            spl = layout.add_spline(dxfattribs={'layer': layer})
+            spl.apply_construction_tool(item)
+            if single:
+                spl.closed = True
+        else:
+            vs = [(v[0], v[1]) for v in item]
+            if len(vs) >= 2:
+                layout.add_lwpolyline(vs, close=single, dxfattribs={'layer': layer})
+
+
 def write_dxf_bezier_blocks(pieces, placements, path, sheet_w, sheet_h, gap_between=50.0):
     """DXF ขนาดเล็กด้วย BLOCK+INSERT — นิยาม 1 บล็อกต่อชิ้น (spline เต็มคุณภาพ) แล้ว INSERT ซ้ำ
     pieces[i]   = list ของ (subs, color, rgb, layer_name)  (geometry ต้นฉบับ ยังไม่ transform)
@@ -253,13 +291,16 @@ def write_dxf_bezier_blocks(pieces, placements, path, sheet_w, sheet_h, gap_betw
                     try: lay.rgb = rgb
                     except Exception: pass
             for sp in subs:
-                cur = sp['start']
-                for seg in sp['segs']:
-                    if seg[0] == 'L':
-                        blk.add_line(cur, seg[1], dxfattribs={'layer': lyname}); cur = seg[1]
-                    else:
-                        blk.add_open_spline([cur, seg[1], seg[2], seg[3]], degree=3,
-                                            dxfattribs={'layer': lyname}); cur = seg[3]
+                try:
+                    _add_contour_dxf(blk, sp, lyname)           # 1 คอนทัวร์ = 1 สไปลน์ปิด (แบบไฟล์โรงงาน)
+                except Exception:
+                    cur = sp['start']                            # สำรอง: เขียนทีละ segment
+                    for seg in sp['segs']:
+                        if seg[0] == 'L':
+                            blk.add_line(cur, seg[1], dxfattribs={'layer': lyname}); cur = seg[1]
+                        else:
+                            blk.add_open_spline([cur, seg[1], seg[2], seg[3]], degree=3,
+                                                dxfattribs={'layer': lyname}); cur = seg[3]
         blocks[idx] = bname
     for si, sheet in enumerate(placements):
         ox = si * (sheet_w + gap_between)
