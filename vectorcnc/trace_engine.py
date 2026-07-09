@@ -10,6 +10,9 @@ import cv2
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+# ป้ายเวอร์ชันเครื่องยนต์ (ใช้ยืนยันว่า trace_engine.py ที่ deploy เป็นตัวล่าสุดจริง — เช็คที่ /api/health)
+ENGINE_VERSION = "2026-07-09-potrace-adaptive-detailkeep-absspeckle"
+
 
 # ---------- helpers ----------
 def _hex2rgb(h):
@@ -1156,7 +1159,19 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     # potrace ทำ polygon-optimization ของมันเอง -> เทรซที่ ~1040px (ไม่ supersample!)
     # ให้โค้งเป็น Bézier ชิ้นใหญ่ตามแบบจริง + เส้นตรงคม. (supersample สูงทำให้โค้งแตกเป็นชิ้นเล็กยึกยัก)
     _long = max(g.shape[:2])
+    # ---- เลือกความละเอียดทำงานอัตโนมัติ: โลโก้ 'ลายเส้นเยอะ/ตัวอักษรเล็ก' ใช้ 1600 (เก็บเส้นบาง),
+    #      โลโก้ทั่วไป/รูปถ่าย ใช้ 1040 (โค้งเนียนที่สุด). วัดจากจำนวนชิ้นแยก (connected components) ----
     _target = 1040.0
+    try:
+        _pv_sc = 1000.0 / float(_long)
+        _pv = cv2.resize(g, None, fx=_pv_sc, fy=_pv_sc, interpolation=cv2.INTER_AREA) if _pv_sc < 1.0 else g
+        _pvb = np.concatenate([_pv[0], _pv[-1], _pv[:, 0], _pv[:, -1]]); _pbg = float(np.median(_pvb))
+        _pmask = (_pv < max(40.0, _pbg - 45.0)) if _pbg >= 128 else (_pv > min(215.0, _pbg + 45.0))
+        _ncomp = int(cv2.connectedComponents(_pmask.astype(np.uint8))[0]) - 1
+        if _ncomp >= 10:                       # ลายเส้นเยอะ/มีตัวอักษรหลายชิ้น -> ต้องการรายละเอียดสูง
+            _target = min(1600.0, float(_long))  # ไม่ upscale เกินต้นฉบับ
+    except Exception:
+        pass
     if abs(_long - _target) > 1:
         _sc = _target / float(_long)
         g = cv2.resize(g, None, fx=_sc, fy=_sc,
@@ -1205,10 +1220,14 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
         a = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) / 2.0
         return a, (max(xs) - min(xs)), (max(ys) - min(ys))
     info = [_sub_area_bbox(sp) for sp in subs]
-    max_a = max((i[0] for i in info), default=1.0) or 1.0
-    ovr = max(max((i[1] for i in info), default=1.0), max((i[2] for i in info), default=1.0)) or 1.0
+    # ตัวกรอง speckle แบบ 'ขนาดจริง' (อิง diagonal ของภาพงาน ~1040px) — ไม่เทียบกับชิ้นใหญ่สุด
+    # เพราะโลโก้ที่มีกรอบใหญ่ครอบ จะทำให้ตัวอักษร/เส้นบางดู 'จิ๋ว' แล้วโดนตัดหมด (bug เส้นหาย)
+    # ตัดทิ้งเฉพาะเศษจุดจิ๋วจริง: ด้านยาว < 0.6% ของ diagonal และ พื้นที่ < 0.003% ของ diagonal²
+    _diag = float((H * H + W * W) ** 0.5) or 1.0
+    _minlen = 0.006 * _diag           # ~9px ที่ภาพ 1040
+    _minarea = 3.0e-5 * _diag * _diag  # ~64px² ที่ภาพ 1040
     kept = [sp for sp, (a, bw, bh) in zip(subs, info)
-            if a >= 0.003 * max_a or max(bw, bh) >= 0.02 * ovr]   # เก็บถ้าพื้นที่พอ หรือ ยาวพอ (เส้นบาง)
+            if not (max(bw, bh) < _minlen and a < _minarea)]   # เก็บทุกอย่าง ยกเว้นเศษจิ๋วจริง
     if kept:
         subs = kept
     if regularize:
