@@ -37,7 +37,7 @@ def hexcolor(c):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "VectorCNC", "version": "1.5-potrace", "build": "2026-07-08-potrace-illustrator-grade"}
+    return {"ok": True, "service": "VectorCNC", "version": "1.6-potrace-hq", "build": "2026-07-09-potrace-hq-3200+straighten3.2"}
 
 
 @app.post("/api/vectorize")
@@ -78,7 +78,7 @@ async def vectorize(
                 "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
                 "letter_height_mm": bz.get("letter_height_mm"), "size_by": bz.get("size_by"),
                 "layers": bz["layers"], "rings": bz["rings"], "layer_info": [{"color": "#2563EB"}],
-                "detected": {"kind": "logo", "notes": "vtracer engine — เส้นตรงตรง โค้งเนียน มุมคม"},
+                "detected": {"kind": "logo", "notes": bz["engine"] + " — เส้นตรงตรง โค้งเนียน มุมคม"},
                 "used_mode": "cutout", "engine": bz["engine"],
             }
         except Exception as e:
