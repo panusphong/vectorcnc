@@ -121,8 +121,92 @@ def _dxf(all_subs_mm, Hmm, path):
     return path
 
 
+def _sp_points(sp, step=0.30):
+    """subpath (Bézier/line มม.) -> ชุดจุด polyline สำหรับ shapely"""
+    pts = [(float(sp['start'][0]), float(sp['start'][1]))]; cur = pts[0]
+    for s in sp['segs']:
+        if s[0] == 'L':
+            pts.append((float(s[1][0]), float(s[1][1]))); cur = pts[-1]
+        else:
+            c1, c2, e = s[1], s[2], s[3]
+            L = (abs(c1[0]-cur[0])+abs(c1[1]-cur[1])+abs(c2[0]-c1[0])+abs(c2[1]-c1[1])+abs(e[0]-c2[0])+abs(e[1]-c2[1]))
+            n = int(min(160, max(3, L / step)))
+            for i in range(1, n + 1):
+                t = i / float(n); mt = 1 - t
+                x = mt*mt*mt*cur[0]+3*mt*mt*t*c1[0]+3*mt*t*t*c2[0]+t*t*t*e[0]
+                y = mt*mt*mt*cur[1]+3*mt*mt*t*c1[1]+3*mt*t*t*c2[1]+t*t*t*e[1]
+                pts.append((x, y))
+            cur = (float(e[0]), float(e[1]))
+    return pts
+
+
+def _scale_sub(sp, s):
+    def T(p): return (p[0] * s, p[1] * s)
+    return {'start': T(sp['start']), 'closed': sp.get('closed', True),
+            'segs': [('L', T(x[1])) if x[0] == 'L' else ('C', T(x[1]), T(x[2]), T(x[3])) for x in sp['segs']]}
+
+
+def _offset_subs(subs_mm, kerf_mm, tool_mm):
+    """ชดเชย kerf (ขยายชิ้น/หดรู kerf/2) + ปัดมุมในตามดอกกัด (tool) -> คืน subpaths polyline (มม.)"""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    polys = []
+    for sp in subs_mm:
+        pts = _sp_points(sp, 0.3)
+        if len(pts) >= 3:
+            try:
+                pg = Polygon(pts).buffer(0)
+                if pg and not pg.is_empty:
+                    polys.append(pg)
+            except Exception:
+                pass
+    if not polys:
+        return subs_mm
+    polys.sort(key=lambda p: -p.area); used = set(); pieces = []
+    for i, po in enumerate(polys):
+        if i in used:
+            continue
+        holes = []
+        for j in range(i + 1, len(polys)):
+            if j in used:
+                continue
+            try:
+                if po.contains(polys[j].representative_point()):
+                    used.add(j); holes.append(list(polys[j].exterior.coords))
+            except Exception:
+                pass
+        try:
+            pieces.append(Polygon(list(po.exterior.coords), holes).buffer(0))
+        except Exception:
+            pieces.append(po)
+    geom = unary_union(pieces)
+    try:
+        d = max(0.0, float(kerf_mm)) / 2.0
+        if d > 0:
+            geom = geom.buffer(d, join_style=1, resolution=24)          # ชดเชย kerf (มุมโค้งมน)
+        r = max(0.0, float(tool_mm)) / 2.0
+        if r > 0:
+            geom = geom.buffer(-r, join_style=1, resolution=24).buffer(r, join_style=1, resolution=24)  # ปัดมุมในตามดอก
+    except Exception:
+        return subs_mm
+    if geom.is_empty:
+        return subs_mm
+    out = []
+    gs = list(geom.geoms) if geom.geom_type in ('MultiPolygon', 'GeometryCollection') else [geom]
+    for g in gs:
+        if getattr(g, 'geom_type', '') != 'Polygon' or g.is_empty:
+            continue
+        rings = [list(g.exterior.coords)] + [list(r.coords) for r in g.interiors]
+        for ring in rings:
+            if len(ring) < 3:
+                continue
+            segs = [('L', (float(x), float(y))) for x, y in ring[1:]]
+            out.append({'start': (float(ring[0][0]), float(ring[0][1])), 'segs': segs, 'closed': True})
+    return out or subs_mm
+
+
 def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
-                     size_by='width', size_value_mm=None):
+                     size_by='width', size_value_mm=None, kerf_mm=0.0, tool_mm=0.0):
     """คืน dict: svg_px, svg_mm, dxf_path, width_mm, height_mm, letter_height_mm, ...
     ปรับขนาดจริงได้ 3 โหมด (สเกลทั้งชิ้น ไม่บิดสัดส่วน):
       size_by='width'  -> กว้างป้าย = size_value_mm (หรือ real_width_mm)
@@ -161,12 +245,18 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
         ppm = 1.0
     Wmm = Wpx / ppm; Hmm = Hpx / ppm; letter_mm = letter_px / ppm    # px ต่อ มม.
 
-    subs_px = []; subs_mm = []; nrings = 0
+    subs_mm = []
     for _, subs in items:
         for sp in subs:
-            subs_px.append(_shift(sp, mnx, mny, 1.0))
             subs_mm.append(_shift(sp, mnx, mny, 1.0 / ppm))
-            nrings += 1
+    # ชดเชย Kerf / ปัดมุมดอก (เฉพาะเมื่อเปิดใช้ — ถ้า 0 คงเส้นโค้งเนียนเดิม)
+    if (kerf_mm and float(kerf_mm) > 0) or (tool_mm and float(tool_mm) > 0):
+        try:
+            subs_mm = _offset_subs(subs_mm, float(kerf_mm or 0), float(tool_mm or 0))
+        except Exception:
+            pass
+    subs_px = [_scale_sub(sp, ppm) for sp in subs_mm]
+    nrings = len(subs_mm)
 
     svg_px = _svg(subs_px, Wpx, Hpx)
     svg_mm = _svg(subs_mm, Wmm, Hmm, unit='mm')
