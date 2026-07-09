@@ -86,7 +86,10 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
       size_by='height' -> สูงป้าย  = size_value_mm
       size_by='letter' -> สูงตัวอักษรที่สูงสุด = size_value_mm
     """
-    items = te.trace_vtracer(image_path, n_colors=max(2, min(12, int(n_colors))))
+    try:
+        items = te.trace_potrace(image_path, n_colors=max(2, min(12, int(n_colors))))   # เครื่องยนต์ potrace เนียนสุด
+    except Exception:
+        items = te.trace_vtracer(image_path, n_colors=max(2, min(12, int(n_colors))))   # สำรอง
     if not items:
         raise ValueError('ไม่พบรูปทรงสำหรับแปลงเป็นเส้นตัด')
     mnx, mny, mxx, mxy = _bbox(items)

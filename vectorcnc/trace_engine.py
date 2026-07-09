@@ -1139,6 +1139,73 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     return [((0, 0, 0), subs)]
 
 
+def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance=0.2, regularize=True):
+    """เครื่องยนต์ potrace — พูลเดียวกับ Inkscape 'Trace Bitmap' / แนวทาง Illustrator Image Trace:
+    boundary -> optimal polygon -> corner analysis (alphamax) -> Bézier fit -> curve optimization (opttolerance)
+    => เส้นโค้งเนียนกริบ จุด anchor น้อยระดับดีไซเนอร์ มุมคม. คืน [((0,0,0),[subpaths])] พิกัด px (Y ลง)"""
+    import potrace
+    from . import analyze
+    img = analyze.load_image(image_path)
+    if img is None:
+        img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    g = img
+    if g.ndim == 3:
+        g = cv2.cvtColor(g, cv2.COLOR_BGR2GRAY)
+    # supersample ด้านยาว ~2600px -> ขอบเนียน + optimal polygon ของ potrace แม่นขึ้น
+    _long = max(g.shape[:2])
+    if _long < 2600:
+        _sc = 2600.0 / float(_long)
+        g = cv2.resize(g, None, fx=_sc, fy=_sc, interpolation=cv2.INTER_CUBIC)
+    g = cv2.bilateralFilter(g, 7, 45, 45)
+    border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])
+    bg = float(np.median(border))
+    if bg >= 128:
+        thr = max(40.0, bg - 45.0); mask = (g < thr)          # พื้นสว่าง -> วัตถุ = เข้ม
+    else:
+        thr = min(215.0, bg + 45.0); mask = (g > thr)          # พื้นเข้ม -> วัตถุ = สว่าง
+    m8 = mask.astype(np.uint8) * 255
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, k)
+    m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+    fg = m8 > 0
+    H, W = fg.shape
+    path = potrace.Bitmap(fg).trace(turdsize=int(turdsize), alphamax=float(alphamax),
+                                    opticurve=1, opttolerance=float(opttolerance))
+    subs = []
+    for cvit in path.curves:
+        sp0 = cvit.start_point
+        xs = [float(sp0.x)]; ys = [float(sp0.y)]; segs = []
+        for seg in cvit.segments:
+            ep = seg.end_point; xs.append(float(ep.x)); ys.append(float(ep.y))
+            if seg.is_corner:
+                c = seg.c
+                segs.append(('L', (float(c.x), float(c.y))))
+                segs.append(('L', (float(ep.x), float(ep.y))))
+            else:
+                c1 = seg.c1; c2 = seg.c2
+                segs.append(('C', (float(c1.x), float(c1.y)), (float(c2.x), float(c2.y)),
+                             (float(ep.x), float(ep.y))))
+        # ข้ามเส้นกรอบภาพ (artifact ของ potracer ที่ลากขอบรูปทั้งใบ)
+        if min(xs) <= 1 and min(ys) <= 1 and max(xs) >= W - 1 and max(ys) >= H - 1:
+            continue
+        if segs:
+            subs.append({'start': (float(sp0.x), float(sp0.y)), 'segs': segs, 'closed': True})
+    if not subs:
+        raise ValueError('potrace ไม่พบรูปทรง')
+    if regularize:
+        tol = max(0.6, min(1.4, max(fg.shape) / 1200.0))
+        reg = []
+        for sp in subs:
+            try:
+                reg.append(_regularize_subpath(sp, tol=tol))   # ตรง=ตรงเป๊ะ + snap H/V, โค้งคงเดิม
+            except Exception:
+                reg.append(sp)
+        subs = [s for s in reg if s and s.get('segs')] or reg
+    return [((0, 0, 0), subs)]
+
+
 def nest_shapes_mm(image_path, real_width_mm=300.0, n_colors=6, max_dim=900):
     """ดึง 'รูปทรง footprint' จากภาพ raster แบบเร็ว (สำหรับ Nesting) — ย่อภาพ + threshold +
     findContours + approxPolyDP -> shapely polygons (มม.). เร็วกว่า trace_color ~10 เท่า"""
@@ -1192,7 +1259,10 @@ def bezier_pieces_mm(image_path, real_width_mm=300.0, n_colors=6, max_pieces=60)
     ทำให้ Nesting ของภาพ raster 'เนียนกริบ' เท่ากับเครื่องยนต์ตัด (เขียน DXF เป็น SPLINE จริง)
     - จับคู่รู (holes) เข้ากับชิ้นแม่อัตโนมัติ (ตัว O/P/R/A ฯลฯ)"""
     from shapely.geometry import Polygon
-    layers = trace_vtracer(image_path, n_colors=n_colors)
+    try:
+        layers = trace_potrace(image_path, n_colors=n_colors)   # เครื่องยนต์ potrace (เนียนสุด)
+    except Exception:
+        layers = trace_vtracer(image_path, n_colors=n_colors)   # สำรอง
     subs = []
     for _rgb, sps in (layers or []):
         subs.extend(sps or [])
