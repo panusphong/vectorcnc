@@ -42,8 +42,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.0-ai-wall",
-            "build": "2026-07-09-ai-import-wall+nest-bounded", "engine": eng}
+    return {"ok": True, "service": "VectorCNC", "version": "2.1-ai-split",
+            "build": "2026-07-09-ai-split-pieces+wall+nest-bounded", "engine": eng}
 
 
 @app.post("/api/vectorize")
@@ -558,6 +558,84 @@ async def api_rasterize(file: UploadFile = File(...), max_px: int = Form(2000)):
             return JSONResponse({"error": "encode png ไม่ได้"}, status_code=400)
         return {"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
                 "w": int(img.shape[1]), "h": int(img.shape[0])}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/ai-split")
+async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), frac: float = Form(0.02)):
+    """แตกไฟล์เวกเตอร์รวม (.ai/.pdf/.svg) เป็น 'ชิ้นย่อย' ตามกลุ่มที่แยกกัน (หลาย artboard + กลุ่มในหน้า)
+    -> คืน list PNG โปร่งใสต่อชิ้น ให้ผู้ใช้เลือก/ลบได้"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "input.ai")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        import numpy as np, cv2, base64 as _b64
+        ext = os.path.splitext(inp)[1].lower()
+        mpx = max(500, min(2600, int(max_px)))
+        fr = max(0.006, min(0.06, float(frac)))
+        rasters = []                                    # [(page_index, BGRA image)]
+        if ext == ".svg":
+            import cairosvg
+            png = cairosvg.svg2png(url=inp, output_width=mpx)
+            im = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_UNCHANGED)
+            rasters.append((0, im))
+        else:
+            import fitz
+            src = inp
+            if ext in (".eps", ".ps"):
+                try:
+                    from vectorcnc import vector_import as _vi
+                    src = _vi._to_pdf_via_gs(inp)
+                except Exception:
+                    src = inp
+            doc = fitz.open(src)
+            for pno in range(min(doc.page_count, 12)):
+                pg = doc[pno]; r = pg.rect
+                sc = mpx / max(1.0, max(r.width, r.height))
+                im = cv2.imdecode(np.frombuffer(pg.get_pixmap(matrix=fitz.Matrix(sc, sc), alpha=True).tobytes("png"), np.uint8), cv2.IMREAD_UNCHANGED)
+                rasters.append((pno, im))
+        pieces = []
+        for pno, img in rasters:
+            if img is None:
+                continue
+            if img.ndim == 2:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+            elif img.shape[2] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+            H, W = img.shape[:2]
+            a = img[:, :, 3]
+            if int(a.min()) < 250:
+                mask = (a > 8).astype(np.uint8)
+            else:
+                mask = (cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY) < 245).astype(np.uint8)
+                img[:, :, 3] = mask * 255
+            k = max(3, int(min(H, W) * fr))
+            ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+            dil = cv2.dilate(mask, ker)
+            n, lab, st, ce = cv2.connectedComponentsWithStats(dil, 8)
+            for i in range(1, n):
+                if st[i, cv2.CC_STAT_AREA] < 0.003 * H * W:
+                    continue
+                x, y, w, h = st[i, 0], st[i, 1], st[i, 2], st[i, 3]
+                pad = 4
+                x0 = max(0, x - pad); y0 = max(0, y - pad)
+                x1 = min(W, x + w + pad); y1 = min(H, y + h + pad)
+                crop = img[y0:y1, x0:x1].copy()
+                lm = cv2.dilate((lab[y0:y1, x0:x1] == i).astype(np.uint8), ker)
+                crop[:, :, 3] = (crop[:, :, 3] * (lm > 0)).astype(np.uint8)
+                ok, buf = cv2.imencode(".png", crop)
+                if ok:
+                    pieces.append({"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
+                                   "w": int(crop.shape[1]), "h": int(crop.shape[0]),
+                                   "page": pno, "area": int(w * h)})
+        pieces.sort(key=lambda p: -p["area"])
+        pieces = pieces[:24]
+        return {"count": len(pieces), "pieces": pieces}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
     finally:
