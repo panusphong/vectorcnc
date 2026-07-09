@@ -436,7 +436,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้/ป้ายตามสเกล (ลาก+ย่อขยาย+คิดราคา+จับระยะ อิสระทุกชิ้น) · <b style="color:#16a34a">v35</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ตามสเกล · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + คิดราคา+จับระยะ อิสระทุกชิ้น · <b style="color:#16a34a">v36</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -476,6 +476,12 @@ select.numin{cursor:pointer}
         <input class="numin" id="wLogoType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภท" autocomplete="off" style="margin-top:2px">
         <label style="font-size:11px;color:var(--muted);margin-top:6px;display:block">ความกว้างจริง (ซม.)</label>
         <input class="numin" id="wLogoW" type="number" min="1" step="1" style="margin-top:2px">
+        <label style="font-size:11px;color:var(--muted);margin-top:8px;display:block">✨ ไฟป้าย (ยกขอบ 3D)</label>
+        <select class="numin" id="wLogoLight" style="margin-top:2px"><option value="">— ไม่มีไฟ —</option><option value="front">💡 ไฟออกหน้า (หน้าสว่าง)</option><option value="back">🔆 ไฟออกหลัง (เรืองขอบ)</option><option value="neon">🌈 นีออนเฟล็กซ์</option></select>
+        <div id="wLogoShadeRow" style="display:none;margin-top:6px"><span style="font-size:11px;color:var(--muted)">เฉดไฟ:</span> <span id="wLogoShades" style="display:inline-flex;gap:5px;margin-left:4px;vertical-align:middle"><button class="chip" data-sh="bright" type="button" style="padding:3px 8px">ขาวสว่าง</button><button class="chip" data-sh="soft" type="button" style="padding:3px 8px">ขาวนวล</button><button class="chip" data-sh="warm" type="button" style="padding:3px 8px">วอร์ม</button></span></div>
+        <div id="wLogoNeonRow" style="display:none;margin-top:6px"><span style="font-size:11px;color:var(--muted)">สีนีออน:</span><span id="wLogoNeonSw" style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-left:4px;vertical-align:middle"></span></div>
+        <label style="font-size:11px;color:var(--muted);margin-top:8px;display:block">🧊 มุมมอง 3D / เอียง <span id="wLogoPerspV" style="color:#7c3aed;font-weight:700">0</span></label>
+        <input id="wLogoPersp" type="range" min="-45" max="45" value="0" step="1" style="width:100%">
         <div id="wLogoInfo" style="font-size:12px;color:#5A6B8C;margin-top:7px">—</div>
         <div style="display:flex;gap:6px;margin-top:8px">
           <button class="chip" id="wLogoCenH" type="button" style="flex:1">⟷ กลาง</button>
@@ -1629,12 +1635,38 @@ function drawShapes(g,M,ww,wh,ppm){ if(!shapes.length)return; var Wc=parseFloat(
     } else { g.save(); g.fillStyle=s.color; g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, y-3); g.restore(); }
   }
 }
+function _lgSil(L,color){ if(L._silCanvas&&L._silCol===color)return L._silCanvas; var img=L.img; var c=document.createElement('canvas'); c.width=Math.max(1,img.width); c.height=Math.max(1,img.height); var gg=c.getContext('2d'); gg.drawImage(img,0,0); gg.globalCompositeOperation='source-in'; gg.fillStyle=color; gg.fillRect(0,0,c.width,c.height); L._silCanvas=c; L._silCol=color; return c; }
+function _lgDrawFX(g,L,x,y,w,h){
+  var eff=L.light||'';
+  if(!eff){ g.drawImage(L.img,x,y,w,h); return; }
+  var lc=_lightCol(L), sil=_lgSil(L,lc), dark=_lgSil(L,'#111417'); var ex=Math.max(1.2,h*0.03);
+  if(eff==='back'){                      // ไฟออกหลัง: เรืองแสงรอบขอบ + หน้าเข้ม (ยกขอบ)
+    g.save(); g.globalCompositeOperation='lighter'; g.shadowColor=lc; g.shadowBlur=h*0.28; g.drawImage(sil,x,y,w,h); g.drawImage(sil,x,y,w,h); g.restore();
+    for(var e=6;e>=1;e--){ g.globalAlpha=0.9; g.drawImage(dark,x+ex*e*0.5,y+ex*e*0.5,w,h); } g.globalAlpha=1;   // ยกขอบ (extrude)
+    g.drawImage(L.img,x,y,w,h);
+  } else if(eff==='neon'){               // นีออนเฟล็กซ์: เส้นเรืองสีสว่าง
+    g.save(); g.globalCompositeOperation='lighter'; g.shadowColor=lc; g.shadowBlur=h*0.16; g.drawImage(sil,x,y,w,h); g.drawImage(sil,x,y,w,h); g.shadowBlur=h*0.30; g.drawImage(sil,x,y,w,h); g.restore();
+    g.drawImage(L.img,x,y,w,h);
+  } else {                                // ไฟออกหน้า: หน้าเรืองสว่าง + ยกขอบบาง
+    for(var e2=4;e2>=1;e2--){ g.globalAlpha=0.85; g.drawImage(dark,x+ex*e2*0.4,y+ex*e2*0.4,w,h); } g.globalAlpha=1;
+    g.save(); g.globalCompositeOperation='lighter'; g.shadowColor=lc; g.shadowBlur=h*0.10; g.drawImage(sil,x,y,w,h); g.restore();
+    g.drawImage(L.img,x,y,w,h);
+    g.save(); g.globalCompositeOperation='lighter'; g.globalAlpha=0.5; g.drawImage(sil,x,y,w,h); g.restore();
+  }
+}
+function _lgWarp(g,off,x,y,w,h,persp){       // เอียงเป็น trapezoid = perspective ง่ายๆ
+  var t=Math.max(-0.5,Math.min(0.5,persp/100)); var N=Math.max(24,Math.round(w/5));
+  for(var i=0;i<N;i++){ var f=i/(N-1); var sc=1-Math.abs(t)*(t>=0?f:(1-f));
+    var sw=w/N, sh=h*sc, sy=y+(h-sh)/2, sx=x+i*sw;
+    try{ g.drawImage(off, i*(off.width/N),0, off.width/N, off.height, sx,sy, sw+0.7, sh); }catch(_e){} }
+}
 function drawLogos(g,M,ww,wh,ppm){
   for(var i=0;i<wLogos.length;i++){ var L=wLogos[i];
     if(!L.img||!L.img.complete||!L.img.width)continue;
     var w=Math.max(4,L.wCm*ppm), h=w*(L.ar||(L.img.height/L.img.width||1));
     var x=M+L.fx*ww, y=M+L.fy*wh;
-    g.drawImage(L.img,x,y,w,h);
+    if(L.persp && Math.abs(L.persp)>=2){ try{ var pad=Math.round(h*0.4); var off=document.createElement('canvas'); off.width=Math.max(2,Math.ceil(w)+2*pad); off.height=Math.max(2,Math.ceil(h)+2*pad); _lgDrawFX(off.getContext('2d'),L,pad,pad,w,h); _lgWarp(g,off,x-pad,y-pad,off.width,off.height,L.persp); }catch(_e){ _lgDrawFX(g,L,x,y,w,h); } }
+    else _lgDrawFX(g,L,x,y,w,h);
     var wcm=w/ppm, hcm=h/ppm;
     if(i===_lgSel){
       g.save(); g.strokeStyle='#7c3aed'; g.lineWidth=2; g.setLineDash([5,4]); g.strokeRect(x,y,w,h); g.setLineDash([]);
@@ -1678,7 +1710,8 @@ window.addEventListener('mousemove',function(e){ if(!_lgDrag||_lgSel<0)return; v
 window.addEventListener('mouseup',function(){ _lgDrag=false; });
 function _wallAddLogo(src,name){ var im=new Image(); im.onload=function(){ var s=wallSignReal(); var ar=(im.height/im.width)||1; var defW=Math.max(8,Math.min(s.Wm*0.4,s.Wm*0.28)); var n=wLogos.length; wLogos.push({img:im,src:src,name:name||'โลโก้',ar:ar,wCm:defW,type:'',fx:Math.min(0.68,0.12+0.06*(n%5)),fy:Math.min(0.68,0.12+0.06*(n%5))}); _lgSel=wLogos.length-1; try{openLogoEdit();}catch(_e){} wallDraw(); }; im.src=src; }
 function logoPrice(L){ if(!L||!L.type)return null; var colorSpecial=!!($('wPColor')&&$('wPColor').checked); var wc=L.wCm, hc=L.wCm*(L.ar||1); return wCalcPrice(L.type, wc/100, hc/100, hc, colorSpecial, 'none'); }
-function openLogoEdit(){ var e=$('wLogoEdit'); if(!e)return; if(_lgSel<0||!wLogos[_lgSel]){ e.style.display='none'; return; } var L=wLogos[_lgSel]; e.style.display='block'; if($('wLogoType'))$('wLogoType').value=L.type||''; if($('wLogoW'))$('wLogoW').value=Math.round(L.wCm); updateLogoInfo(); }
+function _logoLightUI(){ var v=($('wLogoLight')&&$('wLogoLight').value)||''; if($('wLogoShadeRow'))$('wLogoShadeRow').style.display=(v==='front'||v==='back')?'block':'none'; if($('wLogoNeonRow'))$('wLogoNeonRow').style.display=(v==='neon')?'block':'none'; }
+function openLogoEdit(){ var e=$('wLogoEdit'); if(!e)return; if(_lgSel<0||!wLogos[_lgSel]){ e.style.display='none'; return; } var L=wLogos[_lgSel]; e.style.display='block'; if($('wLogoType'))$('wLogoType').value=L.type||''; if($('wLogoW'))$('wLogoW').value=Math.round(L.wCm); if($('wLogoLight'))$('wLogoLight').value=L.light||''; if($('wLogoPersp'))$('wLogoPersp').value=L.persp||0; if($('wLogoPerspV'))$('wLogoPerspV').textContent=Math.round(L.persp||0); _logoLightUI(); updateLogoInfo(); }
 function updateLogoInfo(){ var el=$('wLogoInfo'); if(!el)return; if(_lgSel<0||!wLogos[_lgSel]){ el.innerHTML='—'; return; } var L=wLogos[_lgSel]; var wc=Math.round(L.wCm), hc=Math.round(L.wCm*(L.ar||1));
   if(!L.type){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · เลือกประเภทเพื่อคิดราคา'; return; }
   var r=logoPrice(L); if(!r||r.error){ el.innerHTML='ขนาด <b>'+wc+'×'+hc+'</b> ซม. · ⛔ '+((r&&r.error)||''); return; }
@@ -1689,6 +1722,10 @@ if($('wLogoDel'))$('wLogoDel').onclick=function(){ if(_lgSel<0)return; wLogos.sp
 if($('wLogoCenH'))$('wLogoCenH').onclick=function(){ if(_lgSel<0||!wLogos[_lgSel])return; var L=wLogos[_lgSel]; var s=wallSignReal(),ww=s.Wm*s.ppm; L.fx=0.5-(L.wCm*s.ppm/2)/ww; wallDraw(); };
 if($('wLogoCenV'))$('wLogoCenV').onclick=function(){ if(_lgSel<0||!wLogos[_lgSel])return; var L=wLogos[_lgSel]; var s=wallSignReal(),wh=s.Hm*s.ppm; L.fy=0.5-((L.wCm*(L.ar||1))*s.ppm/2)/wh; wallDraw(); };
 window.addEventListener('keydown',function(e){ if((e.key==='Delete'||e.key==='Backspace')&&_lgSel>=0&&wLogos[_lgSel]){ var ae=document.activeElement; if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'))return; e.preventDefault(); wLogos.splice(_lgSel,1); _lgSel=-1; openLogoEdit(); wallDraw(); } });
+if($('wLogoLight'))$('wLogoLight').onchange=function(){ if(_lgSel<0||!wLogos[_lgSel])return; var L=wLogos[_lgSel]; L.light=this.value; if(this.value==='neon'&&!L.neonColor)L.neonColor='#00e5ff'; if((this.value==='front'||this.value==='back')&&!L.lightShade)L.lightShade='bright'; L._silCanvas=null; _logoLightUI(); wallDraw(); };
+(function(){ var box=$('wLogoShades'); if(box)box.addEventListener('click',function(e){ var b=e.target&&e.target.closest?e.target.closest('button'):null; if(!b||_lgSel<0||!wLogos[_lgSel])return; wLogos[_lgSel].lightShade=b.getAttribute('data-sh'); wLogos[_lgSel]._silCanvas=null; wallDraw(); }); })();
+setTimeout(function(){ var box=$('wLogoNeonSw'); if(box&&typeof NEON!=='undefined'&&!box.childNodes.length){ NEON.forEach(function(col){ var b=document.createElement('button'); b.type='button'; b.title=col; b.style.cssText='width:20px;height:20px;border-radius:5px;border:1px solid var(--line);background:'+col+';cursor:pointer'; b.onclick=function(){ if(_lgSel<0||!wLogos[_lgSel])return; wLogos[_lgSel].neonColor=col; wLogos[_lgSel]._silCanvas=null; wallDraw(); }; box.appendChild(b); }); } },0);
+if($('wLogoPersp'))$('wLogoPersp').oninput=function(){ if($('wLogoPerspV'))$('wLogoPerspV').textContent=this.value; if(_lgSel<0||!wLogos[_lgSel])return; wLogos[_lgSel].persp=parseFloat(this.value)||0; wallDraw(); };
 function _txtHitDrag(p){ var cv=$('wCanvas'); if(!cv||!textBoxes.length)return false; var s=wallSignReal(),M=WALL_M,ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm;
   for(var i=textBoxes.length-1;i>=0;i--){ var t=textBoxes[i]; var x=M+t.fx*ww,y=M+t.fy*wh, bw=t._iw||(t.fw*ww)||40, bh=t._ih||(t.fh*wh)||20;
     var cs=[[x,y],[x+bw,y],[x,y+bh],[x+bw,y+bh]];
