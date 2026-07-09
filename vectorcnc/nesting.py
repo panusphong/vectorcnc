@@ -75,10 +75,29 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
             inst.append((idx, poly))
     inst.sort(key=lambda t: -_bbox_area(t[1]))   # กรอบใหญ่ก่อน (วงแหวนวางก่อน -> เติมชิ้นเล็กในรู)
 
+    # ---- คุมงานไม่ให้ระเบิด (กัน 502/OOM/timeout บน Render ฟรี) เมื่อไฟล์ .ai มีชิ้นเยอะ ----
+    MAX_INST = 600          # จำนวนชิ้นรวมสูงสุดที่จะจัดวาง (ที่เหลือ = unplaced ไม่ crash)
+    MAX_SHEETS = 40         # เพดานจำนวนแผ่น
+    SEARCH_RECENT = 4       # ค้นหาช่องเฉพาะ N แผ่นล่าสุด (ไม่วนทุกแผ่น -> เร็วขึ้นมาก)
+    unplaced = 0
+    if len(inst) > MAX_INST:
+        unplaced += len(inst) - MAX_INST
+        inst = inst[:MAX_INST]
+
     placements = [[]]
     occs = [np.zeros((grows, gcols), np.float32)]
     part_area = 0.0
-    unplaced = 0
+    _rcache = {}            # cache raster ต่อ (idx, มุม) -> ไม่ raster ซ้ำทุกครั้ง (เร็วขึ้นมากเมื่อชิ้นซ้ำ)
+
+    def _mask_for(idx, poly, cx, cy, rd):
+        key = (idx, rd)
+        m = _rcache.get(key)
+        if m is None:
+            bufr = _rotate(poly.buffer(gap / 2.0, join_style=1), rd, origin=(cx, cy))
+            m = _raster(bufr, res)
+            _rcache[key] = (m, bufr.bounds[0], bufr.bounds[1])
+            return _rcache[key]
+        return m
 
     for idx, poly in inst:
         part_area += poly.area
@@ -87,34 +106,32 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
         buf = poly.buffer(gap / 2.0, join_style=1)
         rots = _order_rots(buf, rotations, uw, uh)
 
-        best = None   # (sheet, row, col, rot, bufr, mask)
-        for si in range(len(placements)):
+        best = None   # (sheet, row, col, rot, mask, bx0, by0)
+        lo = max(0, len(placements) - SEARCH_RECENT)
+        for si in range(lo, len(placements)):
             for rd in rots:
-                bufr = _rotate(buf, rd, origin=(cx, cy))
-                m = _raster(bufr, res)
+                m, bx0, by0 = _mask_for(idx, poly, cx, cy, rd)
                 pos = _place(occs[si], m)
                 if pos and (best is None or pos[0] < best[1] or (pos[0] == best[1] and pos[1] < best[2])):
-                    best = (si, pos[0], pos[1], rd, bufr, m)
+                    best = (si, pos[0], pos[1], rd, m, bx0, by0)
             if best and best[0] == si:
                 break
-        if best is None:
+        if best is None and len(placements) < MAX_SHEETS:
             placements.append([])
             occs.append(np.zeros((grows, gcols), np.float32))
             si = len(placements) - 1
             for rd in rots:
-                bufr = _rotate(buf, rd, origin=(cx, cy))
-                m = _raster(bufr, res)
+                m, bx0, by0 = _mask_for(idx, poly, cx, cy, rd)
                 pos = _place(occs[si], m)
                 if pos:
-                    best = (si, pos[0], pos[1], rd, bufr, m)
+                    best = (si, pos[0], pos[1], rd, m, bx0, by0)
                     break
         if best is None:
             unplaced += 1
             continue
-        si, row, col, rd, bufr, m = best
+        si, row, col, rd, m, bx0, by0 = best
         h, w = m.shape
         occs[si][row:row + h, col:col + w] = np.maximum(occs[si][row:row + h, col:col + w], m)
-        bx0, by0 = bufr.bounds[0], bufr.bounds[1]
         placements[si].append({'part': idx, 'rot': rd,
                                'dx': margin + col * res - bx0,
                                'dy': margin + row * res - by0,
