@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 # ป้ายเวอร์ชันเครื่องยนต์ (ใช้ยืนยันว่า trace_engine.py ที่ deploy เป็นตัวล่าสุดจริง — เช็คที่ /api/health)
-ENGINE_VERSION = "2026-07-09-potrace-1040-detailkeep-absspeckle"
+ENGINE_VERSION = "2026-07-09-potrace-adaptive-detailkeep-absspeckle"
 
 
 # ---------- helpers ----------
@@ -1159,7 +1159,19 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     # potrace ทำ polygon-optimization ของมันเอง -> เทรซที่ ~1040px (ไม่ supersample!)
     # ให้โค้งเป็น Bézier ชิ้นใหญ่ตามแบบจริง + เส้นตรงคม. (supersample สูงทำให้โค้งแตกเป็นชิ้นเล็กยึกยัก)
     _long = max(g.shape[:2])
+    # ---- เลือกความละเอียดทำงานอัตโนมัติ: โลโก้ 'ลายเส้นเยอะ/ตัวอักษรเล็ก' ใช้ 1600 (เก็บเส้นบาง),
+    #      โลโก้ทั่วไป/รูปถ่าย ใช้ 1040 (โค้งเนียนที่สุด). วัดจากจำนวนชิ้นแยก (connected components) ----
     _target = 1040.0
+    try:
+        _pv_sc = 1000.0 / float(_long)
+        _pv = cv2.resize(g, None, fx=_pv_sc, fy=_pv_sc, interpolation=cv2.INTER_AREA) if _pv_sc < 1.0 else g
+        _pvb = np.concatenate([_pv[0], _pv[-1], _pv[:, 0], _pv[:, -1]]); _pbg = float(np.median(_pvb))
+        _pmask = (_pv < max(40.0, _pbg - 45.0)) if _pbg >= 128 else (_pv > min(215.0, _pbg + 45.0))
+        _ncomp = int(cv2.connectedComponents(_pmask.astype(np.uint8))[0]) - 1
+        if _ncomp >= 10:                       # ลายเส้นเยอะ/มีตัวอักษรหลายชิ้น -> ต้องการรายละเอียดสูง
+            _target = min(1600.0, float(_long))  # ไม่ upscale เกินต้นฉบับ
+    except Exception:
+        pass
     if abs(_long - _target) > 1:
         _sc = _target / float(_long)
         g = cv2.resize(g, None, fx=_sc, fy=_sc,
