@@ -35,6 +35,14 @@ def hexcolor(c):
         return '#8CA0C6'
 
 
+def _psd_ok():
+    try:
+        import psd_tools  # noqa
+        return True
+    except Exception:
+        return False
+
+
 @app.get("/api/health")
 def health():
     try:
@@ -42,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.2-psd",
-            "build": "2026-07-09-psd-layers+ai-split+wall", "engine": eng}
+    return {"ok": True, "service": "VectorCNC", "version": "2.3-psd-safe",
+            "build": "2026-07-09-psd-memory-safe", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -517,11 +525,10 @@ async def api_rasterize(file: UploadFile = File(...), max_px: int = Form(2000)):
         img = None
         if ext in (".psd", ".psb"):
             from PIL import Image
-            pim = Image.open(inp).convert("RGBA")               # composite (รวมทุกเลเยอร์)
-            if max(pim.size) > mpx:
-                _r = mpx / float(max(pim.size))
-                pim = pim.resize((max(1, int(pim.width * _r)), max(1, int(pim.height * _r))))
-            img = cv2.cvtColor(np.array(pim), cv2.COLOR_RGBA2BGRA)
+            Image.MAX_IMAGE_PIXELS = None                       # กัน DecompressionBomb (PSD ใหญ่)
+            pim = Image.open(inp)                               # composite (รวมทุกเลเยอร์)
+            pim.thumbnail((mpx, mpx))                           # ย่อก่อน convert -> ประหยัด RAM
+            img = cv2.cvtColor(np.array(pim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
         elif ext == ".svg":
             import cairosvg
             png_bytes = cairosvg.svg2png(url=inp, output_width=mpx)
@@ -590,10 +597,19 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
         pieces = []
         if ext in (".psd", ".psb"):
             # PSD -> แตกตาม 'เลเยอร์' โดยตรง (ชิ้นย่อยตามธรรมชาติ). ล้มเหลว -> composite + จับกลุ่ม
+            from PIL import Image
+            Image.MAX_IMAGE_PIXELS = None                # กัน DecompressionBomb error (PSD ใหญ่)
+            _fsz = 0
             try:
+                _fsz = os.path.getsize(inp)
+            except Exception:
+                _fsz = 0
+            try:
+                if _fsz > 60 * 1024 * 1024:              # PSD ใหญ่มาก (>60MB) -> ข้าม psd-tools (กิน RAM) ไป composite
+                    raise RuntimeError("psd too large for per-layer")
                 from psd_tools import PSDImage
                 psd = PSDImage.open(inp)
-                for ly in list(psd):
+                for ly in list(psd)[:40]:                # เพดานเลเยอร์ กัน OOM/timeout
                     try:
                         if hasattr(ly, "is_visible") and not ly.is_visible():
                             continue
@@ -624,10 +640,9 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
             if pieces:
                 pieces.sort(key=lambda p: -p["area"]); pieces = pieces[:24]
                 return {"count": len(pieces), "pieces": pieces}
-            from PIL import Image                          # fallback: composite -> จับกลุ่มเชิงพื้นที่
-            pim = Image.open(inp).convert("RGBA")
-            if max(pim.size) > mpx:
-                _r = mpx / float(max(pim.size)); pim = pim.resize((int(pim.width * _r), int(pim.height * _r)))
+            pim = Image.open(inp)                          # fallback: composite -> จับกลุ่มเชิงพื้นที่
+            pim.thumbnail((mpx, mpx))                      # ย่อก่อน convert -> ประหยัด RAM
+            pim = pim.convert("RGBA")
             rasters.append((0, cv2.cvtColor(np.array(pim), cv2.COLOR_RGBA2BGRA)))
         elif ext == ".svg":
             import cairosvg
