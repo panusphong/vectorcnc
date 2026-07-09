@@ -50,8 +50,8 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "2.3-psd-safe",
-            "build": "2026-07-09-psd-memory-safe", "engine": eng, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "2.5-psd-fast",
+            "build": "2026-07-09-psd-topil-fast", "engine": eng, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -596,7 +596,7 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
         rasters = []                                    # [(page_index, BGRA image)]
         pieces = []
         if ext in (".psd", ".psb"):
-            # PSD -> แตกตาม 'เลเยอร์' โดยตรง (ชิ้นย่อยตามธรรมชาติ). ล้มเหลว -> composite + จับกลุ่ม
+            # PSD: ทำ composite (เบา/ทน) ก่อนเสมอ -> แล้วค่อยลองแตกเลเยอร์ (เฉพาะไฟล์เล็ก กัน OOM/segfault)
             from PIL import Image
             Image.MAX_IMAGE_PIXELS = None                # กัน DecompressionBomb error (PSD ใหญ่)
             _fsz = 0
@@ -604,46 +604,51 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
                 _fsz = os.path.getsize(inp)
             except Exception:
                 _fsz = 0
+            comp = None                                  # composite (BGRA) ย่อแล้ว = ตัวสำรองที่การันตี
             try:
-                if _fsz > 60 * 1024 * 1024:              # PSD ใหญ่มาก (>60MB) -> ข้าม psd-tools (กิน RAM) ไป composite
-                    raise RuntimeError("psd too large for per-layer")
-                from psd_tools import PSDImage
-                psd = PSDImage.open(inp)
-                for ly in list(psd)[:40]:                # เพดานเลเยอร์ กัน OOM/timeout
-                    try:
-                        if hasattr(ly, "is_visible") and not ly.is_visible():
-                            continue
-                        lim = ly.composite()
-                        if lim is None:
-                            continue
-                        crop = cv2.cvtColor(np.array(lim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
-                        if crop.size == 0 or int(crop[:, :, 3].max()) == 0:
-                            continue
-                        _ys, _xs = np.where(crop[:, :, 3] > 8)      # ตัดขอบโปร่งของเลเยอร์ให้พอดีเนื้อหา
-                        if len(_xs) and len(_ys):
-                            crop = crop[int(_ys.min()):int(_ys.max()) + 1, int(_xs.min()):int(_xs.max()) + 1]
-                        h0, w0 = crop.shape[:2]
-                        if h0 * w0 < 64:
-                            continue
-                        if max(h0, w0) > mpx:
-                            _r = mpx / float(max(h0, w0))
-                            crop = cv2.resize(crop, (max(1, int(w0 * _r)), max(1, int(h0 * _r))))
-                        ok, buf = cv2.imencode(".png", crop)
-                        if ok:
-                            pieces.append({"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
-                                           "w": int(crop.shape[1]), "h": int(crop.shape[0]),
-                                           "page": 0, "area": int(crop.shape[0] * crop.shape[1])})
-                    except Exception:
-                        continue
+                _pim = Image.open(inp); _pim.thumbnail((mpx, mpx))
+                comp = cv2.cvtColor(np.array(_pim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
             except Exception:
-                pieces = []
-            if pieces:
+                comp = None
+            if _fsz < 25 * 1024 * 1024:                  # แตกเลเยอร์เฉพาะ PSD ไม่ใหญ่ (psd-tools กิน RAM)
+                try:
+                    from psd_tools import PSDImage
+                    psd = PSDImage.open(inp)
+                    for ly in list(psd)[:40]:
+                        try:
+                            if hasattr(ly, "is_visible") and not ly.is_visible():
+                                continue
+                            lim = ly.topil()             # เร็วกว่า composite() ~36x (พิกเซลเลเยอร์ที่ bbox) กัน timeout
+                            if lim is None:
+                                continue
+                            crop = cv2.cvtColor(np.array(lim.convert("RGBA")), cv2.COLOR_RGBA2BGRA)
+                            if crop.size == 0 or int(crop[:, :, 3].max()) == 0:
+                                continue
+                            _ys, _xs = np.where(crop[:, :, 3] > 8)
+                            if len(_xs) and len(_ys):
+                                crop = crop[int(_ys.min()):int(_ys.max()) + 1, int(_xs.min()):int(_xs.max()) + 1]
+                            h0, w0 = crop.shape[:2]
+                            if h0 * w0 < 64:
+                                continue
+                            if max(h0, w0) > mpx:
+                                _r = mpx / float(max(h0, w0))
+                                crop = cv2.resize(crop, (max(1, int(w0 * _r)), max(1, int(h0 * _r))))
+                            ok, buf = cv2.imencode(".png", crop)
+                            if ok:
+                                pieces.append({"png": "data:image/png;base64," + _b64.b64encode(buf.tobytes()).decode(),
+                                               "w": int(crop.shape[1]), "h": int(crop.shape[0]),
+                                               "page": 0, "area": int(crop.shape[0] * crop.shape[1])})
+                        except Exception:
+                            continue
+                except Exception:
+                    pieces = []
+            if len(pieces) >= 2:
                 pieces.sort(key=lambda p: -p["area"]); pieces = pieces[:24]
                 return {"count": len(pieces), "pieces": pieces}
-            pim = Image.open(inp)                          # fallback: composite -> จับกลุ่มเชิงพื้นที่
-            pim.thumbnail((mpx, mpx))                      # ย่อก่อน convert -> ประหยัด RAM
-            pim = pim.convert("RGBA")
-            rasters.append((0, cv2.cvtColor(np.array(pim), cv2.COLOR_RGBA2BGRA)))
+            pieces = []                                  # ไม่ได้เลเยอร์ -> จับกลุ่มเชิงพื้นที่จาก composite
+            if comp is None:
+                return JSONResponse({"error": "อ่านไฟล์ PSD ไม่ได้ (ไฟล์อาจใหญ่หรือซับซ้อนเกินไปสำหรับเซิร์ฟเวอร์)"}, status_code=400)
+            rasters.append((0, comp))
         elif ext == ".svg":
             import cairosvg
             png = cairosvg.svg2png(url=inp, output_width=mpx)
