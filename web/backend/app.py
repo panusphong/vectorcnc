@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.0-3d-mainstage+en",
-            "build": "2026-07-11-layerset-english-labels+inline-3d-stage", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.2-stl-3d-export",
+            "build": "2026-07-11-stl-extrude-watertight+fusion360+3dprint", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -550,7 +550,7 @@ def _ai_filled_svg(items, width_mm):
     total_subs = 0
     for oi, i in enumerate(order):
         bgr, subs = items[i]
-        col = hexcolor(bgr)
+        col = bgr if isinstance(bgr, str) else hexcolor(bgr)
         dd = ' '.join(_d(sp) for sp in subs if sp.get('segs'))
         if not dd:
             continue
@@ -570,10 +570,29 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
     with open(inp, "wb") as f:
         f.write(await file.read())
     try:
-        from vectorcnc import trace_engine
+        from vectorcnc import trace_engine, vector_import
         eng = str(engine or "auto").lower()
         nc = max(2, min(8, int(n_colors)))
         used = eng
+        # ---- ไฟล์เวกเตอร์ (.ai/.pdf/.svg/.eps) : ใช้ path จริงเลย ไม่ต้อง trace ----
+        if vector_import.is_vector_file(inp):
+            pcs = vector_import.full_pieces_mm(inp, float(width_mm))
+            grp = {}
+            order_c = []
+            for pc in pcs:
+                c = pc.get("color", "#333333")
+                if c not in grp:
+                    grp[c] = []; order_c.append(c)
+                grp[c].extend(pc.get("subs", []))
+            items = [(c, grp[c]) for c in order_c if grp[c]]
+            if not items:
+                return JSONResponse({"error": "อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรง"}, status_code=400)
+            svg, Wmm, Hmm, npaths = _ai_filled_svg(items, float(width_mm))
+            import cairosvg
+            pdf_bytes = cairosvg.svg2pdf(bytestring=svg.encode("utf-8"))
+            return {"ai_base64": base64.b64encode(pdf_bytes).decode(), "w_mm": Wmm, "h_mm": Hmm,
+                    "layers": len(items), "paths": npaths, "used_engine": "vector",
+                    "svg_preview": svg if len(svg) < 400000 else ""}
         if eng == "auto":
             # เลือกอัตโนมัติ: ลายเส้น/ขาวดำ -> potrace คมกริบ (ไม่มีเงาเทา) · สีเรียบหลายสี -> color engine
             try:
@@ -605,6 +624,77 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
         return {"ai_base64": ai_b64, "w_mm": Wmm, "h_mm": Hmm,
                 "layers": len(items), "paths": npaths, "used_engine": used,
                 "svg_preview": svg if len(svg) < 400000 else ""}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _extrude_stl(poly, thickness_mm):
+    """extrude รูปเงา (polygon + รูใน) เป็น solid mesh watertight -> STL binary (สำหรับ Fusion 360 / เครื่องพิมพ์ 3D)"""
+    import numpy as np
+    import mapbox_earcut as earcut
+    import struct
+    t = float(thickness_mm)
+    polys = list(poly.geoms) if poly.geom_type == "MultiPolygon" else [poly]
+    tris = []
+    for pg in polys:
+        pg = pg.simplify(0.25, preserve_topology=True)   # ลดจุด -> STL เล็กลง (คงรูป ~0.25mm)
+        if pg.is_empty or pg.geom_type != "Polygon":
+            continue
+        ext = np.array(pg.exterior.coords)[:-1]
+        if len(ext) < 3:
+            continue
+        holes = [np.array(h.coords)[:-1] for h in pg.interiors if len(h.coords) > 3]
+        V = ext.copy(); ends = [len(ext)]
+        for h in holes:
+            V = np.vstack([V, h]); ends.append(len(V))
+        try:
+            idx = earcut.triangulate_float64(V.reshape(-1, 2).astype(np.float64),
+                                             np.array(ends, dtype=np.uint32)).reshape(-1, 3)
+        except Exception:
+            continue
+        for a, b, c in idx:
+            A, B, C = V[a], V[b], V[c]
+            tris.append(((A[0], A[1], 0.0), (C[0], C[1], 0.0), (B[0], B[1], 0.0)))       # ล่าง (normal ลง)
+            tris.append(((A[0], A[1], t), (B[0], B[1], t), (C[0], C[1], t)))             # บน (normal ขึ้น)
+        for ring in [ext] + holes:                                                       # ผนังข้าง
+            n = len(ring)
+            for i in range(n):
+                p0 = ring[i]; p1 = ring[(i + 1) % n]
+                b0 = (p0[0], p0[1], 0.0); b1 = (p1[0], p1[1], 0.0)
+                u0 = (p0[0], p0[1], t); u1 = (p1[0], p1[1], t)
+                tris.append((b0, b1, u1)); tris.append((b0, u1, u0))
+
+    def _nrm(a, b, c):
+        ux, uy, uz = b[0]-a[0], b[1]-a[1], b[2]-a[2]
+        vx, vy, vz = c[0]-a[0], c[1]-a[1], c[2]-a[2]
+        nx, ny, nz = uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx
+        L = (nx*nx+ny*ny+nz*nz) ** 0.5 or 1.0
+        return nx/L, ny/L, nz/L
+    buf = bytearray(b"VectorCNC 3D export".ljust(80, b"\0")) + struct.pack("<I", len(tris))
+    for a, b, c in tris:
+        nx, ny, nz = _nrm(a, b, c)
+        buf += struct.pack("<12fH", nx, ny, nz, a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], 0)
+    return bytes(buf), len(tris)
+
+
+@app.post("/api/export-3d")
+async def export_3d(file: UploadFile = File(...), width_mm: float = Form(600.0),
+                    height_mm: float = Form(0.0), thickness_mm: float = Form(30.0),
+                    n_colors: int = Form(6)):
+    """แปลงไฟล์งาน (ภาพ/เวกเตอร์) -> โมเดล 3 มิติ STL (extrude ตามความหนา) ส่งเข้า Fusion 360 / เครื่องพิมพ์ 3D"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        full = _letter_full_mm(inp, float(width_mm), float(height_mm), int(n_colors))
+        if full.is_empty:
+            return JSONResponse({"error": "ไม่พบรูปทรงสำหรับสร้าง 3 มิติ"}, status_code=400)
+        stl, nfac = _extrude_stl(full, max(0.5, float(thickness_mm)))
+        b = full.bounds
+        return {"stl_base64": base64.b64encode(stl).decode(),
+                "w_mm": round(b[2]-b[0], 1), "h_mm": round(b[3]-b[1], 1),
+                "thickness_mm": round(float(thickness_mm), 1), "facets": nfac}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
