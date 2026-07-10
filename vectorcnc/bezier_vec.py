@@ -6,7 +6,7 @@ import math
 import ezdxf
 from . import trace_engine as te
 
-BEZIER_VERSION = "2026-07-10-svg-plainstroke+nestfix"   # SVG เส้นหนาธรรมดา (เข้ากันทุกโปรแกรม) + nesting gap/edge fix
+BEZIER_VERSION = "2026-07-10-dxf-1spline-per-contour"   # DXF: 1 SPLINE ปิด/contour (ไม่แตกชิ้น = ไม่ยึกยัก) แบบไฟล์โรงงาน
 
 
 def _shift(sp, ox, oy, sc=1.0):
@@ -81,28 +81,28 @@ def _add_contour(layout, sp, tf, layer):
         pts = [tf(start)] + [tf(s[1]) for s in segs]
         layout.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer})
         return
-    p = _ep.Path(tf(start)); cur = start
+    # ---- รวมทุก segment เป็น 'B-spline degree-3 เส้นเดียวต่อ contour' (ไม่แตกเป็นชิ้น -> ไม่ยึกยักในทุกโปรแกรม) ----
+    # bezier chain -> control points [P0, c1,c2,e, c1,c2,e, ...] + knots มัลติปลิซิตี 3 ที่รอยต่อ (แบบไฟล์โรงงาน)
+    ctrl = [tf(start)]; cur = start
     for s in segs:
         if s[0] == 'L':
             e = s[1]
             c1 = (cur[0] + (e[0] - cur[0]) / 3.0, cur[1] + (e[1] - cur[1]) / 3.0)
             c2 = (cur[0] + 2.0 * (e[0] - cur[0]) / 3.0, cur[1] + 2.0 * (e[1] - cur[1]) / 3.0)
-            p.curve4_to(tf(e), tf(c1), tf(c2)); cur = e
+            ctrl += [tf(c1), tf(c2), tf(e)]; cur = e
         else:
-            p.curve4_to(tf(s[3]), tf(s[1]), tf(s[2])); cur = s[3]
-    p.close()
-    items = list(_ep.to_bsplines_and_vertices(p))
-    single = (len(items) == 1)
-    for item in items:
-        if isinstance(item, _BSpline):
-            spl = layout.add_spline(dxfattribs={'layer': layer})
-            spl.apply_construction_tool(item)
-            if single:
-                spl.closed = True                    # คอนทัวร์เนียนไม่มีมุม = สไปลน์ปิดเส้นเดียว (แบบโรงงาน)
-        else:
-            vs = [(v[0], v[1]) for v in item]
-            if len(vs) >= 2:
-                layout.add_lwpolyline(vs, close=single, dxfattribs={'layer': layer})
+            ctrl += [tf(s[1]), tf(s[2]), tf(s[3])]; cur = s[3]
+    n = len(segs)
+    knots = [0, 0, 0, 0]
+    for i in range(1, n):
+        knots += [i, i, i]
+    knots += [n, n, n, n]
+    try:
+        spl = layout.add_spline(dxfattribs={'layer': layer})
+        spl.apply_construction_tool(_BSpline(ctrl, order=4, knots=knots))
+    except Exception:
+        pts = [tf(start)] + [tf(s[1] if s[0] == 'L' else s[3]) for s in segs]
+        layout.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer})
 
 
 def _dxf(all_subs_mm, Hmm, path):
