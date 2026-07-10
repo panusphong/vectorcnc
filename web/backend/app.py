@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.2-multi-nest",
-            "build": "2026-07-10-multifile-zones+dividers+labels+pdf", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.3-draft-ai",
+            "build": "2026-07-10-image-to-ai-vector+multifile-zones", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -491,6 +491,120 @@ async def nest_ep(
             "mode": str(parts_mode).lower(), "pieces": n_pieces,
             "sheets_svg": svgs, "dxf_base64": dxf_b64, "split_dbg": _split_dbg,
         }
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _ai_filled_svg(items, width_mm):
+    """สร้าง SVG 'ระบายสีเต็ม' (artwork เวกเตอร์) จาก items=[(bgr, subs)] — หน่วย มม. ขนาดจริง
+       แต่ละสี = compound path (fill-rule evenodd -> รูตรงกลางโปร่ง) เรียงพื้นที่ใหญ่ไว้หลัง"""
+    # bbox รวมทุก sub (px)
+    mnx = mny = 1e18; mxx = mxy = -1e18
+    def _pts(sp):
+        yield sp['start']
+        for s in sp['segs']:
+            if s[0] == 'L':
+                yield s[1]
+            else:
+                yield s[1]; yield s[2]; yield s[3]
+    for _bgr, subs in items:
+        for sp in subs:
+            for (x, y) in _pts(sp):
+                if x < mnx: mnx = x
+                if y < mny: mny = y
+                if x > mxx: mxx = x
+                if y > mxy: mxy = y
+    if mxx <= mnx or mxy <= mny:
+        raise ValueError("ไม่พบรูปทรงเวกเตอร์จากภาพ")
+    Wpx = mxx - mnx; Hpx = mxy - mny
+    ppm = Wpx / float(width_mm) if width_mm else 1.0
+    if ppm <= 0: ppm = 1.0
+    Wmm = round(Wpx / ppm, 1); Hmm = round(Hpx / ppm, 1)
+
+    def _tx(p):
+        return ((p[0] - mnx) / ppm, (p[1] - mny) / ppm)
+
+    def _d(sp):
+        s0 = _tx(sp['start']); d = ['M %.3f %.3f' % s0]
+        for s in sp['segs']:
+            if s[0] == 'L':
+                p = _tx(s[1]); d.append('L %.3f %.3f' % p)
+            else:
+                c1 = _tx(s[1]); c2 = _tx(s[2]); e = _tx(s[3])
+                d.append('C %.3f %.3f %.3f %.3f %.3f %.3f' % (c1[0], c1[1], c2[0], c2[1], e[0], e[1]))
+        d.append('Z'); return ' '.join(d)
+
+    def _area(subs):
+        a = 0.0
+        for sp in subs:
+            pts = [sp['start']] + [(s[1] if s[0] == 'L' else s[3]) for s in sp['segs']]
+            n = len(pts); s = 0.0
+            for i in range(n):
+                j = (i + 1) % n; s += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]
+            a += abs(s) / 2.0
+        return a
+
+    order = sorted(range(len(items)), key=lambda i: -_area(items[i][1]))   # ใหญ่ก่อน (อยู่หลัง)
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{Wmm:.1f}mm" height="{Hmm:.1f}mm" '
+           f'viewBox="0 0 {Wmm:.1f} {Hmm:.1f}">']
+    total_subs = 0
+    for oi, i in enumerate(order):
+        bgr, subs = items[i]
+        col = hexcolor(bgr)
+        dd = ' '.join(_d(sp) for sp in subs if sp.get('segs'))
+        if not dd:
+            continue
+        total_subs += len(subs)
+        out.append(f'<g id="สี{oi+1}_{col}"><path fill="{col}" fill-rule="evenodd" stroke="none" d="{dd}"/></g>')
+    out.append('</svg>')
+    return '\n'.join(out), Wmm, Hmm, total_subs
+
+
+@app.post("/api/draft-ai")
+async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
+                   width_mm: float = Form(600.0), engine: str = Form("auto")):
+    """ดราฟท์ภาพ (ถ่าย/AI/โหลดเน็ต) -> ไฟล์เวกเตอร์ .ai (PDF-based) ให้กราฟิคเปิดใน Illustrator ทำต่อ
+       - เวกเตอร์คมชัดระดับโลโก้ · แยกสีเป็น path คนละชั้น · ขนาดจริงตามงาน"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import trace_engine
+        eng = str(engine or "auto").lower()
+        nc = max(2, min(8, int(n_colors)))
+        used = eng
+        if eng == "auto":
+            # เลือกอัตโนมัติ: ลายเส้น/ขาวดำ -> potrace คมกริบ (ไม่มีเงาเทา) · สีเรียบหลายสี -> color engine
+            try:
+                from vectorcnc import analyze
+                dec = analyze.analyze(inp)
+                if dec.get("kind") == "lineart" or float(dec.get("colorful", 0)) < 25 or int(dec.get("ndom", 2)) <= 2:
+                    used = "mono"
+                else:
+                    used = "color"
+                    nc = max(2, min(8, int(dec.get("n_colors", nc)) if int(dec.get("n_colors", nc)) >= 2 else nc))
+            except Exception:
+                used = "color"
+        items = None
+        if used == "mono":
+            items = trace_engine.trace_potrace(inp, n_colors=2)
+        else:
+            try:
+                items = trace_engine.trace_color_smooth_bezier(inp, n_colors=nc)
+            except Exception:
+                items = None
+            if not items:
+                items = trace_engine.trace_potrace(inp, n_colors=2); used = "mono"
+        if not items:
+            return JSONResponse({"error": "แปลงภาพเป็นเวกเตอร์ไม่สำเร็จ"}, status_code=400)
+        svg, Wmm, Hmm, npaths = _ai_filled_svg(items, float(width_mm))
+        import cairosvg
+        pdf_bytes = cairosvg.svg2pdf(bytestring=svg.encode("utf-8"))
+        ai_b64 = base64.b64encode(pdf_bytes).decode()
+        return {"ai_base64": ai_b64, "w_mm": Wmm, "h_mm": Hmm,
+                "layers": len(items), "paths": npaths, "used_engine": used,
+                "svg_preview": svg if len(svg) < 400000 else ""}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
