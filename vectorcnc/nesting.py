@@ -20,9 +20,13 @@ def _raster(poly, res):
     def draw(ring, val):
         pts = np.array([[(x - minx) / res, (y - miny) / res] for x, y in ring.coords], np.int32)
         cv2.fillPoly(m, [pts], val)
-    draw(poly.exterior, 1)
-    for r in poly.interiors:
-        draw(r, 0)
+    geoms = list(poly.geoms) if getattr(poly, 'geom_type', '') == 'MultiPolygon' else [poly]
+    for g in geoms:                       # รองรับ MultiPolygon (โลโก้หลายตัวอักษร)
+        if getattr(g, 'geom_type', '') != 'Polygon' or g.is_empty:
+            continue
+        draw(g.exterior, 1)
+        for r in g.interiors:
+            draw(r, 0)
     return m
 
 
