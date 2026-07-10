@@ -178,6 +178,7 @@ select.numin{cursor:pointer}
   <div class="nav-right">
     <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
+    <button class="nav-btn" id="btnMulti">🗂 จัดวางหลายไฟล์</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
@@ -438,7 +439,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v49 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v50 · Multi-nest</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1155,6 +1156,117 @@ function runNest(){
   }).catch(function(e){$('nGo').disabled=false;$('nGo').textContent='▦ จัดวาง';$('nOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnNest').onclick=openNesting;
+
+// ==================== จัดวางหลายไฟล์รวมแผ่น (แยกโซน + เส้นกั้น) ====================
+var MF=[], MFSHEET={w:1220,h:2440}, MFB64={combined:'',pdf:'',files:[]};
+var MF_COLORS=['#2563EB','#16a34a','#dc2626','#9333ea','#ea580c','#0891b2','#ca8a04','#db2777','#4f46e5','#0d9488'];
+function mfLabel(i){return String.fromCharCode(65+i);}
+function openMulti(){
+  $('mBadge').textContent='Deep NFP · หลายไฟล์';
+  $('mTitle').textContent='จัดวางหลายไฟล์รวมแผ่น (แยกโซน + เส้นกั้น)';
+  $('mBody').innerHTML=''+
+   '<div id="mfDrop" style="border:2px dashed #93a7c6;border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:#f8fafc;margin-bottom:10px">'+
+     '<div style="font-size:13px;color:#5A6B8C">🗂 ลากไฟล์มาวาง หรือคลิกเลือก (สูงสุด 10 ไฟล์)</div>'+
+     '<div style="font-size:11px;color:#94a3b8;margin-top:3px">.ai .pdf .svg .png .jpg .psd</div>'+
+     '<input type="file" id="mfInput" multiple accept=".ai,.pdf,.svg,.png,.jpg,.jpeg,.psd" style="display:none"></div>'+
+   '<div id="mfList"></div>'+
+   '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px" id="mfSheets">'+
+     '<button class="chip on" data-w="1220" data-h="2440">อะคริลิค 1220×2440</button>'+
+     '<button class="chip" data-w="1200" data-h="2400">โลหะ 1200×2400</button>'+
+     '<button class="chip" data-w="1000" data-h="2000">โลหะ 1000×2000</button></div>'+
+   '<div style="display:flex;gap:8px;margin-bottom:10px">'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">เว้นระยะชิ้น มม.</label><input class="numin" id="mfGap" type="number" value="5" step="0.5"></div>'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">ช่องเส้นกั้น มม.</label><input class="numin" id="mfDiv" type="number" value="14" step="1"></div></div>'+
+   '<button class="btn primary" id="mfGo" style="width:100%">▦ จัดวางรวม</button>'+
+   '<div id="mfOut" style="margin-top:12px"></div>';
+  $('modal').classList.add('show');
+  var chips=document.querySelectorAll('#mfSheets .chip');
+  for(var i=0;i<chips.length;i++){chips[i].onclick=function(){for(var j=0;j<chips.length;j++)chips[j].classList.remove('on');this.classList.add('on');MFSHEET={w:+this.getAttribute('data-w'),h:+this.getAttribute('data-h')};};}
+  var dz=$('mfDrop'),fin=$('mfInput');
+  dz.onclick=function(){fin.click();};
+  dz.ondragover=function(e){e.preventDefault();dz.style.background='#eef4ff';};
+  dz.ondragleave=function(){dz.style.background='#f8fafc';};
+  dz.ondrop=function(e){e.preventDefault();dz.style.background='#f8fafc';mfAdd(e.dataTransfer.files);};
+  fin.onchange=function(){mfAdd(fin.files);fin.value='';};
+  $('mfGo').onclick=runMulti;
+  mfRender();
+}
+function mfAdd(files){
+  for(var i=0;i<files.length;i++){
+    if(MF.length>=10){alert('สูงสุด 10 ไฟล์');break;}
+    var f=files[i];
+    MF.push({file:f,name:f.name,wmm:600,hmm:0,qty:1,mode:'parts',asp:0,on:true});
+  }
+  mfRender();
+}
+function mfRender(){
+  var el=$('mfList');
+  if(!MF.length){el.innerHTML='<div style="font-size:12px;color:#94a3b8;text-align:center;padding:8px 0">ยังไม่มีไฟล์</div>';return;}
+  var h='';
+  for(var i=0;i<MF.length;i++){var m=MF[i];var col=MF_COLORS[i%MF_COLORS.length];
+    h+='<div style="border:1px solid #dbe4f0;border-radius:10px;padding:8px 10px;margin-bottom:7px;background:#fff">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<input type="checkbox" data-i="'+i+'" class="mfOn" '+(m.on?'checked':'')+' style="width:16px;height:16px">'+
+        '<span style="background:'+col+';color:#fff;font-weight:800;border-radius:5px;padding:1px 7px;font-size:12px">'+mfLabel(i)+'</span>'+
+        '<span style="flex:1;font-size:12px;color:#33415c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.name+'</span>'+
+        '<button class="mfDel" data-i="'+i+'" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:15px">✖</button></div>'+
+      '<div style="display:flex;gap:6px;align-items:flex-end">'+
+        '<div style="flex:1"><label style="font-size:10px;color:#5A6B8C">กว้าง มม.</label><input class="numin mfW" data-i="'+i+'" type="number" value="'+m.wmm+'" style="padding:5px"></div>'+
+        '<div style="flex:1"><label style="font-size:10px;color:#5A6B8C">สูง มม.</label><input class="numin mfH" data-i="'+i+'" type="number" value="'+(m.hmm||'')+'" placeholder="อัตโนมัติ" style="padding:5px"></div>'+
+        '<button class="chip mfLock '+(m.lock!==false?'on':'')+'" data-i="'+i+'" title="ล็อกสัดส่วน" style="height:34px;min-width:36px;font-size:14px">'+(m.lock!==false?'🔒':'🔓')+'</button>'+
+        '<div style="width:56px"><label style="font-size:10px;color:#5A6B8C">จำนวน</label><input class="numin mfQ" data-i="'+i+'" type="number" value="'+m.qty+'" min="1" style="padding:5px"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;margin-top:6px">'+
+        '<button class="chip mfMode '+(m.mode==='parts'?'on':'')+'" data-i="'+i+'" data-m="parts" style="flex:1;font-size:11px">🔤 แยกชิ้นย่อย</button>'+
+        '<button class="chip mfMode '+(m.mode==='whole'?'on':'')+'" data-i="'+i+'" data-m="whole" style="flex:1;font-size:11px">▭ ทั้งป้าย (กรอบนอก)</button></div>'+
+    '</div>';
+  }
+  el.innerHTML=h;
+  var q=function(s){return document.querySelectorAll(s);};
+  q('.mfOn').forEach(function(x){x.onchange=function(){MF[+this.getAttribute('data-i')].on=this.checked;};});
+  q('.mfDel').forEach(function(x){x.onclick=function(){MF.splice(+this.getAttribute('data-i'),1);mfRender();};});
+  q('.mfW').forEach(function(x){x.oninput=function(){var i=+this.getAttribute('data-i');MF[i].wmm=+this.value||0;if(MF[i].lock!==false&&MF[i].asp>0){MF[i].hmm=Math.round(MF[i].wmm*MF[i].asp*10)/10;mfSyncH(i);}};});
+  q('.mfH').forEach(function(x){x.oninput=function(){var i=+this.getAttribute('data-i');MF[i].hmm=+this.value||0;if(MF[i].lock!==false&&MF[i].asp>0&&MF[i].hmm>0){MF[i].wmm=Math.round(MF[i].hmm/MF[i].asp*10)/10;mfSyncW(i);}};});
+  q('.mfQ').forEach(function(x){x.oninput=function(){MF[+this.getAttribute('data-i')].qty=Math.max(1,+this.value||1);};});
+  q('.mfLock').forEach(function(x){x.onclick=function(){var i=+this.getAttribute('data-i');MF[i].lock=(MF[i].lock===false);this.textContent=MF[i].lock!==false?'🔒':'🔓';this.classList.toggle('on',MF[i].lock!==false);};});
+  q('.mfMode').forEach(function(x){x.onclick=function(){var i=+this.getAttribute('data-i');MF[i].mode=this.getAttribute('data-m');mfRender();};});
+}
+function mfSyncH(i){var e=document.querySelector('.mfH[data-i="'+i+'"]');if(e)e.value=MF[i].hmm;}
+function mfSyncW(i){var e=document.querySelector('.mfW[data-i="'+i+'"]');if(e)e.value=MF[i].wmm;}
+function runMulti(){
+  var sel=MF.filter(function(m){return m.on;});
+  if(!sel.length){alert('เลือกไฟล์อย่างน้อย 1 ไฟล์');return;}
+  $('mfGo').disabled=true;$('mfGo').textContent='⏳ กำลังจัดวาง...';
+  $('mfOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวางรวม (อาจนานสักครู่)...</div></div>';
+  var fd=new FormData();
+  var meta={sheet_w:MFSHEET.w,sheet_h:MFSHEET.h,gap:+($('mfGap').value||5),divider_gap:+($('mfDiv').value||14),files:[]};
+  var n=0;
+  for(var i=0;i<MF.length;i++){var m=MF[i];if(!m.on)continue;
+    meta.files.push({label:mfLabel(i),name:m.name,real_width_mm:m.wmm||300,real_height_mm:(m.lock!==false?0:(m.hmm||0)),qty:m.qty,mode:m.mode});
+    fd.append('file'+n,m.file);n++;}
+  fd.append('meta',JSON.stringify(meta));
+  fetch((API||'')+'/api/nest-multi',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    $('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';
+    if(j.error){$('mfOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
+    MFB64={combined:j.dxf_combined_base64||'',pdf:j.pdf_base64||'',files:j.per_file_dxf||[]};
+    // update aspect per file from placement not available per-file; keep asp from part? skip
+    var pf=(j.per_file||[]).map(function(p){return '<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0;font-size:11px"><span style="background:'+p.color+';color:#fff;border-radius:4px;padding:0 6px;font-weight:800">'+p.label+'</span>'+p.name+' ×'+p.placed+'</span>';}).join('');
+    var stat='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+nchip('แผ่น',j.n_sheets)+nchip('ใช้วัสดุ',j.utilization+'%')+(j.unplaced?nchip('วางไม่ได้',j.unplaced):'')+'</div>'+
+      '<div style="margin-bottom:10px">'+pf+'</div>';
+    var sheets=(j.sheets_svg||[]).map(function(s,i){var disp=s.replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+      return '<div style="margin-bottom:10px"><div style="font-size:11px;color:#8A99B5;margin-bottom:4px">แผ่น '+(i+1)+'</div><div style="border:1px solid #D6E0EE;border-radius:8px;padding:6px;background:#fff">'+disp+'</div></div>';}).join('');
+    var dl='<div style="display:flex;gap:6px;margin-top:8px"><button class="btn primary" id="mfDlDxf" style="flex:1">⬇ DXF รวมทุกแผ่น</button>'+
+      (MFB64.pdf?'<button class="btn primary" id="mfDlPdf" style="flex:1;background:#0ea5e9">⬇ PDF พรีวิว</button>':'')+'</div>';
+    var pfdl=MFB64.files.length?('<div style="font-size:11px;color:#5A6B8C;margin:8px 0 4px">แยก DXF รายไฟล์:</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      MFB64.files.map(function(f,k){return '<button class="chip mfFileDl" data-k="'+k+'" style="font-size:11px">⬇ '+f.label+' · '+f.name+'</button>';}).join('')+'</div>'):'';
+    $('mfOut').innerHTML=stat+'<div style="max-height:340px;overflow:auto">'+sheets+'</div>'+dl+pfdl;
+    var dlB64=function(b64,name,type){var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:type});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();};
+    if($('mfDlDxf'))$('mfDlDxf').onclick=function(){if(MFB64.combined)dlB64(MFB64.combined,'nest_multi.dxf','application/dxf');};
+    if($('mfDlPdf'))$('mfDlPdf').onclick=function(){if(MFB64.pdf)dlB64(MFB64.pdf,'nest_preview.pdf','application/pdf');};
+    document.querySelectorAll('.mfFileDl').forEach(function(x){x.onclick=function(){var f=MFB64.files[+this.getAttribute('data-k')];if(f)dlB64(f.dxf_base64,'cut_'+f.label+'.dxf','application/dxf');};});
+  }).catch(function(e){$('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';$('mfOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
+}
+$('btnMulti').onclick=openMulti;
 
 // ---- api health ----
 fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
