@@ -9,6 +9,8 @@ from scipy.signal import fftconvolve
 from shapely.affinity import rotate as _rotate, translate as _translate
 import ezdxf
 
+NESTING_VERSION = "2026-07-10-edgefix+piece-dims"   # gap ไม่กินขอบแผ่น + ป้ายขนาดต่อชิ้น
+
 
 def _raster(poly, res):
     minx, miny, maxx, maxy = poly.bounds
@@ -185,8 +187,28 @@ def _sp_d(sp):
     return ' '.join(d)
 
 
-def sheet_svg_bezier(items, sheet_w, sheet_h, stroke='#0EA5A5'):
-    """items = list ของ (subs, color_hex) ต่อชิ้นบนแผ่น — เส้นโค้ง Bézier จริง แยกสีต่อเลเยอร์"""
+def _dim_labels_svg(labels, sheet_w, sheet_h):
+    """วาดป้ายขนาด กว้าง×สูง (ซม.) กลางแต่ละชิ้น — ตัวอักษรอิงขนาดชิ้นให้อ่านชัด"""
+    if not labels:
+        return []
+    smin = min(sheet_w, sheet_h)
+    out = []
+    for (cx, cy, w, h) in labels:
+        # ขนาดตัวอักษรอิงด้านสั้นของชิ้น (อ่านชัด) จำกัดช่วงตามแผ่น
+        fs = max(smin * 0.012, min(smin * 0.06, min(w, h) * 0.10))
+        txt = '%.1f x %.1f ซม.' % (w / 10.0, h / 10.0)   # มม. -> ซม.
+        common = (f'x="{cx:.1f}" y="{cy:.1f}" font-family="Prompt, Arial, sans-serif" '
+                  f'font-size="{fs:.1f}" font-weight="700" text-anchor="middle" dominant-baseline="central"')
+        # ข้อความ 2 ชั้น: ขาวหนา(รองพื้น) + แดงทับ -> อ่านชัดทุกโปรแกรม (ไม่พึ่ง paint-order)
+        out.append(f'<text {common} fill="none" stroke="#ffffff" stroke-width="{fs*0.30:.1f}" '
+                   f'stroke-linejoin="round">{txt}</text>')
+        out.append(f'<text {common} fill="#b91c1c">{txt}</text>')
+    return out
+
+
+def sheet_svg_bezier(items, sheet_w, sheet_h, stroke='#0EA5A5', labels=None):
+    """items = list ของ (subs, color_hex) ต่อชิ้นบนแผ่น — เส้นโค้ง Bézier จริง แยกสีต่อเลเยอร์
+    labels = list ของ (cx, cy, w_mm, h_mm) เพื่อพิมพ์ขนาด กว้าง×สูง ของแต่ละชิ้น"""
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
          f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
          f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>']
@@ -198,6 +220,7 @@ def sheet_svg_bezier(items, sheet_w, sheet_h, stroke='#0EA5A5'):
                 continue
             s.append(f'  <path d="{_sp_d(sp)}"/>')
         s.append('</g>')
+    s.extend(_dim_labels_svg(labels, sheet_w, sheet_h))
     s.append('</svg>')
     return '\n'.join(s)
 
@@ -360,8 +383,9 @@ def _rings(geom):
         yield [(x, y) for x, y in geom.coords], False
 
 
-def sheet_svg(geoms, sheet_w, sheet_h, stroke='#0EA5A5'):
-    """geoms = list ของ shapely geometry (ลายเต็มแต่ละชิ้น) บนแผ่นเดียว"""
+def sheet_svg(geoms, sheet_w, sheet_h, stroke='#0EA5A5', labels=None):
+    """geoms = list ของ shapely geometry (ลายเต็มแต่ละชิ้น) บนแผ่นเดียว
+    labels = list ของ (cx, cy, w_mm, h_mm) เพื่อพิมพ์ขนาด กว้าง×สูง ของแต่ละชิ้น"""
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
          f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
          f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>',
@@ -372,7 +396,9 @@ def sheet_svg(geoms, sheet_w, sheet_h, stroke='#0EA5A5'):
                 continue
             d = 'M ' + ' L '.join(f'{x:.2f},{y:.2f}' for x, y in coords) + (' Z' if closed else '')
             s.append(f'  <path d="{d}"/>')
-    s.append('</g></svg>')
+    s.append('</g>')
+    s.extend(_dim_labels_svg(labels, sheet_w, sheet_h))
+    s.append('</svg>')
     return '\n'.join(s)
 
 
