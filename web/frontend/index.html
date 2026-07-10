@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v47 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v48 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1097,8 +1097,8 @@ function openNesting(){
   $('mBody').innerHTML=''+
    '<div style="display:flex;gap:6px;margin-bottom:8px" id="nMode">'+
      '<button class="chip on" data-pm="parts" style="flex:1">🔤 แยกชิ้นย่อย (ประหยัด)</button>'+
-     '<button class="chip" data-pm="whole" style="flex:1">▭ ทั้งป้าย</button></div>'+
-   '<div style="font-size:11px;color:#7d90ad;margin:-4px 0 10px">แยกชิ้นย่อย = ตัด ตัวอักษร/รูป แยกชิ้นแพคชิดประหยัดสุด · ทั้งป้าย = ปูป้ายเต็มใบ</div>'+
+     '<button class="chip" data-pm="whole" style="flex:1">▭ ทั้งป้าย (กรอบนอก)</button></div>'+
+   '<div style="font-size:11px;color:#7d90ad;margin:-4px 0 10px">แยกชิ้นย่อย = ตัดทุกเส้นแยกชิ้น แพคชิดประหยัดสุด · ทั้งป้าย = ตัดเฉพาะกรอบนอก (แผ่นป้าย)</div>'+
    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="nSheets">'+
      '<button class="chip on" data-w="1220" data-h="2440">อะคริลิค 1220×2440</button>'+
      '<button class="chip" data-w="1200" data-h="2400">โลหะ 1200×2400</button>'+
