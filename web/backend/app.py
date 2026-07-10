@@ -55,8 +55,8 @@ def health():
         bez = getattr(bezier_vec, "BEZIER_VERSION", "OLD(no-version)")
     except Exception as e:
         bez = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.4-preview-align",
-            "build": "2026-07-10-spline+preview-align", "engine": eng, "bezier": bez, "psd": _psd_ok()}
+    return {"ok": True, "service": "VectorCNC", "version": "3.5-nestfix",
+            "build": "2026-07-10-nest-edge-gap-fix", "engine": eng, "bezier": bez, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
