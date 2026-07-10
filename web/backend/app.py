@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.0-modes",
-            "build": "2026-07-10-whole=outerframe+parts=all+backfill", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.1-size+smooth",
+            "build": "2026-07-10-piecesize-wh-lock+finer-cutlines", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -227,6 +227,7 @@ async def nest_ep(
     file: UploadFile = File(...),
     qty: int = Form(10),
     real_width_mm: float = Form(300.0),
+    real_height_mm: float = Form(0.0),
     sheet_w: float = Form(1220.0),
     sheet_h: float = Form(2440.0),
     margin: float = Form(10.0),
@@ -271,6 +272,38 @@ async def nest_ep(
                 full_mm = unary_union(polys)
         bb = full_mm.bounds
         pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
+
+        # ----- ผู้ใช้กำหนด 'สูงชิ้น' เอง -> ยืด/หดแกน Y ให้สูงเป๊ะ (ล็อกสัดส่วน=ส่งค่าตามอัตราส่วน sy≈1) -----
+        try:
+            _rh = float(real_height_mm)
+        except Exception:
+            _rh = 0.0
+        if _rh > 1.0 and ph > 0.5 and abs(_rh - ph) > 0.15:
+            sy = _rh / (bb[3] - bb[1]); y0 = bb[1]
+
+            def _sy(p):
+                return (p[0], y0 + (p[1] - y0) * sy)
+
+            def _scale_sub(sp):
+                ns = {"start": _sy(sp["start"]), "segs": []}
+                for s in sp["segs"]:
+                    if s[0] == "L":
+                        ns["segs"].append(("L", _sy(s[1])))
+                    else:
+                        ns["segs"].append(("C", _sy(s[1]), _sy(s[2]), _sy(s[3])))
+                for _k in sp:
+                    if _k not in ("start", "segs"):
+                        ns[_k] = sp[_k]
+                return ns
+
+            if bez_pieces is not None:
+                for pc in bez_pieces:
+                    pc["poly"] = _scale(pc["poly"], xfact=1.0, yfact=sy, origin=(0, y0))
+                    pc["subs"] = [_scale_sub(sp) for sp in pc.get("subs", [])]
+            full_mm = _scale(full_mm, xfact=1.0, yfact=sy, origin=(0, y0))
+            bb = full_mm.bounds
+            pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
+
         res = max(2.0, min(sheet_w, sheet_h) / 500.0)
         whole = str(parts_mode).lower() == "whole"
         _split_dbg = None
