@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v48 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v49 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1088,7 +1088,7 @@ function genDesign(){
   });
 }
 $('btnAI').onclick=openAIDesign;
-var lastNestDxf='',NSHEET={w:1220,h:2440},NPM='parts';
+var lastNestDxf='',NSHEET={w:1220,h:2440},NPM='parts',NLOCK=true,NASP=0;
 function nchip(k,v){return '<span style="font-size:12px;background:#EEF2F8;border:1px solid #D6E0EE;border-radius:8px;padding:6px 10px"><span style="color:#8A99B5">'+k+':</span> <b style="color:#2563EB">'+v+'</b></span>';}
 function openNesting(){
   if(!fileObj){openModal('Nesting','ต้องมีรูปก่อน','<p style="color:#5A6B8C">อัปโหลดรูป หรือสร้างด้วย ✨AI ออกแบบ ก่อน แล้วค่อยกด Nesting นะคะ</p>');return;}
@@ -1105,9 +1105,12 @@ function openNesting(){
      '<button class="chip" data-w="1000" data-h="2000">โลหะ 1000×2000</button>'+
      '<button class="chip" data-w="0" data-h="0">กำหนดเอง</button></div>'+
    '<div id="nCustom" style="display:none;margin-bottom:10px"><input class="numin" id="nW" type="number" placeholder="กว้าง มม." style="width:48%;display:inline-block"> <input class="numin" id="nH" type="number" placeholder="ยาว มม." style="width:48%;display:inline-block"></div>'+
+   '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end">'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">กว้างชิ้น มม.</label><input class="numin" id="nPW" type="number" value="'+($('realW').value||'300')+'"></div>'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">สูงชิ้น มม.</label><input class="numin" id="nPH" type="number" placeholder="อัตโนมัติ"></div>'+
+     '<button class="chip on" id="nLock" title="ล็อกสัดส่วน (ยืดหดตามสเกล)" style="height:40px;min-width:44px;font-size:16px">🔒</button></div>'+
    '<div style="display:flex;gap:8px;margin-bottom:10px">'+
      '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">จำนวนชิ้น</label><input class="numin" id="nQty" type="number" value="10" min="1" max="80"></div>'+
-     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">กว้างชิ้น มม.</label><input class="numin" id="nPW" type="number" value="'+($('realW').value||'300')+'"></div>'+
      '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">เว้นระยะ มม.</label><input class="numin" id="nGap" type="number" value="5" step="0.5"></div></div>'+
    '<button class="btn primary" id="nGo" style="width:100%">▦ จัดวาง</button><div id="nOut" style="margin-top:12px"></div>';
   $('modal').classList.add('show');
@@ -1119,6 +1122,11 @@ function openNesting(){
     else{$('nCustom').style.display='none';NSHEET={w:w,h:+this.getAttribute('data-h')};}};}
   var mch=document.querySelectorAll('#nMode .chip');
   for(var k=0;k<mch.length;k++){mch[k].onclick=function(){for(var j=0;j<mch.length;j++)mch[j].classList.remove('on');this.classList.add('on');NPM=this.getAttribute('data-pm');};}
+  // ---- ล็อกสัดส่วน กว้าง<->สูง (NASP = สูง/กว้าง จากผลจัดวางล่าสุด) ----
+  $('nLock').onclick=function(){NLOCK=!NLOCK;this.textContent=NLOCK?'🔒':'🔓';this.classList.toggle('on',NLOCK);
+    if(NLOCK&&NASP>0){$('nPH').value=Math.round((+$('nPW').value||0)*NASP*10)/10;}};
+  $('nPW').oninput=function(){if(NLOCK&&NASP>0)$('nPH').value=Math.round((+this.value||0)*NASP*10)/10;};
+  $('nPH').oninput=function(){if(NLOCK&&NASP>0&&(+this.value>0))$('nPW').value=Math.round((+this.value)/NASP*10)/10;};
   $('nGo').onclick=runNest;
 }
 function runNest(){
@@ -1128,11 +1136,13 @@ function runNest(){
   $('nOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวาง (อาจนานสักครู่)...</div></div>';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('qty',$('nQty').value||'10');fd.append('real_width_mm',$('nPW').value||'300');
+  fd.append('real_height_mm',(NLOCK?'0':($('nPH').value||'0')));
   fd.append('sheet_w',sw);fd.append('sheet_h',sh);fd.append('gap',$('nGap').value||'5');fd.append('parts_mode',NPM);
   fetch((API||'')+'/api/nest',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('nGo').disabled=false;$('nGo').textContent='▦ จัดวางใหม่';
     if(j.error){$('nOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     lastNestDxf=j.dxf_base64||'';
+    if(j.part_mm&&j.part_mm[0]>0){NASP=j.part_mm[1]/j.part_mm[0];if(NLOCK&&$('nPH'))$('nPH').value=j.part_mm[1];}  // อัปเดตอัตราส่วนจริงหลังจัดวาง
     var stat='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
       nchip('แผ่น',j.n_sheets)+nchip('ใช้วัสดุ',j.utilization+'%')+nchip('แบบชิ้น',(j.pieces||1))+nchip('จำนวน/แบบ',j.qty)+nchip('ขนาดชิ้น',j.part_mm[0]+'×'+j.part_mm[1])+(j.unplaced?nchip('วางไม่ได้',j.unplaced):'')+'</div>'+
       (j.split_dbg?('<div style="font-size:10px;color:#94a3b8;margin:-6px 0 8px">🔎 split: nlab='+j.split_dbg.nlab+' · pieces='+j.split_dbg.pieces+(j.split_dbg.err?(' · ERR: '+j.split_dbg.err):'')+'</div>'):'');
