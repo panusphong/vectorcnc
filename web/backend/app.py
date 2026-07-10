@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.3-draft-ai",
-            "build": "2026-07-10-image-to-ai-vector+multifile-zones", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.4-layer-set",
+            "build": "2026-07-10-signtype-layerset-offsets+draft-ai", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -605,6 +605,183 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
         return {"ai_base64": ai_b64, "w_mm": Wmm, "h_mm": Hmm,
                 "layers": len(items), "paths": npaths, "used_engine": used,
                 "svg_preview": svg if len(svg) < 400000 else ""}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+# ==================== ชุดชั้นตัดตามแบบป้าย 1-7 (auto multi-layer offset) ====================
+# off = ค่าเผื่อ 'มม.' จากไซซ์เต็ม (บวก=ขยายออก, ลบ=หดเข้า) · walls = ความสูงผนัง(ซม.) ไว้บอกช่าง(ดัดขอบ)
+SIGN_TYPES = {
+    "1": {"name": "ไฟออกหน้า มีคิ้ว",
+          "layers": [{"name": "คิ้วหน้า", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิคตู้ไฟ", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
+    "2": {"name": "ไฟออกหน้า ไม่มีคิ้ว",
+          "layers": [{"name": "หน้าอะคริลิค", "off": 1.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "ไส้อะคริลิคใส", "off": -1.5, "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 0.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบ", "h": 5.0}]},
+    "3": {"name": "ไฟออกรอบ",
+          "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบใน", "h": 2.0}, {"name": "ยกขอบอะคริลิค", "h": 7.0}]},
+    "4": {"name": "กล่องไฟ 1 หน้า",
+          "layers": [{"name": "คิ้ว", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิค", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
+    "5": {"name": "กล่องไฟ 2 หน้า",
+          "layers": [{"name": "คิ้ว", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิค", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)}],
+          "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "ยกขอบใน", "h": 2.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
+    "6": {"name": "งานยกขอบ",
+          "layers": [{"name": "ซิ้งค์", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)}],
+          "walls": [{"name": "ยกขอบ", "h": 2.5}, {"name": "ขากลางยกลอย", "h": 2.5}]},
+    "7": {"name": "งานยกขอบ มีไส้",
+          "layers": [{"name": "หน้าซิ้งค์", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "ไส้พลาสวูด", "off": -1.6, "color": "#dc2626", "rgb": (220, 38, 38)}],
+          "walls": [{"name": "ยกขอบ", "h": 2.5}]},
+}
+
+
+def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
+    """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
+    from shapely.ops import unary_union
+    from shapely.affinity import scale as _scale
+    from vectorcnc import trace_engine, vector_import
+    if vector_import.is_vector_file(inp):
+        pcs = vector_import.full_pieces_mm(inp, real_width_mm)
+        pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
+        if not pcs:
+            raise ValueError("อ่านเวกเตอร์ไม่ได้")
+        full = unary_union([pc["poly"] for pc in pcs])
+    else:
+        pcs = None
+        try:
+            pcs = trace_engine.bezier_pieces_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+            pcs = [pc for pc in (pcs or []) if pc["poly"].area > 4.0]
+        except Exception:
+            pcs = None
+        if pcs:
+            full = unary_union([pc["poly"] for pc in pcs])
+        else:
+            polys = trace_engine.nest_shapes_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+            if not polys:
+                raise ValueError("แปลงภาพไม่พบรูปทรง")
+            full = unary_union(polys)
+    try:
+        _rh = float(real_height_mm)
+    except Exception:
+        _rh = 0.0
+    b = full.bounds
+    ph = b[3] - b[1]
+    if _rh > 1.0 and ph > 0.5 and abs(_rh - ph) > 0.15:
+        full = _scale(full, xfact=1.0, yfact=_rh / ph, origin=(0, b[1]))
+    return full
+
+
+def _poly_to_subs(geom):
+    """polygon/multipolygon -> list ของ bezier subs (เนียน) ทุกวง (นอก+รูใน)"""
+    from vectorcnc import bezier_vec
+    subs = []
+    if geom is None or geom.is_empty:
+        return subs
+    polys = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
+    for pg in polys:
+        if pg.geom_type != "Polygon" or pg.is_empty:
+            continue
+        rings = [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]
+        for ring in rings:
+            if len(ring) < 4:
+                continue
+            try:
+                sp = bezier_vec._fit_ring_to_sub(ring, tol=0.03)
+            except Exception:
+                sp = None
+            if sp:
+                subs.append(sp)
+    return subs
+
+
+@app.post("/api/layer-set")
+async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
+                    real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
+                    n_colors: int = Form(6)):
+    """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        rec = SIGN_TYPES.get(str(sign_type))
+        if not rec:
+            return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        base_area = full.area
+        out_layers = []
+        for L in rec["layers"]:
+            off = float(L["off"])
+            g = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
+            if g.is_empty:
+                continue
+            subs = _poly_to_subs(g)
+            if not subs:
+                continue
+            b = g.bounds
+            out_layers.append({"name": L["name"], "off": off, "color": L["color"], "rgb": L["rgb"],
+                               "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1)})
+        if not out_layers:
+            return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
+        # bbox รวม (ชั้นที่ขยายสุด)
+        allb = [full.buffer(max(0.0, float(L["off"])), join_style=1).bounds for L in rec["layers"]]
+        MNX = min(b[0] for b in allb); MNY = min(b[1] for b in allb)
+        MXX = max(b[2] for b in allb); MXY = max(b[3] for b in allb)
+        perimeter = round(full.length / 10.0, 1)  # ซม.
+
+        # preview SVG (ซ้อนทุกชั้น แยกสี)
+        pad = 6.0
+        W = (MXX - MNX) + pad * 2; H = (MXY - MNY) + pad * 2
+        from vectorcnc import nesting
+        svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.1f}mm" height="{H:.1f}mm" viewBox="0 0 {W:.1f} {H:.1f}">']
+        for L in out_layers:
+            svg.append(f'<g fill="none" stroke="{L["color"]}" stroke-width="{max(0.5, min(W,H)*0.003):.2f}" stroke-linejoin="round">')
+            for sp in L["subs"]:
+                d = nesting._sp_d({"start": (sp["start"][0]-MNX+pad, sp["start"][1]-MNY+pad),
+                                   "segs": [((s[0], (s[1][0]-MNX+pad, s[1][1]-MNY+pad)) if s[0] == "L"
+                                             else (s[0], (s[1][0]-MNX+pad, s[1][1]-MNY+pad), (s[2][0]-MNX+pad, s[2][1]-MNY+pad), (s[3][0]-MNX+pad, s[3][1]-MNY+pad))) for s in sp["segs"]],
+                                   "closed": sp.get("closed", True)})
+                svg.append(f'<path d="{d}"/>')
+            svg.append('</g>')
+        svg.append('</svg>')
+        svg = '\n'.join(svg)
+
+        # DXF: แต่ละชั้น = layer เดียว (ลงทะเบียนตำแหน่งตรงกัน) + flip Y
+        import ezdxf
+        doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM; msp = doc.modelspace()
+        maxy = MXY
+        def _tf(p): return (p[0], maxy - p[1])
+        for L in out_layers:
+            lyname = 'CUT_' + str(L["name"])
+            if lyname not in doc.layers:
+                lay = doc.layers.add(lyname)
+                try: lay.rgb = L["rgb"]
+                except Exception: pass
+            for sp in L["subs"]:
+                try:
+                    nesting._add_contour_dxf(msp, sp, lyname, tf=_tf)
+                except Exception:
+                    pass
+        dxf_path = os.path.join(tmp, "layerset.dxf")
+        doc.saveas(dxf_path)
+        with open(dxf_path, "rb") as fo:
+            dxf_b64 = base64.b64encode(fo.read()).decode()
+
+        return {"type_name": rec["name"], "sign_type": str(sign_type),
+                "perimeter_cm": perimeter,
+                "layers": [{"name": L["name"], "off_cm": round(L["off"]/10.0, 3), "color": L["color"],
+                            "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
+                "walls": rec["walls"], "svg_preview": svg, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
