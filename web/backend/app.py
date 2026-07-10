@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.9-nest-split-dbg",
-            "build": "2026-07-10-raster-split+findcontours-fix+dbg", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.0-modes",
+            "build": "2026-07-10-whole=outerframe+parts=all+backfill", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -278,15 +278,29 @@ async def nest_ep(
         if bez_pieces is not None:
             # -------- เวกเตอร์/ราสเตอร์(vtracer): จัดวางเส้นโค้ง Bézier จริง (สมูท) แยกสี --------
             if whole:
-                # ทั้งป้ายเป็นชิ้นเดียว -> จัดกลุ่ม subs ตามเลเยอร์ (คงสี) แล้วปูซ้ำ
-                grp = {}
+                # ทั้งป้าย = ตัด 'เฉพาะกรอบนอกสุด' (เส้นรอบนอกของป้าย) เป็นแผ่นเดียว
+                def _sub_area(sp):
+                    xs = [sp['start'][0]]; ys = [sp['start'][1]]
+                    for s in sp['segs']:
+                        p = s[1] if s[0] == 'L' else s[3]
+                        xs.append(p[0]); ys.append(p[1])
+                    n = len(xs); a = 0.0
+                    for i in range(n):
+                        j = (i + 1) % n; a += xs[i]*ys[j] - xs[j]*ys[i]
+                    return abs(a) / 2.0
+                outer = None; outer_meta = None; best_a = -1.0
                 for pc in bez_pieces:
-                    g = grp.setdefault(pc.get("layer", "(default)"), {"subs": [], "color": pc.get("color", "#2563EB"), "rgb": pc.get("rgb", (37, 99, 235))})
-                    g["subs"].extend(pc["subs"])
+                    for sp in pc.get("subs", []):
+                        a = _sub_area(sp)
+                        if a > best_a:
+                            best_a = a; outer = sp
+                            outer_meta = (pc.get("color", "#2563EB"), pc.get("rgb", (37, 99, 235)), pc.get("layer", "(default)"))
+                if outer is None:
+                    return JSONResponse({"error": "ไม่พบกรอบนอกของป้าย"}, status_code=400)
                 hull = full_mm.convex_hull
                 if hull.geom_type != "Polygon":
                     hull = full_mm.envelope
-                groups = [(g["subs"], g["color"], g["rgb"], ly) for ly, g in grp.items()]
+                groups = [([outer], outer_meta[0], outer_meta[1], outer_meta[2])]
                 nest_pieces = [{"poly": hull, "groups": groups}]
                 qn = max(1, min(80, int(qty)))
                 r = nesting.nest([(hull, qn)], float(sheet_w), float(sheet_h),
