@@ -146,6 +146,105 @@ def _scale_sub(sp, s):
             'segs': [('L', T(x[1])) if x[0] == 'L' else ('C', T(x[1]), T(x[2]), T(x[3])) for x in sp['segs']]}
 
 
+def _fit_ring_to_sub(ring, tol=0.05):
+    """แปลงวงพิกัด (จาก shapely offset) กลับเป็น subpath เส้นโค้ง Bézier แท้:
+    - ลดจุดซ้ำ/เส้นตรงให้คม (Douglas-Peucker), ตรวจมุมคมเพื่อคงมุม, ฟิต cubic Bézier ต่อช่วงโค้ง
+    => เขียนออกเป็น SPLINE (DXF) / C (SVG) เนียนเหมือนไฟล์โรงงาน ไม่ยึกยัก. ล้มเหลว -> polyline เดิม"""
+    try:
+        import numpy as np
+        from shapely.geometry import LineString
+        P = np.asarray(ring, dtype=float)
+        if len(P) >= 2 and np.allclose(P[0], P[-1]):
+            P = P[:-1]
+        if len(P) < 4:
+            raise ValueError('few')
+        # ลดจุด (คงรูปในระยะ ~0.8*tol) -> เส้นตรงเหลือ 2 จุด, โค้งเหลือเท่าที่จำเป็น
+        ls = LineString(np.vstack([P, P[:1]])).simplify(tol * 0.8, preserve_topology=False)
+        P = np.asarray(ls.coords, dtype=float)
+        if len(P) >= 2 and np.allclose(P[0], P[-1]):
+            P = P[:-1]
+        n = len(P)
+        if n < 4:
+            raise ValueError('few2')
+
+        def _u(pts):
+            d = np.zeros(len(pts))
+            for i in range(1, len(pts)):
+                d[i] = d[i-1] + float(np.hypot(*(pts[i]-pts[i-1])))
+            return d/d[-1] if d[-1] > 0 else np.linspace(0, 1, len(pts))
+
+        def _bev(b, u):
+            b0, c1, c2, b3 = b; mt = 1-u
+            return (mt**3)[:, None]*b0 + (3*mt*mt*u)[:, None]*c1 + (3*mt*u*u)[:, None]*c2 + (u**3)[:, None]*b3
+
+        def _tan(pts, i0, i1):
+            v = pts[i1]-pts[i0]; nn = float(np.hypot(*v)); return v/nn if nn > 1e-9 else np.array([1.0, 0.0])
+
+        def _fit_one(pts, t1, t2):
+            u = _u(pts); b0 = pts[0]; b3 = pts[-1]; mt = 1-u
+            B1 = 3*mt*mt*u; B2 = 3*mt*u*u
+            a1 = B1[:, None]*t1; a2 = B2[:, None]*t2
+            C00 = float((a1*a1).sum()); C01 = float((a1*a2).sum()); C11 = float((a2*a2).sum())
+            R = pts - ((mt**3)[:, None]*b0 + (u**3)[:, None]*b3)
+            X0 = float((a1*R).sum()); X1 = float((a2*R).sum())
+            det = C00*C11 - C01*C01; chord = float(np.hypot(*(b3-b0)))
+            if abs(det) < 1e-9:
+                al1 = al2 = chord/3.0
+            else:
+                al1 = (X0*C11 - C01*X1)/det; al2 = (C00*X1 - X0*C01)/det
+            lo, hi = chord*0.02, chord*1.5
+            al1 = min(max(al1, lo), hi); al2 = min(max(al2, lo), hi)
+            return (b0, b0 + t1*al1, b3 + t2*al2, b3)
+
+        def _fit_run(pts, depth=0):
+            if len(pts) < 3:
+                return [(pts[0], pts[0], pts[-1], pts[-1])]
+            t1 = _tan(pts, 0, 1); t2 = _tan(pts, -1, -2)
+            b = _fit_one(pts, t1, t2)
+            u = _u(pts); err = np.hypot(*(pts - _bev(b, u)).T)
+            if float(err.max()) <= tol or depth >= 16:
+                return [b]
+            k = int(err.argmax()); k = max(1, min(len(pts)-2, k))
+            return _fit_run(pts[:k+1], depth+1) + _fit_run(pts[k:], depth+1)
+
+        # ตรวจมุมคม (>38°) เพื่อคงมุม
+        cs = [0]
+        for i in range(1, n-1):
+            a = P[i]-P[i-1]; b = P[i+1]-P[i]
+            na = float(np.hypot(*a)); nb = float(np.hypot(*b))
+            if na < 1e-9 or nb < 1e-9:
+                continue
+            ang = np.degrees(np.arccos(max(-1.0, min(1.0, float(a@b)/(na*nb)))))
+            if ang > 38:
+                cs.append(i)
+        cs.append(n-1)
+        cs = sorted(set(cs))
+        Pcl = np.vstack([P, P[:1]])   # ปิดวง
+        beziers = []
+        for a, b in zip(cs[:-1], cs[1:]):
+            run = Pcl[a:b+1]
+            if len(run) >= 4:
+                beziers += _fit_run(run)
+            else:
+                beziers.append((run[0], run[0], run[-1], run[-1]))
+        # ช่วงสุดท้ายกลับมาปิดที่จุดเริ่ม
+        last = Pcl[cs[-1]:]
+        if len(last) >= 4:
+            beziers += _fit_run(last)
+        if not beziers:
+            raise ValueError('nofit')
+        start = (float(beziers[0][0][0]), float(beziers[0][0][1]))
+        segs = []
+        for (b0, c1, c2, b3) in beziers:
+            segs.append(('C', (float(c1[0]), float(c1[1])), (float(c2[0]), float(c2[1])), (float(b3[0]), float(b3[1]))))
+        return {'start': start, 'segs': segs, 'closed': True}
+    except Exception:
+        if len(ring) < 3:
+            return None
+        segs = [('L', (float(x), float(y))) for x, y in ring[1:]]
+        return {'start': (float(ring[0][0]), float(ring[0][1])), 'segs': segs, 'closed': True}
+
+
 def _offset_subs(subs_mm, kerf_mm, tool_mm):
     """ชดเชย kerf + ปัดมุมในตามดอกกัด — แบบ 'ทีละเส้น ตามชั้น (nesting)' เก็บทุกเส้นไว้ครบ.
     สำคัญ: ห้ามรวมทุกเส้นเป็นก้อนทึบเดียว (โมเดลเก่าจับตัวอักษร/เส้นบางที่อยู่ในกรอบเป็น 'รู'
@@ -172,10 +271,7 @@ def _offset_subs(subs_mm, kerf_mm, tool_mm):
     areas = [(p.area if p is not None else 0.0) for p in polys]
 
     def _ring_to_sub(ring):
-        if len(ring) < 3:
-            return None
-        segs = [('L', (float(x), float(y))) for x, y in ring[1:]]
-        return {'start': (float(ring[0][0]), float(ring[0][1])), 'segs': segs, 'closed': True}
+        return _fit_ring_to_sub(ring, tol=0.05)   # ฟิตเป็นเส้นโค้ง Bézier เนียน (SPLINE) แทน polyline
 
     out = []
     for i, p in enumerate(polys):
