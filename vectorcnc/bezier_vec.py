@@ -6,7 +6,7 @@ import math
 import ezdxf
 from . import trace_engine as te
 
-BEZIER_VERSION = "2026-07-10-spline+svgfit-pathsafe"   # ฟิต Bézier เนียน + preview วางทับต้นฉบับ (อ่านภาพ path-safe)
+BEZIER_VERSION = "2026-07-10-svg-visiblestroke"   # ฟิต Bézier เนียน + preview align + เส้น SVG ชัดทุกซูม
 
 
 def _shift(sp, ox, oy, sc=1.0):
@@ -55,9 +55,13 @@ def _subpath_height(sp):
 
 def _svg(all_subs, W, H, stroke='#2563eb', unit=''):
     body = ''.join(f'<path d="{_d(sp)}"/>' for sp in all_subs if sp['segs'])
+    # ความหนาเส้นสัมพันธ์กับขนาดงาน (กันเส้นบางจนมองไม่เห็นเมื่อเปิดไฟล์ มม. ที่กว้างมาก)
+    sw = max(0.5, max(float(W), float(H)) * 0.0018)
+    # vector-effect: non-scaling-stroke -> เส้นแสดงชัดทุกระดับซูม (ไม่จางหายเวลาซูมออก)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.2f}{unit}" height="{H:.2f}{unit}" '
             f'viewBox="0 0 {W:.2f} {H:.2f}">'
-            f'<g fill="none" stroke="{stroke}" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">'
+            f'<g fill="none" stroke="{stroke}" stroke-width="{sw:.2f}" vector-effect="non-scaling-stroke" '
+            f'stroke-linejoin="round" stroke-linecap="round">'
             f'{body}</g></svg>')
 
 
