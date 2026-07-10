@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v46 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v47 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1134,7 +1134,8 @@ function runNest(){
     if(j.error){$('nOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     lastNestDxf=j.dxf_base64||'';
     var stat='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
-      nchip('แผ่น',j.n_sheets)+nchip('ใช้วัสดุ',j.utilization+'%')+nchip('ชิ้น',j.qty)+nchip('ขนาดชิ้น',j.part_mm[0]+'×'+j.part_mm[1])+(j.unplaced?nchip('วางไม่ได้',j.unplaced):'')+'</div>';
+      nchip('แผ่น',j.n_sheets)+nchip('ใช้วัสดุ',j.utilization+'%')+nchip('แบบชิ้น',(j.pieces||1))+nchip('จำนวน/แบบ',j.qty)+nchip('ขนาดชิ้น',j.part_mm[0]+'×'+j.part_mm[1])+(j.unplaced?nchip('วางไม่ได้',j.unplaced):'')+'</div>'+
+      (j.split_dbg?('<div style="font-size:10px;color:#94a3b8;margin:-6px 0 8px">🔎 split: nlab='+j.split_dbg.nlab+' · pieces='+j.split_dbg.pieces+(j.split_dbg.err?(' · ERR: '+j.split_dbg.err):'')+'</div>'):'');
     var sheets=(j.sheets_svg||[]).map(function(s,i){
       var disp=s.replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
       return '<div style="margin-bottom:10px"><div style="font-size:11px;color:#8A99B5;margin-bottom:4px">แผ่น '+(i+1)+'</div><div style="border:1px solid #D6E0EE;border-radius:8px;padding:6px;background:#fff">'+disp+'</div></div>';}).join('');
