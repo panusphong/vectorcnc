@@ -9,7 +9,7 @@ from scipy.signal import fftconvolve
 from shapely.affinity import rotate as _rotate, translate as _translate
 import ezdxf
 
-NESTING_VERSION = "2026-07-10-edgefix+autofit+dimlines"   # gap ไม่กินขอบ + ลดขอบอัตโนมัติ + เส้นจับระยะ กว้าง×สูง ต่อชิ้น
+NESTING_VERSION = "2026-07-10-edgefix+autofit+dimlines+backfill"   # + ค้นทุกแผ่น เติมช่องว่างแพคแน่น
 
 
 def _raster(poly, res):
@@ -101,7 +101,7 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
     # ---- คุมงานไม่ให้ระเบิด (กัน 502/OOM/timeout บน Render ฟรี) เมื่อไฟล์ .ai มีชิ้นเยอะ ----
     MAX_INST = 600          # จำนวนชิ้นรวมสูงสุดที่จะจัดวาง (ที่เหลือ = unplaced ไม่ crash)
     MAX_SHEETS = 40         # เพดานจำนวนแผ่น
-    SEARCH_RECENT = 4       # ค้นหาช่องเฉพาะ N แผ่นล่าสุด (ไม่วนทุกแผ่น -> เร็วขึ้นมาก)
+    SEARCH_RECENT = 40      # ค้นทุกแผ่น (ย้อนเติมช่องว่างแผ่นแรกๆ เช่น กลางกรอบ -> แพคแน่น ประหยัดแผ่น)
     unplaced = 0
     if len(inst) > MAX_INST:
         unplaced += len(inst) - MAX_INST
