@@ -182,6 +182,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnLayer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
+    <button class="nav-btn" id="btnManual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -294,6 +295,213 @@ select.numin{cursor:pointer}
   <div id="mBody"></div>
   <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
 </div></div>
+
+<!-- ==================== คู่มือใช้งาน (ออนไลน์) ==================== -->
+<div id="manualOverlay" style="display:none;position:fixed;inset:0;z-index:120;background:#f1f5f9;overflow:auto">
+  <div style="position:sticky;top:0;z-index:2;background:#0f172a;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)">
+    <b style="font-size:16px">📖 คู่มือใช้งาน · Graphic Design Solution (VectorCNC)</b>
+    <span style="font-size:12px;color:#94a3b8">ระบบผลิตป้าย ภาพ→เส้นตัด→จัดวาง→โครงสร้าง 3 มิติ</span>
+    <button onclick="document.getElementById('manualOverlay').style.display='none'" style="margin-left:auto;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">✕ ปิดคู่มือ</button>
+  </div>
+  <div style="max-width:920px;margin:0 auto;padding:22px 18px 60px;font-family:Prompt,Arial,sans-serif;color:#1e293b;line-height:1.7">
+    <style>
+      #manualOverlay h2{font-size:19px;color:#0f172a;border-left:5px solid #4f46e5;padding-left:10px;margin:26px 0 10px}
+      #manualOverlay h3{font-size:15.5px;color:#4f46e5;margin:16px 0 6px}
+      #manualOverlay p{margin:6px 0}
+      #manualOverlay table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+      #manualOverlay th,#manualOverlay td{border:1px solid #cbd5e1;padding:6px 9px;text-align:left;vertical-align:top}
+      #manualOverlay th{background:#e0e7ff;color:#312e81}
+      #manualOverlay .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+      #manualOverlay .step{background:#f8fafc;border-left:3px solid #4f46e5;padding:8px 12px;margin:6px 0;border-radius:0 8px 8px 0}
+      #manualOverlay .tip{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}
+      #manualOverlay .warn{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}
+      #manualOverlay ol,#manualOverlay ul{margin:6px 0 6px 22px}
+      #manualOverlay .toc a{color:#4f46e5;text-decoration:none}
+      #manualOverlay .toc a:hover{text-decoration:underline}
+      #manualOverlay .pill{display:inline-block;background:#eef2ff;color:#4338ca;border-radius:100px;padding:1px 10px;font-size:12px;font-weight:700;margin-right:4px}
+    </style>
+
+    <div class="card">
+      <p style="font-size:15px;margin:0"><b>ระบบนี้คืออะไร:</b> เครื่องมือช่วยงานผลิตป้าย/ตัวอักษรครบวงจร — เปลี่ยน "ภาพลูกค้า" ให้เป็น "ไฟล์ตัด CNC/เลเซอร์" พร้อมจัดวางลงแผ่นวัตถุดิบ, แตกโครงสร้าง 3 มิติตามแบบป้าย, ประเมินขนาด/ราคา และบันทึกงาน — ทำงานบนเว็บ เข้าจากเครื่องไหนก็ได้</p>
+      <p style="margin:8px 0 0"><span class="pill">ไม่ต้องติดตั้ง</span><span class="pill">ใช้ผ่านเบราว์เซอร์</span><span class="pill">ทีมใช้ร่วมกันได้</span></p>
+    </div>
+
+    <div class="card toc">
+      <b>สารบัญ</b>
+      <ol>
+        <li><a href="#m1">ประโยชน์ของระบบ (ภาพรวม)</a></li>
+        <li><a href="#m2">ประโยชน์แยกตามฝ่าย</a></li>
+        <li><a href="#m3">เมนูหลัก 7 เมนู (ภาพรวม)</a></li>
+        <li><a href="#m4">คู่มือใช้งานทีละฟีเจอร์</a></li>
+        <li><a href="#m5">ความรู้ประเภทป้าย 1–7 + ค่าเผื่อ</a></li>
+        <li><a href="#m6">ตัวอย่าง Workflow (ตั้งแต่รับงานถึงตัด)</a></li>
+        <li><a href="#m7">เคล็ดลับ & ข้อควรระวัง</a></li>
+        <li><a href="#m8">คำถามที่พบบ่อย (FAQ)</a></li>
+        <li><a href="#m9">อภิธานศัพท์</a></li>
+      </ol>
+    </div>
+
+    <h2 id="m1">1. ประโยชน์ของระบบ (ภาพรวม)</h2>
+    <ul>
+      <li><b>ลดเวลางานกราฟิก:</b> ลูกค้าส่งมาแค่ภาพ (ถ่าย/AI/โหลดเน็ต) ระบบดราฟท์เป็นเวกเตอร์ .ai ให้ทันที ไม่ต้องลากเส้นเองทีละเส้น</li>
+      <li><b>ลดข้อผิดพลาดการผลิต:</b> ค่าเผื่อแต่ละชั้น (คิ้ว/อะคริลิค/แผ่นพื้น) คำนวณอัตโนมัติตามมาตรฐาน ไม่ต้องจำ ไม่ต้องบวกลบมือ</li>
+      <li><b>ประหยัดวัสดุ:</b> Nesting จัดวางชิ้นงานลงแผ่นให้แน่นที่สุด รู้จำนวนแผ่น/เปอร์เซ็นต์การใช้วัสดุก่อนตัดจริง</li>
+      <li><b>สื่อสารชัดเจน:</b> ภาพโครงสร้าง 3 มิติมีมิติ + เส้นจับขนาดต่อชิ้น ให้ช่างและลูกค้าเข้าใจตรงกัน</li>
+      <li><b>มาตรฐานเดียวทั้งทีม:</b> ทุกคนใช้ค่าเผื่อ/วิธีเดียวกัน งานออกมาสม่ำเสมอ</li>
+      <li><b>เก็บประวัติงาน:</b> บันทึก Job (ใคร/เมื่อไหร่/ลูกค้า/แบบ) ค้นย้อนหลังได้</li>
+    </ul>
+
+    <h2 id="m2">2. ประโยชน์แยกตามฝ่าย</h2>
+    <table>
+      <tr><th>ฝ่าย</th><th>ใช้ทำอะไร</th><th>ได้ประโยชน์</th></tr>
+      <tr><td><b>กราฟิก</b></td><td>ดราฟท์ภาพ→.ai, แปลงเส้นตัด, ทำชุดชั้นตัด</td><td>ประหยัดเวลาลากแบบ 60–80% มีเวกเตอร์ตั้งต้นเปิดใน Illustrator ต่อได้ทันที</td></tr>
+      <tr><td><b>เซลล์</b></td><td>ขนาดป้าย+จำลองผนัง, เสนอราคา, บันทึก Job</td><td>โชว์ลูกค้าเห็นภาพจริงบนผนัง คิดราคาเร็ว ปิดงานไว</td></tr>
+      <tr><td><b>ประเมินราคา</b></td><td>วัดขนาดจริง, W×H ต่อชิ้น, เส้นรอบรูป</td><td>รู้พื้นที่/ความยาวขอบแม่นยำ คิดต้นทุนวัสดุถูกต้อง</td></tr>
+      <tr><td><b>ฝ่ายผลิต / ช่างตัด CNC</b></td><td>รับไฟล์ DXF เส้นตัดคม, Nesting, ชุดชั้นตัดแยก layer</td><td>ไฟล์พร้อมเข้าเครื่อง (CypCut/fiber/เลเซอร์) เส้นเนียน ไม่ต้องแก้</td></tr>
+      <tr><td><b>ช่างประกอบ / หน้างาน</b></td><td>ดูภาพ 3 มิติมีมิติ, ตารางชั้น, ยกขอบ (พับ)</td><td>รู้ว่าชิ้นไหนคือชั้นไหน ประกอบถูก ไม่งง</td></tr>
+      <tr><td><b>ผู้จัดการ / เจ้าของ</b></td><td>ประวัติ Job, มาตรฐานค่าเผื่อ, ควบคุมของเสีย</td><td>งานสม่ำเสมอ ตรวจสอบย้อนหลังได้ ลดของเสีย/แก้งาน</td></tr>
+    </table>
+
+    <h2 id="m3">3. เมนูหลัก 7 เมนู (ภาพรวม)</h2>
+    <table>
+      <tr><th>เมนู</th><th>หน้าที่</th></tr>
+      <tr><td>✨ AI ออกแบบ</td><td>สร้าง/ช่วยออกแบบภาพต้นแบบ</td></tr>
+      <tr><td>หน้าแปลงเส้นตัด (หน้าหลัก)</td><td>ภาพ→เส้นตัด SVG/DXF, ดราฟท์→.ai, เลือกประเภทป้าย→ชุดชั้นตัด+3มิติ</td></tr>
+      <tr><td>▦ Nesting</td><td>จัดวางชิ้นงาน 1 ไฟล์ลงแผ่นวัตถุดิบ</td></tr>
+      <tr><td>🗂 จัดวางหลายไฟล์</td><td>รวมหลายไฟล์ (สูงสุด 10) จัดวางแผ่นเดียว แยกโซน+เส้นกั้น</td></tr>
+      <tr><td>🏭 ชุดชั้นตัด (ตามแบบป้าย)</td><td>แตกโครงสร้างป้าย 1–7 เป็นชั้นตัด + ภาพ 3 มิติ</td></tr>
+      <tr><td>📋 BOM Check Sheet</td><td>ใบตรวจรายการวัสดุ/ชิ้นงาน</td></tr>
+      <tr><td>📐 ขนาดป้าย + จำลองผนัง</td><td>วัดขนาดจริง, วางบนผนัง, ดู 3 มิติ, เสนอราคา, บันทึก Job</td></tr>
+    </table>
+
+    <h2 id="m4">4. คู่มือใช้งานทีละฟีเจอร์</h2>
+
+    <div class="card">
+      <h3>4.1 แปลงภาพเป็นเส้นตัด (หน้าหลัก)</h3>
+      <p><b>ใช้เมื่อ:</b> มีภาพ/โลโก้ ต้องการไฟล์ตัด CNC/เลเซอร์</p>
+      <div class="step">1) ลากไฟล์มาวาง (JPG/PNG/PSD หรือ AI/PDF/SVG/EPS)</div>
+      <div class="step">2) เลือกวัสดุ/เครื่อง (Fiber·สแตนเลส / Fiber·ซิงค์ / CO2·อะคริลิค / Router·ดอกกัด)</div>
+      <div class="step">3) เลือกโหมด (อัตโนมัติ/ตัดชิ้น/เส้น) + จำนวนสี</div>
+      <div class="step">4) <b>กำหนดขนาด</b> (กว้าง/สูง/สูงตัวอักษร มม.) — สำคัญมากกับภาพ JPG</div>
+      <div class="step">5) ตั้ง Kerf (ชดเชยลำ/ดอก) + ดอกกัด/ปัดมุม ถ้าต้องการ</div>
+      <div class="step">6) กด "⚡ แปลงเป็นเส้นตัด" → ดาวน์โหลด SVG/DXF</div>
+      <div class="tip">💡 DXF → CypCut/fiber · SVG → LightBurn · Fusion 360: Insert DXF · ดูไฟล์ให้เนียนสุดใน LibreCAD/Inkscape/LightBurn</div>
+    </div>
+
+    <div class="card">
+      <h3>4.2 ดราฟท์ภาพ → .ai (ให้กราฟิกทำต่อ)</h3>
+      <p><b>ใช้เมื่อ:</b> ลูกค้าส่งมาแค่ภาพ กราฟิกต้องได้เวกเตอร์ตั้งต้นเปิดใน Illustrator</p>
+      <div class="step">1) อัปโหลดภาพในหน้าหลัก → ใส่ขนาดจริง</div>
+      <div class="step">2) เลือกโหมด: อัตโนมัติ / ลายเส้นคม (ขาว-ดำ) / หลายสี</div>
+      <div class="step">3) กด "🎨 ดาวน์โหลด .ai (ให้กราฟิก)"</div>
+      <p><b>ได้:</b> ไฟล์ .ai เวกเตอร์ (path แยกชิ้น แก้ได้) ขนาดจริงตามงาน</p>
+      <div class="tip">💡 ภาพลายเส้น/โลโก้ → auto เลือกโหมดคมกริบให้เอง · ภาพสีเรียบ → แยกสีเป็น path คนละชั้น</div>
+    </div>
+
+    <div class="card">
+      <h3>4.3 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</h3>
+      <p><b>ใช้เมื่อ:</b> ทำป้ายตัวอักษร/กล่องไฟที่มีโครงสร้างหลายชั้น (ไม่ใช่แผ่นแบน)</p>
+      <div class="step">1) อัปโหลดตัวอักษร/โลโก้ + <b>กำหนดขนาด</b></div>
+      <div class="step">2) เลือก "ประเภทป้าย" (1–7) — มีภาพโครงสร้างให้ดู</div>
+      <div class="step">3) กด "🏭 ชุดชั้นตัด + 3 มิติ"</div>
+      <p><b>ได้:</b></p>
+      <ul>
+        <li>ภาพ 3 มิติมีมิติ (สูง/กว้าง/ลึก) เห็นผนังข้าง + คิ้วเจาะโบ๋</li>
+        <li>เส้นตัดแยกชั้นตามวัสดุ: คิ้ว (เจาะโบ๋) · อะคริลิค (−0.25) · แผ่นพื้น (+0.1)</li>
+        <li>ยกขอบเป็นแถบพับ (ยาว = เส้นรอบรูป × สูง)</li>
+        <li>DXF แยก layer ต่อชั้น + สเปคชีตจับขนาดต่อชิ้น</li>
+      </ul>
+      <div class="warn">⚠️ ภาพ JPG/PNG ไม่มีขนาดกำกับในไฟล์ (ต่างจาก .ai) — ต้องกำหนดขนาดก่อนเสมอ ไม่งั้นชิ้นงานจะผิดขนาด</div>
+    </div>
+
+    <div class="card">
+      <h3>4.4 Nesting — จัดวาง 1 ไฟล์ลงแผ่น</h3>
+      <p><b>ใช้เมื่อ:</b> รู้ชิ้นงานแล้ว ต้องการจัดลงแผ่นวัตถุดิบให้ประหยัด</p>
+      <div class="step">1) เลือกโหมด: แยกชิ้นย่อย (ตัดทุกเส้น แพคชิด) หรือ ทั้งป้าย (เฉพาะกรอบนอก)</div>
+      <div class="step">2) เลือกแผ่น (อะคริลิค 1220×2440 / โลหะ 1200×2400…) หรือกำหนดเอง</div>
+      <div class="step">3) กำหนด กว้าง×สูงชิ้น (🔒 ล็อกสัดส่วน) + จำนวน + เว้นระยะ</div>
+      <div class="step">4) กด "▦ จัดวาง" → เห็นจำนวนแผ่น/ใช้วัสดุ% + เส้นจับขนาดต่อชิ้น → โหลด DXF</div>
+    </div>
+
+    <div class="card">
+      <h3>4.5 จัดวางหลายไฟล์รวมแผ่น</h3>
+      <p><b>ใช้เมื่อ:</b> มีหลายงาน/หลายไฟล์ อยากตัดรวมแผ่นเดียวประหยัดสุด</p>
+      <div class="step">1) ลากไฟล์ (สูงสุด 10) → แต่ละไฟล์ได้รหัส A/B/C… คนละสี</div>
+      <div class="step">2) ตั้งค่าต่อไฟล์: ขนาด (🔒), จำนวน, โหมด (แยกชิ้น/ทั้งป้าย)</div>
+      <div class="step">3) เลือกแผ่น + เว้นระยะ + ช่องเส้นกั้น → กด "จัดวางรวม"</div>
+      <p><b>ได้:</b> จัดวางแบบแยกโซนต่อไฟล์ + <b>เส้นกั้น</b> + ป้ายรหัส (เก็บชิ้นออกจากเครื่องง่าย) · DXF รวมทุกแผ่น / แยก DXF รายไฟล์ / PDF พรีวิว</p>
+    </div>
+
+    <div class="card">
+      <h3>4.6 ขนาดป้าย + จำลองผนัง</h3>
+      <p><b>ใช้เมื่อ:</b> เซลล์ต้องการวัดขนาด เสนอราคา และโชว์ลูกค้า</p>
+      <div class="step">1) วัดขนาดจริงจากภาพ</div>
+      <div class="step">2) วางชิ้นงานบนภาพผนัง (ปรับสเกล/หมุน) — มีกล่องราคา (font Prompt) + กว้าง×สูง</div>
+      <div class="step">3) ดู "🧊 3 มิติ · หมุนรอบตัว" (แผ่นหนา/ตัวนูน/ป้ายไฟ)</div>
+      <div class="step">4) Export JPG/PDF (มีขนาด+ระยะจากผนัง) · 💾 บันทึกงาน / 🔎 ค้นหางาน</div>
+      <div class="tip">💡 ส่งขนาดเข้าแอปประเมินราคาอัตโนมัติ / ใส่ลง BOM Check Sheet ได้</div>
+    </div>
+
+    <div class="card">
+      <h3>4.7 BOM Check Sheet</h3>
+      <p><b>ใช้เมื่อ:</b> ต้องการใบตรวจรายการวัสดุ/ชิ้นงานก่อนผลิต — โหลดข้อมูลจากใบสั่งผลิต แล้วตรวจครบถ้วน</p>
+    </div>
+
+    <h2 id="m5">5. ความรู้ประเภทป้าย 1–7 + ค่าเผื่อ</h2>
+    <p>ป้าย/ตัวอักษรเป็นงาน "ประกอบหลายชั้น" แต่ละชั้นตัดคนละวัสดุ และตัดขนาดต่างกันเล็กน้อย (ค่าเผื่อ/offset) จาก "ไซซ์เต็ม" เพื่อประกอบพอดี</p>
+    <table>
+      <tr><th>#</th><th>รูปแบบ</th><th>ชั้นตัด (ค่าเผื่อ)</th><th>ยกขอบ (ผนัง·พับ)</th></tr>
+      <tr><td>1</td><td>ไฟออกหน้า มีคิ้ว</td><td>คิ้ว (เจาะโบ๋·เต็ม) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
+      <tr><td>2</td><td>ไฟออกหน้า ไม่มีคิ้ว</td><td>หน้าอะคริลิค +0.1 · ไส้อะคริลิคใส −0.15 · แผ่นพื้น เต็ม</td><td>5 ซม.</td></tr>
+      <tr><td>3</td><td>ไฟออกรอบ (halo)</td><td>หน้าอะคริลิค เต็ม · แผ่นพื้น +0.1</td><td>ใน 2 ซม. + อะคริลิค 7 ซม.</td></tr>
+      <tr><td>4</td><td>กล่องไฟ 1 หน้า</td><td>คิ้ว (เจาะโบ๋) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
+      <tr><td>5</td><td>กล่องไฟ 2 หน้า</td><td>คิ้ว (เจาะโบ๋) · อะคริลิค −0.25</td><td>นอก 10 ซม. + ใน 2 ซม.</td></tr>
+      <tr><td>6</td><td>งานยกขอบ</td><td>ซิ้งค์ เต็ม</td><td>2.5 ซม. + ขากลางยกลอย</td></tr>
+      <tr><td>7</td><td>งานยกขอบ มีไส้</td><td>หน้าซิ้งค์ เต็ม · ไส้พลาสวูด −0.16</td><td>2.5 ซม.</td></tr>
+    </table>
+    <p><b>หลักค่าเผื่อ:</b> <b>ไซซ์เต็ม (0)</b> = เส้นออกแบบจริง (หน้า/คิ้ว/ซิ้งค์) · <b>+0.1</b> = ขยาย (แผ่นพื้น) · <b>−0.25</b> = หด (อะคริลิคตู้ไฟ) · <b>−0.15/−0.16</b> = หด (ไส้ใน) · <b>คิ้ว = เจาะโบ๋</b> (กรอบกลวงตามความกว้างคิ้ว) · <b>ยกขอบ</b> = ตัดเป็นแถบยาว=เส้นรอบรูป แล้วพับ</p>
+
+    <h2 id="m6">6. ตัวอย่าง Workflow (รับงาน → ตัด)</h2>
+    <ol>
+      <li><b>เซลล์รับงาน:</b> ลูกค้าส่งภาพโลโก้ → "ขนาดป้าย+จำลองผนัง" วางบนผนัง เสนอราคา บันทึก Job</li>
+      <li><b>กราฟิก:</b> อัปโหลดภาพ → "🎨 .ai" ได้เวกเตอร์ → เก็บรายละเอียดใน Illustrator</li>
+      <li><b>เตรียมผลิต:</b> เลือกประเภทป้าย (เช่น 1 ไฟออกหน้า มีคิ้ว) → ใส่ขนาด → "🏭 ชุดชั้นตัด+3มิติ" → ได้ภาพ 3 มิติ + เส้นตัดแยกชั้น + ยกขอบ</li>
+      <li><b>จัดแผ่น:</b> "จัดวางหลายไฟล์" รวมงานหลายชิ้น → DXF รวม/แยกไฟล์ + เส้นกั้น</li>
+      <li><b>ช่างตัด:</b> เปิด DXF ในเครื่องตัด (เลือก layer วัสดุ) → ตัด</li>
+      <li><b>ช่างประกอบ:</b> ดูภาพ 3 มิติ + ตารางชั้น → ประกอบตามชั้น (คิ้ว/อะคริลิค/แผ่นพื้น/พับยกขอบ)</li>
+    </ol>
+
+    <h2 id="m7">7. เคล็ดลับ & ข้อควรระวัง</h2>
+    <ul>
+      <li><span class="pill">สำคัญ</span> <b>กำหนดขนาดก่อนสร้างไฟล์เสมอ</b> — ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai</li>
+      <li>ล็อกสัดส่วน 🔒 ไว้ กันภาพยืด/บิด (ปลดล็อก 🔓 เมื่ออยากยืด/หดอิสระ)</li>
+      <li>เปิด DXF ในโปรแกรมพื้นฐาน (Windows preview) เส้นโค้งจะดูหยาบเอง — ให้ดูใน LibreCAD/LightBurn/Inkscape จะเห็นเส้นเนียนจริง</li>
+      <li>ตั้ง Kerf ให้ตรงกับลำ/ดอกจริง เพื่อให้ชิ้นประกอบพอดี</li>
+      <li>ยกขอบ (แผ่นข้าง) = ตัดเป็นแถบแล้วพับ ความยาวใช้เส้นรอบรูป — ตรวจก่อนดัด</li>
+    </ul>
+
+    <h2 id="m8">8. คำถามที่พบบ่อย (FAQ)</h2>
+    <p><b>Q: เส้น DXF ดูยึกยัก?</b><br>A: ตัวไฟล์เนียน แต่โปรแกรมดูพื้นฐานจะแตกเส้นโค้งหยาบเอง — เปิดใน LibreCAD/LightBurn/Inkscape</p>
+    <p><b>Q: Nesting วางไม่ได้/ว่างเปล่า?</b><br>A: เช็กว่าขนาดชิ้นไม่ใหญ่เกินแผ่น และเว้นระยะไม่มากเกินไป</p>
+    <p><b>Q: ทำไมต้องใส่ขนาดทุกครั้ง?</b><br>A: ภาพ JPG/PNG ไม่มีหน่วยจริงในไฟล์ ระบบต้องรู้ว่าจะให้กว้าง/สูงเท่าไหร่จึงจะสเกลถูก</p>
+    <p><b>Q: คิ้วทำไมต้องเจาะโบ๋?</b><br>A: คิ้วคือขอบลิปด้านหน้า (กว้าง ~1 ซม.) เจาะกลางทะลุให้แสง/อะคริลิคโผล่ — ไม่ใช่แผ่นตัน</p>
+
+    <h2 id="m9">9. อภิธานศัพท์</h2>
+    <table>
+      <tr><th>คำ</th><th>ความหมาย</th></tr>
+      <tr><td>Kerf</td><td>ความกว้างร่องตัดที่ลำเลเซอร์/ดอกกัดกินเนื้อ — ต้องชดเชยให้ชิ้นพอดี</td></tr>
+      <tr><td>Nesting</td><td>การจัดวางชิ้นงานหลายชิ้นลงแผ่นวัตถุดิบให้ประหยัดที่สุด</td></tr>
+      <tr><td>คิ้ว</td><td>ขอบลิปด้านหน้าของตัวอักษร (เจาะโบ๋)</td></tr>
+      <tr><td>ยกขอบ / ผนัง</td><td>แผ่นข้างตั้งฉากแผ่นหลัง (return) — ตัดเป็นแถบแล้วพับ</td></tr>
+      <tr><td>แผ่นพื้น</td><td>แผ่นหลัง (back plate) ของตัวอักษร</td></tr>
+      <tr><td>ไซซ์เต็ม</td><td>ขนาดออกแบบจริง (ค่าเผื่อ = 0)</td></tr>
+      <tr><td>ค่าเผื่อ (offset)</td><td>ขยาย/หดเส้นต่อชั้น ให้ประกอบซ้อนพอดี</td></tr>
+      <tr><td>DXF / SVG / .ai</td><td>ไฟล์เวกเตอร์ — DXF/SVG เข้าเครื่องตัด · .ai แก้ใน Illustrator</td></tr>
+    </table>
+
+    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:30px">Graphic Design Solution · โดย Saai Tech — คู่มือฉบับใช้งานภายใน</p>
+  </div>
+</div>
 
 <div class="modal csm" id="csOverlay">
   <div class="csm-card">
@@ -464,7 +672,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v55 · 3D-Extrude</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v57 · NestByMat</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1183,7 +1391,7 @@ function runNest(){
 $('btnNest').onclick=openNesting;
 
 // ==================== จัดวางหลายไฟล์รวมแผ่น (แยกโซน + เส้นกั้น) ====================
-var MF=[], MFSHEET={w:1220,h:2440}, MFB64={combined:'',pdf:'',files:[]};
+var MF=[], MFSHEET={w:1220,h:2440}, MFB64={combined:'',pdf:'',files:[]}, MFLS=false;
 var MF_COLORS=['#2563EB','#16a34a','#dc2626','#9333ea','#ea580c','#0891b2','#ca8a04','#db2777','#4f46e5','#0d9488'];
 function mfLabel(i){return String.fromCharCode(65+i);}
 function openMulti(){
@@ -1194,6 +1402,7 @@ function openMulti(){
      '<div style="font-size:13px;color:#5A6B8C">🗂 ลากไฟล์มาวาง หรือคลิกเลือก (สูงสุด 10 ไฟล์)</div>'+
      '<div style="font-size:11px;color:#94a3b8;margin-top:3px">.ai .pdf .svg .png .jpg .psd</div>'+
      '<input type="file" id="mfInput" multiple accept=".ai,.pdf,.svg,.png,.jpg,.jpeg,.psd" style="display:none"></div>'+
+   '<button class="chip '+(MFLS?'on':'')+'" id="mfLS" style="width:100%;margin-bottom:8px;font-size:12.5px;'+(MFLS?'background:#4f46e5;color:#fff;border-color:#4f46e5':'')+'">🏭 ตัดตามโครงสร้างป้าย (แยกชั้นวัสดุ) : '+(MFLS?'เปิด':'ปิด')+'</button>'+
    '<div id="mfList"></div>'+
    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px" id="mfSheets">'+
      '<button class="chip on" data-w="1220" data-h="2440">อะคริลิค 1220×2440</button>'+
@@ -1213,14 +1422,16 @@ function openMulti(){
   dz.ondragleave=function(){dz.style.background='#f8fafc';};
   dz.ondrop=function(e){e.preventDefault();dz.style.background='#f8fafc';mfAdd(e.dataTransfer.files);};
   fin.onchange=function(){mfAdd(fin.files);fin.value='';};
+  if($('mfLS'))$('mfLS').onclick=function(){MFLS=!MFLS;openMulti();};
   $('mfGo').onclick=runMulti;
+  $('mfGo').textContent=MFLS?'🏭 ตัดตามโครงสร้าง (แยกวัสดุ)':'▦ จัดวางรวม';
   mfRender();
 }
 function mfAdd(files){
   for(var i=0;i<files.length;i++){
     if(MF.length>=10){alert('สูงสุด 10 ไฟล์');break;}
     var f=files[i];
-    MF.push({file:f,name:f.name,wmm:600,hmm:0,qty:1,mode:'parts',asp:0,on:true});
+    MF.push({file:f,name:f.name,wmm:600,hmm:0,qty:1,mode:'parts',type:'1',asp:0,on:true});
   }
   mfRender();
 }
@@ -1241,9 +1452,15 @@ function mfRender(){
         '<button class="chip mfLock '+(m.lock!==false?'on':'')+'" data-i="'+i+'" title="ล็อกสัดส่วน" style="height:34px;min-width:36px;font-size:14px">'+(m.lock!==false?'🔒':'🔓')+'</button>'+
         '<div style="width:56px"><label style="font-size:10px;color:#5A6B8C">จำนวน</label><input class="numin mfQ" data-i="'+i+'" type="number" value="'+m.qty+'" min="1" style="padding:5px"></div>'+
       '</div>'+
-      '<div style="display:flex;gap:6px;margin-top:6px">'+
+      (MFLS?
+        ('<div style="margin-top:6px"><label style="font-size:10px;color:#5A6B8C">ประเภทป้าย (แตกชั้นวัสดุ)</label>'+
+         '<select class="numin mfType" data-i="'+i+'" style="padding:5px">'+
+           ['1·ไฟออกหน้า มีคิ้ว','2·ไฟออกหน้า ไม่มีคิ้ว','3·ไฟออกรอบ','4·กล่องไฟ 1 หน้า','5·กล่องไฟ 2 หน้า','6·งานยกขอบ','7·งานยกขอบ มีไส้'].map(function(t,k){var v=''+(k+1);return '<option value="'+v+'"'+(m.type===v?' selected':'')+'>'+t+'</option>';}).join('')+
+         '</select></div>')
+        :
+        ('<div style="display:flex;gap:6px;margin-top:6px">'+
         '<button class="chip mfMode '+(m.mode==='parts'?'on':'')+'" data-i="'+i+'" data-m="parts" style="flex:1;font-size:11px">🔤 แยกชิ้นย่อย</button>'+
-        '<button class="chip mfMode '+(m.mode==='whole'?'on':'')+'" data-i="'+i+'" data-m="whole" style="flex:1;font-size:11px">▭ ทั้งป้าย (กรอบนอก)</button></div>'+
+        '<button class="chip mfMode '+(m.mode==='whole'?'on':'')+'" data-i="'+i+'" data-m="whole" style="flex:1;font-size:11px">▭ ทั้งป้าย (กรอบนอก)</button></div>'))+
     '</div>';
   }
   el.innerHTML=h;
@@ -1255,12 +1472,14 @@ function mfRender(){
   q('.mfQ').forEach(function(x){x.oninput=function(){MF[+this.getAttribute('data-i')].qty=Math.max(1,+this.value||1);};});
   q('.mfLock').forEach(function(x){x.onclick=function(){var i=+this.getAttribute('data-i');MF[i].lock=(MF[i].lock===false);this.textContent=MF[i].lock!==false?'🔒':'🔓';this.classList.toggle('on',MF[i].lock!==false);};});
   q('.mfMode').forEach(function(x){x.onclick=function(){var i=+this.getAttribute('data-i');MF[i].mode=this.getAttribute('data-m');mfRender();};});
+  q('.mfType').forEach(function(x){x.onchange=function(){MF[+this.getAttribute('data-i')].type=this.value;};});
 }
 function mfSyncH(i){var e=document.querySelector('.mfH[data-i="'+i+'"]');if(e)e.value=MF[i].hmm;}
 function mfSyncW(i){var e=document.querySelector('.mfW[data-i="'+i+'"]');if(e)e.value=MF[i].wmm;}
 function runMulti(){
   var sel=MF.filter(function(m){return m.on;});
   if(!sel.length){alert('เลือกไฟล์อย่างน้อย 1 ไฟล์');return;}
+  if(MFLS){runMultiLS();return;}
   $('mfGo').disabled=true;$('mfGo').textContent='⏳ กำลังจัดวาง...';
   $('mfOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวางรวม (อาจนานสักครู่)...</div></div>';
   var fd=new FormData();
@@ -1292,6 +1511,35 @@ function runMulti(){
     if($('mfDlPdf'))$('mfDlPdf').onclick=function(){if(MFB64.pdf)dlB64(MFB64.pdf,'nest_preview.pdf','application/pdf');};
     document.querySelectorAll('.mfFileDl').forEach(function(x){x.onclick=function(){var f=MFB64.files[+this.getAttribute('data-k')];if(f)dlB64(f.dxf_base64,'cut_'+f.label+'.dxf','application/dxf');};});
   }).catch(function(e){$('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';$('mfOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
+}
+function runMultiLS(){
+  $('mfGo').disabled=true;$('mfGo').textContent='⏳ กำลังแตกชั้น...';
+  $('mfOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังแตกชั้นตามแบบป้าย + จัดวางแยกตามวัสดุ...</div></div>';
+  var fd=new FormData();
+  var meta={sheet_w:MFSHEET.w,sheet_h:MFSHEET.h,gap:+($('mfGap').value||5),divider_gap:+($('mfDiv').value||14),files:[]};
+  var n=0;
+  for(var i=0;i<MF.length;i++){var m=MF[i];if(!m.on)continue;
+    if(!(+m.wmm>0)){alert('ไฟล์ '+mfLabel(i)+': กำหนดขนาด (กว้าง มม.) ก่อน');$('mfGo').disabled=false;$('mfGo').textContent='🏭 ตัดตามโครงสร้าง (แยกวัสดุ)';return;}
+    meta.files.push({label:mfLabel(i),name:m.name,sign_type:m.type||'1',real_width_mm:m.wmm||600,real_height_mm:(m.lock!==false?0:(m.hmm||0)),qty:m.qty,n_colors:6});
+    fd.append('file'+n,m.file);n++;}
+  fd.append('meta',JSON.stringify(meta));
+  fetch((API||'')+'/api/nest-layerset',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    $('mfGo').disabled=false;$('mfGo').textContent='🏭 ตัดตามโครงสร้าง (แยกวัสดุ)';
+    if(j.error){$('mfOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
+    var dlB64=function(b64,name){var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();};
+    var html='<div style="font-size:12px;color:#334155;margin-bottom:8px;font-weight:700">แยกตัดตามวัสดุ · '+(j.n_files||0)+' ไฟล์ → '+((j.materials||[]).length)+' วัสดุ (แต่ละวัสดุคนละแผ่น)</div>';
+    (j.materials||[]).forEach(function(mt,mi){
+      var sheets=(mt.sheets_svg||[]).map(function(s,i){var disp=s.replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+        return '<div style="margin-bottom:8px"><div style="font-size:10px;color:#8A99B5;margin-bottom:3px">แผ่น '+(i+1)+'</div><div style="border:1px solid #D6E0EE;border-radius:8px;padding:6px;background:#fff;max-height:40vh;overflow:auto">'+disp+'</div></div>';}).join('');
+      html+='<div style="border:1px solid #dbe4f0;border-radius:10px;padding:10px;margin-bottom:10px;background:#fbfcfe">'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap"><b style="font-size:14px;color:#0f172a">🧱 '+mt.material+'</b>'+
+        '<span style="font-size:11px;color:#5A6B8C">'+mt.pieces+' ชิ้น · '+mt.n_sheets+' แผ่น · ใช้วัสดุ '+mt.utilization+'%'+(mt.unplaced?(' · วางไม่ได้ '+mt.unplaced):'')+'</span>'+
+        '<button class="btn primary mtDl" data-mi="'+mi+'" style="margin-left:auto;padding:5px 12px;font-size:12px">⬇ DXF</button></div>'+sheets+'</div>';
+    });
+    html+='<button class="btn ghost" style="width:100%;margin-top:4px" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">✕ ปิดหน้าต่าง</button>';
+    $('mfOut').innerHTML=html;
+    document.querySelectorAll('.mtDl').forEach(function(x){x.onclick=function(){var mt=j.materials[+this.getAttribute('data-mi')];if(mt&&mt.dxf_base64)dlB64(mt.dxf_base64,'cut_'+mt.material+'.dxf');};});
+  }).catch(function(e){$('mfGo').disabled=false;$('mfGo').textContent='🏭 ตัดตามโครงสร้าง (แยกวัสดุ)';$('mfOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnMulti').onclick=openMulti;
 
@@ -1417,6 +1665,7 @@ function runLayer(){
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('lsOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnLayer').onclick=openLayer;
+if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก (เลือกประเภทป้าย + ขนาด ตั้งแต่แรก)
 $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
