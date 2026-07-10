@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v41 · 3D</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v42 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -509,6 +509,10 @@ select.numin{cursor:pointer}
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <button class="btn" id="wOpen3D" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🧊 ดูแบบ 3D · หมุนรอบตัว</button>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" id="wSaveJob" style="flex:1;background:#0ea5e9;color:#fff;border:none;font-weight:700">💾 บันทึกงาน</button>
+        <button class="btn" id="wFindJob" style="flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--ink);font-weight:700">🔎 ค้นหางาน</button>
+      </div>
       <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2)">
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">🧮 ประเมินราคา (ในตัว · realtime)</div>
         <div id="wPSplitWrap" style="display:none">
@@ -596,6 +600,46 @@ select.numin{cursor:pointer}
       </div>
       <button class="btn" id="v3dSnap" type="button" style="width:100%;margin-top:14px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📸 บันทึกภาพ 3D</button>
       <div class="hint" style="margin-top:10px;font-size:11px">ลากเมาส์ = หมุน · สกอลล์ = ซูม</div>
+    </div>
+  </div>
+</div></div>
+<!-- ===== 💾 บันทึก/ค้นหา งาน (Jobs) ===== -->
+<div class="modal" id="jobsOverlay"><div class="modal-card" style="width:88vw;max-width:900px;padding:0;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <b style="font-size:15px">🗂️ งานจำลองผนัง (Jobs) — บันทึก / ค้นหา</b>
+    <button class="chip" id="jbClose" type="button">✕ ปิด</button>
+  </div>
+  <div style="padding:14px 18px;max-height:78vh;overflow:auto">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="chip on" id="jbTabSave" type="button" style="flex:1">💾 บันทึกงานนี้</button>
+      <button class="chip" id="jbTabFind" type="button" style="flex:1">🔎 ค้นหางาน</button>
+    </div>
+
+    <div id="jbPanelSave">
+      <label class="cslab">ชื่องาน</label>
+      <input class="numin" id="jbName" placeholder="เช่น ป้าย HANSA TENNIS CLUB">
+      <label class="cslab" style="margin-top:8px">ชื่อลูกค้า</label>
+      <input class="numin" id="jbCust" placeholder="เช่น คุณสมชาย / บริษัท ...">
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">ผู้ทำ: <b id="jbUser" style="color:var(--ink)">—</b> · จะบันทึกภาพจำลอง + ขนาด/ราคา + ดีไซน์ (เปิดแก้ต่อได้)</div>
+      <button class="btn primary" id="jbSaveBtn" style="width:100%;margin-top:12px">💾 บันทึกงาน</button>
+    </div>
+
+    <div id="jbPanelFind" style="display:none">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px"><label class="cslab">ผู้ทำ</label><input class="numin" id="jbSUser" placeholder="ชื่อพนักงาน"></div>
+        <div style="flex:1;min-width:120px"><label class="cslab">ลูกค้า/ชื่องาน</label><input class="numin" id="jbSQ" placeholder="คำค้น"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px"><label class="cslab">ตั้งแต่วันที่</label><input class="numin" id="jbSFrom" type="date"></div>
+        <div style="flex:1;min-width:120px"><label class="cslab">ถึงวันที่</label><input class="numin" id="jbSTo" type="date"></div>
+      </div>
+      <button class="btn primary" id="jbFindBtn" style="width:100%;margin-top:10px">🔎 ค้นหา</button>
+      <div id="jbResults" style="margin-top:12px;font-size:13px;color:var(--muted)">พิมพ์เงื่อนไขแล้วกดค้นหา</div>
+    </div>
+
+    <div class="csm2-setbar" style="margin-top:14px;border-top:1px solid var(--line);padding:10px 0 0">⚙ ลิงก์ Apps Script (Jobs /exec):
+      <input id="jbApiUrl" placeholder="วาง Web App URL ที่ลงท้าย /exec">
+      <button class="btn ghost" id="jbApiSave" style="padding:5px 12px;font-size:11.5px">บันทึกลิงก์</button>
     </div>
   </div>
 </div></div>
@@ -800,6 +844,139 @@ function $(id){return document.getElementById(id);}
     var bg=document.querySelectorAll('.v3d-bg');
     for(var k=0;k<bg.length;k++){ (function(el){ el.onclick=function(){ for(var j=0;j<bg.length;j++)bg[j].classList.remove('on'); el.classList.add('on'); curBg=el.getAttribute('data-bg'); if(scene)scene.background=new THREE.Color(bgColor()); }; })(bg[k]); }
     var dl=q('v3dSnap'); if(dl) dl.onclick=function(){ try{ var cv=q('v3dCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='sign-3d.png'; a.click(); }catch(_e){} };
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+
+/* ===== 🗂️ Jobs: บันทึก/ค้นหางานจำลองผนัง (Google Sheet ผ่าน Apps Script) ===== */
+(function(){
+  var JBKEY='saai_jobs_api';
+  function q(id){return document.getElementById(id);}
+  function jobsUrl(){ try{return localStorage.getItem(JBKEY)||'';}catch(e){return '';} }
+  var _jp=0;
+  function jobsJsonp(url,cb){
+    var name='__jbjp'+(++_jp), s=document.createElement('script');
+    var t=setTimeout(function(){cleanup();cb({ok:false,error:'timeout'});},20000);
+    function cleanup(){clearTimeout(t);try{delete window[name];}catch(e){window[name]=null;}if(s.parentNode)s.parentNode.removeChild(s);}
+    window[name]=function(d){cleanup();cb(d);};
+    s.src=url+(url.indexOf('?')<0?'?':'&')+'callback='+name;
+    s.onerror=function(){cleanup();cb({ok:false,error:'โหลดไม่ได้ (ตรวจลิงก์/สิทธิ์ Anyone)'});};
+    document.body.appendChild(s);
+  }
+  function serializeDesign(){
+    var gv=function(id){return q(id)?q(id).value:'';};
+    var clean=function(o,skip){ var r={}; for(var k in o){ if(k[0]==='_')continue; if(skip&&skip.indexOf(k)>=0)continue; r[k]=o[k]; } return r; };
+    return {
+      v:1,
+      wall:{ w:gv('wWall'), h:gv('hWall'), color:gv('wColor'),
+             night:(q('wNight')&&q('wNight').checked), ratio:gv('wRatio'), mode:gv('wMode'),
+             bg:(window.wallBgImg?window.wallBgImg.src:'') },
+      sign:{ img:(window.wallImg?window.wallImg.src:''), pos:window.wallPos||{fx:0.5,fy:0.5} },
+      textBoxes:(window.textBoxes||[]).map(function(t){return clean(t);}),
+      wLogos:(window.wLogos||[]).map(function(L){ var o=clean(L,['img','_silCanvas']); o.src=(L.img?L.img.src:(L.src||'')); return o; }),
+      shapes:(window.shapes||[]).map(function(s){return clean(s);}),
+      wmode:(typeof WMODE!=='undefined'?WMODE:'design')
+    };
+  }
+  function applyDesign(d){
+    if(!d) return;
+    try{
+      if(d.wall){ if(q('wWall'))q('wWall').value=d.wall.w; if(q('hWall'))q('hWall').value=d.wall.h;
+        if(q('wColor')&&d.wall.color)q('wColor').value=d.wall.color;
+        if(q('wNight'))q('wNight').checked=!!d.wall.night;
+        if(q('wRatio')&&d.wall.ratio!=null&&d.wall.ratio!=='')q('wRatio').value=d.wall.ratio;
+        if(q('wMode')&&d.wall.mode)q('wMode').value=d.wall.mode; }
+      window.textBoxes=(d.textBoxes||[]).map(function(t){var o={};for(var k in t)o[k]=t[k];return o;});
+      window.shapes=(d.shapes||[]).map(function(s){var o={};for(var k in s)o[k]=s[k];return o;});
+      window._txtSel=-1; window._shpSel=-1; window._lgSel=-1;
+      if(typeof WMODE!=='undefined'&&d.wmode) window.WMODE=d.wmode;
+      if(d.sign&&d.sign.pos) window.wallPos=d.sign.pos;
+      var pending=0, done=function(){ if(--pending<=0){ try{wallDraw();}catch(e){} } };
+      window.wLogos=[];
+      (d.wLogos||[]).forEach(function(L){ var o={};for(var k in L)o[k]=L[k]; window.wLogos.push(o);
+        if(L.src){ pending++; var im=new Image(); im.onload=function(){o.img=im; if(!o.ar)o.ar=im.height/im.width; done();}; im.onerror=done; im.src=L.src; } });
+      if(d.sign&&d.sign.img){ pending++; var si=new Image(); si.onload=function(){window.wallImg=si; done();}; si.onerror=done; si.src=d.sign.img; }
+      else window.wallImg=null;
+      if(d.wall&&d.wall.bg){ pending++; var bg=new Image(); bg.onload=function(){window.wallBgImg=bg; done();}; bg.onerror=done; bg.src=d.wall.bg; }
+      else window.wallBgImg=null;
+      if(pending===0){ try{wallDraw();}catch(e){} }
+    }catch(e){ try{wallDraw();}catch(_){} }
+  }
+  function _thumb(src,mx){ try{ var t=document.createElement('canvas'); var sc=mx/Math.max(src.width,src.height); t.width=Math.max(1,Math.round(src.width*sc)); t.height=Math.max(1,Math.round(src.height*sc)); t.getContext('2d').drawImage(src,0,0,t.width,t.height); return t.toDataURL('image/jpeg',0.6);}catch(e){return '';} }
+  function saveJob(){
+    var url=jobsUrl(); if(!url){ alert('ยังไม่ได้ตั้งลิงก์สคริปต์ Jobs (วางลิงก์ /exec ด้านล่างก่อน)'); return; }
+    var ex=null; try{ ex=(typeof wallExportCanvas==='function'&&wallExportCanvas())||q('wCanvas'); }catch(e){ ex=q('wCanvas'); }
+    var image=''; try{ image=ex.toDataURL('image/jpeg',0.82); }catch(e){}
+    var thumb=ex?_thumb(ex,220):'';
+    var s={w:0,h:0}; try{ s=wallSignReal(); }catch(e){}
+    var payload={ action:'save',
+      user:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'',
+      jobName:(q('jbName').value||''), customer:(q('jbCust').value||''),
+      wCm:Math.round(s.w||0), hCm:Math.round(s.h||0),
+      price:(window._wLast?Math.round(_wLast.total):0),
+      image:image, thumb:thumb, design:serializeDesign() };
+    var btn=q('jbSaveBtn'); btn.textContent='กำลังบันทึก...'; btn.disabled=true;
+    fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
+      .then(function(){ btn.textContent='💾 บันทึกงาน'; btn.disabled=false; alert('บันทึกงานแล้ว ✓\nดูได้ที่แท็บ "ค้นหางาน"'); try{if(typeof vcLogSim==='function')vcLogSim('บันทึกงาน: '+(q('jbName').value||''));}catch(e){} })
+      .catch(function(){ btn.textContent='💾 บันทึกงาน'; btn.disabled=false; alert('ส่งข้อมูลแล้ว — ลองค้นหาเพื่อยืนยันค่ะ'); });
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function searchJobs(){
+    var url=jobsUrl(); if(!url){ alert('ยังไม่ได้ตั้งลิงก์สคริปต์ Jobs'); return; }
+    var p='action=search&user='+encodeURIComponent(q('jbSUser').value||'')+
+          '&q='+encodeURIComponent(q('jbSQ').value||'')+
+          '&from='+(q('jbSFrom').value||'')+'&to='+(q('jbSTo').value||'');
+    q('jbResults').innerHTML='กำลังค้นหา...';
+    jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+p,function(r){
+      if(!r||!r.ok){ q('jbResults').innerHTML='ค้นหาไม่สำเร็จ: '+esc((r&&r.error)||'ไม่ทราบสาเหตุ'); return; }
+      if(!r.jobs||!r.jobs.length){ q('jbResults').innerHTML='ไม่พบงานตามเงื่อนไข'; return; }
+      var h='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">พบ '+r.jobs.length+' งาน</div>';
+      r.jobs.forEach(function(j){
+        h+='<div style="display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px">'+
+           (j.thumb?'<img src="'+j.thumb+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;flex:0 0 auto">':'<div style="width:76px;height:54px;background:var(--panel2);border-radius:6px;flex:0 0 auto"></div>')+
+           '<div style="flex:1;min-width:0">'+
+             '<div style="font-weight:700;color:var(--ink)">'+esc(j.jobName||'(ไม่มีชื่อ)')+'</div>'+
+             '<div style="font-size:12px;color:var(--muted)">👤 '+esc(j.user||'-')+' · 🕒 '+esc(j.ts||'')+(j.customer?(' · 🏷️ '+esc(j.customer)):'')+'</div>'+
+             '<div style="font-size:12px;color:var(--muted)">📐 '+esc(j.wCm||'?')+'×'+esc(j.hCm||'?')+' ซม.'+(j.price?(' · 💰 '+Number(j.price).toLocaleString()+' บาท'):'')+'</div>'+
+           '</div>'+
+           '<button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="window._jbOpen(\''+esc(j.id)+'\')">เปิดงาน</button>'+
+           '</div>';
+      });
+      q('jbResults').innerHTML=h;
+    });
+  }
+  function openJob(id){
+    var url=jobsUrl(); if(!url)return;
+    jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=get&id='+encodeURIComponent(id),function(r){
+      if(r&&r.ok&&r.design){ applyDesign(r.design); var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show'); }
+      else alert('เปิดงานไม่สำเร็จ (ไม่พบดีไซน์)');
+    });
+  }
+  window._jbOpen=openJob;
+  function setTab(which){
+    var save=which==='save';
+    if(q('jbPanelSave'))q('jbPanelSave').style.display=save?'block':'none';
+    if(q('jbPanelFind'))q('jbPanelFind').style.display=save?'none':'block';
+    if(q('jbTabSave'))q('jbTabSave').classList.toggle('on',save);
+    if(q('jbTabFind'))q('jbTabFind').classList.toggle('on',!save);
+  }
+  function openJobs(which){
+    var ov=q('jobsOverlay'); if(!ov)return;
+    if(q('jbUser')) q('jbUser').textContent=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'(ไม่พบชื่อ — เปิดผ่านลิงก์ที่มี ?u=)';
+    if(q('jbApiUrl')) q('jbApiUrl').value=jobsUrl();
+    setTab(which==='find'?'find':'save');
+    ov.classList.add('show');
+  }
+  function wire(){
+    if(q('jbApiUrl')){ q('jbApiUrl').value=jobsUrl(); }
+    if(q('jbApiSave')) q('jbApiSave').onclick=function(){ try{localStorage.setItem(JBKEY,(q('jbApiUrl').value||'').trim());}catch(e){} alert('บันทึกลิงก์แล้ว ✓'); };
+    if(q('wSaveJob')) q('wSaveJob').onclick=function(){ openJobs('save'); };
+    if(q('wFindJob')) q('wFindJob').onclick=function(){ openJobs('find'); };
+    if(q('jbClose')) q('jbClose').onclick=function(){ var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show'); };
+    if(q('jbTabSave')) q('jbTabSave').onclick=function(){ setTab('save'); };
+    if(q('jbTabFind')) q('jbTabFind').onclick=function(){ setTab('find'); };
+    if(q('jbSaveBtn')) q('jbSaveBtn').onclick=saveJob;
+    if(q('jbFindBtn')) q('jbFindBtn').onclick=searchJobs;
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
 })();
