@@ -248,11 +248,6 @@ select.numin{cursor:pointer}
             <button type="button" class="chip" data-d="10">10</button>
             <input class="numin" id="rdCustom" type="number" placeholder="เอง" min="0.5" step="0.5" style="width:70px;padding:5px">
           </div>
-          <label style="margin-top:6px">สีภาพ 3 มิติ (หน้า / ข้าง)</label>
-          <div style="display:flex;gap:10px;align-items:center;font-size:12px;color:#5A6B8C">
-            <label style="display:flex;align-items:center;gap:5px">ด้านหน้า <input type="color" id="faceColor" value="#c9cdd4" style="width:34px;height:26px;border:none;background:none;cursor:pointer"></label>
-            <label style="display:flex;align-items:center;gap:5px">ด้านข้าง <input type="color" id="sideColor" value="#9aa1ac" style="width:34px;height:26px;border:none;background:none;cursor:pointer"></label>
-          </div>
 
           <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
           <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
@@ -705,7 +700,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v66 · LightFX</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v67 · LightFX2</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1707,21 +1702,34 @@ function runLayer(){
 $('btnLayer').onclick=openLayer;
 if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm'};
+var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm'}, FCOL='#c9cdd4', SCOL='#9aa1ac';
 function _glowColor(t){return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
+function recolor3d(){var img=$('ls3dImg');if(!img)return;
+  img.querySelectorAll('.w3d-face').forEach(function(p){p.setAttribute('fill',FCOL);});
+  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});}
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
-  if(GLOW.mode==='off'){wrap.style.background='#faf9ff';g.style.opacity='0';g.style.background='none';g.style.filter='none';img.style.filter='none';}
-  else if(GLOW.mode==='front'){wrap.style.background='#efeaff';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.background='radial-gradient(circle at 50% 46%,'+_hexA(c,0.55)+',transparent 60%)';g.style.filter='blur(5px)';img.style.filter='drop-shadow(0 0 12px '+_hexA(c,0.9)+') brightness(1.08) saturate(1.06)';}
-  else{wrap.style.background='#0b1220';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.background='radial-gradient(circle at 50% 50%,'+_hexA(c,0.85)+','+_hexA(c,0.2)+' 42%,transparent 66%)';g.style.filter='blur(16px)';img.style.filter='drop-shadow(0 0 5px '+_hexA(c,0.9)+')';}
+  if(GLOW.mode==='off'){wrap.style.background='#faf9ff';g.style.opacity='0';g.style.background='none';g.style.filter='none';g.style.zIndex='0';img.style.filter='none';}
+  else if(GLOW.mode==='front'){ // ไฟออกหน้า = หน้าเรืองแสงเข้าหาเรา (ทั้งป้ายสว่าง+ย้อมสีแสง) ไม่ใช่ halo
+    wrap.style.background='#eceaf6';
+    g.style.zIndex='3';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='none';
+    g.style.background='radial-gradient(ellipse at 50% 48%,'+_hexA(c,0.42)+' 0%,'+_hexA(c,0.22)+' 55%,transparent 80%)';
+    img.style.filter='drop-shadow(0 0 5px '+_hexA(c,0.85)+') brightness(1.18) saturate(1.15)';}
+  else{ // ไฟออกหลัง = halo เรืองรอบขอบ พื้นหลังมืด
+    wrap.style.background='#0b1220';
+    g.style.zIndex='0';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='blur(16px)';
+    g.style.background='radial-gradient(circle at 50% 50%,'+_hexA(c,0.9)+','+_hexA(c,0.25)+' 42%,transparent 66%)';
+    img.style.filter='drop-shadow(0 0 6px '+_hexA(c,0.9)+')';}
 }
 function wireGlow(){
   var gm=document.querySelectorAll('.glowM'),gt=document.querySelectorAll('.glowT');
   for(var i=0;i<gm.length;i++){gm[i].classList.toggle('on',gm[i].getAttribute('data-g')===GLOW.mode);gm[i].onclick=function(){for(var j=0;j<gm.length;j++)gm[j].classList.remove('on');this.classList.add('on');GLOW.mode=this.getAttribute('data-g');applyGlow();};}
   for(var k=0;k<gt.length;k++){gt[k].classList.toggle('on',gt[k].getAttribute('data-t')===GLOW.temp);gt[k].onclick=function(){for(var j=0;j<gt.length;j++)gt[j].classList.remove('on');this.classList.add('on');GLOW.temp=this.getAttribute('data-t');applyGlow();};}
-  applyGlow();
+  if($('faceColor'))$('faceColor').oninput=function(){FCOL=this.value;recolor3d();};
+  if($('sideColor'))$('sideColor').oninput=function(){SCOL=this.value;recolor3d();};
+  recolor3d();applyGlow();
 }
 (function(){var ch=document.querySelectorAll('#rdChips .chip');for(var i=0;i<ch.length;i++){ch[i].onclick=function(){for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');this.classList.add('on');RDEPTH=+this.getAttribute('data-d');if($('rdCustom'))$('rdCustom').value='';};}if($('rdCustom'))$('rdCustom').oninput=function(){if(+this.value>0){RDEPTH=+this.value;for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');}};})();
 $('goLayer').onclick=function(){
@@ -1737,7 +1745,7 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('real_height_mm','0');fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
-  fd.append('face_color',($('faceColor')&&$('faceColor').value)||'');fd.append('side_color',($('sideColor')&&$('sideColor').value)||'');
+  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
@@ -1762,6 +1770,9 @@ $('goLayer').onclick=function(){
           '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button></div>'+
         '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
           '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
+        '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">หน้า<input type="color" id="faceColor" value="'+FCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">ข้าง<input type="color" id="sideColor" value="'+SCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
       '</div>'+
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
