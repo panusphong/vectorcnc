@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v42 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v43 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -930,8 +930,10 @@ function $(id){return document.getElementById(id);}
     jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+p,function(r){
       if(!r||!r.ok){ q('jbResults').innerHTML='ค้นหาไม่สำเร็จ: '+esc((r&&r.error)||'ไม่ทราบสาเหตุ'); return; }
       if(!r.jobs||!r.jobs.length){ q('jbResults').innerHTML='ไม่พบงานตามเงื่อนไข'; return; }
+      var me=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)?String(CURRENT_USER):'';
       var h='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">พบ '+r.jobs.length+' งาน</div>';
       r.jobs.forEach(function(j){
+        var mine=(me&&String(j.user)===me);
         h+='<div style="display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px">'+
            (j.thumb?'<img src="'+j.thumb+'" style="width:76px;height:54px;object-fit:cover;border-radius:6px;flex:0 0 auto">':'<div style="width:76px;height:54px;background:var(--panel2);border-radius:6px;flex:0 0 auto"></div>')+
            '<div style="flex:1;min-width:0">'+
@@ -939,7 +941,10 @@ function $(id){return document.getElementById(id);}
              '<div style="font-size:12px;color:var(--muted)">👤 '+esc(j.user||'-')+' · 🕒 '+esc(j.ts||'')+(j.customer?(' · 🏷️ '+esc(j.customer)):'')+'</div>'+
              '<div style="font-size:12px;color:var(--muted)">📐 '+esc(j.wCm||'?')+'×'+esc(j.hCm||'?')+' ซม.'+(j.price?(' · 💰 '+Number(j.price).toLocaleString()+' บาท'):'')+'</div>'+
            '</div>'+
-           '<button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="window._jbOpen(\''+esc(j.id)+'\')">เปิดงาน</button>'+
+           '<div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto">'+
+             '<button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="window._jbOpen(\''+esc(j.id)+'\')">เปิดงาน</button>'+
+             (mine?('<button class="btn ghost" style="padding:5px 10px;font-size:12px;color:#ef4444;border-color:#fecaca" onclick="window._jbDel(\''+esc(j.id)+'\')">🗑 ลบ</button>'):'')+
+           '</div>'+
            '</div>';
       });
       q('jbResults').innerHTML=h;
@@ -953,6 +958,17 @@ function $(id){return document.getElementById(id);}
     });
   }
   window._jbOpen=openJob;
+  function delJob(id){
+    var url=jobsUrl(); if(!url)return;
+    if(!confirm('ลบงานนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
+    var user=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'';
+    jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=delete&id='+encodeURIComponent(id)+'&user='+encodeURIComponent(user),function(r){
+      if(r&&r.ok){ searchJobs(); }
+      else if(r&&r.error==='not_owner'){ alert('ลบได้เฉพาะเจ้าของงานเท่านั้นค่ะ'); }
+      else{ alert('ลบไม่สำเร็จ: '+((r&&r.error)||'')); }
+    });
+  }
+  window._jbDel=delJob;
   function setTab(which){
     var save=which==='save';
     if(q('jbPanelSave'))q('jbPanelSave').style.display=save?'block':'none';
