@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.3-layout+returndepth",
-            "build": "2026-07-11-spec-vertical-stack+return-depth-select+stl", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.5-layerset-svg+colors",
+            "build": "2026-07-11-layerset-svg-cut+main-buttons+face-side-color", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -910,7 +910,7 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
-def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None):
+def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก"""
     import math
 
@@ -923,7 +923,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None):
     fs = max(6.0, S * 0.032); lw = max(0.6, S * 0.003); cd = "#dc2626"
     padL = fs * 4.2; padT = fs * 3.0 + abs(dvy); padR = fs * 2.5 + dvx + S * 0.16; padB = fs * 4.8
     ox = -b[0] + padL; oy = -b[1] + padT
-    faceFill = "#c9cdd4"; wallFill = "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
+    faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
 
     def F(p):
         return (p[0] + ox, p[1] + oy)
@@ -1064,10 +1064,54 @@ def _exploded_svg(out_layers, rec, perimeter_cm):
     return '\n'.join(out)
 
 
+def _layerset_cut_svg(out_layers, wall_strips):
+    """SVG 'ไฟล์ตัดแยก layer' — วางแต่ละชั้นเรียงข้างกัน (เหมือน DXF) สีต่อชั้น + แถบยกขอบ · พร้อมนำเข้า LightBurn/Illustrator/Nesting"""
+    from vectorcnc import nesting
+
+    def _bbox(subs):
+        mnx = mny = 1e18; mxx = mxy = -1e18
+        for sp in subs:
+            pts = [sp["start"]]
+            for s in sp["segs"]:
+                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+            for (x, y) in pts:
+                mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
+        return mnx, mny, mxx, mxy
+
+    metas = [(L, _bbox(L["subs"])) for L in out_layers]
+    Smax = max([1.0] + [max(b[2] - b[0], b[3] - b[1]) for _, b in metas] + [s[1] for s in wall_strips] + [s[2] for s in wall_strips])
+    gap = Smax * 0.12; fs = max(6.0, Smax * 0.028); lw = max(0.6, Smax * 0.0022)
+    topPad = fs * 2.2
+    maxH = max([b[3] - b[1] for _, b in metas] + [s[2] for s in wall_strips] + [1.0])
+    parts = []; cursor = fs
+    for L, b in metas:
+        w = b[2] - b[0]; h = b[3] - b[1]; dx = cursor - b[0]; dy = topPad - b[1]
+
+        def T(p, _dx=dx, _dy=dy):
+            return (p[0] + _dx, p[1] + _dy)
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s">%s</text>' % (cursor, topPad - fs * 0.6, fs * 0.9, L["color"], _en_layer(L["name"])))
+        parts.append('<g fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round" stroke-linecap="round">' % (L["color"], lw))
+        for sp in L["subs"]:
+            nsp = {"start": T(sp["start"]),
+                   "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
+                   "closed": sp.get("closed", True)}
+            parts.append('<path d="%s"/>' % nesting._sp_d(nsp))
+        parts.append('</g>')
+        cursor += w + gap
+    for (nm, Lmm, Hmm) in wall_strips:
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#d97706">%s (fold)</text>' % (cursor, topPad - fs * 0.6, fs * 0.9, _en_wall(nm)))
+        parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#f59e0b" stroke-width="%.2f"/>' % (cursor, topPad, Lmm, Hmm, lw))
+        cursor += Lmm + gap
+    Wt = cursor + fs; Ht = topPad + maxH + fs
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">%s</svg>'
+            % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
-                    return_depth_cm: float = Form(0.0), n_colors: int = Form(6)):
+                    return_depth_cm: float = Form(0.0), face_color: str = Form(""),
+                    side_color: str = Form(""), n_colors: int = Form(6)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -1128,7 +1172,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             _band = next((float(L.get("band", 10.0)) for L in rec["layers"] if L.get("kind") == "frame"), 0.0)
             _bore = full.buffer(-_band, join_style=1, resolution=48) if _band > 0 else None
-            svg3d = _iso3d_svg(full, rec, perimeter, inner_bore=_bore)
+            svg3d = _iso3d_svg(full, rec, perimeter, inner_bore=_bore,
+                               face_color=(face_color or None), side_color=(side_color or None))
         except Exception:
             svg3d = ""
 
@@ -1170,9 +1215,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     nesting._add_contour_dxf(msp, sp, lyname, tf=_tf)
                 except Exception:
                     pass
-            off = L["off"]; oc = "เต็ม" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
+            off = L["off"]; oc = "full" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
             try:
-                t = msp.add_text("%s (%s)" % (L["name"], oc), dxfattribs={'layer': 'LABEL', 'height': th})
+                t = msp.add_text("%s (%s)" % (_en_layer(L["name"]), oc), dxfattribs={'layer': 'LABEL', 'height': th})
                 t.set_placement((cursor, gmaxy - b[1] + th * 0.6))
             except Exception:
                 pass
@@ -1193,7 +1238,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             msp.add_lwpolyline([(cursor, 0), (cursor + Lmm, 0), (cursor + Lmm, hh), (cursor, hh)],
                                close=True, dxfattribs={'layer': ly})
             try:
-                t = msp.add_text("%s (พับ) ยาว %.0f x สูง %.0f mm" % (nm, Lmm, hh), dxfattribs={'layer': 'LABEL', 'height': th})
+                t = msp.add_text("%s (fold) L %.0f x H %.0f mm" % (_en_wall(nm), Lmm, hh), dxfattribs={'layer': 'LABEL', 'height': th})
                 t.set_placement((cursor, hh + th * 0.6))
             except Exception:
                 pass
@@ -1203,13 +1248,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         doc.saveas(dxf_path)
         with open(dxf_path, "rb") as fo:
             dxf_b64 = base64.b64encode(fo.read()).decode()
+        # SVG 'ไฟล์ตัดแยก layer' (เหมือน DXF) — พร้อมนำเข้า LightBurn/Illustrator/Nesting
+        svg_cut = _layerset_cut_svg(out_layers, [(wp["name"], wp["length_cm"] * 10.0, wp["height_cm"] * 10.0) for wp in wall_pieces])
 
         return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
                             "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces,
-                "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
+                "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
@@ -1287,7 +1334,7 @@ async def nest_layerset(request: Request):
                 if not subs:
                     continue
                 mat = _mat_of(L["name"])
-                piece = {"poly": foot, "groups": [(subs, color, rgb, mat)]}
+                piece = {"poly": foot, "groups": [(subs, color, rgb, _en_layer(mat))]}
                 mats.setdefault(mat, []).append({"label": label, "color": color, "rgb": rgb, "piece": piece, "qty": qty})
             # ยกขอบ = แถบพับ (สี่เหลี่ยม ยาว=เส้นรอบรูป × สูง=ความสูงผนัง)
             peri = float(full.length)
