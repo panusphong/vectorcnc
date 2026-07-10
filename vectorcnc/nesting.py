@@ -9,7 +9,7 @@ from scipy.signal import fftconvolve
 from shapely.affinity import rotate as _rotate, translate as _translate
 import ezdxf
 
-NESTING_VERSION = "2026-07-10-edgefix+piece-dims"   # gap ไม่กินขอบแผ่น + ป้ายขนาดต่อชิ้น
+NESTING_VERSION = "2026-07-10-edgefix+autofit+dimlines"   # gap ไม่กินขอบ + ลดขอบอัตโนมัติ + เส้นจับระยะ กว้าง×สูง ต่อชิ้น
 
 
 def _raster(poly, res):
@@ -57,9 +57,27 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
     คืน dict: placements=[[{part,rot,dx,dy,cx,cy}...] ต่อแผ่น], utilization, n_sheets, n_parts, unplaced"""
     # จำกัดจำนวนเซลล์กริด -> คุมหน่วยความจำ/เวลา (กัน 502/OOM บนเซิร์ฟเวอร์ฟรี)
     CELL_CAP = 150000
+    # ---- auto-fit margin: ถ้าชิ้นใหญ่จนใส่ไม่ได้เพราะขอบ แต่ยัง <= ขนาดแผ่น -> ลด margin ให้พอดี (ตัดชิดขอบ) ----
+    try:
+        need_w = need_h = 0.0
+        for _poly, _q in parts:
+            b = _poly.bounds; pw = b[2] - b[0]; ph = b[3] - b[1]
+            fit0 = (pw <= sheet_w - 2 * margin) and (ph <= sheet_h - 2 * margin)
+            fit90 = (ph <= sheet_w - 2 * margin) and (pw <= sheet_h - 2 * margin)
+            if not (fit0 or fit90):                       # ชิ้นนี้ใส่ไม่ได้ด้วย margin ปัจจุบัน
+                need_w = max(need_w, min(pw, ph))         # ด้านที่ต้องวางตามแนวกว้างแผ่น
+                need_h = max(need_h, max(pw, ph))
+        if need_w > 0:
+            m_w = (sheet_w - need_w) / 2.0
+            m_h = (sheet_h - need_h) / 2.0
+            m_fit = max(0.0, min(m_w, m_h) - 0.5)         # เผื่อ 0.5mm
+            if m_fit < margin:
+                margin = m_fit                            # ลดขอบให้ชิ้นใหญ่สุดใส่ได้
+    except Exception:
+        pass
     # gap เป็นระยะห่าง 'ระหว่างชิ้น' เท่านั้น ไม่ควรกินพื้นที่ขอบแผ่น (margin) ด้วย
-    # -> ขยายกริดใช้งานออก 2*_pad (halo ของ gap ยื่นเข้ามาในเขต margin ได้ _pad) ทำให้ชิ้นที่ = พื้นที่ใช้งานพอดี วางได้
-    _pad = min(gap / 2.0, margin)
+    # -> ขยายกริดใช้งานออก 2*_pad (halo ของ gap ยื่นออกนอกขอบได้ ตัวชิ้นยังอยู่ในแผ่น) ทำให้ชิ้นที่ = พื้นที่ใช้งาน/= ขนาดแผ่น วางได้
+    _pad = gap / 2.0
     grows = int(math.ceil((sheet_h - 2 * margin + 2 * _pad) / res))
     gcols = int(math.ceil((sheet_w - 2 * margin + 2 * _pad) / res))
     if grows * gcols > CELL_CAP:
@@ -188,21 +206,42 @@ def _sp_d(sp):
 
 
 def _dim_labels_svg(labels, sheet_w, sheet_h):
-    """วาดป้ายขนาด กว้าง×สูง (ซม.) กลางแต่ละชิ้น — ตัวอักษรอิงขนาดชิ้นให้อ่านชัด"""
+    """วาด 'เส้นจับระยะ' กว้าง (ด้านบน) × สูง (ด้านข้าง) พร้อมหัวลูกศร + ตัวเลข ต่อแต่ละชิ้น
+    labels = list ของ (x0, y0, x1, y1) = กรอบชิ้น (มม., แกน SVG Y ลง)"""
     if not labels:
         return []
     smin = min(sheet_w, sheet_h)
+    col = '#dc2626'
     out = []
-    for (cx, cy, w, h) in labels:
-        # ขนาดตัวอักษรอิงด้านสั้นของชิ้น (อ่านชัด) จำกัดช่วงตามแผ่น
-        fs = max(smin * 0.012, min(smin * 0.06, min(w, h) * 0.10))
-        txt = '%.1f x %.1f ซม.' % (w / 10.0, h / 10.0)   # มม. -> ซม.
-        common = (f'x="{cx:.1f}" y="{cy:.1f}" font-family="Prompt, Arial, sans-serif" '
-                  f'font-size="{fs:.1f}" font-weight="700" text-anchor="middle" dominant-baseline="central"')
-        # ข้อความ 2 ชั้น: ขาวหนา(รองพื้น) + แดงทับ -> อ่านชัดทุกโปรแกรม (ไม่พึ่ง paint-order)
-        out.append(f'<text {common} fill="none" stroke="#ffffff" stroke-width="{fs*0.30:.1f}" '
-                   f'stroke-linejoin="round">{txt}</text>')
-        out.append(f'<text {common} fill="#b91c1c">{txt}</text>')
+    for (x0, y0, x1, y1) in labels:
+        w = x1 - x0; h = y1 - y0
+        if w <= 1 or h <= 1:
+            continue
+        fs = max(smin * 0.011, min(smin * 0.05, min(w, h) * 0.09))
+        lw = max(0.4, fs * 0.09)          # ความหนาเส้นจับระยะ
+        off = min(fs * 1.5, min(w, h) * 0.16)   # เยื้องเข้าจากขอบชิ้น
+        aw = fs * 0.55                    # ขนาดหัวลูกศร
+        yW = y0 + off                     # เส้นกว้าง (ใกล้ขอบบน ในชิ้น)
+        xH = x0 + off                     # เส้นสูง (ใกล้ขอบซ้าย ในชิ้น)
+
+        def _txt(x, y, s, rot=None):
+            tr = f' transform="rotate({rot} {x:.1f} {y:.1f})"' if rot is not None else ''
+            c = (f'x="{x:.1f}" y="{y:.1f}" font-family="Prompt, Arial, sans-serif" font-size="{fs:.1f}" '
+                 f'font-weight="700" text-anchor="middle" dominant-baseline="central"{tr}')
+            return (f'<text {c} fill="none" stroke="#ffffff" stroke-width="{fs*0.28:.1f}" stroke-linejoin="round">{s}</text>'
+                    f'<text {c} fill="{col}">{s}</text>')
+
+        # ---- กว้าง (แนวนอน ใกล้ขอบบน) ----
+        out.append(f'<line x1="{x0:.1f}" y1="{yW:.1f}" x2="{x1:.1f}" y2="{yW:.1f}" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(f'<path d="M {x0+aw:.1f} {yW-aw*0.6:.1f} L {x0:.1f} {yW:.1f} L {x0+aw:.1f} {yW+aw*0.6:.1f}" fill="none" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(f'<path d="M {x1-aw:.1f} {yW-aw*0.6:.1f} L {x1:.1f} {yW:.1f} L {x1-aw:.1f} {yW+aw*0.6:.1f}" fill="none" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(_txt((x0 + x1) / 2.0, yW - fs * 0.75, '%.1f ซม.' % (w / 10.0)))
+
+        # ---- สูง (แนวตั้ง ใกล้ขอบซ้าย) ----
+        out.append(f'<line x1="{xH:.1f}" y1="{y0:.1f}" x2="{xH:.1f}" y2="{y1:.1f}" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(f'<path d="M {xH-aw*0.6:.1f} {y0+aw:.1f} L {xH:.1f} {y0:.1f} L {xH+aw*0.6:.1f} {y0+aw:.1f}" fill="none" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(f'<path d="M {xH-aw*0.6:.1f} {y1-aw:.1f} L {xH:.1f} {y1:.1f} L {xH+aw*0.6:.1f} {y1-aw:.1f}" fill="none" stroke="{col}" stroke-width="{lw:.2f}"/>')
+        out.append(_txt(xH + fs * 0.75, (y0 + y1) / 2.0, '%.1f ซม.' % (h / 10.0), rot=-90))
     return out
 
 
