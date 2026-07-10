@@ -6,7 +6,7 @@ import math
 import ezdxf
 from . import trace_engine as te
 
-BEZIER_VERSION = "2026-07-10-dxf-1spline-per-contour"   # DXF: 1 SPLINE ปิด/contour (ไม่แตกชิ้น = ไม่ยึกยัก) แบบไฟล์โรงงาน
+BEZIER_VERSION = "2026-07-10-1spline+finer-fit"   # DXF: 1 SPLINE ปิด/contour + ฟิตละเอียดขึ้น (sample 0.15 / tol 0.03 / buffer res48)
 
 
 def _shift(sp, ox, oy, sc=1.0):
@@ -152,7 +152,7 @@ def _scale_sub(sp, s):
             'segs': [('L', T(x[1])) if x[0] == 'L' else ('C', T(x[1]), T(x[2]), T(x[3])) for x in sp['segs']]}
 
 
-def _fit_ring_to_sub(ring, tol=0.05):
+def _fit_ring_to_sub(ring, tol=0.03):
     """แปลงวงพิกัด (จาก shapely offset) กลับเป็น subpath เส้นโค้ง Bézier แท้:
     - ลดจุดซ้ำ/เส้นตรงให้คม (Douglas-Peucker), ตรวจมุมคมเพื่อคงมุม, ฟิต cubic Bézier ต่อช่วงโค้ง
     => เขียนออกเป็น SPLINE (DXF) / C (SVG) เนียนเหมือนไฟล์โรงงาน ไม่ยึกยัก. ล้มเหลว -> polyline เดิม"""
@@ -263,7 +263,7 @@ def _offset_subs(subs_mm, kerf_mm, tool_mm):
         return subs_mm
     polys, srcs = [], []
     for sp in subs_mm:
-        pts = _sp_points(sp, 0.3)
+        pts = _sp_points(sp, 0.15)   # sample ถี่ขึ้น -> ขอบ offset เนียนกว่า
         if len(pts) >= 3:
             try:
                 pg = Polygon(pts).buffer(0)
@@ -277,7 +277,7 @@ def _offset_subs(subs_mm, kerf_mm, tool_mm):
     areas = [(p.area if p is not None else 0.0) for p in polys]
 
     def _ring_to_sub(ring):
-        return _fit_ring_to_sub(ring, tol=0.05)   # ฟิตเป็นเส้นโค้ง Bézier เนียน (SPLINE) แทน polyline
+        return _fit_ring_to_sub(ring, tol=0.03)   # ฟิตเป็นเส้นโค้ง Bézier เนียน (SPLINE) แทน polyline — tol ละเอียดขึ้น
 
     out = []
     for i, p in enumerate(polys):
@@ -297,9 +297,9 @@ def _offset_subs(subs_mm, kerf_mm, tool_mm):
         g = p
         try:
             if d > 0:
-                g = g.buffer(sgn * d, join_style=1, resolution=24)
+                g = g.buffer(sgn * d, join_style=1, resolution=48)   # โค้งกลมละเอียดขึ้น
             if r > 0 and depth % 2 == 0:            # ปัดมุมในเฉพาะรูปทึบชั้นนอก
-                g = g.buffer(-r, join_style=1, resolution=24).buffer(r, join_style=1, resolution=24)
+                g = g.buffer(-r, join_style=1, resolution=48).buffer(r, join_style=1, resolution=48)
         except Exception:
             g = p
         if g is None or g.is_empty:
