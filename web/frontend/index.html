@@ -250,7 +250,7 @@ select.numin{cursor:pointer}
         <button class="btn" id="goLayer" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
       </div>
 
-      <div class="stage">
+      <div class="stage" style="position:relative">
         <div class="empty-stage" id="emptyStage"><div class="big">🖼️</div>อัปโหลดภาพเพื่อเริ่ม</div>
         <div class="compare" id="cmp" style="display:none">
           <div class="layer" id="before"></div>
@@ -258,6 +258,7 @@ select.numin{cursor:pointer}
           <div class="divider" id="div" style="left:52%"><span class="knob">⟷</span></div>
           <span class="tag b">ภาพถ่าย</span><span class="tag a">เส้นตัด</span>
         </div>
+        <div id="layerStage" style="display:none;position:absolute;inset:0;background:#fff;overflow:auto;padding:14px 16px"></div>
       </div>
 
       <div class="out">
@@ -672,7 +673,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v57 · NestByMat</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v58 · 3D-Stage</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1666,13 +1667,47 @@ function runLayer(){
 }
 $('btnLayer').onclick=openLayer;
 if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
-// เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก (เลือกประเภทป้าย + ขนาด ตั้งแต่แรก)
+// เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
+var LSDXF_MAIN='';
 $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
   if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด (มม.) ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');return;}
-  LSEL=t;LSFILE=null;openLayer();$('lsW').value=$('realW').value||'600';runLayer();
+  var st=$('layerStage');if(!st)return;
+  if($('emptyStage'))$('emptyStage').style.display='none';
+  if($('cmp'))$('cmp').style.display='none';
+  st.style.display='block';
+  st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">กำลังแตกชั้น + สร้างภาพ 3 มิติ...</div></div>';
+  var fd=new FormData();
+  fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
+  fd.append('real_height_mm','0');fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
+    LSDXF_MAIN=j.dxf_base64||'';
+    var disp3d=(j.svg_3d||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+    var disp=(j.svg_preview||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+    var rows=(j.layers||[]).map(function(l){var oc=l.off_cm>0?('+'+l.off_cm+' cm'):(l.off_cm<0?(l.off_cm+' cm'):'full');
+      var kb=(l.kind==='frame')?' <span style="background:#fef3c7;color:#b45309;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">bored</span>':'';
+      return '<tr><td style="padding:3px 8px;border:1px solid #e2e8f0"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+l.color+';margin-right:5px"></span><b>'+(l.name_en||l.name)+'</b>'+kb+' <span style="color:#94a3b8;font-size:11px">('+l.name+')</span></td><td style="padding:3px 8px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#4f46e5">'+oc+'</td><td style="padding:3px 8px;border:1px solid #e2e8f0;text-align:right;color:#5A6B8C">'+l.w_mm+'×'+l.h_mm+' mm</td></tr>';}).join('');
+    var wp=(j.wall_pieces||[]).map(function(w){return '<tr><td style="padding:3px 8px;border:1px solid #fde68a"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:5px"></span><b>'+(w.name_en||w.name)+'</b> <span style="background:#fef3c7;color:#b45309;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">fold</span></td><td style="padding:3px 8px;border:1px solid #fde68a;text-align:right;color:#5A6B8C">L '+w.length_cm+' × H '+w.height_cm+' cm</td></tr>';}).join('');
+    var dlB=function(b64,name){var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();};
+    st.innerHTML=
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'+
+        '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
+        '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
+        '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">'+
+        '<div><div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px">🧊 3D Structure (dimensioned)</div>'+
+          '<div style="border:1px solid #e9d5ff;border-radius:10px;padding:10px;background:#faf9ff">'+disp3d+'</div></div>'+
+        '<div><div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:4px">📐 Cut Layers (per-piece size)</div>'+
+          '<div style="border:1px solid #D6E0EE;border-radius:10px;padding:10px;background:#fff">'+disp+'</div></div>'+
+      '</div>'+
+      '<div style="margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="background:#eef2ff;color:#312e81"><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:left">Layer (material)</th><th style="padding:5px 8px;border:1px solid #c7d2fe">Allowance</th><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:right">Size</th></tr>'+rows+'</table></div>'+
+      (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
+    if($('lsBack'))$('lsBack').onclick=function(){st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
+    if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
+  }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
 
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
