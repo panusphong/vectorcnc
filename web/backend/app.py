@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.5-layerset-svg+colors",
-            "build": "2026-07-11-layerset-svg-cut+main-buttons+face-side-color", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.8-fix-multipoly+svgcut",
+            "build": "2026-07-11-raster-multipolygon+svgcut-plates-only", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -633,6 +633,7 @@ def _extrude_stl(poly, thickness_mm):
     import numpy as np
     import mapbox_earcut as earcut
     import struct
+    from shapely.geometry.polygon import orient
     t = float(thickness_mm)
     polys = list(poly.geoms) if poly.geom_type == "MultiPolygon" else [poly]
     tris = []
@@ -640,6 +641,7 @@ def _extrude_stl(poly, thickness_mm):
         pg = pg.simplify(0.25, preserve_topology=True)   # ลดจุด -> STL เล็กลง (คงรูป ~0.25mm)
         if pg.is_empty or pg.geom_type != "Polygon":
             continue
+        pg = orient(pg, 1.0)   # ขอบนอก CCW / รูใน CW -> normals หันออกนอกสม่ำเสมอ (กัน mesh กลับด้าน/มองไม่เห็น)
         ext = np.array(pg.exterior.coords)[:-1]
         if len(ext) < 3:
             continue
@@ -952,10 +954,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 nx, ny = -nx, -ny
             if nx * dvx + ny * dvy > 1e-6:
                 Af = F(A); Bf = F(Bp); Bb = Bk(Bp); Ab = Bk(A)
-                parts.append('<path d="M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
+                parts.append('<path class="w3d-side" d="M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
                              % (Af[0], Af[1], Bf[0], Bf[1], Bb[0], Bb[1], Ab[0], Ab[1], wallFill, edge, lw))
     for pg in polys:                                   # หน้า (คิ้ว/หน้า)
-        parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
+        parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
     if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
         ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
         for pg in ip:
@@ -1248,8 +1250,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         doc.saveas(dxf_path)
         with open(dxf_path, "rb") as fo:
             dxf_b64 = base64.b64encode(fo.read()).decode()
-        # SVG 'ไฟล์ตัดแยก layer' (เหมือน DXF) — พร้อมนำเข้า LightBurn/Illustrator/Nesting
-        svg_cut = _layerset_cut_svg(out_layers, [(wp["name"], wp["length_cm"] * 10.0, wp["height_cm"] * 10.0) for wp in wall_pieces])
+        # SVG 'ไฟล์ตัดแยก layer' — เฉพาะแผ่นตัด (ไม่รวมแถบยกขอบยาวๆ ที่ทำให้ไฟล์กว้างเป็นสิบเมตร)
+        svg_cut = _layerset_cut_svg(out_layers, [])
 
         return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
