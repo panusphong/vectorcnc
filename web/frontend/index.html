@@ -223,7 +223,20 @@ select.numin{cursor:pointer}
           <select class="numin" id="sizeBy" onchange="var m={width:'ค่าความกว้างรวม (มม.)',height:'ค่าความสูงรวม (มม.)',letter:'ค่าความสูงตัวอักษร (มม.)'};var e=document.getElementById('sizeLbl');if(e)e.textContent=m[this.value]||m.width;if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}"><option value="width">กว้างรวม (มม.)</option><option value="height">สูงรวม (มม.)</option><option value="letter">สูงตัวอักษร (มม.)</option></select>
           <label id="sizeLbl" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
-          <div class="hint" id="sizeHint">กำหนดค่า → ระบบสเกลไฟล์ให้พอดี (คงสัดส่วน ไม่บิดเบี้ยว) · แสดงผล กว้าง×สูง หลังแปลง</div>
+          <div class="hint" id="sizeHint">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
+
+          <label>ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
+          <select class="numin" id="mainSignType">
+            <option value="">— เส้นตัดแบน (ปกติ) —</option>
+            <option value="1">1 · ไฟออกหน้า มีคิ้ว</option>
+            <option value="2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
+            <option value="3">3 · ไฟออกรอบ</option>
+            <option value="4">4 · กล่องไฟ 1 หน้า</option>
+            <option value="5">5 · กล่องไฟ 2 หน้า</option>
+            <option value="6">6 · งานยกขอบ</option>
+            <option value="7">7 · งานยกขอบ มีไส้</option>
+          </select>
+          <div class="hint">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
 
           <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
           <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
@@ -233,6 +246,7 @@ select.numin{cursor:pointer}
           <label class="chk"><input type="checkbox" id="enhance"> ✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)</label>
         </div>
         <button class="btn primary" id="go" disabled>⚡ แปลงเป็นเส้นตัด</button>
+        <button class="btn" id="goLayer" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
       </div>
 
       <div class="stage">
@@ -450,7 +464,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v54 · 3D-LayerSet</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v55 · 3D-Extrude</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1386,7 +1400,7 @@ function runLayer(){
     var rows=(j.layers||[]).map(function(l){var oc=l.off_cm>0?('+'+l.off_cm):(l.off_cm<0?(''+l.off_cm):'เต็ม');
       var kb=(l.kind==='frame')?' <span style="background:#fef3c7;color:#b45309;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">เจาะโบ๋</span>':'';
       return '<tr><td style="padding:3px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+l.color+';margin-right:5px"></span>'+l.name+kb+'</td><td style="padding:3px 6px;text-align:center;font-weight:700;color:#4f46e5">'+oc+(l.off_cm!=='เต็ม'&&typeof l.off_cm==='number'&&l.off_cm!==0?' ซม.':'')+'</td><td style="padding:3px 6px;text-align:right;color:#5A6B8C">'+l.w_mm+'×'+l.h_mm+' มม.</td></tr>';}).join('');
-    var walls=(j.walls||[]).filter(function(w){return w.h>0;}).map(function(w){return '<span style="background:#f1f5f9;border-radius:5px;padding:2px 8px;font-size:11px;margin:2px 4px 2px 0;display:inline-block">'+w.name+' <b>'+w.h+' ซม.</b></span>';}).join('');
+    var wp=(j.wall_pieces||[]).map(function(w){return '<tr><td style="padding:3px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:5px"></span>'+w.name+' <span style="background:#fef3c7;color:#b45309;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">พับ</span></td><td style="padding:3px 6px;text-align:right;color:#5A6B8C">ยาว '+w.length_cm+' × สูง '+w.height_cm+' ซม.</td></tr>';}).join('');
     var disp=(j.svg_preview||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
     var disp3d=(j.svg_3d||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
     $('lsOut').innerHTML=
@@ -1395,7 +1409,7 @@ function runLayer(){
       '<button class="btn primary" id="lsDl" style="width:100%;background:linear-gradient(135deg,#4f46e5,#7c3aed);margin-bottom:8px">⬇ ดาวน์โหลด DXF (แยก layer ต่อชั้น)</button>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px">'+
         '<tr style="background:#f8fafc;font-size:11px;color:#64748b"><td style="padding:4px 6px">ชั้น (วัสดุ)</td><td style="padding:4px 6px;text-align:center">ค่าเผื่อ</td><td style="padding:4px 6px;text-align:right">ขนาด</td></tr>'+rows+'</table>'+
-      (walls?('<div style="font-size:11px;color:#5A6B8C;margin-bottom:2px">🔩 แผ่นข้าง/ผนัง (<b>ไม่ต้องตัด</b> · แผ่นม้วนพับตามเส้นรอบรูป '+j.perimeter_cm+' ซม.):</div><div>'+walls+'</div>'):'')+
+      (wp?('<div style="font-size:11px;color:#5A6B8C;margin:2px 0 3px">🔩 ยกขอบ (ตัดเป็นแถบแล้วพับ · ยาว = เส้นรอบรูป '+j.perimeter_cm+' ซม.):</div><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fde68a;border-radius:8px;overflow:hidden;margin-bottom:8px">'+wp+'</table>'):'')+
       '<div style="font-size:11px;color:#8A99B5;margin:10px 0 4px">ชิ้นตัดแยกชั้น + จับขนาด:</div>'+
       '<div style="border:1px solid #D6E0EE;border-radius:8px;padding:8px;background:#fff;max-height:44vh;overflow:auto">'+disp+'</div>'+
       '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">✕ ปิดหน้าต่าง</button>';
@@ -1403,6 +1417,14 @@ function runLayer(){
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('lsOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnLayer').onclick=openLayer;
+// เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก (เลือกประเภทป้าย + ขนาด ตั้งแต่แรก)
+$('goLayer').onclick=function(){
+  if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
+  var t=($('mainSignType')&&$('mainSignType').value)||'';
+  if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด (มม.) ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');return;}
+  LSEL=t;LSFILE=null;openLayer();$('lsW').value=$('realW').value||'600';runLayer();
+};
 
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
 $('aiDraft').onclick=function(){
