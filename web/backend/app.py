@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.8-nest-split-raster",
-            "build": "2026-07-10-nest-raster-split+dimlines", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "3.9-nest-split-dbg",
+            "build": "2026-07-10-raster-split+findcontours-fix+dbg", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -273,6 +273,7 @@ async def nest_ep(
         pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
         res = max(2.0, min(sheet_w, sheet_h) / 500.0)
         whole = str(parts_mode).lower() == "whole"
+        _split_dbg = None
 
         if bez_pieces is not None:
             # -------- เวกเตอร์/ราสเตอร์(vtracer): จัดวางเส้นโค้ง Bézier จริง (สมูท) แยกสี --------
@@ -317,7 +318,7 @@ async def nest_ep(
                         allsub.append((sp, col, rgb, lay, _subpts(sp)))
                 allx = [q[0] for _, _, _, _, ps in allsub for q in ps]
                 ally = [q[1] for _, _, _, _, ps in allsub for q in ps]
-                nest_pieces = []
+                nest_pieces = []; _split_dbg = {"nlab": 0, "err": ""}
                 try:
                     mnx, mny, mxx, mxy = min(allx), min(ally), max(allx), max(ally)
                     RES = max(0.4, min(mxx - mnx, mxy - mny) / 1000.0)
@@ -328,6 +329,7 @@ async def nest_ep(
                     for pp in ppx:
                         cm = _np.zeros((Hn, Wn), _np.uint8); cv2.fillPoly(cm, [pp], 1); mask ^= cm   # even-odd
                     nlab, lab = cv2.connectedComponents(mask)
+                    _split_dbg["nlab"] = int(nlab)
                     if nlab > 2:
                         ker = _np.ones((5, 5), _np.uint8)
                         gbl = {}                                     # label -> {layer: {subs,color,rgb}}
@@ -342,7 +344,8 @@ async def nest_ep(
                         for L in range(1, nlab):
                             if L not in gbl:
                                 continue
-                            cnts, _hh = cv2.findContours((lab == L).astype(_np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            _fc = cv2.findContours((lab == L).astype(_np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                            cnts = _fc[0] if len(_fc) == 2 else _fc[1]   # รองรับ OpenCV 3.x/4.x
                             if not cnts:
                                 continue
                             cc = max(cnts, key=cv2.contourArea)
@@ -353,8 +356,10 @@ async def nest_ep(
                                 continue
                             groups = [(g["subs"], g["color"], g["rgb"], ly) for ly, g in gbl[L].items()]
                             nest_pieces.append({"poly": fp, "groups": groups})
-                except Exception:
-                    nest_pieces = []
+                except Exception as _e:
+                    import traceback as _tb
+                    nest_pieces = []; _split_dbg["err"] = str(_e) + " | " + _tb.format_exc()[-300:]
+                _split_dbg["pieces"] = len(nest_pieces)
                 if not nest_pieces:
                     # แยกไม่ได้ (ลายเชื่อมกันทั้งชิ้น) -> ตกลงเป็นทั้งป้าย 1 ชิ้น (ไม่ error)
                     grp = {}
@@ -437,7 +442,7 @@ async def nest_ep(
             "n_sheets": r["n_sheets"], "utilization": r["utilization"], "unplaced": r["unplaced"],
             "sheet_w": sheet_w, "sheet_h": sheet_h, "part_mm": [pw, ph], "qty": qn,
             "mode": str(parts_mode).lower(), "pieces": n_pieces,
-            "sheets_svg": svgs, "dxf_base64": dxf_b64,
+            "sheets_svg": svgs, "dxf_base64": dxf_b64, "split_dbg": _split_dbg,
         }
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
