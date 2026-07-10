@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v40 · 3D</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v41 · 3D</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -740,14 +740,49 @@ function $(id){return document.getElementById(id);}
     }
     resize();
   }
+  function hasSignContent(){
+    if((typeof wallImg!=='undefined')&&wallImg) return true;
+    if((typeof textBoxes!=='undefined')&&textBoxes&&textBoxes.length) return true;
+    if((typeof wLogos!=='undefined')&&wLogos&&wLogos.length) return true;
+    if((typeof shapes!=='undefined')&&shapes&&shapes.length) return true;
+    return false;
+  }
+  // ถ่ายภาพ 'เฉพาะป้าย' จากผืนผนัง (ซ่อนรูปพื้นหลังผนัง/ป้ายกำกับ/สปอตไลต์/เลือกอยู่ ชั่วคราว)
+  // -> ได้ตัวอักษร/โลโก้/แผ่นหลัง บนพื้นสีผนัง (สะอาด) เอาไปทำ 3D ได้ทั้งแผ่น/ตัวนูน/ป้ายไฟ
+  function signSnap(){
+    if(typeof wallDraw!=='function'||typeof wallSignReal!=='function') return null;
+    try{
+      var s=wallSignReal(); var M=(typeof WALL_M!=='undefined')?WALL_M:70; var ppm=s.ppm;
+      var ww=s.Wm*ppm, wh=s.Hm*ppm;
+      var f=(typeof _wSignFrac==='function')?_wSignFrac():{sLx:0,sTy:0,sWf:1,sHf:1};
+      var sx=M+f.sLx*ww, sy=M+f.sTy*wh, sw=Math.max(1,f.sWf*ww), sh=Math.max(1,f.sHf*wh);
+      var cv=q('wCanvas'); if(!cv) return null;
+      var sBg=window.wallBgImg, sTx=window._txtSel, sLg=window._lgSel;
+      var eLbl=q('wLabels'), eSpot=q('wSpot'), eNight=q('wNight');
+      var sLbl=eLbl&&eLbl.checked, sSpot=eSpot&&eSpot.checked, sNight=eNight&&eNight.checked;
+      window.wallBgImg=null;
+      if(eLbl)eLbl.checked=false; if(eSpot)eSpot.checked=false; if(eNight)eNight.checked=false;
+      window._txtSel=-1; window._lgSel=-1;
+      wallDraw();
+      var oc=document.createElement('canvas'); oc.width=Math.round(sw); oc.height=Math.round(sh);
+      oc.getContext('2d').drawImage(cv, sx,sy,sw,sh, 0,0,oc.width,oc.height);
+      window.wallBgImg=sBg;
+      if(eLbl)eLbl.checked=sLbl; if(eSpot)eSpot.checked=sSpot; if(eNight)eNight.checked=sNight;
+      window._txtSel=sTx; window._lgSel=sLg;
+      wallDraw();
+      return oc;
+    }catch(_e){ return null; }
+  }
+  function srcImage(){ var snap=signSnap(); if(snap) return snap; return (typeof wallImg!=='undefined')?wallImg:null; }
+  function rebuild(){ if(hasSignContent()){ var im=srcImage(); if(im) build(im); } }
   function open(){
-    var img=(typeof wallImg!=='undefined')?wallImg:null;
     var ov=q('v3dOverlay'); if(!ov) return;
     if(!has3D()){ alert('ตัวแสดงผล 3D ยังโหลดไม่เสร็จ ลองใหม่อีกครั้งค่ะ'); return; }
-    if(!img){ alert('ยังไม่มีภาพชิ้นงาน — อัปโหลด/วางภาพป้ายก่อนนะคะ'); return; }
+    if(!hasSignContent()){ alert('ยังไม่มีชิ้นงานบนป้าย — อัปโหลดรูปป้าย หรือเพิ่มข้อความ/โลโก้ก่อนนะคะ'); return; }
     ov.classList.add('show');
     setAuto(true);
     if(!initOnce()){ setTimeout(open,120); return; }
+    var img=srcImage(); if(!img){ alert('อ่านภาพชิ้นงานไม่สำเร็จค่ะ'); return; }
     build(img);
     if(!rafId) loop();
     setTimeout(resize,60);
@@ -759,8 +794,8 @@ function $(id){return document.getElementById(id);}
     var b=q('wOpen3D'); if(b) b.onclick=open;
     var c=q('v3dClose'); if(c) c.onclick=close3d;
     var st=document.querySelectorAll('.v3d-style');
-    for(var i=0;i<st.length;i++){ (function(el){ el.onclick=function(){ for(var j=0;j<st.length;j++)st[j].classList.remove('on'); el.classList.add('on'); curStyle=el.getAttribute('data-style'); if((typeof wallImg!=='undefined')&&wallImg) build(wallImg); }; })(st[i]); }
-    var th=q('v3dThick'); if(th) th.oninput=function(){ curThick=parseFloat(th.value)/100; var lb=q('v3dThickV'); if(lb)lb.textContent=th.value; if((typeof wallImg!=='undefined')&&wallImg) build(wallImg); };
+    for(var i=0;i<st.length;i++){ (function(el){ el.onclick=function(){ for(var j=0;j<st.length;j++)st[j].classList.remove('on'); el.classList.add('on'); curStyle=el.getAttribute('data-style'); rebuild(); }; })(st[i]); }
+    var th=q('v3dThick'); if(th) th.oninput=function(){ curThick=parseFloat(th.value)/100; var lb=q('v3dThickV'); if(lb)lb.textContent=th.value; rebuild(); };
     var au=q('v3dAuto'); if(au) au.onchange=function(){ autoRot=au.checked; };
     var bg=document.querySelectorAll('.v3d-bg');
     for(var k=0;k<bg.length;k++){ (function(el){ el.onclick=function(){ for(var j=0;j<bg.length;j++)bg[j].classList.remove('on'); el.classList.add('on'); curBg=el.getAttribute('data-bg'); if(scene)scene.background=new THREE.Color(bgColor()); }; })(bg[k]); }
@@ -1391,19 +1426,26 @@ function _wDrawSplit(g,M,ww,wh){
 function _wPriceBanner(g,M,ww,wh){
   try{ if(typeof _wLast==='undefined'||!_wLast||!_wLast.lines)return;
     var _vl=_wLast.lines.filter(function(l){return l.r;}); if(!_vl.length)return;
-    var _fh=Math.max(17,Math.round(ww*0.03)), _lf=Math.max(12,Math.round(ww*0.019)), _lh=_lf+7;
+    var FONT='"Prompt", sans-serif';
+    // ---- auto-size ตามสเกลภาพ (อิงด้านที่สั้นกว่า + จำกัดไม่ให้ใหญ่เกินจนบังงาน) ----
+    var base=Math.min(ww,wh);
+    var _lf=Math.max(11,Math.min(16,Math.round(base*0.030)));
+    var _fh=Math.max(15,Math.min(25,Math.round(base*0.052)));
+    var _lh=_lf+6;
+    var _dim=function(l){ return (l.w&&l.h)?(' · '+Math.round(l.w)+'×'+Math.round(l.h)+' ซม.'):''; };
     var _rows=[];
-    if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+': '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
+    if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+_dim(l)+' : '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
+    else { var l0=_vl[0]; if(l0&&l0.w&&l0.h)_rows.push({t:(l0.label?String(l0.label).replace(/^[^\wก-๙"]+/,''):'ป้าย')+_dim(l0), f:_lf, c:'#cdd9ea', b:false}); }
     _rows.push({t:(_vl.length>1?'ราคารวม':'ราคาประเมิน')+' (ยังไม่รวม VAT)', f:_lf, c:'#9fb0c9', b:false});
     _rows.push({t:Math.round(_wLast.total).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
     g.save(); g.textBaseline='top';
-    var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=28;
-    var _bh=20; _rows.forEach(function(r){ _bh+=(r.b?r.f+8:_lh); });
-    var _bx=M+ww-_bw-12, _by=M+wh-_bh-12;
-    if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,12); g.fillStyle='rgba(15,23,42,.93)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.93)'; g.fillRect(_bx,_by,_bw,_bh); }
-    g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,4);
-    g.textAlign='left'; var _yy=_by+12;
-    _rows.forEach(function(r){ g.fillStyle=r.c; g.font=(r.b?'bold ':'')+r.f+'px sans-serif'; g.fillText(r.t,_bx+14,_yy); _yy+=(r.b?r.f+8:_lh); });
+    var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px '+FONT; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=24;
+    var _bh=14; _rows.forEach(function(r){ _bh+=(r.b?r.f+7:_lh); });
+    var _bx=M+ww-_bw-10, _by=M+wh-_bh-10;
+    if(g.roundRect){ g.beginPath(); g.roundRect(_bx,_by,_bw,_bh,10); g.fillStyle='rgba(15,23,42,.9)'; g.fill(); } else { g.fillStyle='rgba(15,23,42,.9)'; g.fillRect(_bx,_by,_bw,_bh); }
+    g.fillStyle='#22c55e'; g.fillRect(_bx,_by,_bw,3);
+    g.textAlign='left'; var _yy=_by+10;
+    _rows.forEach(function(r){ g.fillStyle=r.c; g.font=(r.b?'bold ':'')+r.f+'px '+FONT; g.fillText(r.t,_bx+12,_yy); _yy+=(r.b?r.f+7:_lh); });
     g.restore();
   }catch(_e){}
 }
@@ -1596,10 +1638,10 @@ function _wallPickPieces(pieces, f){
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   var pv=_shpSel,pt=_txtSel,pl=_lgSel; _shpSel=-1; _txtSel=-1; _lgSel=-1;   // ซ่อนจุดจับตอน export
-  window._wNoBanner=true; try{ wallDraw(); }catch(_e){}       // วาดใหม่แบบไม่มีราคา (คงเส้นระยะ)
+  window._wNoBanner=true; window._wExporting=true; try{ wallDraw(); }catch(_e){}   // แสดง ขนาด+ระยะจากผนัง ของทุกวัตถุ
   var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height;
   var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height); g.drawImage(cv,0,0);
-  window._wNoBanner=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
+  window._wNoBanner=false; window._wExporting=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
   return out;
 }
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
@@ -1803,6 +1845,7 @@ function drawTextBoxes(g,M,ww,wh,ppm){ var Wc=parseFloat($('wWall').value)||0, H
     if(i===_txtSel){ g.save(); g.strokeStyle='#2563eb'; g.lineWidth=1.5; g.setLineDash([4,3]); g.strokeRect(x-3,y-3,bw+6,bh+6); g.setLineDash([]);
       g.fillStyle='#2563eb'; [[x,y],[x+bw,y],[x,y+bh],[x+bw,y+bh],[x+bw/2,y],[x+bw,y+bh/2],[x+bw/2,y+bh],[x,y+bh/2]].forEach(function(p){ g.fillRect(p[0]-4,p[1]-4,8,8); }); g.restore();
       _wTxtMargins(g,M,ww,wh,ppm,x,y,bw,bh); }
+    else if(window._wExporting){ try{ _wTxtMargins(g,M,ww,wh,ppm,x,y,bw,bh); }catch(_e){} }
   } g.textBaseline='alphabetic'; g.textAlign='left';
   try{ drawShapes(g,M,ww,wh,ppm); }catch(_e){}
   try{ drawLogos(g,M,ww,wh,ppm); }catch(_e){}
@@ -1814,17 +1857,18 @@ function drawShapes(g,M,ww,wh,ppm){ if(!shapes.length)return; var Wc=parseFloat(
     else { g.beginPath(); g.rect(x,y,w,h); }
     g.fillStyle=s.color+'44'; g.fill(); g.lineWidth=2; g.strokeStyle=s.color; g.stroke(); g.restore();
     var wcm=s.fw*Wc, hcm=s.fh*Hc;
-    if(i===_shpSel){
-      g.save(); g.fillStyle=s.color; [[x,y],[x+w,y],[x,y+h],[x+w,y+h],[x+w/2,y],[x+w,y+h/2],[x+w/2,y+h],[x,y+h/2]].forEach(function(p){ g.fillRect(p[0]-4,p[1]-4,8,8); }); g.restore();
+    var _exp=window._wExporting, _showDim=(i===_shpSel)||_exp;
+    if(i===_shpSel){ g.save(); g.fillStyle=s.color; [[x,y],[x+w,y],[x,y+h],[x+w,y+h],[x+w/2,y],[x+w,y+h/2],[x+w/2,y+h],[x,y+h/2]].forEach(function(p){ g.fillRect(p[0]-4,p[1]-4,8,8); }); g.restore(); }
+    if(_showDim){
       var below=(y+h+34)<=(M+wh); _wDimH(g,x,x+w, below?(y+h+22):(y-14), wcm.toFixed(1)+' cm', s.color);
       var right=(x+w+34)<=(M+ww); _wDimV(g,y,y+h, right?(x+w+22):(x-14), hcm.toFixed(1)+' cm', s.color);
-      if($('wLabels')&&$('wLabels').checked){ var amb='#f59e0b', cx=x+w/2, cy=y+h/2;
+      if(_exp||($('wLabels')&&$('wLabels').checked)){ var amb='#f59e0b', cx=x+w/2, cy=y+h/2;
         var mL=(x-M)/ppm,mR=((M+ww)-(x+w))/ppm,mT=(y-M)/ppm,mB=((M+wh)-(y+h))/ppm;
         if(x-M>16)_wDimH(g,M,x,cy,mL.toFixed(1)+' cm',amb);
         if((M+ww)-(x+w)>16)_wDimH(g,x+w,M+ww,cy,mR.toFixed(1)+' cm',amb);
         if(y-M>16)_wDimV(g,M,y,cx,mT.toFixed(1)+' cm',amb);
         if((M+wh)-(y+h)>16)_wDimV(g,y+h,M+wh,cx,mB.toFixed(1)+' cm',amb); }
-    } else { g.save(); g.fillStyle=s.color; g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, y-3); g.restore(); }
+    } else { g.save(); g.fillStyle=s.color; g.font='11px "Prompt",system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, y-3); g.restore(); }
   }
 }
 function _lgSil(L,color){ if(L._silCanvas&&L._silCol===color)return L._silCanvas; var img=L.img; var c=document.createElement('canvas'); c.width=Math.max(1,img.width); c.height=Math.max(1,img.height); var gg=c.getContext('2d'); gg.drawImage(img,0,0); gg.globalCompositeOperation='source-in'; gg.fillStyle=color; gg.fillRect(0,0,c.width,c.height); L._silCanvas=c; L._silCol=color; return c; }
@@ -1897,8 +1941,17 @@ function drawLogos(g,M,ww,wh,ppm){
         if((M+ww)-(x+w)>16)_wDimH(g,x+w,M+ww,cyo,mR.toFixed(1)+' cm',amb);
         if(y-M>16)_wDimV(g,M,y,cxo,mT.toFixed(1)+' cm',amb);
         if((M+wh)-(y+h)>16)_wDimV(g,y+h,M+wh,cxo,mB.toFixed(1)+' cm',amb); }
+    } else if(window._wExporting){
+      var below2=(y+h+34)<=(M+wh); _wDimH(g,x,x+w, below2?(y+h+22):(y-14), wcm.toFixed(1)+' cm', '#7c3aed');
+      var right2=(x+w+34)<=(M+ww); _wDimV(g,y,y+h, right2?(x+w+22):(x-14), hcm.toFixed(1)+' cm', '#7c3aed');
+      var amb2='#f59e0b', cxo2=x+w/2, cyo2=y+h/2;
+      var mL2=(x-M)/ppm,mR2=((M+ww)-(x+w))/ppm,mT2=(y-M)/ppm,mB2=((M+wh)-(y+h))/ppm;
+      if(x-M>16)_wDimH(g,M,x,cyo2,mL2.toFixed(1)+' cm',amb2);
+      if((M+ww)-(x+w)>16)_wDimH(g,x+w,M+ww,cyo2,mR2.toFixed(1)+' cm',amb2);
+      if(y-M>16)_wDimV(g,M,y,cxo2,mT2.toFixed(1)+' cm',amb2);
+      if((M+wh)-(y+h)>16)_wDimV(g,y+h,M+wh,cxo2,mB2.toFixed(1)+' cm',amb2);
     } else {
-      g.save(); g.fillStyle='#7c3aed'; g.font='11px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, Math.max(M+10,y-3)); g.restore();
+      g.save(); g.fillStyle='#7c3aed'; g.font='11px "Prompt",system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(Math.round(wcm)+'×'+Math.round(hcm)+' ซม.', x+w/2, Math.max(M+10,y-3)); g.restore();
     }
   }
 }
