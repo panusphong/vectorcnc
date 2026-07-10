@@ -55,15 +55,18 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
     คืน dict: placements=[[{part,rot,dx,dy,cx,cy}...] ต่อแผ่น], utilization, n_sheets, n_parts, unplaced"""
     # จำกัดจำนวนเซลล์กริด -> คุมหน่วยความจำ/เวลา (กัน 502/OOM บนเซิร์ฟเวอร์ฟรี)
     CELL_CAP = 150000
-    grows = int((sheet_h - 2 * margin) / res)
-    gcols = int((sheet_w - 2 * margin) / res)
+    # gap เป็นระยะห่าง 'ระหว่างชิ้น' เท่านั้น ไม่ควรกินพื้นที่ขอบแผ่น (margin) ด้วย
+    # -> ขยายกริดใช้งานออก 2*_pad (halo ของ gap ยื่นเข้ามาในเขต margin ได้ _pad) ทำให้ชิ้นที่ = พื้นที่ใช้งานพอดี วางได้
+    _pad = min(gap / 2.0, margin)
+    grows = int(math.ceil((sheet_h - 2 * margin + 2 * _pad) / res))
+    gcols = int(math.ceil((sheet_w - 2 * margin + 2 * _pad) / res))
     if grows * gcols > CELL_CAP:
         res = res * math.sqrt(grows * gcols / float(CELL_CAP))
-        grows = int((sheet_h - 2 * margin) / res)
-        gcols = int((sheet_w - 2 * margin) / res)
+        grows = int(math.ceil((sheet_h - 2 * margin + 2 * _pad) / res))
+        gcols = int(math.ceil((sheet_w - 2 * margin + 2 * _pad) / res))
     if grows < 2 or gcols < 2:
         return {'placements': [], 'utilization': 0, 'n_sheets': 0, 'n_parts': 0, 'unplaced': 0}
-    uw, uh = sheet_w - 2 * margin, sheet_h - 2 * margin
+    uw, uh = sheet_w - 2 * margin + 2 * _pad, sheet_h - 2 * margin + 2 * _pad
 
     def _bbox_area(p):
         b = p.bounds
@@ -133,8 +136,8 @@ def nest(parts, sheet_w, sheet_h, margin=10.0, gap=5.0,
         h, w = m.shape
         occs[si][row:row + h, col:col + w] = np.maximum(occs[si][row:row + h, col:col + w], m)
         placements[si].append({'part': idx, 'rot': rd,
-                               'dx': margin + col * res - bx0,
-                               'dy': margin + row * res - by0,
+                               'dx': (margin - _pad) + col * res - bx0,
+                               'dy': (margin - _pad) + row * res - by0,
                                'cx': cx, 'cy': cy})
 
     n = len(placements)
