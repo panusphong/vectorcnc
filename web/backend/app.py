@@ -50,8 +50,13 @@ def health():
         eng = getattr(trace_engine, "ENGINE_VERSION", "OLD(no-version)")
     except Exception as e:
         eng = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.3-smooth-spline",
-            "build": "2026-07-10-offset-bezierfit-spline", "engine": eng, "psd": _psd_ok()}
+    try:
+        from vectorcnc import bezier_vec
+        bez = getattr(bezier_vec, "BEZIER_VERSION", "OLD(no-version)")
+    except Exception as e:
+        bez = "import-error: " + str(e)
+    return {"ok": True, "service": "VectorCNC", "version": "3.4-preview-align",
+            "build": "2026-07-10-spline+preview-align", "engine": eng, "bezier": bez, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -123,7 +128,7 @@ async def vectorize(
             except Exception:
                 pass
             return {
-                "svg": bz["svg_px"], "svg_mm": bz["svg_mm"], "dxf_base64": dxf_b64,
+                "svg": bz["svg_px"], "svg_mm": bz["svg_mm"], "svg_fit": bz.get("svg_fit"), "dxf_base64": dxf_b64,
                 "width": 0, "height": 0, "width_mm": bz["width_mm"], "height_mm": bz["height_mm"],
                 "letter_height_mm": bz.get("letter_height_mm"), "size_by": bz.get("size_by"),
                 "layers": bz["layers"], "rings": bz["rings"], "layer_info": [{"color": "#2563EB"}],
