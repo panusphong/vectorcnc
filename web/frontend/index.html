@@ -179,6 +179,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
     <button class="nav-btn" id="btnMulti">🗂 จัดวางหลายไฟล์</button>
+    <button class="nav-btn" id="btnLayer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
@@ -449,7 +450,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v52 · Multi-fix</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v53 · LayerSet</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1279,6 +1280,126 @@ function runMulti(){
   }).catch(function(e){$('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';$('mfOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnMulti').onclick=openMulti;
+
+// ==================== ชุดชั้นตัดอัตโนมัติ (ตามแบบป้าย 1-7) ====================
+var LSEL='1', LSFILE=null, LSLOCK=true, LSASP=0, LSDXF='';
+var LTYPES=[
+ {id:'1',name:'ไฟออกหน้า มีคิ้ว',depth:5,shape:'letter',rim:true,floating:false,insert:false,faces:1,base:true,
+   layers:[['คิ้วหน้า','เต็ม','#2563EB'],['อะคริลิคตู้ไฟ','−0.25','#dc2626'],['แผ่นพื้น','+0.1','#16a34a']]},
+ {id:'2',name:'ไฟออกหน้า ไม่มีคิ้ว',depth:5,shape:'letter',rim:false,floating:false,insert:true,faces:1,base:true,
+   layers:[['หน้าอะคริลิค','+0.1','#2563EB'],['ไส้อะคริลิคใส','−0.15','#dc2626'],['แผ่นพื้น','เต็ม','#16a34a']]},
+ {id:'3',name:'ไฟออกรอบ',depth:7,shape:'letter',rim:false,floating:true,insert:false,faces:1,base:true,
+   layers:[['หน้าอะคริลิค','เต็ม','#2563EB'],['แผ่นพื้น','+0.1','#16a34a']]},
+ {id:'4',name:'กล่องไฟ 1 หน้า',depth:5,shape:'round',rim:true,floating:false,insert:false,faces:1,base:true,
+   layers:[['คิ้ว','เต็ม','#2563EB'],['อะคริลิค','−0.25','#dc2626'],['แผ่นพื้น','+0.1','#16a34a']]},
+ {id:'5',name:'กล่องไฟ 2 หน้า',depth:10,shape:'round',rim:true,floating:false,insert:false,faces:2,base:false,
+   layers:[['คิ้ว','เต็ม','#2563EB'],['อะคริลิค','−0.25','#dc2626']]},
+ {id:'6',name:'งานยกขอบ',depth:2.5,shape:'letter',rim:false,floating:false,insert:false,faces:1,base:true,legs:true,metal:true,
+   layers:[['ซิ้งค์','เต็ม','#2563EB']]},
+ {id:'7',name:'งานยกขอบ มีไส้',depth:2.5,shape:'letter',rim:false,floating:false,insert:true,faces:1,base:true,metal:true,
+   layers:[['หน้าซิ้งค์','เต็ม','#2563EB'],['ไส้พลาสวูด','−0.16','#dc2626']]}
+];
+function signIcon(p){
+  var W=150,H=92,y0=16,y1=74,mid=(y0+y1)/2,dep=24+p.depth*5;
+  var backC=p.metal?'#64748b':'#16a34a', wallC='#94a3b8', faceC='#2563EB', insC='#dc2626';
+  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">';
+  if(p.shape==='round'){
+    var cx=64,cy=46,rx=30,ry=34;
+    // วงหลัง (แผ่นพื้น/ไฟ) + วงหน้า เยื้องกัน = ทรงกล่องไฟกลม
+    s+='<ellipse cx="'+(cx-10)+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="'+(p.base?'rgba(22,163,74,.15)':'rgba(148,163,184,.15)')+'" stroke="'+(p.base?backC:wallC)+'" stroke-width="2.5"/>';
+    s+='<ellipse cx="'+(cx+14)+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="none" stroke="'+faceC+'" stroke-width="2.5"/>';
+    if(p.faces===2){s+='<ellipse cx="'+(cx+2)+'" cy="'+cy+'" rx="'+(rx-1)+'" ry="'+(ry-1)+'" fill="none" stroke="'+wallC+'" stroke-width="1" stroke-dasharray="3 3"/>';}
+    s+='</svg>';return s;
+  }
+  var x0=26,x1=x0+dep;
+  // ขาลอย
+  if(p.legs){s+='<line x1="'+(x0-12)+'" y1="'+(y0+14)+'" x2="'+x0+'" y2="'+(y0+14)+'" stroke="#cbd5e1" stroke-width="2.5"/><line x1="'+(x0-12)+'" y1="'+(y1-14)+'" x2="'+x0+'" y2="'+(y1-14)+'" stroke="#cbd5e1" stroke-width="2.5"/>';}
+  if(p.faces===2){
+    s+='<line x1="'+x0+'" y1="'+y0+'" x2="'+x1+'" y2="'+y0+'" stroke="'+wallC+'" stroke-width="3"/><line x1="'+x0+'" y1="'+y1+'" x2="'+x1+'" y2="'+y1+'" stroke="'+wallC+'" stroke-width="3"/>';
+    s+='<line x1="'+x0+'" y1="'+y0+'" x2="'+x0+'" y2="'+y1+'" stroke="'+faceC+'" stroke-width="3.5"/><line x1="'+x1+'" y1="'+y0+'" x2="'+x1+'" y2="'+y1+'" stroke="'+faceC+'" stroke-width="3.5"/>';
+    s+='<line x1="'+((x0+x1)/2)+'" y1="'+(y0+3)+'" x2="'+((x0+x1)/2)+'" y2="'+(y1-3)+'" stroke="'+wallC+'" stroke-width="2" stroke-dasharray="3 3"/>';
+    s+='</svg>';return s;
+  }
+  // แผ่นพื้น (ซ้าย)
+  if(p.base){s+='<line x1="'+x0+'" y1="'+(y0-3)+'" x2="'+x0+'" y2="'+(y1+3)+'" stroke="'+backC+'" stroke-width="3.5"/>';}
+  // ผนัง (บน/ล่าง) — ต่อเนื่อง หรือ ลอย(halo)
+  if(p.floating){
+    var xf=x1+6;
+    for(var gi=0;gi<3;gi++){s+='<circle cx="'+(x0+8+gi*7)+'" cy="'+mid+'" r="1.6" fill="#f59e0b"/>';}
+    s+='<line x1="'+x0+'" y1="'+mid+'" x2="'+(xf-4)+'" y2="'+mid+'" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="2 3"/>';
+    s+='<line x1="'+xf+'" y1="'+y0+'" x2="'+xf+'" y2="'+y1+'" stroke="'+faceC+'" stroke-width="3.5"/>';
+    s+='</svg>';return s;
+  }
+  s+='<line x1="'+x0+'" y1="'+y0+'" x2="'+x1+'" y2="'+y0+'" stroke="'+wallC+'" stroke-width="3"/><line x1="'+x0+'" y1="'+y1+'" x2="'+x1+'" y2="'+y1+'" stroke="'+wallC+'" stroke-width="3"/>';
+  // หน้า (ขวา)
+  s+='<line x1="'+x1+'" y1="'+y0+'" x2="'+x1+'" y2="'+y1+'" stroke="'+faceC+'" stroke-width="3.5"/>';
+  if(p.rim){s+='<line x1="'+x1+'" y1="'+y0+'" x2="'+(x1+7)+'" y2="'+y0+'" stroke="'+faceC+'" stroke-width="3"/><line x1="'+x1+'" y1="'+y1+'" x2="'+(x1+7)+'" y2="'+y1+'" stroke="'+faceC+'" stroke-width="3"/>';}
+  if(p.insert){s+='<line x1="'+(x1-8)+'" y1="'+(y0+5)+'" x2="'+(x1-8)+'" y2="'+(y1-5)+'" stroke="'+insC+'" stroke-width="2.5"/>';}
+  s+='</svg>';return s;
+}
+function openLayer(){
+  $('mBadge').textContent='Deep NFP · โครงสร้างป้าย';
+  $('mTitle').textContent='ชุดชั้นตัดอัตโนมัติ (ตามแบบป้าย)';
+  var cards='';
+  for(var i=0;i<LTYPES.length;i++){var p=LTYPES[i];
+    var leg=p.layers.map(function(l){return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#5A6B8C;margin-right:6px"><span style="width:8px;height:8px;border-radius:2px;background:'+l[2]+'"></span>'+l[0]+' <b style="color:#334155">'+l[1]+'</b></span>';}).join('');
+    cards+='<div class="lsCard" data-id="'+p.id+'" style="border:2px solid '+(p.id===LSEL?'#4f46e5':'#dbe4f0')+';border-radius:12px;padding:8px;cursor:pointer;background:'+(p.id===LSEL?'#eef2ff':'#fff')+'">'+
+      '<div style="background:#f8fafc;border-radius:8px;padding:2px 4px;margin-bottom:5px">'+signIcon(p)+'</div>'+
+      '<div style="font-size:12.5px;font-weight:700;color:#33415c">'+p.id+'. '+p.name+'</div>'+
+      '<div style="margin-top:3px;line-height:1.6">'+leg+'</div></div>';
+  }
+  $('mBody').innerHTML=''+
+   '<div style="font-size:12px;color:#7d90ad;margin-bottom:8px">เลือกแบบโครงสร้าง แล้วระบบจะขยาย/หดเส้นต่อชั้นตามค่าเผื่อ ออกเป็น DXF แยก layer ตามวัสดุให้อัตโนมัติ</div>'+
+   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px" id="lsGrid">'+cards+'</div>'+
+   '<div id="lsDrop" style="border:2px dashed #93a7c6;border-radius:10px;padding:12px;text-align:center;cursor:pointer;background:#f8fafc;margin-bottom:10px">'+
+     '<div id="lsFname" style="font-size:12.5px;color:#5A6B8C">📎 '+(fileObj?('ใช้ไฟล์ปัจจุบัน: '+(fileObj.name||'')):'คลิกเลือกภาพ/ไฟล์ตัวอักษร (.ai .svg .pdf .png .jpg .psd)')+'</div>'+
+     '<input type="file" id="lsFile" accept=".ai,.pdf,.svg,.png,.jpg,.jpeg,.psd" style="display:none"></div>'+
+   '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">กว้าง มม.</label><input class="numin" id="lsW" type="number" value="'+($('realW').value||'600')+'"></div>'+
+     '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">สูง มม.</label><input class="numin" id="lsH" type="number" placeholder="อัตโนมัติ"></div>'+
+     '<button class="chip on" id="lsLock" title="ล็อกสัดส่วน" style="height:40px;min-width:44px;font-size:16px">🔒</button></div>'+
+   '<button class="btn primary" id="lsGo" style="width:100%">🏭 สร้างชุดชั้นตัด</button>'+
+   '<div id="lsOut" style="margin-top:12px"></div>';
+  $('modal').classList.add('show');
+  var cards2=document.querySelectorAll('.lsCard');
+  for(var k=0;k<cards2.length;k++){cards2[k].onclick=function(){LSEL=this.getAttribute('data-id');
+    for(var j=0;j<cards2.length;j++){var on=cards2[j].getAttribute('data-id')===LSEL;cards2[j].style.borderColor=on?'#4f46e5':'#dbe4f0';cards2[j].style.background=on?'#eef2ff':'#fff';}};}
+  $('lsDrop').onclick=function(){$('lsFile').click();};
+  $('lsFile').onchange=function(){if(this.files[0]){LSFILE=this.files[0];$('lsFname').textContent='📎 '+LSFILE.name;}};
+  $('lsLock').onclick=function(){LSLOCK=!LSLOCK;this.textContent=LSLOCK?'🔒':'🔓';this.classList.toggle('on',LSLOCK);if(LSLOCK&&LSASP>0)$('lsH').value=Math.round((+$('lsW').value||0)*LSASP*10)/10;};
+  $('lsW').oninput=function(){if(LSLOCK&&LSASP>0)$('lsH').value=Math.round((+this.value||0)*LSASP*10)/10;};
+  $('lsH').oninput=function(){if(LSLOCK&&LSASP>0&&+this.value>0)$('lsW').value=Math.round((+this.value)/LSASP*10)/10;};
+  $('lsGo').onclick=runLayer;
+}
+function runLayer(){
+  var f=LSFILE||fileObj;
+  if(!f){alert('เลือกไฟล์/ภาพก่อน');return;}
+  var btn=$('lsGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังสร้างชั้นตัด...';
+  $('lsOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังคำนวณค่าเผื่อแต่ละชั้น...</div></div>';
+  var fd=new FormData();
+  fd.append('file',f);fd.append('sign_type',LSEL);fd.append('real_width_mm',$('lsW').value||'600');
+  fd.append('real_height_mm',(LSLOCK?'0':($('lsH').value||'0')));fd.append('n_colors','6');
+  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    btn.disabled=false;btn.textContent=old;
+    if(j.error){$('lsOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
+    LSDXF=j.dxf_base64||'';
+    var rows=(j.layers||[]).map(function(l){var oc=l.off_cm>0?('+'+l.off_cm):(l.off_cm<0?(''+l.off_cm):'เต็ม');
+      return '<tr><td style="padding:3px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+l.color+';margin-right:5px"></span>'+l.name+'</td><td style="padding:3px 6px;text-align:center;font-weight:700;color:#4f46e5">'+oc+(l.off_cm!=='เต็ม'&&typeof l.off_cm==='number'&&l.off_cm!==0?' ซม.':'')+'</td><td style="padding:3px 6px;text-align:right;color:#5A6B8C">'+l.w_mm+'×'+l.h_mm+' มม.</td></tr>';}).join('');
+    var walls=(j.walls||[]).filter(function(w){return w.h>0;}).map(function(w){return '<span style="background:#f1f5f9;border-radius:5px;padding:2px 8px;font-size:11px;margin:2px 4px 2px 0;display:inline-block">'+w.name+' <b>'+w.h+' ซม.</b></span>';}).join('');
+    var disp=(j.svg_preview||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
+    $('lsOut').innerHTML=
+      '<div style="font-weight:800;color:#33415c;margin-bottom:6px">'+j.type_name+'</div>'+
+      '<button class="btn primary" id="lsDl" style="width:100%;background:linear-gradient(135deg,#4f46e5,#7c3aed);margin-bottom:8px">⬇ ดาวน์โหลด DXF (แยก layer ต่อชั้น)</button>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px">'+
+        '<tr style="background:#f8fafc;font-size:11px;color:#64748b"><td style="padding:4px 6px">ชั้น (วัสดุ)</td><td style="padding:4px 6px;text-align:center">ค่าเผื่อ</td><td style="padding:4px 6px;text-align:right">ขนาด</td></tr>'+rows+'</table>'+
+      (walls?('<div style="font-size:11px;color:#5A6B8C;margin-bottom:2px">ผนัง/ยกขอบ (ดัดขอบ · ความยาว = เส้นรอบรูป '+j.perimeter_cm+' ซม.):</div><div>'+walls+'</div>'):'')+
+      '<div style="font-size:11px;color:#8A99B5;margin:10px 0 4px">พรีวิวชั้นตัดซ้อนกัน:</div>'+
+      '<div style="border:1px solid #D6E0EE;border-radius:8px;padding:8px;background:#fff;max-height:44vh;overflow:auto">'+disp+'</div>'+
+      '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">✕ ปิดหน้าต่าง</button>';
+    var el=$('lsDl');if(el)el.onclick=function(){if(!LSDXF)return;var bin=atob(LSDXF);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+LSEL+'.dxf';a.click();};
+  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('lsOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
+}
+$('btnLayer').onclick=openLayer;
 
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
 $('aiDraft').onclick=function(){
