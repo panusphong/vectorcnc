@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.9-nest-by-material",
-            "build": "2026-07-11-multifile-layerset-by-material+manual", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.0-3d-mainstage+en",
+            "build": "2026-07-11-layerset-english-labels+inline-3d-stage", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -646,6 +646,54 @@ SIGN_TYPES = {
 }
 
 
+_TYPE_EN = {
+    "ไฟออกหน้า มีคิ้ว": "Front-lit · with Trim (Kim)",
+    "ไฟออกหน้า ไม่มีคิ้ว": "Front-lit · no Trim",
+    "ไฟออกรอบ": "Halo / Back-lit",
+    "กล่องไฟ 1 หน้า": "Light Box · Single-Face",
+    "กล่องไฟ 2 หน้า": "Light Box · Double-Face",
+    "งานยกขอบ": "Fabricated Return (Metal)",
+    "งานยกขอบ มีไส้": "Fabricated Return · with Core",
+}
+
+
+def _en_type(th):
+    return _TYPE_EN.get(str(th), str(th))
+
+
+def _en_layer(n):
+    n = str(n)
+    if "คิ้ว" in n:
+        return "Trim Face (Kim)"
+    if "พลาสวูด" in n:
+        return "Plaswood Core"
+    if "ไส้" in n and "อะคริลิค" in n:
+        return "Clear Acrylic Core"
+    if "อะคริลิค" in n and "ยกขอบ" in n:
+        return "Acrylic Return"
+    if "อะคริลิค" in n:
+        return "Acrylic Face"
+    if "ซิ้งค์" in n:
+        return "Zinc Face"
+    if "แผ่นพื้น" in n:
+        return "Back Plate"
+    if n.startswith("ยกขอบ"):
+        if "ใน" in n:
+            return "Inner Return"
+        if "นอก" in n:
+            return "Outer Return"
+        return "Return"
+    if "ขากลาง" in n:
+        return "Floating Stud"
+    if "แผงกลาง" in n:
+        return "Center LED Panel"
+    return n
+
+
+def _en_wall(n):
+    return _en_layer(n)
+
+
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
     from shapely.ops import unary_union
@@ -744,22 +792,22 @@ def _spec_sheet_svg(out_layers):
                    "closed": sp.get("closed", True)}
             parts.append('<path d="%s"/>' % nesting._sp_d(nsp))
         parts.append('</g>')
-        off = L["off"]; oc = "เต็ม" if abs(off) < 1e-6 else ("%+.2f ซม." % (off / 10.0))
+        off = L["off"]; oc = "full" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">%s (%s)</text>'
-                     % (px, titleH - fs * 0.7, fs * 0.95, L["color"], _esc(L["name"]), oc))
+                     % (px, titleH - fs * 0.7, fs * 0.95, L["color"], _esc(_en_layer(L["name"])), oc))
         # เส้นสูง (ซ้าย)
         xh = px - fs * 1.2; y0 = py; y1 = py + h
         parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y0 + aw, xh, y0, xh + aw * 0.6, y0 + aw, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y1 - aw, xh, y1, xh + aw * 0.6, y1 - aw, cd, lw))
-        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>'
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f cm</text>'
                      % (xh - fs * 0.55, (y0 + y1) / 2, fs * 0.85, cd, xh - fs * 0.55, (y0 + y1) / 2, h / 10.0))
         # เส้นกว้าง (ล่าง)
         yw = py + h + fs * 1.2; xx0 = px; xx1 = px + w
         parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xx0, yw, xx1, yw, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx0 + aw, yw - aw * 0.6, xx0, yw, xx0 + aw, yw + aw * 0.6, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx1 - aw, yw - aw * 0.6, xx1, yw, xx1 - aw, yw + aw * 0.6, cd, lw))
-        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%.1f ซม.</text>'
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%.1f cm</text>'
                      % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.85, cd, w / 10.0))
         cursor = px + w + gapX
     Wt = cursor + fs * 0.5; Ht = titleH + maxH + dimB + fs
@@ -824,18 +872,18 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None):
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
     parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y0 + aw, xh, y0, xh + aw * 0.6, y0 + aw, cd, lw))
     parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y1 - aw, xh, y1, xh + aw * 0.6, y1 - aw, cd, lw))
-    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>' % (xh - fs * 0.6, (y0 + y1) / 2, fs * 0.95, cd, xh - fs * 0.6, (y0 + y1) / 2, H / 10.0))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f cm</text>' % (xh - fs * 0.6, (y0 + y1) / 2, fs * 0.95, cd, xh - fs * 0.6, (y0 + y1) / 2, H / 10.0))
     yw = padT + H + fs * 1.4; xx0 = padL; xx1 = padL + W  # กว้าง (ล่าง)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xx0, yw, xx1, yw, cd, lw))
     parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx0 + aw, yw - aw * 0.6, xx0, yw, xx0 + aw, yw + aw * 0.6, cd, lw))
     parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx1 - aw, yw - aw * 0.6, xx1, yw, xx1 - aw, yw + aw * 0.6, cd, lw))
-    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle">%.1f ซม.</text>' % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.95, cd, W / 10.0))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle">%.1f cm</text>' % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.95, cd, W / 10.0))
     cF = F((b[2], b[1])); cB = Bk((b[2], b[1]))          # ลึก/ยกขอบ (แนวเยื้อง)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cF[0], cF[1], cB[0], cB[1], cd, lw))
-    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">ยกขอบ ~%.1f ซม.</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">Return ~%.1f cm</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
     Wt = padL + W + dvx + padR; Ht = padT + H + padB
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
-    svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(rec["name"])))
+    svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(_en_type(rec["name"]))))
     svg += parts; svg.append('</svg>')
     return "\n".join(svg)
 
@@ -906,14 +954,14 @@ def _exploded_svg(out_layers, rec, perimeter_cm):
     out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (x_h, y0, x_h, y1, cd, lw))
     out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (x_h - aw * 0.6, y0 + aw, x_h, y0, x_h + aw * 0.6, y0 + aw, cd, lw))
     out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (x_h - aw * 0.6, y1 - aw, x_h, y1, x_h + aw * 0.6, y1 - aw, cd, lw))
-    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>'
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f cm</text>'
                % (x_h - fs * 0.6, (y0 + y1) / 2, fs * 0.95, cd, x_h - fs * 0.6, (y0 + y1) / 2, Hd / 10.0))
     # เส้นบอก "ลึก" (แนวเยื้อง) + ความสูงผนัง
     depth_cm = float(rec.get("depth_cm", 5.0))
     dx0 = padL + Wd * 0.5; dy0 = padT + Hd + fs * 1.2
     dxe = dx0 + (N - 1) * dvx; dye = dy0 + (N - 1) * (-dvy)
     out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f"/>' % (dx0, dy0, dxe, dye, cd, lw, fs * 0.4, fs * 0.3))
-    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">ลึก ~%.1f ซม.</text>' % ((dx0 + dxe) / 2 + fs * 0.3, (dy0 + dye) / 2 + fs * 1.1, fs * 0.9, cd, depth_cm))
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">ลึก ~%.1f cm</text>' % ((dx0 + dxe) / 2 + fs * 0.3, (dy0 + dye) / 2 + fs * 1.1, fs * 0.9, cd, depth_cm))
     # ชื่อแบบ + เส้นรอบรูป
     out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.2, fs * 1.05, _esc(rec["name"])))
     ws = " · ".join("%s %g ซม." % (w["name"], w["h"]) for w in rec.get("walls", []) if w.get("h", 0) > 0)
@@ -1004,7 +1052,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
 
             def _tf(p, _xs=xshift, _my=gmaxy):
                 return (p[0] + _xs, _my - p[1])
-            lyname = 'CUT_' + str(L["name"])
+            lyname = 'CUT_' + _en_layer(L["name"]).replace(" ", "_").replace("·", "").replace("(", "").replace(")", "")
             if lyname not in doc.layers:
                 lay = doc.layers.add(lyname)
                 try: lay.rgb = L["rgb"]
@@ -1029,7 +1077,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if hh <= 0 or not nm.startswith("ยกขอบ"):
                 continue
             Lmm = peri_mm
-            ly = 'WALL_' + nm
+            ly = 'WALL_' + _en_wall(nm).replace(" ", "_")
             if ly not in doc.layers:
                 lay = doc.layers.add(ly)
                 try: lay.rgb = (245, 158, 11)
@@ -1041,17 +1089,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 t.set_placement((cursor, hh + th * 0.6))
             except Exception:
                 pass
-            wall_pieces.append({"name": nm, "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
+            wall_pieces.append({"name": nm, "name_en": _en_wall(nm), "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
             cursor += Lmm + gap
         dxf_path = os.path.join(tmp, "layerset.dxf")
         doc.saveas(dxf_path)
         with open(dxf_path, "rb") as fo:
             dxf_b64 = base64.b64encode(fo.read()).decode()
 
-        return {"type_name": rec["name"], "sign_type": str(sign_type),
+        return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
-                "layers": [{"name": L["name"], "off_cm": round(L["off"]/10.0, 3), "kind": L.get("kind", "solid"),
-                            "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
+                "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
+                            "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces,
                 "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
     except Exception as e:
