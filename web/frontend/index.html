@@ -238,6 +238,15 @@ select.numin{cursor:pointer}
             <option value="7">7 · งานยกขอบ มีไส้</option>
           </select>
           <div class="hint">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <label style="margin-top:6px">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
+            <button type="button" class="chip on" data-d="0">อัตโนมัติ</button>
+            <button type="button" class="chip" data-d="2.5">2.5</button>
+            <button type="button" class="chip" data-d="5">5</button>
+            <button type="button" class="chip" data-d="7.5">7.5</button>
+            <button type="button" class="chip" data-d="10">10</button>
+            <input class="numin" id="rdCustom" type="number" placeholder="เอง" min="0.5" step="0.5" style="width:70px;padding:5px">
+          </div>
 
           <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
           <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
@@ -690,7 +699,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v62 · STL-3D</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v63 · Layout+Depth</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1688,7 +1697,8 @@ function runLayer(){
 $('btnLayer').onclick=openLayer;
 if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='';
+var LSDXF_MAIN='', RDEPTH=0;
+(function(){var ch=document.querySelectorAll('#rdChips .chip');for(var i=0;i<ch.length;i++){ch[i].onclick=function(){for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');this.classList.add('on');RDEPTH=+this.getAttribute('data-d');if($('rdCustom'))$('rdCustom').value='';};}if($('rdCustom'))$('rdCustom').oninput=function(){if(+this.value>0){RDEPTH=+this.value;for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');}};})();
 $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
@@ -1701,7 +1711,7 @@ $('goLayer').onclick=function(){
   st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">กำลังแตกชั้น + สร้างภาพ 3 มิติ...</div></div>';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
-  fd.append('real_height_mm','0');fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fd.append('real_height_mm','0');fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';
@@ -1717,12 +1727,12 @@ $('goLayer').onclick=function(){
         '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button></div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">'+
-        '<div><div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px">🧊 3D Structure (dimensioned)</div>'+
-          '<div style="border:1px solid #e9d5ff;border-radius:10px;padding:10px;background:#faf9ff">'+disp3d+'</div></div>'+
-        '<div><div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:4px">📐 Cut Layers (per-piece size)</div>'+
-          '<div style="border:1px solid #D6E0EE;border-radius:10px;padding:10px;background:#fff">'+disp+'</div></div>'+
-      '</div>'+
+      '<div style="font-size:13px;font-weight:700;color:#7c3aed;margin:2px 0 5px">🧊 3D Structure (dimensioned)</div>'+
+      '<div style="border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px">'+
+        '<div style="max-width:680px;margin:0 auto">'+disp3d+'</div></div>'+
+      '<div style="font-size:13px;font-weight:700;color:#4f46e5;margin:2px 0 5px">📐 Cut Layers — เรียงบนลงล่าง + จับขนาดต่อชิ้น</div>'+
+      '<div style="border:1px solid #D6E0EE;border-radius:12px;padding:14px;background:#fff;text-align:center;margin-bottom:8px">'+
+        '<div style="max-width:560px;margin:0 auto">'+disp+'</div></div>'+
       '<div style="margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="background:#eef2ff;color:#312e81"><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:left">Layer (material)</th><th style="padding:5px 8px;border:1px solid #c7d2fe">Allowance</th><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:right">Size</th></tr>'+rows+'</table></div>'+
       (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
     if($('lsBack'))$('lsBack').onclick=function(){st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
