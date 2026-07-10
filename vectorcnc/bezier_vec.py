@@ -6,7 +6,7 @@ import math
 import ezdxf
 from . import trace_engine as te
 
-BEZIER_VERSION = "2026-07-10-offset-bezierfit-spline"   # ตัวฟิตเส้นโค้ง Bézier หลัง kerf (เนียน SPLINE)
+BEZIER_VERSION = "2026-07-10-spline+svgfit-pathsafe"   # ฟิต Bézier เนียน + preview วางทับต้นฉบับ (อ่านภาพ path-safe)
 
 
 def _shift(sp, ox, oy, sc=1.0):
@@ -372,10 +372,23 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
     # ---- preview 'วางทับต้นฉบับ': เส้นตัดในพิกัดภาพต้นฉบับ (ไม่ตัดขอบ) เพื่อเทียบ before/after ให้ตรงเป๊ะ ----
     svg_fit = None
     try:
-        import cv2 as _cv
-        _im = _cv.imread(image_path)
-        if _im is not None:
-            _oh, _ow = _im.shape[:2]
+        _oh = _ow = None
+        try:                                            # ใช้ตัวโหลดเดียวกับ trace (อ่านสำเร็จแน่นอน)
+            from . import analyze as _an
+            _oi = _an.load_image(image_path)
+            if _oi is not None:
+                _oh, _ow = _oi.shape[:2]
+        except Exception:
+            pass
+        if _ow is None:                                 # fallback: อ่านแบบ path-safe (รองรับชื่อไฟล์ไทย/อักขระพิเศษ)
+            try:
+                import numpy as _np, cv2 as _cv
+                _oi = _cv.imdecode(_np.fromfile(image_path, dtype=_np.uint8), _cv.IMREAD_COLOR)
+                if _oi is not None:
+                    _oh, _ow = _oi.shape[:2]
+            except Exception:
+                pass
+        if _ow:
             _wh, _ww = getattr(te, 'LAST_WORK_HW', None) or (Hpx, Wpx)
             _sc = (float(_ow) / float(_ww)) if _ww else 1.0
             _raw = []
