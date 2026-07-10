@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.4-layer-set",
-            "build": "2026-07-10-signtype-layerset-offsets+draft-ai", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.5-layerset-specsheet",
+            "build": "2026-07-10-layerset-separate+dimlines", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -704,6 +704,69 @@ def _poly_to_subs(geom):
     return subs
 
 
+def _spec_sheet_svg(out_layers):
+    """สเปคชีต: วางแต่ละชั้น 'แยกกัน' แนวนอน + เส้นจับขนาด กว้าง×สูง (นอกชิ้น) + ชื่อชั้น/ค่าเผื่อ"""
+    from vectorcnc import nesting
+
+    def _esc(t):
+        return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _bbox(subs):
+        mnx = mny = 1e18; mxx = mxy = -1e18
+        for sp in subs:
+            pts = [sp["start"]]
+            for s in sp["segs"]:
+                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+            for (x, y) in pts:
+                mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
+        return mnx, mny, mxx, mxy
+
+    metas = []; Smax = 1.0
+    for L in out_layers:
+        b = _bbox(L["subs"]); w = b[2] - b[0]; h = b[3] - b[1]
+        metas.append({"L": L, "b": b, "w": w, "h": h}); Smax = max(Smax, w, h)
+    fs = max(6.0, Smax * 0.03)
+    dimL = fs * 3.2; dimB = fs * 3.0; titleH = fs * 2.6
+    gapX = Smax * 0.14; lw = max(0.5, Smax * 0.0025); aw = fs * 0.5; cd = "#dc2626"
+    maxH = max(m["h"] for m in metas)
+    parts = []; cursor = fs * 0.5
+    for m in metas:
+        L = m["L"]; b = m["b"]; w = m["w"]; h = m["h"]
+        px = cursor + dimL; py = titleH; dx = px - b[0]; dy = py - b[1]
+
+        def T(p, _dx=dx, _dy=dy):
+            return (p[0] + _dx, p[1] + _dy)
+        parts.append('<g fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">' % (L["color"], lw))
+        for sp in L["subs"]:
+            nsp = {"start": T(sp["start"]),
+                   "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
+                   "closed": sp.get("closed", True)}
+            parts.append('<path d="%s"/>' % nesting._sp_d(nsp))
+        parts.append('</g>')
+        off = L["off"]; oc = "เต็ม" if abs(off) < 1e-6 else ("%+.2f ซม." % (off / 10.0))
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">%s (%s)</text>'
+                     % (px, titleH - fs * 0.7, fs * 0.95, L["color"], _esc(L["name"]), oc))
+        # เส้นสูง (ซ้าย)
+        xh = px - fs * 1.2; y0 = py; y1 = py + h
+        parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
+        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y0 + aw, xh, y0, xh + aw * 0.6, y0 + aw, cd, lw))
+        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y1 - aw, xh, y1, xh + aw * 0.6, y1 - aw, cd, lw))
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>'
+                     % (xh - fs * 0.55, (y0 + y1) / 2, fs * 0.85, cd, xh - fs * 0.55, (y0 + y1) / 2, h / 10.0))
+        # เส้นกว้าง (ล่าง)
+        yw = py + h + fs * 1.2; xx0 = px; xx1 = px + w
+        parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xx0, yw, xx1, yw, cd, lw))
+        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx0 + aw, yw - aw * 0.6, xx0, yw, xx0 + aw, yw + aw * 0.6, cd, lw))
+        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx1 - aw, yw - aw * 0.6, xx1, yw, xx1 - aw, yw + aw * 0.6, cd, lw))
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%.1f ซม.</text>'
+                     % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.85, cd, w / 10.0))
+        cursor = px + w + gapX
+    Wt = cursor + fs * 0.5; Ht = titleH + maxH + dimB + fs
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
+    svg += parts; svg.append('</svg>')
+    return '\n'.join(svg)
+
+
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
@@ -739,22 +802,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         MXX = max(b[2] for b in allb); MXY = max(b[3] for b in allb)
         perimeter = round(full.length / 10.0, 1)  # ซม.
 
-        # preview SVG (ซ้อนทุกชั้น แยกสี)
-        pad = 6.0
-        W = (MXX - MNX) + pad * 2; H = (MXY - MNY) + pad * 2
+        # preview = สเปคชีต แยกชั้น + เส้นจับขนาดต่อชิ้น
         from vectorcnc import nesting
-        svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.1f}mm" height="{H:.1f}mm" viewBox="0 0 {W:.1f} {H:.1f}">']
-        for L in out_layers:
-            svg.append(f'<g fill="none" stroke="{L["color"]}" stroke-width="{max(0.5, min(W,H)*0.003):.2f}" stroke-linejoin="round">')
-            for sp in L["subs"]:
-                d = nesting._sp_d({"start": (sp["start"][0]-MNX+pad, sp["start"][1]-MNY+pad),
-                                   "segs": [((s[0], (s[1][0]-MNX+pad, s[1][1]-MNY+pad)) if s[0] == "L"
-                                             else (s[0], (s[1][0]-MNX+pad, s[1][1]-MNY+pad), (s[2][0]-MNX+pad, s[2][1]-MNY+pad), (s[3][0]-MNX+pad, s[3][1]-MNY+pad))) for s in sp["segs"]],
-                                   "closed": sp.get("closed", True)})
-                svg.append(f'<path d="{d}"/>')
-            svg.append('</g>')
-        svg.append('</svg>')
-        svg = '\n'.join(svg)
+        svg = _spec_sheet_svg(out_layers)
 
         # DXF: แต่ละชั้น = layer เดียว (ลงทะเบียนตำแหน่งตรงกัน) + flip Y
         import ezdxf
