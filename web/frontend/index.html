@@ -89,7 +89,8 @@ input[type=range]{width:100%;accent-color:var(--brand);height:4px}
 footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-size:13px;text-align:center}
 .modal{position:fixed;inset:0;z-index:80;background:rgba(27,42,74,.45);backdrop-filter:blur(4px);display:none;place-items:center;padding:20px}
 .modal.show{display:grid}
-.modal-card{background:#fff;border-radius:18px;max-width:520px;width:100%;padding:26px;box-shadow:0 30px 70px rgba(0,0,0,.3);max-height:92vh;overflow-y:auto}
+.modal-card{background:#fff;border-radius:18px;max-width:560px;width:100%;padding:26px;box-shadow:0 30px 70px rgba(0,0,0,.3);max-height:92vh;overflow-y:auto}
+.modal-card.wide{max-width:900px}
 .modal-card h3{font-size:20px;margin-bottom:6px}
 .modal-card .badge{display:inline-block;font-size:11px;font-weight:600;color:var(--amber);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);padding:3px 10px;border-radius:100px;margin-bottom:12px}
 .modal-card p{color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:10px}
@@ -246,6 +247,11 @@ select.numin{cursor:pointer}
             <button type="button" class="chip" data-d="7.5">7.5</button>
             <button type="button" class="chip" data-d="10">10</button>
             <input class="numin" id="rdCustom" type="number" placeholder="เอง" min="0.5" step="0.5" style="width:70px;padding:5px">
+          </div>
+          <label style="margin-top:6px">สีภาพ 3 มิติ (หน้า / ข้าง)</label>
+          <div style="display:flex;gap:10px;align-items:center;font-size:12px;color:#5A6B8C">
+            <label style="display:flex;align-items:center;gap:5px">ด้านหน้า <input type="color" id="faceColor" value="#c9cdd4" style="width:34px;height:26px;border:none;background:none;cursor:pointer"></label>
+            <label style="display:flex;align-items:center;gap:5px">ด้านข้าง <input type="color" id="sideColor" value="#9aa1ac" style="width:34px;height:26px;border:none;background:none;cursor:pointer"></label>
           </div>
 
           <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
@@ -699,7 +705,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v63 · Layout+Depth</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v66 · LightFX</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1325,6 +1331,7 @@ function openAIDesign(){
     '<input id="aiStyle" class="numin" style="margin-top:8px" placeholder="สไตล์ (ไม่บังคับ) เช่น โมเดิร์น / วินเทจ / ลายไทย">'+
     '<button class="btn primary" id="aiGen" style="width:100%;margin-top:10px">✨ สร้างแบบ</button>'+
     '<div id="aiOut" style="margin-top:12px"></div>';
+  var _mca=document.querySelector('#modal .modal-card');if(_mca)_mca.classList.remove('wide');
   $('modal').classList.add('show');
   $('aiGen').onclick=genDesign;
 }
@@ -1374,6 +1381,7 @@ function openNesting(){
      '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">จำนวนชิ้น</label><input class="numin" id="nQty" type="number" value="10" min="1" max="80"></div>'+
      '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">เว้นระยะ มม.</label><input class="numin" id="nGap" type="number" value="5" step="0.5"></div></div>'+
    '<button class="btn primary" id="nGo" style="width:100%">▦ จัดวาง</button><div id="nOut" style="margin-top:12px"></div>';
+  var _mcn=document.querySelector('#modal .modal-card');if(_mcn)_mcn.classList.remove('wide');
   $('modal').classList.add('show');
   var chips=document.querySelectorAll('#nSheets .chip');
   for(var i=0;i<chips.length;i++){chips[i].onclick=function(){
@@ -1441,6 +1449,7 @@ function openMulti(){
      '<div style="flex:1"><label style="font-size:11px;color:#5A6B8C">ช่องเส้นกั้น มม.</label><input class="numin" id="mfDiv" type="number" value="14" step="1"></div></div>'+
    '<button class="btn primary" id="mfGo" style="width:100%">▦ จัดวางรวม</button>'+
    '<div id="mfOut" style="margin-top:12px"></div>';
+  var _mcm=document.querySelector('#modal .modal-card');if(_mcm)_mcm.classList.remove('wide');
   $('modal').classList.add('show');
   var chips=document.querySelectorAll('#mfSheets .chip');
   for(var i=0;i<chips.length;i++){chips[i].onclick=function(){for(var j=0;j<chips.length;j++)chips[j].classList.remove('on');this.classList.add('on');MFSHEET={w:+this.getAttribute('data-w'),h:+this.getAttribute('data-h')};};}
@@ -1651,6 +1660,7 @@ function openLayer(){
      '<button class="chip on" id="lsLock" title="ล็อกสัดส่วน" style="height:40px;min-width:44px;font-size:16px">🔒</button></div>'+
    '<button class="btn primary" id="lsGo" style="width:100%">🏭 สร้างชุดชั้นตัด</button>'+
    '<div id="lsOut" style="margin-top:12px"></div>';
+  var _mc=document.querySelector('#modal .modal-card');if(_mc)_mc.classList.add('wide');
   $('modal').classList.add('show');
   var cards2=document.querySelectorAll('.lsCard');
   for(var k=0;k<cards2.length;k++){cards2[k].onclick=function(){LSEL=this.getAttribute('data-id');
@@ -1688,8 +1698,8 @@ function runLayer(){
       '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px">'+
         '<tr style="background:#f8fafc;font-size:11px;color:#64748b"><td style="padding:4px 6px">ชั้น (วัสดุ)</td><td style="padding:4px 6px;text-align:center">ค่าเผื่อ</td><td style="padding:4px 6px;text-align:right">ขนาด</td></tr>'+rows+'</table>'+
       (wp?('<div style="font-size:11px;color:#5A6B8C;margin:2px 0 3px">🔩 ยกขอบ (ตัดเป็นแถบแล้วพับ · ยาว = เส้นรอบรูป '+j.perimeter_cm+' ซม.):</div><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fde68a;border-radius:8px;overflow:hidden;margin-bottom:8px">'+wp+'</table>'):'')+
-      '<div style="font-size:11px;color:#8A99B5;margin:10px 0 4px">ชิ้นตัดแยกชั้น + จับขนาด:</div>'+
-      '<div style="border:1px solid #D6E0EE;border-radius:8px;padding:8px;background:#fff;max-height:44vh;overflow:auto">'+disp+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#4f46e5;margin:12px 0 4px">📐 ชิ้นตัดแยกชั้น (เรียงบนลงล่าง) + จับขนาด:</div>'+
+      '<div style="border:1px solid #D6E0EE;border-radius:10px;padding:12px;background:#fff;max-height:66vh;overflow:auto;text-align:center"><div style="max-width:560px;margin:0 auto">'+disp+'</div></div>'+
       '<button class="btn ghost" style="width:100%;margin-top:8px" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">✕ ปิดหน้าต่าง</button>';
     var el=$('lsDl');if(el)el.onclick=function(){if(!LSDXF)return;var bin=atob(LSDXF);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+LSEL+'.dxf';a.click();};
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('lsOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
@@ -1697,7 +1707,22 @@ function runLayer(){
 $('btnLayer').onclick=openLayer;
 if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='', RDEPTH=0;
+var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm'};
+function _glowColor(t){return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
+function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
+function applyGlow(){
+  var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
+  var c=_glowColor(GLOW.temp);
+  if(GLOW.mode==='off'){wrap.style.background='#faf9ff';g.style.opacity='0';g.style.background='none';g.style.filter='none';img.style.filter='none';}
+  else if(GLOW.mode==='front'){wrap.style.background='#efeaff';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.background='radial-gradient(circle at 50% 46%,'+_hexA(c,0.55)+',transparent 60%)';g.style.filter='blur(5px)';img.style.filter='drop-shadow(0 0 12px '+_hexA(c,0.9)+') brightness(1.08) saturate(1.06)';}
+  else{wrap.style.background='#0b1220';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.background='radial-gradient(circle at 50% 50%,'+_hexA(c,0.85)+','+_hexA(c,0.2)+' 42%,transparent 66%)';g.style.filter='blur(16px)';img.style.filter='drop-shadow(0 0 5px '+_hexA(c,0.9)+')';}
+}
+function wireGlow(){
+  var gm=document.querySelectorAll('.glowM'),gt=document.querySelectorAll('.glowT');
+  for(var i=0;i<gm.length;i++){gm[i].classList.toggle('on',gm[i].getAttribute('data-g')===GLOW.mode);gm[i].onclick=function(){for(var j=0;j<gm.length;j++)gm[j].classList.remove('on');this.classList.add('on');GLOW.mode=this.getAttribute('data-g');applyGlow();};}
+  for(var k=0;k<gt.length;k++){gt[k].classList.toggle('on',gt[k].getAttribute('data-t')===GLOW.temp);gt[k].onclick=function(){for(var j=0;j<gt.length;j++)gt[j].classList.remove('on');this.classList.add('on');GLOW.temp=this.getAttribute('data-t');applyGlow();};}
+  applyGlow();
+}
 (function(){var ch=document.querySelectorAll('#rdChips .chip');for(var i=0;i<ch.length;i++){ch[i].onclick=function(){for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');this.classList.add('on');RDEPTH=+this.getAttribute('data-d');if($('rdCustom'))$('rdCustom').value='';};}if($('rdCustom'))$('rdCustom').oninput=function(){if(+this.value>0){RDEPTH=+this.value;for(var j=0;j<ch.length;j++)ch[j].classList.remove('on');}};})();
 $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
@@ -1712,9 +1737,12 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('real_height_mm','0');fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fd.append('face_color',($('faceColor')&&$('faceColor').value)||'');fd.append('side_color',($('sideColor')&&$('sideColor').value)||'');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
-    LSDXF_MAIN=j.dxf_base64||'';
+    LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
+    if($('dlSvg')){$('dlSvg').disabled=false;$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (แยก layer)';}
+    if($('dlDxf'))$('dlDxf').disabled=false;
     var disp3d=(j.svg_3d||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
     var disp=(j.svg_preview||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
     var rows=(j.layers||[]).map(function(l){var oc=l.off_cm>0?('+'+l.off_cm+' cm'):(l.off_cm<0?(l.off_cm+' cm'):'full');
@@ -1726,17 +1754,27 @@ $('goLayer').onclick=function(){
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'+
         '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
+        '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button></div>'+
-      '<div style="font-size:13px;font-weight:700;color:#7c3aed;margin:2px 0 5px">🧊 3D Structure (dimensioned)</div>'+
-      '<div style="border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px">'+
-        '<div style="max-width:680px;margin:0 auto">'+disp3d+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
+        '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
+        '<span style="font-size:11px;color:#64748b">ไฟ:</span><div id="glowMode" style="display:inline-flex;gap:3px">'+
+          '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button></div>'+
+        '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
+          '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
+      '</div>'+
+      '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
+        '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
+        '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
       '<div style="font-size:13px;font-weight:700;color:#4f46e5;margin:2px 0 5px">📐 Cut Layers — เรียงบนลงล่าง + จับขนาดต่อชิ้น</div>'+
       '<div style="border:1px solid #D6E0EE;border-radius:12px;padding:14px;background:#fff;text-align:center;margin-bottom:8px">'+
         '<div style="max-width:560px;margin:0 auto">'+disp+'</div></div>'+
       '<div style="margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="background:#eef2ff;color:#312e81"><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:left">Layer (material)</th><th style="padding:5px 8px;border:1px solid #c7d2fe">Allowance</th><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:right">Size</th></tr>'+rows+'</table></div>'+
       (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
-    if($('lsBack'))$('lsBack').onclick=function(){st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
+    if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
+    if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
+    wireGlow();
   }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
 
@@ -1834,6 +1872,7 @@ $('go').onclick=function(){
   fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('go').disabled=false;paintMode();
     if(j.error){$('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
+    LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';if($('layerStage'))$('layerStage').style.display='none';
     lastSvg=j.svg_mm||j.svg;lastDxf=j.dxf_base64||'';
     // วางเส้นตัด (svg_fit=พิกัดภาพต้นฉบับ) ทับบนภาพต้นฉบับตัวเดียวกันในกรอบเดียว -> ตรงเป๊ะ กันเหลื่อม
     if(j.svg_fit && window._cutBefore){
@@ -1858,8 +1897,12 @@ $('go').onclick=function(){
 };
 
 // ---- downloads ----
-$('dlSvg').onclick=function(){if(!lastSvg)return;var b=new Blob([lastSvg],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.svg';a.click();};
-$('dlDxf').onclick=function(){if(!lastDxf)return;var bin=atob(lastDxf);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);var b=new Blob([arr],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.dxf';a.click();};
+$('dlSvg').onclick=function(){
+  if(LS_ACTIVE&&LS_SVGCUT){var t=($('mainSignType')&&$('mainSignType').value)||'x';var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();return;}
+  if(!lastSvg)return;var b=new Blob([lastSvg],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.svg';a.click();};
+$('dlDxf').onclick=function(){
+  if(LS_ACTIVE&&LSDXF_MAIN){var t=($('mainSignType')&&$('mainSignType').value)||'x';var bin=atob(LSDXF_MAIN);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);var b=new Blob([arr],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.dxf';a.click();return;}
+  if(!lastDxf)return;var bin=atob(lastDxf);var arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);var b=new Blob([arr],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=lastName+'_cut.dxf';a.click();};
 $('copySvg').onclick=function(){if(!lastSvg)return;navigator.clipboard.writeText(lastSvg);$('copySvg').textContent='คัดลอกแล้ว!';setTimeout(function(){$('copySvg').textContent='คัดลอก';},1500);};
 
 // ---- compare slider ----
