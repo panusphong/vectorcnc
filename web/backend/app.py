@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.5-layerset-specsheet",
-            "build": "2026-07-10-layerset-separate+dimlines", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.7-layerset-3d+bored",
+            "build": "2026-07-10-kim-bored-frame+exploded-3d+wall-nocut", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -611,36 +611,37 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
 
 # ==================== ชุดชั้นตัดตามแบบป้าย 1-7 (auto multi-layer offset) ====================
 # off = ค่าเผื่อ 'มม.' จากไซซ์เต็ม (บวก=ขยายออก, ลบ=หดเข้า) · walls = ความสูงผนัง(ซม.) ไว้บอกช่าง(ดัดขอบ)
+# kind: "solid"=ตัดเต็มแผ่น · "frame"=กรอบเจาะโบ๋ (band=ความกว้างคิ้ว มม.) · depth_cm=ความลึกตัว(สำหรับภาพ 3 มิติ)
 SIGN_TYPES = {
-    "1": {"name": "ไฟออกหน้า มีคิ้ว",
-          "layers": [{"name": "คิ้วหน้า", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "อะคริลิคตู้ไฟ", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)},
-                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+    "1": {"name": "ไฟออกหน้า มีคิ้ว", "depth_cm": 5.0,
+          "layers": [{"name": "คิ้วหน้า", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิคตู้ไฟ", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
-    "2": {"name": "ไฟออกหน้า ไม่มีคิ้ว",
-          "layers": [{"name": "หน้าอะคริลิค", "off": 1.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "ไส้อะคริลิคใส", "off": -1.5, "color": "#dc2626", "rgb": (220, 38, 38)},
-                     {"name": "แผ่นพื้น", "off": 0.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+    "2": {"name": "ไฟออกหน้า ไม่มีคิ้ว", "depth_cm": 5.0,
+          "layers": [{"name": "หน้าอะคริลิค", "off": 1.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "ไส้อะคริลิคใส", "off": -1.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 0.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
-    "3": {"name": "ไฟออกรอบ",
-          "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+    "3": {"name": "ไฟออกรอบ", "depth_cm": 7.0,
+          "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบใน", "h": 2.0}, {"name": "ยกขอบอะคริลิค", "h": 7.0}]},
-    "4": {"name": "กล่องไฟ 1 หน้า",
-          "layers": [{"name": "คิ้ว", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "อะคริลิค", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)},
-                     {"name": "แผ่นพื้น", "off": 1.0, "color": "#16a34a", "rgb": (22, 163, 74)}],
+    "4": {"name": "กล่องไฟ 1 หน้า", "depth_cm": 5.0,
+          "layers": [{"name": "คิ้ว", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิค", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
-    "5": {"name": "กล่องไฟ 2 หน้า",
-          "layers": [{"name": "คิ้ว", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "อะคริลิค", "off": -2.5, "color": "#dc2626", "rgb": (220, 38, 38)}],
+    "5": {"name": "กล่องไฟ 2 หน้า", "depth_cm": 10.0,
+          "layers": [{"name": "คิ้ว", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิค", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
           "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "ยกขอบใน", "h": 2.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
-    "6": {"name": "งานยกขอบ",
-          "layers": [{"name": "ซิ้งค์", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)}],
+    "6": {"name": "งานยกขอบ", "depth_cm": 2.5,
+          "layers": [{"name": "ซิ้งค์", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)}],
           "walls": [{"name": "ยกขอบ", "h": 2.5}, {"name": "ขากลางยกลอย", "h": 2.5}]},
-    "7": {"name": "งานยกขอบ มีไส้",
-          "layers": [{"name": "หน้าซิ้งค์", "off": 0.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "ไส้พลาสวูด", "off": -1.6, "color": "#dc2626", "rgb": (220, 38, 38)}],
+    "7": {"name": "งานยกขอบ มีไส้", "depth_cm": 2.5,
+          "layers": [{"name": "หน้าซิ้งค์", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "ไส้พลาสวูด", "off": -1.6, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
           "walls": [{"name": "ยกขอบ", "h": 2.5}]},
 }
 
@@ -767,6 +768,88 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
+def _exploded_svg(out_layers, rec, perimeter_cm):
+    """ภาพ 3 มิติแบบ exploded (oblique) — วางชั้นซ้อนตามความลึก + เส้นบอกมิติ (สูง/ลึก/คิ้ว) + ป้ายชั้น
+       เลียนแบบภาพสเปคโรงงาน: หน้า(คิ้ว)อยู่หน้าสุด ... แผ่นพื้นอยู่หลังสุด"""
+    from vectorcnc import nesting
+
+    def _esc(t):
+        return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _bbox(subs):
+        mnx = mny = 1e18; mxx = mxy = -1e18
+        for sp in subs:
+            pts = [sp["start"]]
+            for s in sp["segs"]:
+                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+            for (x, y) in pts:
+                mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
+        return mnx, mny, mxx, mxy
+
+    N = len(out_layers)
+    gmnx = gmny = 1e18; gmxx = gmxy = -1e18
+    for L in out_layers:
+        b = _bbox(L["subs"])
+        gmnx = min(gmnx, b[0]); gmny = min(gmny, b[1]); gmxx = max(gmxx, b[2]); gmxy = max(gmxy, b[3])
+    Wd = gmxx - gmnx; Hd = gmxy - gmny; S = max(Wd, Hd, 1.0)
+    step = S * 0.16                       # ระยะเยื้องต่อชั้น
+    dvx = step * 0.95; dvy = -step * 0.62   # ทิศเยื้อง (ขวา-ขึ้น) = oblique
+    fs = max(6.0, S * 0.032); lw = max(0.5, S * 0.0028); cd = "#dc2626"
+    padL = fs * 4.0; padT = fs * 2.2; padR = S * 0.28 + N * abs(dvx); padB = fs * 4.5
+
+    # canvas: front layer (index N-1 drawn last/front) at base origin; back layers shifted by +dv
+    def place(sp, k):
+        ox = padL + (N - 1 - k) * dvx - gmnx
+        oy = padT + (N - 1 - k) * (-dvy) - gmny   # ชั้นหลัง = สูงขึ้น (เยื้องขึ้น)
+        def T(p):
+            return (p[0] + ox, p[1] + oy)
+        return {"start": T(sp["start"]),
+                "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
+                "closed": sp.get("closed", True)}
+
+    Wt = padL + Wd + (N - 1) * dvx + padR
+    Ht = padT + Hd + (N - 1) * (-dvy) + padB
+    out = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
+    # วาดจากหลัง(แผ่นพื้น) -> หน้า(คิ้ว)  (index 0 = หน้าสุด ใน recipe) => วาด k=0 หลังสุด? recipe[0]=คิ้ว(หน้า)
+    order = list(range(N - 1, -1, -1))    # วาดแผ่นพื้น(ท้าย recipe) ก่อน ... คิ้ว(หัว recipe) ทีหลัง = อยู่หน้า
+    for k in order:
+        L = out_layers[k]
+        fillc = "rgba(148,163,184,0.16)" if L.get("kind") != "frame" else "none"
+        out.append('<g fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">' % (fillc, L["color"], lw))
+        for sp in L["subs"]:
+            out.append('<path d="%s"/>' % nesting._sp_d(place(sp, k)))
+        out.append('</g>')
+        # ป้ายชั้น (มุมขวาบนของชั้น)
+        b = _bbox(L["subs"])
+        lx = b[2] + (N - 1 - k) * dvx - gmnx + padL + fs * 0.5
+        ly = b[1] + (N - 1 - k) * (-dvy) - gmny + padT + fs * 1.2
+        off = L["off"]; oc = "ไซซ์เต็ม" if abs(off) < 1e-6 else ("%+.2f ซม." % (off / 10.0))
+        knote = " · กรอบเจาะโบ๋" if L.get("kind") == "frame" else ""
+        out.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s"/>' % (lx - fs * 0.6, ly - fs * 0.35, fs * 0.32, L["color"]))
+        out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#334155">%s (%s)%s</text>'
+                   % (lx, ly, fs * 0.82, _esc(L["name"]), oc, knote))
+    # เส้นบอกมิติ "สูง" (ซ้ายสุด ของชั้นหน้า)
+    aw = fs * 0.55
+    x_h = padL - fs * 1.6; y0 = padT; y1 = padT + Hd
+    out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (x_h, y0, x_h, y1, cd, lw))
+    out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (x_h - aw * 0.6, y0 + aw, x_h, y0, x_h + aw * 0.6, y0 + aw, cd, lw))
+    out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (x_h - aw * 0.6, y1 - aw, x_h, y1, x_h + aw * 0.6, y1 - aw, cd, lw))
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>'
+               % (x_h - fs * 0.6, (y0 + y1) / 2, fs * 0.95, cd, x_h - fs * 0.6, (y0 + y1) / 2, Hd / 10.0))
+    # เส้นบอก "ลึก" (แนวเยื้อง) + ความสูงผนัง
+    depth_cm = float(rec.get("depth_cm", 5.0))
+    dx0 = padL + Wd * 0.5; dy0 = padT + Hd + fs * 1.2
+    dxe = dx0 + (N - 1) * dvx; dye = dy0 + (N - 1) * (-dvy)
+    out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f"/>' % (dx0, dy0, dxe, dye, cd, lw, fs * 0.4, fs * 0.3))
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">ลึก ~%.1f ซม.</text>' % ((dx0 + dxe) / 2 + fs * 0.3, (dy0 + dye) / 2 + fs * 1.1, fs * 0.9, cd, depth_cm))
+    # ชื่อแบบ + เส้นรอบรูป
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.2, fs * 1.05, _esc(rec["name"])))
+    ws = " · ".join("%s %g ซม." % (w["name"], w["h"]) for w in rec.get("walls", []) if w.get("h", 0) > 0)
+    out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#64748b">ผนัง (แผ่นม้วน พับตามเส้นรอบรูป %.1f ซม. — ไม่ต้องตัด): %s</text>' % (padL, Ht - fs * 1.0, fs * 0.72, perimeter_cm, _esc(ws)))
+    out.append('</svg>')
+    return '\n'.join(out)
+
+
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
@@ -784,15 +867,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         base_area = full.area
         out_layers = []
         for L in rec["layers"]:
-            off = float(L["off"])
-            g = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
-            if g.is_empty:
+            off = float(L["off"]); kind = L.get("kind", "solid")
+            outer = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
+            if outer.is_empty:
                 continue
+            if kind == "frame":
+                # คิ้ว = กรอบเจาะโบ๋: แถบระหว่างขอบนอก กับ ขอบในที่หดเข้าตามความกว้างคิ้ว
+                band = float(L.get("band", 10.0))
+                inner = full.buffer(off - band, join_style=1, resolution=48)
+                g = outer if (inner.is_empty) else outer.difference(inner)
+                if g.is_empty:
+                    g = outer
+            else:
+                g = outer
             subs = _poly_to_subs(g)
             if not subs:
                 continue
             b = g.bounds
-            out_layers.append({"name": L["name"], "off": off, "color": L["color"], "rgb": L["rgb"],
+            out_layers.append({"name": L["name"], "off": off, "kind": kind, "color": L["color"], "rgb": L["rgb"],
                                "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1)})
         if not out_layers:
             return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
@@ -802,16 +894,42 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         MXX = max(b[2] for b in allb); MXY = max(b[3] for b in allb)
         perimeter = round(full.length / 10.0, 1)  # ซม.
 
-        # preview = สเปคชีต แยกชั้น + เส้นจับขนาดต่อชิ้น
+        # preview = สเปคชีต แยกชั้น + เส้นจับขนาดต่อชิ้น · + ภาพ 3 มิติ exploded มีมิติ
         from vectorcnc import nesting
         svg = _spec_sheet_svg(out_layers)
+        try:
+            svg3d = _exploded_svg(out_layers, rec, perimeter)
+        except Exception:
+            svg3d = ""
 
-        # DXF: แต่ละชั้น = layer เดียว (ลงทะเบียนตำแหน่งตรงกัน) + flip Y
+        # DXF: แยกแต่ละชั้น 'วางห่างกัน' แนวนอน (ไม่ทับซ้อน) + คนละ layer/สี + ป้ายชื่อชั้น
         import ezdxf
+
+        def _bbox_subs(subs):
+            mnx = mny = 1e18; mxx = mxy = -1e18
+            for sp in subs:
+                pts = [sp["start"]]
+                for s in sp["segs"]:
+                    pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+                for (x, y) in pts:
+                    mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
+            return mnx, mny, mxx, mxy
+
         doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM; msp = doc.modelspace()
-        maxy = MXY
-        def _tf(p): return (p[0], maxy - p[1])
-        for L in out_layers:
+        if 'LABEL' not in doc.layers:
+            doc.layers.add('LABEL')
+        metas = [(L, _bbox_subs(L["subs"])) for L in out_layers]
+        Smax = max([1.0] + [max(b[2] - b[0], b[3] - b[1]) for _, b in metas])
+        gap = Smax * 0.16
+        gmaxy = max(b[3] for _, b in metas)      # baseline ร่วม (flip Y = CAD Y ขึ้น)
+        th = max(6.0, Smax * 0.03)
+        cursor = 0.0
+        for L, b in metas:
+            w = b[2] - b[0]; h = b[3] - b[1]
+            xshift = cursor - b[0]
+
+            def _tf(p, _xs=xshift, _my=gmaxy):
+                return (p[0] + _xs, _my - p[1])
             lyname = 'CUT_' + str(L["name"])
             if lyname not in doc.layers:
                 lay = doc.layers.add(lyname)
@@ -822,6 +940,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     nesting._add_contour_dxf(msp, sp, lyname, tf=_tf)
                 except Exception:
                     pass
+            off = L["off"]; oc = "เต็ม" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
+            try:
+                t = msp.add_text("%s (%s)" % (L["name"], oc), dxfattribs={'layer': 'LABEL', 'height': th})
+                t.set_placement((cursor, gmaxy - b[1] + th * 0.6))
+            except Exception:
+                pass
+            cursor += w + gap
         dxf_path = os.path.join(tmp, "layerset.dxf")
         doc.saveas(dxf_path)
         with open(dxf_path, "rb") as fo:
@@ -829,9 +954,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
 
         return {"type_name": rec["name"], "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
-                "layers": [{"name": L["name"], "off_cm": round(L["off"]/10.0, 3), "color": L["color"],
-                            "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
-                "walls": rec["walls"], "svg_preview": svg, "dxf_base64": dxf_b64}
+                "layers": [{"name": L["name"], "off_cm": round(L["off"]/10.0, 3), "kind": L.get("kind", "solid"),
+                            "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
+                "walls": rec["walls"], "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
