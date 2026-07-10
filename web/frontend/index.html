@@ -438,7 +438,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v44 · Jobs</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v45 · Jobs</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1161,6 +1161,7 @@ function pick(f){
     var rd=new FileReader();
     rd.onload=function(){
       $('thumbImg').src=rd.result;$('thumb').style.display='block';
+      window._cutBefore=rd.result;   // เก็บภาพต้นฉบับ ไว้ให้เส้นตัด (svg_fit) วางทับในกรอบเดียวกัน
       $('before').innerHTML='<img src="'+rd.result+'" alt="">';
     };
     rd.readAsDataURL(f);
@@ -1193,7 +1194,15 @@ $('go').onclick=function(){
     $('go').disabled=false;paintMode();
     if(j.error){$('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
     lastSvg=j.svg_mm||j.svg;lastDxf=j.dxf_base64||'';
-    $('after').innerHTML=(j.svg_fit||j.svg);   // svg_fit = พิกัดภาพต้นฉบับ วางทับ before ให้ตรงเป๊ะ
+    // วางเส้นตัด (svg_fit=พิกัดภาพต้นฉบับ) ทับบนภาพต้นฉบับตัวเดียวกันในกรอบเดียว -> ตรงเป๊ะ กันเหลื่อม
+    if(j.svg_fit && window._cutBefore){
+      $('after').innerHTML='<div style="position:relative;display:inline-block;max-width:100%;max-height:100%;line-height:0">'+
+        '<img src="'+window._cutBefore+'" style="display:block;max-width:100%;max-height:100%;visibility:hidden">'+
+        '<div style="position:absolute;inset:0" id="afSvgWrap">'+j.svg_fit+'</div></div>';
+      var _sv=$('after').querySelector('#afSvgWrap svg'); if(_sv){ _sv.removeAttribute('width'); _sv.removeAttribute('height'); _sv.style.width='100%'; _sv.style.height='100%'; _sv.style.display='block'; }
+    } else {
+      $('after').innerHTML=(j.svg_fit||j.svg);
+    }
     $('sMat').textContent=MATERIAL;
     $('sLayers').textContent=j.layers;$('sRings').textContent=j.rings;
     $('sSize').textContent=(j.width_mm||0)+'×'+(j.height_mm||0)+' มม.'+(j.letter_height_mm?(' · สูงตัวอักษร '+j.letter_height_mm+' มม.'):'');
