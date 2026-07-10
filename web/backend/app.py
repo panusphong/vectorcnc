@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.2-stl-3d-export",
-            "build": "2026-07-11-stl-extrude-watertight+fusion360+3dprint", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.3-layout+returndepth",
+            "build": "2026-07-11-spec-vertical-stack+return-depth-select+stl", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -864,17 +864,20 @@ def _spec_sheet_svg(out_layers):
     for L in out_layers:
         b = _bbox(L["subs"]); w = b[2] - b[0]; h = b[3] - b[1]
         metas.append({"L": L, "b": b, "w": w, "h": h}); Smax = max(Smax, w, h)
-    fs = max(6.0, Smax * 0.03)
-    dimL = fs * 3.2; dimB = fs * 3.0; titleH = fs * 2.6
-    gapX = Smax * 0.14; lw = max(0.5, Smax * 0.0025); aw = fs * 0.5; cd = "#dc2626"
-    maxH = max(m["h"] for m in metas)
-    parts = []; cursor = fs * 0.5
-    for m in metas:
+    fs = max(6.0, Smax * 0.028)
+    dimL = fs * 3.6; dimB = fs * 3.2; titleH = fs * 3.0; gapY = fs * 3.8
+    lw = max(0.6, Smax * 0.0022); aw = fs * 0.55; cd = "#dc2626"
+    maxW = max(m["w"] for m in metas)
+    parts = []; cursor = fs * 0.6
+    for mi, m in enumerate(metas):
         L = m["L"]; b = m["b"]; w = m["w"]; h = m["h"]
-        px = cursor + dimL; py = titleH; dx = px - b[0]; dy = py - b[1]
+        px = dimL; py = cursor + titleH; dx = px - b[0]; dy = py - b[1]   # วางเรียงบน->ล่าง (แนวตั้ง)
 
         def T(p, _dx=dx, _dy=dy):
             return (p[0] + _dx, p[1] + _dy)
+        # เส้นคั่นบางๆ ระหว่างชั้น
+        if mi > 0:
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#e2e8f0" stroke-width="%.2f"/>' % (0, cursor - gapY * 0.45, dimL + maxW + fs, cursor - gapY * 0.45, lw))
         parts.append('<g fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">' % (L["color"], lw))
         for sp in L["subs"]:
             nsp = {"start": T(sp["start"]),
@@ -883,24 +886,25 @@ def _spec_sheet_svg(out_layers):
             parts.append('<path d="%s"/>' % nesting._sp_d(nsp))
         parts.append('</g>')
         off = L["off"]; oc = "full" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
+        parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s"/>' % (px + fs * 0.4, py - titleH * 0.5, fs * 0.5, L["color"]))
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">%s (%s)</text>'
-                     % (px, titleH - fs * 0.7, fs * 0.95, L["color"], _esc(_en_layer(L["name"])), oc))
+                     % (px + fs * 1.3, py - titleH * 0.35, fs * 1.15, L["color"], _esc(_en_layer(L["name"])), oc))
         # เส้นสูง (ซ้าย)
-        xh = px - fs * 1.2; y0 = py; y1 = py + h
+        xh = px - fs * 1.3; y0 = py; y1 = py + h
         parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y0 + aw, xh, y0, xh + aw * 0.6, y0 + aw, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y1 - aw, xh, y1, xh + aw * 0.6, y1 - aw, cd, lw))
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f cm</text>'
-                     % (xh - fs * 0.55, (y0 + y1) / 2, fs * 0.85, cd, xh - fs * 0.55, (y0 + y1) / 2, h / 10.0))
+                     % (xh - fs * 0.55, (y0 + y1) / 2, fs * 0.9, cd, xh - fs * 0.55, (y0 + y1) / 2, h / 10.0))
         # เส้นกว้าง (ล่าง)
-        yw = py + h + fs * 1.2; xx0 = px; xx1 = px + w
+        yw = py + h + fs * 1.3; xx0 = px; xx1 = px + w
         parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xx0, yw, xx1, yw, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx0 + aw, yw - aw * 0.6, xx0, yw, xx0 + aw, yw + aw * 0.6, cd, lw))
         parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx1 - aw, yw - aw * 0.6, xx1, yw, xx1 - aw, yw + aw * 0.6, cd, lw))
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%.1f cm</text>'
-                     % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.85, cd, w / 10.0))
-        cursor = px + w + gapX
-    Wt = cursor + fs * 0.5; Ht = titleH + maxH + dimB + fs
+                     % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.9, cd, w / 10.0))
+        cursor = py + h + dimB + gapY
+    Wt = dimL + maxW + fs * 2.0; Ht = cursor
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
     svg += parts; svg.append('</svg>')
     return '\n'.join(svg)
@@ -1063,8 +1067,9 @@ def _exploded_svg(out_layers, rec, perimeter_cm):
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
-                    n_colors: int = Form(6)):
-    """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ"""
+                    return_depth_cm: float = Form(0.0), n_colors: int = Form(6)):
+    """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
+       return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "in.png")
     with open(inp, "wb") as f:
@@ -1073,6 +1078,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
+        # กำหนดความหนายกขอบเอง -> override ความลึก 3 มิติ + ความสูงผนังหลัก (ยกขอบนอก, ไม่แตะ 'ยกขอบใน')
+        try:
+            _rd = float(return_depth_cm)
+        except Exception:
+            _rd = 0.0
+        if _rd > 0:
+            import copy as _copy
+            rec = _copy.deepcopy(rec)
+            rec["depth_cm"] = _rd
+            for _w in rec.get("walls", []):
+                _nm = str(_w.get("name", ""))
+                if _nm.startswith("ยกขอบ") and "ใน" not in _nm:
+                    _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
         base_area = full.area
         out_layers = []
