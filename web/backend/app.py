@@ -308,8 +308,8 @@ async def nest_ep(
                         for subs, color, rgb, layer in pc["groups"]:
                             ts = nesting.place_subs(subs, pl)
                             items.append((ts, color, rgb, layer))   # (subs, color_hex, rgb, layer)
-                        b = nesting.place_geom(pc["poly"], pl).bounds  # ขนาดชิ้นจริงหลังวาง
-                        labs.append(((b[0]+b[2])/2.0, (b[1]+b[3])/2.0, b[2]-b[0], b[3]-b[1]))
+                        b = nesting.place_geom(pc["poly"], pl).bounds  # กรอบชิ้นจริงหลังวาง (x0,y0,x1,y1)
+                        labs.append((b[0], b[1], b[2], b[3]))
                     except Exception:
                         continue                                    # ข้ามชิ้นมีปัญหา ไม่ล้มทั้งงาน
                 sheets_items.append(items); sheets_labels.append(labs)
@@ -352,7 +352,7 @@ async def nest_ep(
                 lb = []
                 for g in gs:
                     try:
-                        b = g.bounds; lb.append(((b[0]+b[2])/2.0, (b[1]+b[3])/2.0, b[2]-b[0], b[3]-b[1]))
+                        b = g.bounds; lb.append((b[0], b[1], b[2], b[3]))
                     except Exception:
                         pass
                 return lb
