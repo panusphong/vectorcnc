@@ -402,17 +402,19 @@ select.numin{cursor:pointer}
     <div class="card">
       <h3>4.3 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</h3>
       <p><b>ใช้เมื่อ:</b> ทำป้ายตัวอักษร/กล่องไฟที่มีโครงสร้างหลายชั้น (ไม่ใช่แผ่นแบน)</p>
-      <div class="step">1) อัปโหลดตัวอักษร/โลโก้ + <b>กำหนดขนาด</b></div>
-      <div class="step">2) เลือก "ประเภทป้าย" (1–7) — มีภาพโครงสร้างให้ดู</div>
+      <p><b>ทำได้ 2 ทาง:</b> (ก) ในหน้าหลัก เลือก "ประเภทป้าย" ข้างช่องขนาด → กด "🏭 ชุดชั้นตัด + 3 มิติ" · (ข) เมนู "🏭 ชุดชั้นตัด (ตามแบบป้าย)" ด้านบน</p>
+      <div class="step">1) อัปโหลดตัวอักษร/โลโก้ + <b>กำหนดขนาด (มม.)</b></div>
+      <div class="step">2) เลือกประเภทป้าย (1–7)</div>
       <div class="step">3) กด "🏭 ชุดชั้นตัด + 3 มิติ"</div>
-      <p><b>ได้:</b></p>
+      <p><b>ได้ (แสดงในพื้นที่กลางจอ · แบ่ง 2 ช่อง):</b></p>
       <ul>
-        <li>ภาพ 3 มิติมีมิติ (สูง/กว้าง/ลึก) เห็นผนังข้าง + คิ้วเจาะโบ๋</li>
-        <li>เส้นตัดแยกชั้นตามวัสดุ: คิ้ว (เจาะโบ๋) · อะคริลิค (−0.25) · แผ่นพื้น (+0.1)</li>
-        <li>ยกขอบเป็นแถบพับ (ยาว = เส้นรอบรูป × สูง)</li>
-        <li>DXF แยก layer ต่อชั้น + สเปคชีตจับขนาดต่อชิ้น</li>
+        <li><b>🧊 3D Structure</b> — ภาพ 3 มิติมีมิติ (สูง/กว้าง/ลึก) เห็นผนังข้าง (Return) + คิ้วเจาะโบ๋</li>
+        <li><b>📐 Cut Layers</b> — สเปคจับขนาดต่อชิ้น + ตาราง layer</li>
+        <li>เส้นตัดแยกชั้นตามวัสดุ: คิ้ว(เจาะโบ๋)/อะคริลิค(−0.25)/แผ่นพื้น(+0.1) · ยกขอบ = แถบพับ (ยาว = เส้นรอบรูป × สูง)</li>
+        <li><b>ชื่อภาษาอังกฤษ</b> ในภาพ/DXF: Trim Face (Kim) · Acrylic Face · Back Plate · Return … (มีไทยกำกับในตาราง)</li>
+        <li>ปุ่ม ⬇ DXF (แยก layer/วัสดุ) + "← กลับไปดูเส้นตัด"</li>
       </ul>
-      <div class="warn">⚠️ ภาพ JPG/PNG ไม่มีขนาดกำกับในไฟล์ (ต่างจาก .ai) — ต้องกำหนดขนาดก่อนเสมอ ไม่งั้นชิ้นงานจะผิดขนาด</div>
+      <div class="warn">⚠️ ภาพ JPG/PNG ไม่มีขนาดกำกับในไฟล์ (ต่างจาก .ai) — ต้องกำหนดขนาดก่อนเสมอ ไม่งั้นชิ้นงานจะผิดขนาด (ระบบจะเตือนถ้ายังไม่ใส่)</div>
     </div>
 
     <div class="card">
@@ -431,6 +433,11 @@ select.numin{cursor:pointer}
       <div class="step">2) ตั้งค่าต่อไฟล์: ขนาด (🔒), จำนวน, โหมด (แยกชิ้น/ทั้งป้าย)</div>
       <div class="step">3) เลือกแผ่น + เว้นระยะ + ช่องเส้นกั้น → กด "จัดวางรวม"</div>
       <p><b>ได้:</b> จัดวางแบบแยกโซนต่อไฟล์ + <b>เส้นกั้น</b> + ป้ายรหัส (เก็บชิ้นออกจากเครื่องง่าย) · DXF รวมทุกแผ่น / แยก DXF รายไฟล์ / PDF พรีวิว</p>
+      <h3 style="margin-top:12px">🏭 โหมด "ตัดตามโครงสร้างป้าย (แยกชั้นวัสดุ)"</h3>
+      <p>กดปุ่ม <b>"🏭 ตัดตามโครงสร้างป้าย"</b> ในหน้าให้เป็น "เปิด" → แต่ละไฟล์เลือก <b>ประเภทป้าย (1–7) ได้เอง</b></p>
+      <div class="step">ระบบจะแตกทุกไฟล์เป็นชั้น (คิ้ว/อะคริลิค/แผ่นพื้น/ยกขอบ) แล้ว <b>รวมชิ้นตามวัสดุข้ามทุกไฟล์</b></div>
+      <div class="step">จัดวาง <b>แยกแผ่นต่อวัสดุ</b> (คิ้วรวมแผ่น · อะคริลิครวมแผ่น · แผ่นพื้นรวมแผ่น · ยกขอบรวมแผ่น) — ถูกต้องตามการผลิต (คนละวัสดุคนละแผ่น/เครื่อง)</div>
+      <p><b>ได้:</b> ผลลัพธ์แยกเป็นหมวดวัสดุ (จำนวนชิ้น/แผ่น/ใช้วัสดุ%) + <b>ดาวน์โหลด DXF แยกต่อวัสดุ</b> เอาเข้าเครื่องตัดทีละวัสดุ</p>
     </div>
 
     <div class="card">
@@ -466,8 +473,8 @@ select.numin{cursor:pointer}
     <ol>
       <li><b>เซลล์รับงาน:</b> ลูกค้าส่งภาพโลโก้ → "ขนาดป้าย+จำลองผนัง" วางบนผนัง เสนอราคา บันทึก Job</li>
       <li><b>กราฟิก:</b> อัปโหลดภาพ → "🎨 .ai" ได้เวกเตอร์ → เก็บรายละเอียดใน Illustrator</li>
-      <li><b>เตรียมผลิต:</b> เลือกประเภทป้าย (เช่น 1 ไฟออกหน้า มีคิ้ว) → ใส่ขนาด → "🏭 ชุดชั้นตัด+3มิติ" → ได้ภาพ 3 มิติ + เส้นตัดแยกชั้น + ยกขอบ</li>
-      <li><b>จัดแผ่น:</b> "จัดวางหลายไฟล์" รวมงานหลายชิ้น → DXF รวม/แยกไฟล์ + เส้นกั้น</li>
+      <li><b>เตรียมผลิต:</b> เลือกประเภทป้าย (เช่น 1 Front-lit·with Trim) → ใส่ขนาด → "🏭 ชุดชั้นตัด+3มิติ" → เห็นภาพ 3 มิติ + สเปคชื่ออังกฤษกลางจอ + เส้นตัดแยกชั้น + ยกขอบ</li>
+      <li><b>จัดแผ่น:</b> "จัดวางหลายไฟล์" → เปิดโหมด "ตัดตามโครงสร้าง (แยกวัสดุ)" → DXF แยกต่อวัสดุ (คิ้ว/อะคริลิค/แผ่นพื้น/ยกขอบ) พร้อมตัด</li>
       <li><b>ช่างตัด:</b> เปิด DXF ในเครื่องตัด (เลือก layer วัสดุ) → ตัด</li>
       <li><b>ช่างประกอบ:</b> ดูภาพ 3 มิติ + ตารางชั้น → ประกอบตามชั้น (คิ้ว/อะคริลิค/แผ่นพื้น/พับยกขอบ)</li>
     </ol>
@@ -673,7 +680,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v58 · 3D-Stage</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v61 · SizeGuard</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1367,6 +1374,7 @@ function openNesting(){
 function runNest(){
   var sw=NSHEET.w,sh=NSHEET.h;
   if(sw===0){sw=+($('nW').value||0);sh=+($('nH').value||0);if(!sw||!sh){alert('ใส่ขนาดแผ่น');return;}}
+  if(!(+($('nPW').value)>0)){alert('⚠️ กำหนดขนาด "กว้างชิ้น มม." ก่อน — ภาพไม่มีขนาดกำกับ');$('nPW').focus();return;}
   $('nGo').disabled=true;$('nGo').textContent='⏳ กำลังจัดวาง...';
   $('nOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวาง (อาจนานสักครู่)...</div></div>';
   var fd=new FormData();
@@ -1480,6 +1488,7 @@ function mfSyncW(i){var e=document.querySelector('.mfW[data-i="'+i+'"]');if(e)e.
 function runMulti(){
   var sel=MF.filter(function(m){return m.on;});
   if(!sel.length){alert('เลือกไฟล์อย่างน้อย 1 ไฟล์');return;}
+  for(var s=0;s<MF.length;s++){if(MF[s].on&&!(+MF[s].wmm>0)){alert('⚠️ ไฟล์ '+mfLabel(s)+': กำหนดขนาด "กว้าง มม." ก่อน — ภาพไม่มีขนาดกำกับ');return;}}
   if(MFLS){runMultiLS();return;}
   $('mfGo').disabled=true;$('mfGo').textContent='⏳ กำลังจัดวาง...';
   $('mfOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังจัดวางรวม (อาจนานสักครู่)...</div></div>';
@@ -1637,6 +1646,7 @@ function openLayer(){
 function runLayer(){
   var f=LSFILE||fileObj;
   if(!f){alert('เลือกไฟล์/ภาพก่อน');return;}
+  if(!(+($('lsW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง มม." ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับในไฟล์');$('lsW').focus();return;}
   var btn=$('lsGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังสร้างชั้นตัด...';
   $('lsOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังคำนวณค่าเผื่อแต่ละชั้น...</div></div>';
   var fd=new FormData();
@@ -1713,6 +1723,7 @@ $('goLayer').onclick=function(){
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
 $('aiDraft').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพก่อน');return;}
+  if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับ');$('realW').focus();return;}
   var btn=$('aiDraft');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังดราฟท์เวกเตอร์...';
   $('aiOut').textContent='กำลังแปลงภาพเป็นเวกเตอร์ (อาจใช้เวลาสักครู่)...';
   var fd=new FormData();
