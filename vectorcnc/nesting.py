@@ -9,7 +9,7 @@ from scipy.signal import fftconvolve
 from shapely.affinity import rotate as _rotate, translate as _translate
 import ezdxf
 
-NESTING_VERSION = "2026-07-10-edgefix+autofit+dimlines+backfill"   # + ค้นทุกแผ่น เติมช่องว่างแพคแน่น
+NESTING_VERSION = "2026-07-10-multi-zones"   # + nest_multi: หลายไฟล์รวมแผ่น แยกโซน+เส้นกั้น+ป้าย
 
 
 def _raster(poly, res):
@@ -459,5 +459,221 @@ def write_dxf(sheets_geoms, path, sheet_w, sheet_h, gap_between=50.0):
                     continue
                 pts = [(ox + x, sheet_h - y) for x, y in coords]
                 msp.add_lwpolyline(pts, close=closed, dxfattribs={'layer': ly})
+    doc.saveas(path)
+    return path
+
+
+# ==================== หลายไฟล์รวมแผ่น: แยกโซนต่อไฟล์ + เส้นกั้น ====================
+def nest_multi(files, sheet_w, sheet_h, margin=10.0, gap=5.0, divider_gap=14.0, res=None):
+    """จัดวาง 'หลายไฟล์' ลงแผ่นเดียวกันแบบ 'แยกโซนต่อไฟล์ + เส้นกั้น'
+    files = list ของ dict:
+      { 'label':'A', 'name':'logo.ai', 'color':'#2563EB', 'rgb':(37,99,235),
+        'nest_pieces':[ {'poly':shapely, 'groups':[(subs,color,rgb,layer),...]}, ... ],
+        'qty':int }
+    วิธี: nest แต่ละไฟล์แยกก่อน (ได้ 'บล็อก' ต่อแผ่นเสมือน) -> วางบล็อกซ้อนแนวตั้งลงแผ่นจริง
+          ไฟล์ต่างกันมีเส้นกั้นคั่น (layer DIVIDER) + ป้ายรหัสไฟล์ (layer LABEL)
+    คืน dict: sheets[], global_pieces[], placements[], file_layouts[], per_file[], n_sheets, utilization, unplaced
+    """
+    if res is None:
+        res = max(3.0, min(sheet_w, sheet_h) / 360.0)
+    usable_h = sheet_h - 2 * margin
+
+    global_pieces = []          # index gpi -> groups
+    file_layouts = []           # ต่อไฟล์: สำหรับ DXF รายไฟล์
+    blocks = []                 # {'fi','y0','y1','pcs':[(gpi,pl,lpi)]}
+    unplaced = 0
+
+    for fi, f in enumerate(files):
+        nps = f.get('nest_pieces') or []
+        qty = max(1, int(f.get('qty', 1)))
+        if not nps:
+            file_layouts.append({'label': f.get('label', ''), 'name': f.get('name', ''),
+                                 'pieces': [], 'placements': []})
+            continue
+        parts = [(pc['poly'], qty) for pc in nps]
+        nf = nest(parts, float(sheet_w), float(sheet_h),
+                  margin=float(margin), gap=float(gap), res=res, rotations=(0, 90))
+        unplaced += nf.get('unplaced', 0)
+        base = len(global_pieces)
+        for pc in nps:
+            global_pieces.append(pc['groups'])
+        file_layouts.append({'label': f.get('label', ''), 'name': f.get('name', ''),
+                             'pieces': [pc['groups'] for pc in nps],
+                             'placements': nf['placements']})
+        for sheet in nf['placements']:
+            if not sheet:
+                continue
+            y0 = 1e18; y1 = -1e18; pcs = []
+            for pl in sheet:
+                lpi = pl['part']
+                b = place_geom(nps[lpi]['poly'], pl).bounds
+                if b[1] < y0: y0 = b[1]
+                if b[3] > y1: y1 = b[3]
+                pcs.append((base + lpi, pl, lpi))
+            blocks.append({'fi': fi, 'y0': y0, 'y1': y1, 'pcs': pcs})
+
+    # ---- วางบล็อกซ้อนแนวตั้งลงแผ่นจริง ----
+    real = [{'placed': [], 'dividers': [], 'zones': []}]
+    cursorY = margin
+    last_fi = None
+    for blk in blocks:
+        bh = blk['y1'] - blk['y0']
+        cur = real[-1]
+        if cur['placed'] and (cursorY + divider_gap + bh > sheet_h - margin) and bh <= usable_h + 0.5:
+            real.append({'placed': [], 'dividers': [], 'zones': []})
+            cur = real[-1]; cursorY = margin; last_fi = None
+        yshift = cursorY - blk['y0']
+        if cur['placed'] and last_fi is not None and last_fi != blk['fi']:
+            cur['dividers'].append(cursorY - divider_gap * 0.5)
+        f = files[blk['fi']]
+        cur['zones'].append((margin + 2.0, cursorY, blk['fi'],
+                             (f.get('label', '') + '  ' + f.get('name', '')).strip(), f.get('color', '#2563EB')))
+        for (gpi, pl, lpi) in blk['pcs']:
+            pl2 = dict(pl); pl2['dy'] = pl['dy'] + yshift; pl2['part'] = gpi
+            cur['placed'].append((blk['fi'], gpi, lpi, pl2))
+        cursorY += bh + divider_gap
+        last_fi = blk['fi']
+
+    # ---- สร้างโครงเรนเดอร์ + สถิติ ----
+    out_sheets = []; placements_by_sheet = []
+    per_area = {}; per_placed = {}; total_area = 0.0
+    for cur in real:
+        if not cur['placed']:
+            continue
+        items = []; labels = []; pls = []
+        for (fi, gpi, lpi, pl2) in cur['placed']:
+            fcolor = files[fi].get('color', '#2563EB')
+            for grp in global_pieces[gpi]:
+                items.append((place_subs(grp[0], pl2), fcolor))
+            poly = files[fi]['nest_pieces'][lpi]['poly']
+            b = place_geom(poly, pl2).bounds
+            labels.append((b[0], b[1], b[2], b[3]))
+            a = poly.area
+            per_area[fi] = per_area.get(fi, 0.0) + a; total_area += a
+            per_placed[fi] = per_placed.get(fi, 0) + 1
+            pls.append(pl2)
+        out_sheets.append({'items': items, 'labels': labels,
+                           'dividers': list(cur['dividers']), 'zones': list(cur['zones'])})
+        placements_by_sheet.append(pls)
+
+    per_file = []
+    for fi, f in enumerate(files):
+        per_file.append({'label': f.get('label', ''), 'name': f.get('name', ''),
+                         'color': f.get('color', '#2563EB'),
+                         'placed': per_placed.get(fi, 0),
+                         'area_ratio': round(per_area.get(fi, 0.0) / total_area, 4) if total_area else 0.0})
+    n = len(out_sheets)
+    util = round(total_area / (n * sheet_w * sheet_h) * 100, 1) if n else 0
+    return {'sheets': out_sheets, 'global_pieces': global_pieces,
+            'placements': placements_by_sheet, 'file_layouts': file_layouts,
+            'per_file': per_file, 'n_sheets': n, 'utilization': util, 'unplaced': unplaced}
+
+
+def sheet_svg_zones(sheet, sheet_w, sheet_h, stroke='#0EA5A5'):
+    """เรนเดอร์ 1 แผ่น (จาก nest_multi) เป็น SVG: เส้นตัดแยกสีต่อไฟล์ + เส้นจับระยะ + เส้นกั้น + ป้ายรหัสไฟล์"""
+    smin = min(sheet_w, sheet_h)
+    s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{sheet_w:.1f}mm" height="{sheet_h:.1f}mm" '
+         f'viewBox="0 0 {sheet_w:.1f} {sheet_h:.1f}">',
+         f'<rect x="0" y="0" width="{sheet_w:.1f}" height="{sheet_h:.1f}" fill="none" stroke="#94a3b8" stroke-width="1"/>']
+    # เส้นตัด (แยกสีต่อไฟล์)
+    for (subs, col) in sheet.get('items', []):
+        c = col or stroke
+        s.append(f'<g fill="none" stroke="{c}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">')
+        for sp in subs:
+            if len(sp['segs']) < 1:
+                continue
+            s.append(f'  <path d="{_sp_d(sp)}"/>')
+        s.append('</g>')
+    # เส้นจับระยะ กว้าง×สูง ต่อชิ้น
+    s.extend(_dim_labels_svg(sheet.get('labels'), sheet_w, sheet_h))
+    # เส้นกั้นระหว่างไฟล์ (มาร์ค — เส้นประ)
+    dlw = max(0.6, smin * 0.0016)
+    for y in sheet.get('dividers', []):
+        s.append(f'<line x1="{0:.1f}" y1="{y:.1f}" x2="{sheet_w:.1f}" y2="{y:.1f}" '
+                 f'stroke="#f59e0b" stroke-width="{dlw:.2f}" stroke-dasharray="{smin*0.02:.1f} {smin*0.012:.1f}"/>')
+    # ป้ายรหัสไฟล์ (มุมบนซ้ายของโซน)
+    fs = max(smin * 0.016, 7.0)
+    for z in sheet.get('zones', []):
+        x, y, fi, txt, col = z[0], z[1], z[2], z[3], z[4]
+        ty = y + fs * 1.15
+        s.append(f'<rect x="{x-1:.1f}" y="{y+2:.1f}" width="{fs*0.85:.1f}" height="{fs*1.35:.1f}" rx="{fs*0.2:.1f}" fill="{col}"/>')
+        s.append(f'<text x="{x+fs*0.32:.1f}" y="{ty:.1f}" font-family="Prompt, Arial, sans-serif" '
+                 f'font-size="{fs:.1f}" font-weight="800" fill="#ffffff" text-anchor="middle">{_esc(txt[:1])}</text>')
+        s.append(f'<text x="{x+fs*1.1:.1f}" y="{ty:.1f}" font-family="Prompt, Arial, sans-serif" '
+                 f'font-size="{fs*0.82:.1f}" font-weight="700" fill="{col}">{_esc(txt)}</text>')
+    s.append('</svg>')
+    return '\n'.join(s)
+
+
+def _esc(t):
+    return (str(t).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def write_dxf_zones(global_pieces, placements_by_sheet, dividers_by_sheet, zones_by_sheet,
+                    path, sheet_w, sheet_h, gap_between=50.0):
+    """DXF รวมทุกแผ่น (BLOCK+INSERT) — CUT_<layer> ต่อชิ้น + DIVIDER (เส้นกั้นมาร์ค) + LABEL (ป้ายรหัสไฟล์ตัวอักษร)"""
+    doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM
+    msp = doc.modelspace()
+    if 'DIVIDER' not in doc.layers:
+        _l = doc.layers.add('DIVIDER')
+        try: _l.rgb = (245, 158, 11)
+        except Exception: pass
+    if 'LABEL' not in doc.layers:
+        doc.layers.add('LABEL')
+    # นิยามบล็อกต่อชิ้น
+    blocks = {}
+    for idx, groups in enumerate(global_pieces):
+        bname = 'PIECE_%d' % idx
+        blk = doc.blocks.new(name=bname)
+        for grp in groups:
+            subs = grp[0]; rgb = grp[2] if len(grp) > 2 else None
+            lname = grp[3] if len(grp) > 3 and grp[3] else 'CUT'
+            lyname = 'CUT_' + str(lname)
+            if lyname not in doc.layers:
+                lay = doc.layers.add(lyname)
+                if rgb:
+                    try: lay.rgb = rgb
+                    except Exception: pass
+            for sp in subs:
+                try:
+                    _add_contour_dxf(blk, sp, lyname)
+                except Exception:
+                    cur = sp['start']
+                    for seg in sp['segs']:
+                        if seg[0] == 'L':
+                            blk.add_line(cur, seg[1], dxfattribs={'layer': lyname}); cur = seg[1]
+                        else:
+                            blk.add_open_spline([cur, seg[1], seg[2], seg[3]], degree=3,
+                                                dxfattribs={'layer': lyname}); cur = seg[3]
+        blocks[idx] = bname
+    for si, sheet in enumerate(placements_by_sheet):
+        ox = si * (sheet_w + gap_between)
+        bl = 'SHEET_%d' % (si + 1)
+        if bl not in doc.layers:
+            doc.layers.add(bl)
+        msp.add_lwpolyline([(ox, 0), (ox + sheet_w, 0), (ox + sheet_w, sheet_h), (ox, sheet_h)],
+                           close=True, dxfattribs={'layer': bl, 'color': 8})
+        for pl in sheet:
+            bname = blocks.get(pl['part'])
+            if not bname:
+                continue
+            th = math.radians(pl['rot']); cs = math.cos(th); sn = math.sin(th)
+            cx, cy, dx, dy = pl['cx'], pl['cy'], pl['dx'], pl['dy']
+            ix = ox - cs * cx + sn * cy + cx + dx
+            iy = sheet_h + sn * cx + cs * cy - cy - dy
+            msp.add_blockref(bname, (ix, iy), dxfattribs={
+                'rotation': -pl['rot'], 'xscale': 1.0, 'yscale': -1.0})
+        # เส้นกั้น (DIVIDER) — flip Y
+        for y in (dividers_by_sheet[si] if si < len(dividers_by_sheet) else []):
+            msp.add_line((ox, sheet_h - y), (ox + sheet_w, sheet_h - y), dxfattribs={'layer': 'DIVIDER'})
+        # ป้ายรหัสไฟล์ (LABEL) — TEXT
+        for z in (zones_by_sheet[si] if si < len(zones_by_sheet) else []):
+            x, y, txt = z[0], z[1], z[3]
+            th_ = max(6.0, min(sheet_w, sheet_h) * 0.016)
+            t = msp.add_text(str(txt), dxfattribs={'layer': 'LABEL', 'height': th_})
+            try:
+                t.set_placement((ox + x, sheet_h - y - th_ * 1.2))
+            except Exception:
+                t.dxf.insert = (ox + x, sheet_h - y - th_ * 1.2)
     doc.saveas(path)
     return path
