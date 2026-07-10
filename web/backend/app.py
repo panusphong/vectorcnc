@@ -55,8 +55,14 @@ def health():
         bez = getattr(bezier_vec, "BEZIER_VERSION", "OLD(no-version)")
     except Exception as e:
         bez = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.5-nestfix",
-            "build": "2026-07-10-nest-edge-gap-fix", "engine": eng, "bezier": bez, "psd": _psd_ok()}
+    try:
+        from vectorcnc import nesting as _nst
+        nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
+    except Exception as e:
+        nst = "import-error: " + str(e)
+    return {"ok": True, "service": "VectorCNC", "version": "3.6-nest-dims",
+            "build": "2026-07-10-nest-edgefix+piece-dims", "engine": eng, "bezier": bez,
+            "nesting": nst, "psd": _psd_ok()}
 
 
 @app.post("/api/vectorize")
@@ -293,19 +299,22 @@ async def nest_ep(
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM)
                 r = nesting.nest([(p["poly"], qn) for p in nest_pieces], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
-            sheets_items = []
+            sheets_items = []; sheets_labels = []
             for sheet in r["placements"]:
-                items = []
+                items = []; labs = []
                 for pl in sheet:
                     try:
                         pc = nest_pieces[pl["part"]]
                         for subs, color, rgb, layer in pc["groups"]:
                             ts = nesting.place_subs(subs, pl)
                             items.append((ts, color, rgb, layer))   # (subs, color_hex, rgb, layer)
+                        b = nesting.place_geom(pc["poly"], pl).bounds  # ขนาดชิ้นจริงหลังวาง
+                        labs.append(((b[0]+b[2])/2.0, (b[1]+b[3])/2.0, b[2]-b[0], b[3]-b[1]))
                     except Exception:
                         continue                                    # ข้ามชิ้นมีปัญหา ไม่ล้มทั้งงาน
-                sheets_items.append(items)
-            svgs = [nesting.sheet_svg_bezier(it, float(sheet_w), float(sheet_h)) for it in sheets_items]
+                sheets_items.append(items); sheets_labels.append(labs)
+            svgs = [nesting.sheet_svg_bezier(it, float(sheet_w), float(sheet_h), labels=lb)
+                    for it, lb in zip(sheets_items, sheets_labels)]
             dxf_path = os.path.join(tmp, "nest.dxf")
             # DXF แบบ BLOCK+INSERT (เล็ก+เร็ว) — ใช้ geometry ต้นฉบับต่อชิ้น + ตำแหน่งจาก nest
             piece_groups = [p["groups"] for p in nest_pieces]
@@ -339,7 +348,15 @@ async def nest_ep(
                                  margin=float(margin), gap=float(gap), res=res_p, rotations=(0, 90))
                 parts_ref = pieces
             sheets_geoms = [[nesting.place_geom(parts_ref[pl["part"]], pl) for pl in sheet] for sheet in r["placements"]]
-            svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h)) for gs in sheets_geoms]
+            def _labs(gs):
+                lb = []
+                for g in gs:
+                    try:
+                        b = g.bounds; lb.append(((b[0]+b[2])/2.0, (b[1]+b[3])/2.0, b[2]-b[0], b[3]-b[1]))
+                    except Exception:
+                        pass
+                return lb
+            svgs = [nesting.sheet_svg(gs, float(sheet_w), float(sheet_h), labels=_labs(gs)) for gs in sheets_geoms]
             dxf_path = os.path.join(tmp, "nest.dxf")
             nesting.write_dxf(sheets_geoms, dxf_path, float(sheet_w), float(sheet_h))
             n_pieces = len(parts_ref)
