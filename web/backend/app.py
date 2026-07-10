@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "3.6-nest-dims",
-            "build": "2026-07-10-nest-edgefix+piece-dims", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "3.7-nest-split",
+            "build": "2026-07-10-nest-evenodd-split+dimlines", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -291,10 +291,60 @@ async def nest_ep(
                 r = nesting.nest([(hull, qn)], float(sheet_w), float(sheet_h),
                                  margin=float(margin), gap=float(gap), res=res)
             else:
-                # แยกทุกชิ้นย่อยทุกเลเยอร์ -> แพคชิด (แต่ละชิ้นถือสี/เลเยอร์ของตัวเอง)
-                nest_pieces = [{"poly": pc["poly"],
-                                "groups": [(pc.get("subs", []), pc.get("color", "#2563EB"), pc.get("rgb", (37, 99, 235)), pc.get("layer", "(default)"))]}
-                               for pc in bez_pieces]
+                # แยกชิ้นย่อย -> แตกเป็น 'ชิ้นแยกจริงตามรูปทรงที่ไม่ติดกัน' (กรอบ/ตัวอักษร/ลาย แยกกัน) แล้วแพคชิดประหยัด
+                from shapely.geometry import Point as _Pt
+
+                def _subpts(sp, n=6):
+                    pts = [sp['start']]; cur = sp['start']
+                    for s in sp['segs']:
+                        if s[0] == 'L':
+                            pts.append(s[1]); cur = s[1]
+                        else:
+                            c1, c2, e = s[1], s[2], s[3]
+                            for i in range(1, n):
+                                t = i / float(n); mt = 1 - t
+                                pts.append((mt*mt*mt*cur[0]+3*mt*mt*t*c1[0]+3*mt*t*t*c2[0]+t*t*t*e[0],
+                                            mt*mt*mt*cur[1]+3*mt*mt*t*c1[1]+3*mt*t*t*c2[1]+t*t*t*e[1]))
+                            cur = e
+                    return pts
+
+                from functools import reduce as _reduce
+                _polys = []                                  # หมึกจริงแบบ even-odd -> รูปทรงที่แยกกันจริง
+                for pc in bez_pieces:
+                    for sp in pc.get("subs", []):
+                        try:
+                            _pg = Polygon(_subpts(sp)).buffer(0)
+                            if _pg and not _pg.is_empty and _pg.area > 1.0:
+                                _polys.append(_pg)
+                        except Exception:
+                            pass
+                try:
+                    ink = _reduce(lambda a, b: a.symmetric_difference(b), _polys) if _polys else full_mm
+                except Exception:
+                    ink = full_mm
+                comps = list(ink.geoms) if getattr(ink, "geom_type", "") == "MultiPolygon" else [ink]
+                comps = [c for c in comps if getattr(c, "geom_type", "") == "Polygon" and c.area > 4.0]
+                if not comps:
+                    return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
+                cgroups = [dict() for _ in comps]     # ต่อ component: {layer: {subs,color,rgb}}
+                for pc in bez_pieces:
+                    color = pc.get("color", "#2563EB"); rgb = pc.get("rgb", (37, 99, 235)); layer = pc.get("layer", "(default)")
+                    for sp in pc.get("subs", []):
+                        try:
+                            pts = _subpts(sp); mid = pts[len(pts) // 2]; P = _Pt(mid[0], mid[1])
+                            ci = min(range(len(comps)), key=lambda i: comps[i].boundary.distance(P))  # contour อยู่บนขอบของ component ไหน
+                        except Exception:
+                            ci = 0
+                        g = cgroups[ci].setdefault(layer, {"subs": [], "color": color, "rgb": rgb})
+                        g["subs"].append(sp)
+                nest_pieces = []
+                for i, c in enumerate(comps):
+                    if not cgroups[i]:
+                        continue
+                    groups = [(g["subs"], g["color"], g["rgb"], ly) for ly, g in cgroups[i].items()]
+                    nest_pieces.append({"poly": c, "groups": groups})
+                if not nest_pieces:
+                    return JSONResponse({"error": "ไม่พบชิ้นย่อยสำหรับจัดวาง"}, status_code=400)
                 qn = max(1, min(int(qty), max(1, 600 // len(nest_pieces))))  # ทำตาม qty จริง (เพดานรวม ~600)
                 res_p = max(3.0, min(sheet_w, sheet_h) / 360.0)     # กริดถูกจำกัดซ้ำใน nest() (กัน 502/OOM)
                 r = nesting.nest([(p["poly"], qn) for p in nest_pieces], float(sheet_w), float(sheet_h),
