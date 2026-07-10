@@ -6,6 +6,8 @@ import math
 import ezdxf
 from . import trace_engine as te
 
+BEZIER_VERSION = "2026-07-10-offset-bezierfit-spline"   # ตัวฟิตเส้นโค้ง Bézier หลัง kerf (เนียน SPLINE)
+
 
 def _shift(sp, ox, oy, sc=1.0):
     """เลื่อน+สเกล subpath (คูณ sc, ลบ ox,oy)"""
