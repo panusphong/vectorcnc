@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.8-iso3d+wallstrip",
-            "build": "2026-07-11-extrude3d-sidewalls+wall-cut-strips+dims", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.9-nest-by-material",
+            "build": "2026-07-11-multifile-layerset-by-material+manual", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -1054,6 +1054,118 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces,
                 "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _mat_of(nm):
+    """จัดกลุ่มชื่อชั้น -> 'วัสดุ' (ไว้รวมแผ่นตามวัสดุ)"""
+    n = str(nm)
+    if "คิ้ว" in n:
+        return "คิ้ว"
+    if "พลาสวูด" in n:
+        return "ไส้พลาสวูด"
+    if "ไส้" in n and "อะคริลิค" in n:
+        return "ไส้อะคริลิคใส"
+    if "อะคริลิค" in n:
+        return "อะคริลิค"
+    if "ซิ้งค์" in n:
+        return "ซิ้งค์"
+    if "แผ่นพื้น" in n:
+        return "แผ่นพื้น"
+    return n
+
+
+@app.post("/api/nest-layerset")
+async def nest_layerset(request: Request):
+    """หลายไฟล์ × แตกชั้นตามแบบป้าย -> รวม 'ตามวัสดุ' -> จัดวางแยกแผ่นต่อวัสดุ (คิ้วรวมแผ่น/อะคริลิครวมแผ่น/แผ่นพื้นรวมแผ่น)
+       เลือกประเภทป้าย (1-7) ได้ต่อไฟล์ · ยกขอบ = แถบพับ รวมเป็นวัสดุหนึ่ง"""
+    tmp = tempfile.mkdtemp()
+    try:
+        form = await request.form()
+        meta = json.loads(form.get("meta") or "{}")
+        fmeta = meta.get("files", [])
+        sheet_w = float(meta.get("sheet_w", 1220)); sheet_h = float(meta.get("sheet_h", 2440))
+        margin = float(meta.get("margin", 10)); gap = float(meta.get("gap", 5))
+        divider_gap = float(meta.get("divider_gap", 14))
+        from shapely.geometry import box as _box
+        from vectorcnc import nesting
+        PALETTE = [("#2563EB", (37, 99, 235)), ("#16a34a", (22, 163, 74)), ("#dc2626", (220, 38, 38)),
+                   ("#9333ea", (147, 51, 234)), ("#ea580c", (234, 88, 12)), ("#0891b2", (8, 145, 178)),
+                   ("#ca8a04", (202, 138, 4)), ("#db2777", (219, 39, 119)), ("#4f46e5", (79, 70, 229)),
+                   ("#0d9488", (13, 148, 136))]
+        MAT_ORDER = ["คิ้ว", "อะคริลิค", "ไส้อะคริลิคใส", "ไส้พลาสวูด", "ซิ้งค์", "แผ่นพื้น", "ยกขอบ (แถบพับ)"]
+        mats = {}      # material -> [{label,color,rgb, piece:{poly,groups}, qty}]
+        nfiles = 0
+        for i, fm in enumerate(fmeta):
+            up = form.get("file%d" % i)
+            if up is None:
+                continue
+            fn = fm.get("name") or getattr(up, "filename", "f%d" % i)
+            p = os.path.join(tmp, "in%d_%s" % (i, os.path.basename(str(fn))))
+            with open(p, "wb") as fo:
+                fo.write(await up.read())
+            rec = SIGN_TYPES.get(str(fm.get("sign_type", "1")))
+            if not rec:
+                continue
+            full = _letter_full_mm(p, float(fm.get("real_width_mm", 600)), float(fm.get("real_height_mm", 0)), int(fm.get("n_colors", 6)))
+            color, rgb = PALETTE[nfiles % len(PALETTE)]
+            label = fm.get("label") or chr(65 + nfiles)
+            qty = max(1, int(fm.get("qty", 1)))
+            nfiles += 1
+            for L in rec["layers"]:
+                off = float(L["off"]); kind = L.get("kind", "solid")
+                outer = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
+                if outer.is_empty:
+                    continue
+                if kind == "frame":
+                    band = float(L.get("band", 10.0))
+                    inner = full.buffer(off - band, join_style=1, resolution=48)
+                    g = outer if inner.is_empty else outer.difference(inner)
+                    if g.is_empty:
+                        g = outer
+                    foot = outer                      # footprint ใช้กรอบนอก (คิ้วบาง)
+                else:
+                    g = outer; foot = outer
+                subs = _poly_to_subs(g)
+                if not subs:
+                    continue
+                mat = _mat_of(L["name"])
+                piece = {"poly": foot, "groups": [(subs, color, rgb, mat)]}
+                mats.setdefault(mat, []).append({"label": label, "color": color, "rgb": rgb, "piece": piece, "qty": qty})
+            # ยกขอบ = แถบพับ (สี่เหลี่ยม ยาว=เส้นรอบรูป × สูง=ความสูงผนัง)
+            peri = float(full.length)
+            for w in rec.get("walls", []):
+                nm = str(w.get("name", "")); hh = float(w.get("h", 0)) * 10.0
+                if hh <= 0 or not nm.startswith("ยกขอบ"):
+                    continue
+                rectp = _box(0, 0, peri, hh)
+                rsub = [{"start": (0, 0), "segs": [("L", (peri, 0)), ("L", (peri, hh)), ("L", (0, hh)), ("L", (0, 0))], "closed": True}]
+                mats.setdefault("ยกขอบ (แถบพับ)", []).append(
+                    {"label": "%s·%s" % (label, nm), "color": color, "rgb": rgb,
+                     "piece": {"poly": rectp, "groups": [(rsub, color, rgb, "ยกขอบ")]}, "qty": qty})
+        if not mats:
+            return JSONResponse({"error": "ไม่พบชิ้นงานจากไฟล์ที่ส่งมา"}, status_code=400)
+
+        out_mats = []
+        keys = sorted(mats.keys(), key=lambda m: MAT_ORDER.index(m) if m in MAT_ORDER else 99)
+        for mat in keys:
+            items = mats[mat]
+            files_M = [{"label": it["label"], "name": it["label"], "color": it["color"], "rgb": it["rgb"],
+                        "nest_pieces": [it["piece"]], "qty": it["qty"]} for it in items]
+            r = nesting.nest_multi(files_M, sheet_w, sheet_h, margin=margin, gap=gap, divider_gap=divider_gap)
+            svgs = [nesting.sheet_svg_zones(s, sheet_w, sheet_h) for s in r["sheets"]]
+            cpath = os.path.join(tmp, "mat_%s.dxf" % _mat_of(mat).replace("/", "_").replace(" ", "_"))
+            nesting.write_dxf_zones(r["global_pieces"], r["placements"],
+                                    [s["dividers"] for s in r["sheets"]], [s["zones"] for s in r["sheets"]],
+                                    cpath, sheet_w, sheet_h)
+            with open(cpath, "rb") as fo:
+                dxf_b64 = base64.b64encode(fo.read()).decode()
+            out_mats.append({"material": mat, "n_sheets": r["n_sheets"], "utilization": r["utilization"],
+                             "unplaced": r["unplaced"], "pieces": sum(it["qty"] for it in items),
+                             "sheets_svg": svgs, "dxf_base64": dxf_b64})
+        return {"sheet_w": sheet_w, "sheet_h": sheet_h, "n_files": nfiles,
+                "materials": out_mats}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
