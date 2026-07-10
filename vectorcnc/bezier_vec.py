@@ -369,10 +369,26 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
 
     svg_px = _svg(subs_px, Wpx, Hpx)
     svg_mm = _svg(subs_mm, Wmm, Hmm, unit='mm')
+    # ---- preview 'วางทับต้นฉบับ': เส้นตัดในพิกัดภาพต้นฉบับ (ไม่ตัดขอบ) เพื่อเทียบ before/after ให้ตรงเป๊ะ ----
+    svg_fit = None
+    try:
+        import cv2 as _cv
+        _im = _cv.imread(image_path)
+        if _im is not None:
+            _oh, _ow = _im.shape[:2]
+            _wh, _ww = getattr(te, 'LAST_WORK_HW', None) or (Hpx, Wpx)
+            _sc = (float(_ow) / float(_ww)) if _ww else 1.0
+            _raw = []
+            for _c, _subs in items:
+                for _sp in _subs:
+                    _raw.append(_scale_sub(_sp, _sc))   # เทรซในพิกัดงาน -> คูณสเกลกลับเป็นพิกัดภาพต้นฉบับ
+            svg_fit = _svg(_raw, _ow, _oh)
+    except Exception:
+        svg_fit = None
     if dxf_out:
         _dxf(subs_mm, Hmm, dxf_out)
     return {
-        'svg_px': svg_px, 'svg_mm': svg_mm, 'dxf_path': dxf_out,
+        'svg_px': svg_px, 'svg_mm': svg_mm, 'svg_fit': svg_fit, 'dxf_path': dxf_out,
         'width_mm': round(Wmm, 1), 'height_mm': round(Hmm, 1),
         'letter_height_mm': round(letter_mm, 1), 'size_by': mode,
         'layers': len(items), 'rings': nrings, 'engine': engine_name,

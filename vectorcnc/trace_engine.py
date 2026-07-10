@@ -11,7 +11,8 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 # ป้ายเวอร์ชันเครื่องยนต์ (ใช้ยืนยันว่า trace_engine.py ที่ deploy เป็นตัวล่าสุดจริง — เช็คที่ /api/health)
-ENGINE_VERSION = "2026-07-09-potrace-adaptive-detailkeep-absspeckle"
+ENGINE_VERSION = "2026-07-10-potrace-adaptive-detailkeep-worksize"
+LAST_WORK_HW = None   # (H, W) ของภาพงานล่าสุดที่ potrace เทรซ — ใช้ทำ preview วางทับต้นฉบับ
 
 
 # ---------- helpers ----------
@@ -1187,6 +1188,8 @@ def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance
     m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     fg = m8 > 0
     H, W = fg.shape
+    global LAST_WORK_HW
+    LAST_WORK_HW = (int(H), int(W))   # เก็บขนาดภาพงาน เพื่อทำ preview วางทับต้นฉบับได้พอดี
     path = potrace.Bitmap(fg).trace(turdsize=int(turdsize), alphamax=float(alphamax),
                                     opticurve=1, opttolerance=float(opttolerance))
     subs = []
