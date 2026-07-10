@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.7-layerset-3d+bored",
-            "build": "2026-07-10-kim-bored-frame+exploded-3d+wall-nocut", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.8-iso3d+wallstrip",
+            "build": "2026-07-11-extrude3d-sidewalls+wall-cut-strips+dims", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -768,6 +768,78 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
+def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None):
+    """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก"""
+    import math
+
+    def _esc(t):
+        return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+    b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
+    D = float(rec.get("depth_cm", 5.0)) * 10.0
+    ang = math.radians(30); dvx = D * math.cos(ang); dvy = -D * math.sin(ang)
+    fs = max(6.0, S * 0.032); lw = max(0.6, S * 0.003); cd = "#dc2626"
+    padL = fs * 4.2; padT = fs * 3.0 + abs(dvy); padR = fs * 2.5 + dvx + S * 0.16; padB = fs * 4.8
+    ox = -b[0] + padL; oy = -b[1] + padT
+    faceFill = "#c9cdd4"; wallFill = "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
+
+    def F(p):
+        return (p[0] + ox, p[1] + oy)
+
+    def Bk(p):
+        return (p[0] + ox + dvx, p[1] + oy + dvy)
+
+    def ringd(ring, tf):
+        pts = [tf(p) for p in ring]
+        return "M %.2f %.2f " % pts[0] + " ".join("L %.2f %.2f" % q for q in pts[1:]) + " Z"
+
+    def faced(pg, tf):
+        d = ringd(list(pg.exterior.coords), tf)
+        for h in pg.interiors:
+            d += " " + ringd(list(h.coords), tf)
+        return d
+    parts = []
+    for pg in polys:                                   # ผนังข้าง (ขอบที่เห็น)
+        cen = pg.centroid; cx, cy = cen.x, cen.y
+        ring = list(pg.exterior.coords)
+        for i in range(len(ring) - 1):
+            A = ring[i]; Bp = ring[i + 1]
+            ex = Bp[0] - A[0]; ey = Bp[1] - A[1]; nx, ny = ey, -ex
+            mx, my = (A[0] + Bp[0]) / 2, (A[1] + Bp[1]) / 2
+            if (mx - cx) * nx + (my - cy) * ny < 0:
+                nx, ny = -nx, -ny
+            if nx * dvx + ny * dvy > 1e-6:
+                Af = F(A); Bf = F(Bp); Bb = Bk(Bp); Ab = Bk(A)
+                parts.append('<path d="M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
+                             % (Af[0], Af[1], Bf[0], Bf[1], Bb[0], Bb[1], Ab[0], Ab[1], wallFill, edge, lw))
+    for pg in polys:                                   # หน้า (คิ้ว/หน้า)
+        parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
+    if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
+        ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
+        for pg in ip:
+            if pg.geom_type == "Polygon" and not pg.is_empty:
+                parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), boreFill, edge, lw * 0.8))
+    aw = fs * 0.55
+    xh = padL - fs * 1.7; y0 = padT; y1 = padT + H       # สูง (ซ้าย)
+    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
+    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y0 + aw, xh, y0, xh + aw * 0.6, y0 + aw, cd, lw))
+    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xh - aw * 0.6, y1 - aw, xh, y1, xh + aw * 0.6, y1 - aw, cd, lw))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%.1f ซม.</text>' % (xh - fs * 0.6, (y0 + y1) / 2, fs * 0.95, cd, xh - fs * 0.6, (y0 + y1) / 2, H / 10.0))
+    yw = padT + H + fs * 1.4; xx0 = padL; xx1 = padL + W  # กว้าง (ล่าง)
+    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xx0, yw, xx1, yw, cd, lw))
+    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx0 + aw, yw - aw * 0.6, xx0, yw, xx0 + aw, yw + aw * 0.6, cd, lw))
+    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>' % (xx1 - aw, yw - aw * 0.6, xx1, yw, xx1 - aw, yw + aw * 0.6, cd, lw))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s" text-anchor="middle">%.1f ซม.</text>' % ((xx0 + xx1) / 2, yw + fs * 1.1, fs * 0.95, cd, W / 10.0))
+    cF = F((b[2], b[1])); cB = Bk((b[2], b[1]))          # ลึก/ยกขอบ (แนวเยื้อง)
+    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cF[0], cF[1], cB[0], cB[1], cd, lw))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">ยกขอบ ~%.1f ซม.</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
+    Wt = padL + W + dvx + padR; Ht = padT + H + padB
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
+    svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(rec["name"])))
+    svg += parts; svg.append('</svg>')
+    return "\n".join(svg)
+
+
 def _exploded_svg(out_layers, rec, perimeter_cm):
     """ภาพ 3 มิติแบบ exploded (oblique) — วางชั้นซ้อนตามความลึก + เส้นบอกมิติ (สูง/ลึก/คิ้ว) + ป้ายชั้น
        เลียนแบบภาพสเปคโรงงาน: หน้า(คิ้ว)อยู่หน้าสุด ... แผ่นพื้นอยู่หลังสุด"""
@@ -898,7 +970,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         from vectorcnc import nesting
         svg = _spec_sheet_svg(out_layers)
         try:
-            svg3d = _exploded_svg(out_layers, rec, perimeter)
+            _band = next((float(L.get("band", 10.0)) for L in rec["layers"] if L.get("kind") == "frame"), 0.0)
+            _bore = full.buffer(-_band, join_style=1, resolution=48) if _band > 0 else None
+            svg3d = _iso3d_svg(full, rec, perimeter, inner_bore=_bore)
         except Exception:
             svg3d = ""
 
@@ -947,6 +1021,28 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 pass
             cursor += w + gap
+        # ชิ้นตัด 'ยกขอบ' (ผนังตั้งฉากแผ่นหลัง) = แถบแบน ยาว=เส้นรอบรูป × สูง=ความสูงผนัง (ตัดแล้วพับ/ดัด)
+        wall_pieces = []
+        peri_mm = float(full.length)
+        for w in rec.get("walls", []):
+            nm = str(w.get("name", "")); hh = float(w.get("h", 0)) * 10.0
+            if hh <= 0 or not nm.startswith("ยกขอบ"):
+                continue
+            Lmm = peri_mm
+            ly = 'WALL_' + nm
+            if ly not in doc.layers:
+                lay = doc.layers.add(ly)
+                try: lay.rgb = (245, 158, 11)
+                except Exception: pass
+            msp.add_lwpolyline([(cursor, 0), (cursor + Lmm, 0), (cursor + Lmm, hh), (cursor, hh)],
+                               close=True, dxfattribs={'layer': ly})
+            try:
+                t = msp.add_text("%s (พับ) ยาว %.0f x สูง %.0f mm" % (nm, Lmm, hh), dxfattribs={'layer': 'LABEL', 'height': th})
+                t.set_placement((cursor, hh + th * 0.6))
+            except Exception:
+                pass
+            wall_pieces.append({"name": nm, "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
+            cursor += Lmm + gap
         dxf_path = os.path.join(tmp, "layerset.dxf")
         doc.saveas(dxf_path)
         with open(dxf_path, "rb") as fo:
@@ -956,7 +1052,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "off_cm": round(L["off"]/10.0, 3), "kind": L.get("kind", "solid"),
                             "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
-                "walls": rec["walls"], "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
+                "walls": rec["walls"], "wall_pieces": wall_pieces,
+                "svg_preview": svg, "svg_3d": svg3d, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
