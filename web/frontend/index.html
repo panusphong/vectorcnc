@@ -256,6 +256,16 @@ select.numin{cursor:pointer}
           <button class="btn primary" id="dlSvg" disabled>⬇ ดาวน์โหลด SVG (มม.)</button>
           <div class="row2"><button class="btn ghost" id="dlDxf" disabled>⬇ DXF</button><button class="btn ghost" id="copySvg" disabled>คัดลอก</button></div>
           <div class="muted-note" style="padding:6px 0 0">DXF → CypCut/fiber · SVG → LightBurn · Fusion 360: Insert DXF</div>
+          <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
+            <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px">🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที</div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <select id="aiEng" class="numin" style="flex:1;padding:6px"><option value="auto">อัตโนมัติ</option><option value="mono">ลายเส้นคม (ขาว-ดำ)</option><option value="color">หลายสี</option></select>
+              <div style="width:92px"><input class="numin" id="aiNC" type="number" value="4" min="2" max="8" title="จำนวนสี (โหมดหลายสี)" style="padding:6px"></div>
+            </div>
+            <button class="btn" id="aiDraft" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
+            <div id="aiOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -439,7 +449,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v50 · Multi-nest</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v51 · Draft.ai</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1267,6 +1277,25 @@ function runMulti(){
   }).catch(function(e){$('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';$('mfOut').innerHTML='<div style="color:#EF4444;padding:10px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 }
 $('btnMulti').onclick=openMulti;
+
+// ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
+$('aiDraft').onclick=function(){
+  if(!fileObj){alert('อัปโหลดภาพก่อน');return;}
+  var btn=$('aiDraft');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังดราฟท์เวกเตอร์...';
+  $('aiOut').textContent='กำลังแปลงภาพเป็นเวกเตอร์ (อาจใช้เวลาสักครู่)...';
+  var fd=new FormData();
+  fd.append('file',fileObj);fd.append('width_mm',$('realW').value||'600');
+  fd.append('engine',$('aiEng').value||'auto');fd.append('n_colors',$('aiNC').value||'4');
+  fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    btn.disabled=false;btn.textContent=old;
+    if(j.error){$('aiOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+    var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    var b=new Blob([u],{type:'application/postscript'});var a=document.createElement('a');
+    a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+'.ai';a.click();
+    var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
+    $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
+  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+};
 
 // ---- api health ----
 fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
