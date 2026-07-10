@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "4.1-size+smooth",
-            "build": "2026-07-10-piecesize-wh-lock+finer-cutlines", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "4.2-multi-nest",
+            "build": "2026-07-10-multifile-zones+dividers+labels+pdf", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -491,6 +491,249 @@ async def nest_ep(
             "mode": str(parts_mode).lower(), "pieces": n_pieces,
             "sheets_svg": svgs, "dxf_base64": dxf_b64, "split_dbg": _split_dbg,
         }
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _build_pieces_multi(inp, real_width_mm, real_height_mm, parts_mode, n_colors, sheet_w, sheet_h):
+    """สร้าง nest_pieces (list ของ {poly, groups}) จากไฟล์เดียว — ตรรกะเดียวกับ /api/nest
+       รองรับ .ai/.pdf/.svg (เวกเตอร์) + .png/.jpg/.psd (raster->trace) · โหมด whole/parts"""
+    import cv2
+    import numpy as _np
+    from shapely.ops import unary_union
+    from shapely.geometry import Polygon
+    from shapely.affinity import scale as _scale
+    from vectorcnc import trace_engine, vector_import
+
+    is_vec = vector_import.is_vector_file(inp)
+    bez_pieces = None
+    if is_vec:
+        bez_pieces = vector_import.full_pieces_mm(inp, real_width_mm)
+        bez_pieces = [pc for pc in bez_pieces if pc["poly"].area > 4.0]
+        if not bez_pieces:
+            raise ValueError("อ่านเวกเตอร์ไม่ได้ / ไม่พบรูปทรง")
+        full_mm = unary_union([pc["poly"] for pc in bez_pieces])
+    else:
+        try:
+            bez_pieces = trace_engine.bezier_pieces_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+            bez_pieces = [pc for pc in (bez_pieces or []) if pc["poly"].area > 4.0]
+        except Exception:
+            bez_pieces = None
+        if bez_pieces:
+            full_mm = unary_union([pc["poly"] for pc in bez_pieces])
+        else:
+            polys = trace_engine.nest_shapes_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
+            if not polys:
+                raise ValueError("แปลงภาพไม่พบรูปทรง")
+            bez_pieces = []
+            for pg in polys:
+                if pg.area <= 4.0:
+                    continue
+                ring = list(pg.exterior.coords)
+                sub = {"start": (ring[0][0], ring[0][1]),
+                       "segs": [("L", (x, y)) for x, y in ring[1:]], "closed": True}
+                bez_pieces.append({"poly": pg, "subs": [sub], "color": "#2563EB", "rgb": (37, 99, 235), "layer": "CUT"})
+            full_mm = unary_union([pc["poly"] for pc in bez_pieces])
+
+    bb = full_mm.bounds
+    pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
+    try:
+        _rh = float(real_height_mm)
+    except Exception:
+        _rh = 0.0
+    if _rh > 1.0 and ph > 0.5 and abs(_rh - ph) > 0.15:
+        sy = _rh / (bb[3] - bb[1]); y0 = bb[1]
+
+        def _sy(p):
+            return (p[0], y0 + (p[1] - y0) * sy)
+
+        def _scale_sub(sp):
+            ns = {"start": _sy(sp["start"]), "segs": []}
+            for s in sp["segs"]:
+                ns["segs"].append(("L", _sy(s[1])) if s[0] == "L" else ("C", _sy(s[1]), _sy(s[2]), _sy(s[3])))
+            for _k in sp:
+                if _k not in ("start", "segs"):
+                    ns[_k] = sp[_k]
+            return ns
+
+        for pc in bez_pieces:
+            pc["poly"] = _scale(pc["poly"], xfact=1.0, yfact=sy, origin=(0, y0))
+            pc["subs"] = [_scale_sub(sp) for sp in pc.get("subs", [])]
+        full_mm = _scale(full_mm, xfact=1.0, yfact=sy, origin=(0, y0))
+        bb = full_mm.bounds
+        pw, ph = round(bb[2] - bb[0], 1), round(bb[3] - bb[1], 1)
+
+    whole = str(parts_mode).lower() == "whole"
+    if whole:
+        def _sub_area(sp):
+            xs = [sp["start"][0]]; ys = [sp["start"][1]]
+            for s in sp["segs"]:
+                p = s[1] if s[0] == "L" else s[3]
+                xs.append(p[0]); ys.append(p[1])
+            n = len(xs); a = 0.0
+            for i in range(n):
+                j = (i + 1) % n; a += xs[i] * ys[j] - xs[j] * ys[i]
+            return abs(a) / 2.0
+        outer = None; outer_meta = None; best = -1.0
+        for pc in bez_pieces:
+            for sp in pc.get("subs", []):
+                a = _sub_area(sp)
+                if a > best:
+                    best = a; outer = sp
+                    outer_meta = (pc.get("color", "#2563EB"), pc.get("rgb", (37, 99, 235)), pc.get("layer", "CUT"))
+        if outer is None:
+            raise ValueError("ไม่พบกรอบนอก")
+        hull = full_mm.convex_hull
+        if hull.geom_type != "Polygon":
+            hull = full_mm.envelope
+        return [{"poly": hull, "groups": [([outer], outer_meta[0], outer_meta[1], outer_meta[2])]}], pw, ph
+
+    # parts: raster even-odd split
+    def _subpts(sp):
+        pts = [sp["start"]]; cur = sp["start"]
+        for s in sp["segs"]:
+            if s[0] == "L":
+                pts.append(s[1]); cur = s[1]
+            else:
+                c1, c2, e = s[1], s[2], s[3]
+                L = abs(c1[0]-cur[0])+abs(c1[1]-cur[1])+abs(c2[0]-c1[0])+abs(c2[1]-c1[1])+abs(e[0]-c2[0])+abs(e[1]-c2[1])
+                nn = int(min(40, max(3, L / 0.6)))
+                for i in range(1, nn + 1):
+                    t = i / float(nn); mt = 1 - t
+                    pts.append((mt*mt*mt*cur[0]+3*mt*mt*t*c1[0]+3*mt*t*t*c2[0]+t*t*t*e[0],
+                                mt*mt*mt*cur[1]+3*mt*mt*t*c1[1]+3*mt*t*t*c2[1]+t*t*t*e[1]))
+                cur = e
+        return pts
+    allsub = []
+    for pc in bez_pieces:
+        col = pc.get("color", "#2563EB"); rgb = pc.get("rgb", (37, 99, 235)); lay = pc.get("layer", "CUT")
+        for sp in pc.get("subs", []):
+            allsub.append((sp, col, rgb, lay, _subpts(sp)))
+    allx = [q[0] for _, _, _, _, ps in allsub for q in ps]
+    ally = [q[1] for _, _, _, _, ps in allsub for q in ps]
+    nest_pieces = []
+    try:
+        mnx, mny, mxx, mxy = min(allx), min(ally), max(allx), max(ally)
+        RES = max(0.4, min(mxx - mnx, mxy - mny) / 1000.0)
+        Wn = int((mxx - mnx) / RES) + 6; Hn = int((mxy - mny) / RES) + 6
+
+        def _tp(p):
+            return [int((p[0] - mnx) / RES + 3), int((p[1] - mny) / RES + 3)]
+        ppx = [_np.array([_tp(q) for q in ps], _np.int32) for _, _, _, _, ps in allsub]
+        mask = _np.zeros((Hn, Wn), _np.uint8)
+        for pp in ppx:
+            cm = _np.zeros((Hn, Wn), _np.uint8); cv2.fillPoly(cm, [pp], 1); mask ^= cm
+        nlab, lab = cv2.connectedComponents(mask)
+        if nlab > 2:
+            ker = _np.ones((5, 5), _np.uint8); gbl = {}
+            for (sp, col, rgb, lay, ps), pp in zip(allsub, ppx):
+                lm = _np.zeros((Hn, Wn), _np.uint8); cv2.polylines(lm, [pp], True, 1, 2); lm = cv2.dilate(lm, ker)
+                vals = lab[lm > 0]; vals = vals[vals > 0]
+                L = int(_np.bincount(vals).argmax()) if len(vals) else 0
+                if L == 0:
+                    continue
+                g = gbl.setdefault(L, {}).setdefault(lay, {"subs": [], "color": col, "rgb": rgb})
+                g["subs"].append(sp)
+            for L in range(1, nlab):
+                if L not in gbl:
+                    continue
+                _fc = cv2.findContours((lab == L).astype(_np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cnts = _fc[0] if len(_fc) == 2 else _fc[1]
+                if not cnts:
+                    continue
+                cc = max(cnts, key=cv2.contourArea)
+                if cv2.contourArea(cc) < 2:
+                    continue
+                fp = Polygon([(mnx + (pt[0][0] - 3) * RES, mny + (pt[0][1] - 3) * RES) for pt in cc]).buffer(0)
+                if fp.is_empty or fp.geom_type != "Polygon":
+                    continue
+                groups = [(g["subs"], g["color"], g["rgb"], ly) for ly, g in gbl[L].items()]
+                nest_pieces.append({"poly": fp, "groups": groups})
+    except Exception:
+        nest_pieces = []
+    if not nest_pieces:
+        grp = {}
+        for pc in bez_pieces:
+            gg = grp.setdefault(pc.get("layer", "CUT"), {"subs": [], "color": pc.get("color", "#2563EB"), "rgb": pc.get("rgb", (37, 99, 235))})
+            gg["subs"].extend(pc["subs"])
+        hull = full_mm.convex_hull
+        if hull.geom_type != "Polygon":
+            hull = full_mm.envelope
+        nest_pieces = [{"poly": hull, "groups": [(g["subs"], g["color"], g["rgb"], ly) for ly, g in grp.items()]}]
+    return nest_pieces, pw, ph
+
+
+@app.post("/api/nest-multi")
+async def nest_multi_ep(request: Request):
+    """หลายไฟล์รวมแผ่นเดียว — แยกโซนต่อไฟล์ + เส้นกั้น + ป้ายรหัส · คืน SVG/DXF รวม/DXF รายไฟล์/PDF"""
+    tmp = tempfile.mkdtemp()
+    try:
+        form = await request.form()
+        meta = json.loads(form.get("meta") or "{}")
+        fmeta = meta.get("files", [])
+        sheet_w = float(meta.get("sheet_w", 1220)); sheet_h = float(meta.get("sheet_h", 2440))
+        margin = float(meta.get("margin", 10)); gap = float(meta.get("gap", 5))
+        divider_gap = float(meta.get("divider_gap", 14))
+        from vectorcnc import nesting
+        PALETTE = [("#2563EB", (37, 99, 235)), ("#16a34a", (22, 163, 74)), ("#dc2626", (220, 38, 38)),
+                   ("#9333ea", (147, 51, 234)), ("#ea580c", (234, 88, 12)), ("#0891b2", (8, 145, 178)),
+                   ("#ca8a04", (202, 138, 4)), ("#db2777", (219, 39, 119)), ("#4f46e5", (79, 70, 229)),
+                   ("#0d9488", (13, 148, 136))]
+        files = []
+        for i, fm in enumerate(fmeta):
+            up = form.get("file%d" % i)
+            if up is None:
+                continue
+            fn = fm.get("name") or getattr(up, "filename", "f%d" % i)
+            p = os.path.join(tmp, "in%d_%s" % (i, os.path.basename(str(fn))))
+            with open(p, "wb") as fo:
+                fo.write(await up.read())
+            color, rgb = PALETTE[len(files) % len(PALETTE)]
+            label = fm.get("label") or chr(65 + len(files))
+            try:
+                nps, pw, ph = _build_pieces_multi(
+                    p, float(fm.get("real_width_mm", 300)), float(fm.get("real_height_mm", 0)),
+                    fm.get("mode", "parts"), int(fm.get("n_colors", 6)), sheet_w, sheet_h)
+            except Exception as e:
+                return JSONResponse({"error": "ไฟล์ %s: %s" % (fn, e)}, status_code=400)
+            files.append({"label": label, "name": str(fn), "color": color, "rgb": rgb,
+                          "nest_pieces": nps, "qty": max(1, int(fm.get("qty", 1)))})
+        if not files:
+            return JSONResponse({"error": "ไม่พบไฟล์ที่จัดวางได้"}, status_code=400)
+        r = nesting.nest_multi(files, sheet_w, sheet_h, margin=margin, gap=gap, divider_gap=divider_gap)
+        svgs = [nesting.sheet_svg_zones(s, sheet_w, sheet_h) for s in r["sheets"]]
+        cpath = os.path.join(tmp, "nest_multi.dxf")
+        nesting.write_dxf_zones(r["global_pieces"], r["placements"],
+                                [s["dividers"] for s in r["sheets"]], [s["zones"] for s in r["sheets"]],
+                                cpath, sheet_w, sheet_h)
+        with open(cpath, "rb") as fo:
+            combined_b64 = base64.b64encode(fo.read()).decode()
+        per_file_dxf = []
+        for fl in r["file_layouts"]:
+            if not fl["pieces"]:
+                continue
+            fp = os.path.join(tmp, "file_%s.dxf" % fl["label"])
+            nesting.write_dxf_bezier_blocks(fl["pieces"], fl["placements"], fp, sheet_w, sheet_h)
+            with open(fp, "rb") as fo:
+                per_file_dxf.append({"label": fl["label"], "name": fl["name"],
+                                     "dxf_base64": base64.b64encode(fo.read()).decode()})
+        pdf_b64 = ""
+        try:
+            import cairosvg
+            import fitz
+            pdf = fitz.open()
+            for sv in svgs:
+                src = fitz.open("pdf", cairosvg.svg2pdf(bytestring=sv.encode()))
+                pdf.insert_pdf(src)
+            ppath = os.path.join(tmp, "preview.pdf"); pdf.save(ppath); pdf.close()
+            with open(ppath, "rb") as fo:
+                pdf_b64 = base64.b64encode(fo.read()).decode()
+        except Exception:
+            pdf_b64 = ""
+        return {"n_sheets": r["n_sheets"], "utilization": r["utilization"], "unplaced": r["unplaced"],
+                "sheet_w": sheet_w, "sheet_h": sheet_h, "per_file": r["per_file"],
+                "sheets_svg": svgs, "dxf_combined_base64": combined_b64,
+                "per_file_dxf": per_file_dxf, "pdf_base64": pdf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
