@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.8-fix-multipoly+svgcut",
-            "build": "2026-07-11-raster-multipolygon+svgcut-plates-only", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "5.9-layerset-split-pieces",
+            "build": "2026-07-11-nest-layerset-split-components+tight-pack", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -1332,12 +1332,20 @@ async def nest_layerset(request: Request):
                     foot = outer                      # footprint ใช้กรอบนอก (คิ้วบาง)
                 else:
                     g = outer; foot = outer
-                subs = _poly_to_subs(g)
-                if not subs:
+                mat = _mat_of(L["name"]); enmat = _en_layer(mat)
+                # แตกชั้นเป็น 'ชิ้นย่อย' (ตัวอักษร/รูปแยกชิ้น) เพื่อ nest แพคชิด ไม่ใช่ทั้งป้ายก้อนเดียว
+                comps = list(g.geoms) if getattr(g, "geom_type", "") == "MultiPolygon" else [g]
+                comp_pieces = []
+                for cg in comps:
+                    if getattr(cg, "geom_type", "") != "Polygon" or cg.is_empty or cg.area < 4.0:
+                        continue
+                    csubs = _poly_to_subs(cg)
+                    if not csubs:
+                        continue
+                    comp_pieces.append({"poly": cg, "groups": [(csubs, color, rgb, enmat)]})
+                if not comp_pieces:
                     continue
-                mat = _mat_of(L["name"])
-                piece = {"poly": foot, "groups": [(subs, color, rgb, _en_layer(mat))]}
-                mats.setdefault(mat, []).append({"label": label, "color": color, "rgb": rgb, "piece": piece, "qty": qty})
+                mats.setdefault(mat, []).append({"label": label, "color": color, "rgb": rgb, "pieces": comp_pieces, "qty": qty})
             # ยกขอบ = แถบพับ (สี่เหลี่ยม ยาว=เส้นรอบรูป × สูง=ความสูงผนัง)
             peri = float(full.length)
             for w in rec.get("walls", []):
@@ -1348,7 +1356,7 @@ async def nest_layerset(request: Request):
                 rsub = [{"start": (0, 0), "segs": [("L", (peri, 0)), ("L", (peri, hh)), ("L", (0, hh)), ("L", (0, 0))], "closed": True}]
                 mats.setdefault("ยกขอบ (แถบพับ)", []).append(
                     {"label": "%s·%s" % (label, nm), "color": color, "rgb": rgb,
-                     "piece": {"poly": rectp, "groups": [(rsub, color, rgb, "ยกขอบ")]}, "qty": qty})
+                     "pieces": [{"poly": rectp, "groups": [(rsub, color, rgb, "Return")]}], "qty": qty})
         if not mats:
             return JSONResponse({"error": "ไม่พบชิ้นงานจากไฟล์ที่ส่งมา"}, status_code=400)
 
@@ -1357,7 +1365,7 @@ async def nest_layerset(request: Request):
         for mat in keys:
             items = mats[mat]
             files_M = [{"label": it["label"], "name": it["label"], "color": it["color"], "rgb": it["rgb"],
-                        "nest_pieces": [it["piece"]], "qty": it["qty"]} for it in items]
+                        "nest_pieces": it["pieces"], "qty": it["qty"]} for it in items]
             r = nesting.nest_multi(files_M, sheet_w, sheet_h, margin=margin, gap=gap, divider_gap=divider_gap)
             svgs = [nesting.sheet_svg_zones(s, sheet_w, sheet_h) for s in r["sheets"]]
             cpath = os.path.join(tmp, "mat_%s.dxf" % _mat_of(mat).replace("/", "_").replace(" ", "_"))
@@ -1367,7 +1375,7 @@ async def nest_layerset(request: Request):
             with open(cpath, "rb") as fo:
                 dxf_b64 = base64.b64encode(fo.read()).decode()
             out_mats.append({"material": mat, "n_sheets": r["n_sheets"], "utilization": r["utilization"],
-                             "unplaced": r["unplaced"], "pieces": sum(it["qty"] for it in items),
+                             "unplaced": r["unplaced"], "pieces": sum(len(it["pieces"]) * it["qty"] for it in items),
                              "sheets_svg": svgs, "dxf_base64": dxf_b64})
         return {"sheet_w": sheet_w, "sheet_h": sheet_h, "n_files": nfiles,
                 "materials": out_mats}
