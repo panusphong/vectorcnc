@@ -60,8 +60,8 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "5.9-layerset-split-pieces",
-            "build": "2026-07-11-nest-layerset-split-components+tight-pack", "engine": eng, "bezier": bez,
+    return {"ok": True, "service": "VectorCNC", "version": "6.0-trim-out+sharp+lesspoints",
+            "build": "2026-07-11-trim-width-select+outward-offset+mitre-corners+point-reduce", "engine": eng, "bezier": bez,
             "nesting": nst, "psd": _psd_ok()}
 
 
@@ -822,8 +822,16 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     return full
 
 
-def _poly_to_subs(geom):
-    """polygon/multipolygon -> list ของ bezier subs (เนียน) ทุกวง (นอก+รูใน)"""
+def _mbuf(geom, d):
+    """offset เส้นแบบ 'มุมฉาก' (mitre) — ไม่ปัดมุมมน · ลดจุดบนโค้ง (resolution ต่ำ) เพื่อเครื่องดัดไม่กรีดถี่"""
+    if geom is None or geom.is_empty or abs(float(d)) < 1e-9:
+        return geom
+    return geom.buffer(float(d), join_style=2, mitre_limit=4.0, resolution=12)
+
+
+def _poly_to_subs(geom, tol=0.12):
+    """polygon/multipolygon -> list ของ bezier subs ทุกวง (นอก+รูใน)
+       tol สูงขึ้น = จุดน้อยลง (เครื่องดัดไม่กรีดพับถี่) แต่ยังคงรูปในระยะ tol มม."""
     from vectorcnc import bezier_vec
     subs = []
     if geom is None or geom.is_empty:
@@ -837,7 +845,7 @@ def _poly_to_subs(geom):
             if len(ring) < 4:
                 continue
             try:
-                sp = bezier_vec._fit_ring_to_sub(ring, tol=0.03)
+                sp = bezier_vec._fit_ring_to_sub(ring, tol=float(tol))
             except Exception:
                 sp = None
             if sp:
@@ -1112,7 +1120,8 @@ def _layerset_cut_svg(out_layers, wall_strips):
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
-                    return_depth_cm: float = Form(0.0), face_color: str = Form(""),
+                    return_depth_cm: float = Form(0.0), trim_width_cm: float = Form(1.0),
+                    trim_dir: str = Form("out"), face_color: str = Form(""),
                     side_color: str = Form(""), n_colors: int = Form(6)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
@@ -1139,22 +1148,32 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
         base_area = full.area
+        # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
+        TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
+        TRIM_OUT = (str(trim_dir or "out").lower() != "in")
+        bore_geom = None; frame_outer = None
         out_layers = []
         for L in rec["layers"]:
             off = float(L["off"]); kind = L.get("kind", "solid")
-            outer = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
-            if outer.is_empty:
+            base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
+            if base is None or base.is_empty:
                 continue
             if kind == "frame":
-                # คิ้ว = กรอบเจาะโบ๋: แถบระหว่างขอบนอก กับ ขอบในที่หดเข้าตามความกว้างคิ้ว
-                band = float(L.get("band", 10.0))
-                inner = full.buffer(off - band, join_style=1, resolution=48)
-                g = outer if (inner.is_empty) else outer.difference(inner)
+                band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
+                if TRIM_OUT:
+                    o2 = _mbuf(full, off + band)    # ขอบนอกคิ้ว = ตัวต้น + ความหนาคิ้ว
+                    i2 = base                        # ช่องกลาง = ตัวต้น (โชว์อะคริลิค) · รูใน(ไส้)จัดการโดย difference
+                else:
+                    o2 = base
+                    i2 = _mbuf(full, off - band)
+                g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
                 if g.is_empty:
-                    g = outer
+                    g = o2
+                if bore_geom is None:
+                    bore_geom = i2; frame_outer = o2
             else:
-                g = outer
-            subs = _poly_to_subs(g)
+                g = base
+            subs = _poly_to_subs(g, tol=0.12)       # จุดน้อยลง -> เครื่องดัดไม่กรีดพับถี่
             if not subs:
                 continue
             b = g.bounds
@@ -1172,9 +1191,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         from vectorcnc import nesting
         svg = _spec_sheet_svg(out_layers)
         try:
-            _band = next((float(L.get("band", 10.0)) for L in rec["layers"] if L.get("kind") == "frame"), 0.0)
-            _bore = full.buffer(-_band, join_style=1, resolution=48) if _band > 0 else None
-            svg3d = _iso3d_svg(full, rec, perimeter, inner_bore=_bore,
+            body3d = frame_outer if (frame_outer is not None and not frame_outer.is_empty) else full
+            svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=bore_geom,
                                face_color=(face_color or None), side_color=(side_color or None))
         except Exception:
             svg3d = ""
@@ -1318,20 +1336,24 @@ async def nest_layerset(request: Request):
             label = fm.get("label") or chr(65 + nfiles)
             qty = max(1, int(fm.get("qty", 1)))
             nfiles += 1
+            TW = float(meta.get("trim_width_cm", 1.0)) * 10.0
+            TOUT = (str(meta.get("trim_dir", "out")).lower() != "in")
             for L in rec["layers"]:
                 off = float(L["off"]); kind = L.get("kind", "solid")
-                outer = full if abs(off) < 1e-6 else full.buffer(off, join_style=1, resolution=48)
-                if outer.is_empty:
+                base = _mbuf(full, off)               # มุมฉาก (mitre) ไม่ปัดมน
+                if base is None or base.is_empty:
                     continue
                 if kind == "frame":
-                    band = float(L.get("band", 10.0))
-                    inner = full.buffer(off - band, join_style=1, resolution=48)
-                    g = outer if inner.is_empty else outer.difference(inner)
+                    band = TW if TW > 0 else float(L.get("band", 10.0))
+                    if TOUT:
+                        o2 = _mbuf(full, off + band); i2 = base    # คิ้วขยายออกนอกตัวต้น
+                    else:
+                        o2 = base; i2 = _mbuf(full, off - band)
+                    g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
                     if g.is_empty:
-                        g = outer
-                    foot = outer                      # footprint ใช้กรอบนอก (คิ้วบาง)
+                        g = o2
                 else:
-                    g = outer; foot = outer
+                    g = base
                 mat = _mat_of(L["name"]); enmat = _en_layer(mat)
                 # แตกชั้นเป็น 'ชิ้นย่อย' (ตัวอักษร/รูปแยกชิ้น) เพื่อ nest แพคชิด ไม่ใช่ทั้งป้ายก้อนเดียว
                 comps = list(g.geoms) if getattr(g, "geom_type", "") == "MultiPolygon" else [g]
@@ -1339,7 +1361,7 @@ async def nest_layerset(request: Request):
                 for cg in comps:
                     if getattr(cg, "geom_type", "") != "Polygon" or cg.is_empty or cg.area < 4.0:
                         continue
-                    csubs = _poly_to_subs(cg)
+                    csubs = _poly_to_subs(cg, tol=0.12)
                     if not csubs:
                         continue
                     comp_pieces.append({"poly": cg, "groups": [(csubs, color, rgb, enmat)]})
