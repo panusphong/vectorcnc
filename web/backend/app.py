@@ -60,9 +60,18 @@ def health():
         nst = getattr(_nst, "NESTING_VERSION", "OLD(no-version)")
     except Exception as e:
         nst = "import-error: " + str(e)
-    return {"ok": True, "service": "VectorCNC", "version": "6.0-trim-out+sharp+lesspoints",
-            "build": "2026-07-11-trim-width-select+outward-offset+mitre-corners+point-reduce", "engine": eng, "bezier": bez,
-            "nesting": nst, "psd": _psd_ok()}
+    def _v(mod, attr):
+        try:
+            m = __import__("vectorcnc." + mod, fromlist=[mod])
+            return getattr(m, attr, "OLD")
+        except Exception as e:
+            return "import-error: " + str(e)[:60]
+    return {"ok": True, "service": "VectorCNC", "version": "7.0-intake+producible+concept",
+            "build": "2026-07-12-pdf-asset-extractor+producibility-gate+sales-brief+ai-concept-kit",
+            "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
+            "assets": _v("assets", "ASSETS_VERSION"),
+            "producible": _v("producible", "PRODUCIBLE_VERSION"),
+            "concept": _v("concept", "CONCEPT_VERSION")}
 
 
 @app.post("/api/vectorize")
@@ -2072,3 +2081,349 @@ async def api_measure_parts(
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ==================================================================
+#  PHASE 1A — PDF ASSET EXTRACTOR  (แตกของจากไฟล์ลูกค้า)
+# ==================================================================
+_ASSET_STORE = {}          # token -> path ของไฟล์ที่อัปไว้ (ใช้ซ้ำตอนกดเลือกชิ้น)
+
+
+@app.post("/api/extract-assets")
+async def extract_assets(file: UploadFile = File(...)):
+    """อัป PDF/.ai -> แตกทุก object (เวกเตอร์ / ภาพฝังใน / ข้อความ+ฟอนต์) พร้อมพรีวิว
+       กราฟิกกดเลือกชิ้นที่ต้องการ -> ได้ .ai คงเวกเตอร์ทันที (ไม่ต้อง trace ใหม่)"""
+    import uuid
+    tmp = tempfile.mkdtemp()
+    name = file.filename or "in.pdf"
+    inp = os.path.join(tmp, name)
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import assets as _as
+        low = name.lower()
+        if not low.endswith((".pdf", ".ai", ".eps", ".ps")):
+            return JSONResponse({"error": "รองรับเฉพาะ PDF / .ai / .eps"}, status_code=400)
+        # .ai/.eps แบบ PostScript -> แปลงเป็น PDF ก่อน (ghostscript)
+        target = inp
+        try:
+            import fitz
+            fitz.open(inp).close()
+        except Exception:
+            import subprocess
+            pdfp = os.path.join(tmp, "conv.pdf")
+            subprocess.run(["gs", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
+                            "-sOutputFile=" + pdfp, inp], check=True, timeout=90)
+            target = pdfp
+        rep = _as.list_assets(target)
+        tok = uuid.uuid4().hex[:16]
+        _ASSET_STORE[tok] = target
+        rep["token"] = tok
+        rep["filename"] = name
+        return rep
+    except Exception as e:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+
+
+@app.post("/api/extract-asset")
+async def extract_asset(request: Request):
+    """เลือก asset 1 ชิ้น -> คืนไฟล์ .ai (เวกเตอร์) หรือ PNG (ถ้าเป็นภาพ)
+       body JSON: {token, page, bbox:[x0,y0,x1,y1], kind, xref}"""
+    body = await request.json()
+    tok = str(body.get("token", ""))
+    path = _ASSET_STORE.get(tok)
+    if not path or not os.path.exists(path):
+        return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาอัปโหลดใหม่"}, status_code=400)
+    try:
+        from vectorcnc import assets as _as
+        kind = str(body.get("kind", "vector"))
+        page = int(body.get("page", 0))
+        bbox = [float(v) for v in body.get("bbox", [0, 0, 100, 100])]
+        if kind == "image":
+            png = _as.extract_image(path, int(body.get("xref", 0)))
+            return {"kind": "image",
+                    "png_base64": base64.b64encode(png).decode(),
+                    "note": "ภาพ raster — ส่งเข้า 'ดราฟท์ .ai' เพื่อแปลงเป็นเวกเตอร์"}
+        pdf = _as.crop_vector(path, page, bbox)
+        return {"kind": "vector",
+                "ai_base64": base64.b64encode(pdf).decode(),
+                "w_mm": round((bbox[2] - bbox[0]) * 25.4 / 72.0, 1),
+                "h_mm": round((bbox[3] - bbox[1]) * 25.4 / 72.0, 1),
+                "note": "เวกเตอร์ต้นฉบับ 100% (ไม่ได้ trace ใหม่)"}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+# ==================================================================
+#  PHASE 1B — PRODUCIBILITY CHECKER  (ด่านกรอง "ผลิตได้จริงไหม")
+# ==================================================================
+@app.post("/api/check-producible")
+async def check_producible(file: UploadFile = File(...),
+                           real_width_mm: float = Form(600.0),
+                           real_height_mm: float = Form(0.0),
+                           material: str = Form("acrylic"),
+                           min_stroke_mm: float = Form(0.0),
+                           min_hole_mm: float = Form(0.0),
+                           min_gap_mm: float = Form(0.0),
+                           n_colors: int = Form(6)):
+    """ตรวจไฟล์ว่า 'ตัดได้จริงไหม' ก่อนรับงาน -> คะแนน 0-100 + จุดที่ต้องแก้ + พรีวิววงแดง"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import producible as PR
+        ov = {}
+        if float(min_stroke_mm) > 0: ov["min_stroke_mm"] = float(min_stroke_mm)
+        if float(min_hole_mm) > 0:   ov["min_hole_mm"] = float(min_hole_mm)
+        if float(min_gap_mm) > 0:    ov["min_gap_mm"] = float(min_gap_mm)
+        R = PR.rules_for(material, ov)
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        rep = PR.check(full, rules=R)
+        rep["svg"] = PR.report_svg(full, rep.get("marks", []))
+        rep["material"] = material
+        rep["materials"] = [{"key": k, "label": v["label"]}
+                            for k, v in PR.MATERIAL_PRESETS.items()]
+        return rep
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/autofix")
+async def api_autofix(file: UploadFile = File(...),
+                      real_width_mm: float = Form(600.0),
+                      real_height_mm: float = Form(0.0),
+                      material: str = Form("acrylic"),
+                      min_stroke_mm: float = Form(0.0),
+                      min_hole_mm: float = Form(0.0),
+                      min_gap_mm: float = Form(0.0),
+                      bold_mm: float = Form(-1.0),
+                      n_colors: int = Form(6)):
+    """แก้อัตโนมัติ -> คืน .ai + .svg ที่ผลิตได้ + คะแนนก่อน/หลัง"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import producible as PR, concept as CC
+        ov = {}
+        if float(min_stroke_mm) > 0: ov["min_stroke_mm"] = float(min_stroke_mm)
+        if float(min_hole_mm) > 0:   ov["min_hole_mm"] = float(min_hole_mm)
+        if float(min_gap_mm) > 0:    ov["min_gap_mm"] = float(min_gap_mm)
+        R = PR.rules_for(material, ov)
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        before = PR.check(full, rules=R)
+        bm = None if float(bold_mm) < 0 else float(bold_mm)
+        fixed, log = PR.autofix(full, rules=R, bold_mm=bm)
+        after = PR.check(fixed, rules=R)
+        svg_mm = CC.concept_svg_mm(fixed)
+        ai_b64 = ""
+        try:
+            import cairosvg
+            ai_b64 = base64.b64encode(
+                cairosvg.svg2pdf(bytestring=svg_mm.encode("utf-8"))).decode()
+        except Exception:
+            pass
+        b = fixed.bounds
+        return {"log": log,
+                "before": {"score": before["score"], "verdict": before["verdict"],
+                           "issues": len(before["issues"])},
+                "after": {"score": after["score"], "verdict": after["verdict"],
+                          "issues": [i["title"] for i in after["issues"]]},
+                "svg": PR.report_svg(fixed, after.get("marks", [])),
+                "svg_mm": svg_mm, "ai_base64": ai_b64,
+                "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ==================================================================
+#  PHASE 2 — SALES BRIEF  (บรีฟรับงานมาตรฐาน — ตัดเวลาถามกลับ)
+# ==================================================================
+BRIEF_FIELDS = [
+    ("customer",   "ชื่อลูกค้า / บริษัท",      True,  "text",   ""),
+    ("shop_name",  "ข้อความบนป้าย (ชื่อร้าน)", True,  "text",   ""),
+    ("sign_type",  "ประเภทป้าย (1–7)",         True,  "sign",   ""),
+    ("width_cm",   "ความกว้าง (ซม.)",          True,  "num",    ""),
+    ("height_cm",  "ความสูง (ซม.)",            False, "num",    "เว้นได้ถ้าให้สเกลตามสัดส่วน"),
+    ("return_cm",  "ความหนายกขอบ (ซม.)",       True,  "num",    "2.5 / 5 / 7.5 / 10 หรือระบุเอง"),
+    ("material",   "วัสดุหน้า",                True,  "mat",    ""),
+    ("qty",        "จำนวน (ชุด)",              True,  "num",    ""),
+    ("install",    "ติดตั้งที่ไหน / อย่างไร",  True,  "text",   "ผนังปูน / กระจก / โครงเหล็ก / แขวน"),
+    ("power",      "ไฟฟ้าถึงจุดติดตั้งหรือยัง", False, "text",  "จำเป็นถ้าเป็นป้ายมีไฟ"),
+    ("deadline",   "กำหนดส่ง",                 True,  "text",   ""),
+    ("budget",     "งบประมาณ",                 False, "text",   ""),
+    ("artwork",    "ไฟล์ต้นแบบที่ลูกค้าให้มา", True,  "text",   ".ai / .pdf / ภาพ / ไม่มีเลย"),
+    ("note",       "หมายเหตุ",                 False, "text",   ""),
+]
+
+
+@app.get("/api/brief-fields")
+def brief_fields():
+    """โครงบรีฟรับงาน — ให้ frontend เรนเดอร์ฟอร์ม"""
+    from vectorcnc import producible as PR
+    return {
+        "fields": [{"key": k, "label": l, "required": r, "type": t, "hint": h}
+                   for k, l, r, t, h in BRIEF_FIELDS],
+        "sign_types": [{"key": k, "label": v["label"], "label_en": _en_type(v["label"])}
+                       for k, v in SIGN_TYPES.items()],
+        "materials": [{"key": k, "label": v["label"]}
+                      for k, v in PR.MATERIAL_PRESETS.items()],
+    }
+
+
+@app.post("/api/brief")
+async def api_brief(request: Request):
+    """รับค่าบรีฟ -> ให้คะแนนความครบ + บอกช่องที่ขาด + สรุปเป็นเอกสารส่งกราฟิก"""
+    data = await request.json()
+    vals = data.get("values", {}) or {}
+    miss = []
+    filled = 0
+    for k, label, req, _t, _h in BRIEF_FIELDS:
+        v = str(vals.get(k, "") or "").strip()
+        if v:
+            filled += 1
+        elif req:
+            miss.append(label)
+    score = int(round(100.0 * filled / len(BRIEF_FIELDS)))
+    ready = (len(miss) == 0)
+
+    st = str(vals.get("sign_type", "") or "")
+    stn = SIGN_TYPES.get(st, {}).get("label", "")
+    lines = []
+    lines.append("JOB BRIEF — %s" % (vals.get("customer") or "-"))
+    lines.append("=" * 46)
+    for k, label, _r, _t, _h in BRIEF_FIELDS:
+        v = str(vals.get(k, "") or "").strip()
+        if k == "sign_type" and stn:
+            v = "%s · %s (%s)" % (v, stn, _en_type(stn))
+        lines.append("%-26s : %s" % (label, v or "— ยังไม่ระบุ —"))
+    lines.append("")
+    lines.append("ความครบของบรีฟ: %d%%  (%s)"
+                 % (score, "พร้อมส่งกราฟิก ✓" if ready else "ยังขาด: " + ", ".join(miss)))
+    return {"score": score, "ready": ready, "missing": miss,
+            "sign_type_name": stn, "text": "\n".join(lines)}
+
+
+# ==================================================================
+#  PHASE 3 — AI CONCEPT KIT  (ลูกค้าไม่มี idea / ไม่มีโลโก้)
+# ==================================================================
+NAME_SYS = ("คุณเป็นนักตั้งชื่อแบรนด์ไทยที่เข้าใจงานป้าย ตอบเป็น JSON เท่านั้น "
+            "รูปแบบ: {\"names\":[{\"name\":\"...\",\"why\":\"...\"}]} "
+            "ชื่อต้องสั้น (ไม่เกิน 14 ตัวอักษร) ออกเสียงง่าย และ 'ตัดเป็นตัวอักษรป้ายได้สวย' "
+            "คือไม่มีตัวอักษรบางเรียวหรือรายละเอียดจุกจิก")
+
+
+@app.post("/api/concept-names")
+async def concept_names(request: Request):
+    """เจนชื่อร้านให้เซลล์เสนอลูกค้าหน้างาน (ใช้ Claude ถ้ามี key · ไม่มีก็ใช้คลังคำสำรอง)"""
+    d = await request.json()
+    biz = str(d.get("biz", "shop"))
+    tone = str(d.get("tone", "โมเดิร์น"))
+    detail = str(d.get("detail", ""))
+    lang = str(d.get("lang", "both"))
+    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY")
+    if key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=key)
+            p = ("ธุรกิจ: %s · โทน: %s · ภาษา: %s · รายละเอียดเพิ่ม: %s\n"
+                 "ขอชื่อร้าน 10 ชื่อ พร้อมเหตุผลสั้น ๆ ว่าทำไมเหมาะกับป้าย" %
+                 (biz, tone, lang, detail or "-"))
+            msg = client.messages.create(
+                model=os.environ.get("DESIGN_MODEL", "claude-sonnet-4-6"),
+                max_tokens=1200, system=NAME_SYS,
+                messages=[{"role": "user", "content": p}])
+            txt = "".join(getattr(b, "text", "") for b in msg.content
+                          if getattr(b, "type", "") == "text")
+            m = re.search(r"\{[\s\S]*\}", txt)
+            if m:
+                js = json.loads(m.group(0))
+                names = js.get("names", [])
+                if names:
+                    return {"names": names[:12], "source": "ai"}
+        except Exception:
+            pass
+    from vectorcnc import concept as CC
+    return {"names": CC.name_ideas(biz, tone, lang, 10), "source": "fallback"}
+
+
+@app.get("/api/concept-styles")
+def concept_styles(text: str = ""):
+    from vectorcnc import concept as CC
+    return {"styles": CC.available_styles(text), "layouts":
+            [{"key": k, "label": l} for k, l in CC.LAYOUTS]}
+
+
+@app.post("/api/concept")
+async def api_concept(request: Request):
+    """สร้างโลโก้เวกเตอร์จริงหลายแบบ (สไตล์ฟอนต์ × เลย์เอาต์) + ตรวจผลิตได้เลยในตัว"""
+    d = await request.json()
+    name = str(d.get("name", "")).strip()
+    if not name:
+        return JSONResponse({"error": "ยังไม่ได้ใส่ชื่อร้าน"}, status_code=400)
+    sub = str(d.get("sub", "")).strip()
+    cap = float(d.get("cap_mm", 200) or 200)
+    styles = d.get("styles") or None
+    layouts = d.get("layouts") or None
+    material = str(d.get("material", "acrylic"))
+    try:
+        from vectorcnc import concept as CC, producible as PR
+        R = PR.rules_for(material)
+        cs = CC.generate(name, sub=sub, styles=styles, layouts=layouts, cap_mm=cap)
+        if not cs:
+            return JSONResponse({"error": "สร้างคอนเซปต์ไม่สำเร็จ (ไม่พบฟอนต์ที่รองรับ)"},
+                                status_code=400)
+        out = []
+        for c in cs:
+            rep = PR.check(c["geom"], rules=R)
+            out.append({k: c[k] for k in
+                        ("id", "style", "style_label", "font", "layout",
+                         "layout_label", "w_mm", "h_mm", "svg")}
+                       | {"score": rep["score"], "verdict": rep["verdict"],
+                          "issues": [i["title"] for i in rep["issues"]]})
+        out.sort(key=lambda c: -c["score"])
+        return {"concepts": out, "count": len(out)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+
+
+@app.post("/api/concept-use")
+async def concept_use(request: Request):
+    """เลือกคอนเซปต์ 1 อัน -> ได้ .ai + .svg (mm) เอาไปเข้าชุดชั้นตัด / Nesting ต่อได้ทันที"""
+    d = await request.json()
+    name = str(d.get("name", "")).strip()
+    sub = str(d.get("sub", "")).strip()
+    style = str(d.get("style", "bold-modern"))
+    layout = str(d.get("layout", "plain"))
+    cap = float(d.get("cap_mm", 200) or 200)
+    try:
+        from vectorcnc import concept as CC
+        cs = CC.generate(name, sub=sub, styles=[style], layouts=[layout], cap_mm=cap)
+        if not cs:
+            return JSONResponse({"error": "สร้างไม่สำเร็จ"}, status_code=400)
+        g = cs[0]["geom"]
+        svg_mm = CC.concept_svg_mm(g)
+        ai_b64 = ""
+        try:
+            import cairosvg
+            ai_b64 = base64.b64encode(
+                cairosvg.svg2pdf(bytestring=svg_mm.encode("utf-8"))).decode()
+        except Exception:
+            pass
+        return {"svg_mm": svg_mm, "ai_base64": ai_b64,
+                "w_mm": cs[0]["w_mm"], "h_mm": cs[0]["h_mm"], "font": cs[0]["font"]}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
