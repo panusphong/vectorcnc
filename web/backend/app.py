@@ -66,8 +66,8 @@ def health():
             return getattr(m, attr, "OLD")
         except Exception as e:
             return "import-error: " + str(e)[:60]
-    return {"ok": True, "service": "VectorCNC", "version": "7.2-SHARP-curves",
-            "build": "2026-07-12-bezier-fit-bugfix+newton-reparam+smart-corners",
+    return {"ok": True, "service": "VectorCNC", "version": "7.3-analytics+wall3d",
+            "build": "2026-07-12-sharp-curves+wall-3d-sign+usage-analytics",
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
@@ -2399,6 +2399,120 @@ async def api_concept(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
                             status_code=400)
+
+
+# ==================================================================
+#  📊 ANALYTICS — สถิติการเข้าใช้งาน (สะสม)
+# ==================================================================
+import sqlite3
+import threading
+from datetime import datetime, timedelta, timezone
+
+_AN_LOCK = threading.Lock()
+_AN_DB = os.environ.get("ANALYTICS_DB",
+                        os.path.join(os.environ.get("DATA_DIR", "/tmp"), "vectorcnc_stats.db"))
+TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
+
+
+def _an_conn():
+    c = sqlite3.connect(_AN_DB, timeout=8)
+    c.execute("""CREATE TABLE IF NOT EXISTS ev(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT, day TEXT, sid TEXT, account TEXT, ev TEXT,
+        page TEXT, menu TEXT, ref TEXT, refhost TEXT,
+        device TEXT, browser TEXT, dur INTEGER DEFAULT 0)""")
+    c.execute("CREATE INDEX IF NOT EXISTS i_day ON ev(day)")
+    c.execute("CREATE INDEX IF NOT EXISTS i_sid ON ev(sid)")
+    return c
+
+
+@app.post("/api/track")
+async def api_track(request: Request):
+    """บันทึก event: visit / menu / heartbeat / leave"""
+    try:
+        d = await request.json()
+    except Exception:
+        return {"ok": False}
+    now = datetime.now(TZ7)
+    row = (now.isoformat(timespec="seconds"), now.strftime("%Y-%m-%d"),
+           str(d.get("sid", ""))[:40], str(d.get("account", "guest"))[:60],
+           str(d.get("ev", "visit"))[:20], str(d.get("page", ""))[:80],
+           str(d.get("menu", ""))[:80], str(d.get("ref", ""))[:200],
+           str(d.get("refhost", ""))[:80], str(d.get("device", ""))[:20],
+           str(d.get("browser", ""))[:40], int(d.get("dur", 0) or 0))
+    try:
+        with _AN_LOCK:
+            c = _an_conn()
+            c.execute("INSERT INTO ev(ts,day,sid,account,ev,page,menu,ref,refhost,device,browser,dur)"
+                      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", row)
+            c.commit()
+            c.close()
+    except Exception:
+        return {"ok": False}
+    # ส่งต่อ Google Sheet ให้เก็บถาวร (ถ้าตั้ง env ANALYTICS_WEBHOOK)
+    hook = os.environ.get("ANALYTICS_WEBHOOK", "")
+    if hook:
+        try:
+            import urllib.request
+            import urllib.parse
+            qs = urllib.parse.urlencode({"api": "hit", "sid": row[2], "u": row[3],
+                                         "ev": row[4], "page": row[5], "menu": row[6],
+                                         "ref": row[7], "device": row[9],
+                                         "browser": row[10], "dur": row[11]})
+            urllib.request.urlopen(hook + ("&" if "?" in hook else "?") + qs, timeout=3).read(1)
+        except Exception:
+            pass
+    return {"ok": True}
+
+
+@app.get("/api/stats")
+def api_stats(days: int = 30):
+    """สรุปสถิติสะสม + ราย 'วัน/เมนู/แหล่งที่มา' + เซสชันล่าสุด"""
+    try:
+        with _AN_LOCK:
+            c = _an_conn()
+            q = c.execute
+            tot_acc = q("SELECT COUNT(DISTINCT account) FROM ev WHERE account<>''").fetchone()[0]
+            tot_ses = q("SELECT COUNT(DISTINCT sid) FROM ev").fetchone()[0]
+            tot_view = q("SELECT COUNT(*) FROM ev WHERE ev='visit'").fetchone()[0]
+            today = datetime.now(TZ7).strftime("%Y-%m-%d")
+            t_ses = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE day=?", (today,)).fetchone()[0]
+            t_acc = q("SELECT COUNT(DISTINCT account) FROM ev WHERE day=? AND account<>''",
+                      (today,)).fetchone()[0]
+            # เวลาเฉลี่ยต่อเซสชัน (วินาที) — ใช้ dur สูงสุดที่รายงานมาต่อ sid
+            rows = q("SELECT sid, MAX(dur) FROM ev GROUP BY sid HAVING MAX(dur)>0").fetchall()
+            durs = [r[1] for r in rows]
+            avg_dur = int(sum(durs) / len(durs)) if durs else 0
+            tot_dur = int(sum(durs))
+            since = (datetime.now(TZ7) - timedelta(days=max(1, int(days)))).strftime("%Y-%m-%d")
+            daily = [{"day": r[0], "sessions": r[1], "accounts": r[2]} for r in q(
+                "SELECT day, COUNT(DISTINCT sid), COUNT(DISTINCT account) FROM ev "
+                "WHERE day>=? GROUP BY day ORDER BY day", (since,)).fetchall()]
+            menus = [{"name": r[0], "n": r[1]} for r in q(
+                "SELECT menu, COUNT(*) FROM ev WHERE ev='menu' AND menu<>'' "
+                "GROUP BY menu ORDER BY 2 DESC LIMIT 15").fetchall()]
+            refs = [{"name": r[0] or "(เข้าตรง / พิมพ์ URL)", "n": r[1]} for r in q(
+                "SELECT refhost, COUNT(DISTINCT sid) FROM ev WHERE ev='visit' "
+                "GROUP BY refhost ORDER BY 2 DESC LIMIT 12").fetchall()]
+            devs = [{"name": r[0] or "?", "n": r[1]} for r in q(
+                "SELECT device, COUNT(DISTINCT sid) FROM ev WHERE ev='visit' "
+                "GROUP BY device ORDER BY 2 DESC").fetchall()]
+            accs = [{"name": r[0], "sessions": r[1], "last": r[2], "sec": r[3] or 0} for r in q(
+                "SELECT account, COUNT(DISTINCT sid), MAX(ts), SUM(dur) FROM ev "
+                "WHERE account<>'' GROUP BY account ORDER BY 2 DESC LIMIT 20").fetchall()]
+            recent = [{"ts": r[0], "account": r[1], "ev": r[2], "menu": r[3],
+                       "ref": r[4], "device": r[5], "dur": r[6]} for r in q(
+                "SELECT ts,account,ev,menu,refhost,device,dur FROM ev "
+                "ORDER BY id DESC LIMIT 40").fetchall()]
+            c.close()
+        return {"ok": True, "totals": {
+                    "accounts": tot_acc, "sessions": tot_ses, "views": tot_view,
+                    "avg_sec": avg_dur, "total_sec": tot_dur,
+                    "today_sessions": t_ses, "today_accounts": t_acc},
+                "daily": daily, "menus": menus, "refs": refs, "devices": devs,
+                "accounts": accs, "recent": recent}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.post("/api/geom3d")
