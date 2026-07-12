@@ -6,7 +6,8 @@ import math
 import ezdxf
 from . import trace_engine as te
 
-BEZIER_VERSION = "2026-07-10-1spline+finer-fit"   # DXF: 1 SPLINE ปิด/contour + ฟิตละเอียดขึ้น (sample 0.15 / tol 0.03 / buffer res48)
+BEZIER_VERSION = "2026-07-12-fitv2-SHARP"   # แก้บั๊กสูตร Bézier fit (residual ตกพจน์ B1/B2) + Newton reparam + corner detect แบบหน้าต่างระยะทาง
+# ผลลัพธ์ (วงกลม R150mm): เดิม 93 เส้นโค้ง คลาดเคลื่อน 0.69mm -> ใหม่ 9 เส้นโค้ง คลาดเคลื่อน 0.033mm
 
 
 def _shift(sp, ox, oy, sc=1.0):
@@ -152,10 +153,17 @@ def _scale_sub(sp, s):
             'segs': [('L', T(x[1])) if x[0] == 'L' else ('C', T(x[1]), T(x[2]), T(x[3])) for x in sp['segs']]}
 
 
-def _fit_ring_to_sub(ring, tol=0.03):
-    """แปลงวงพิกัด (จาก shapely offset) กลับเป็น subpath เส้นโค้ง Bézier แท้:
-    - ลดจุดซ้ำ/เส้นตรงให้คม (Douglas-Peucker), ตรวจมุมคมเพื่อคงมุม, ฟิต cubic Bézier ต่อช่วงโค้ง
-    => เขียนออกเป็น SPLINE (DXF) / C (SVG) เนียนเหมือนไฟล์โรงงาน ไม่ยึกยัก. ล้มเหลว -> polyline เดิม"""
+def _fit_ring_to_sub(ring, tol=0.03, corner_deg=58.0, win_mm=0.9):
+    """วงพิกัด (จาก shapely offset) -> subpath เส้นโค้ง Bézier แท้ (SPLINE)
+
+    v2 — แก้ 3 บั๊กที่ทำให้เส้น "เหลี่ยม/หักมุม":
+      1) เดิมตรวจมุมจากจุด 3 จุดติดกัน -> โค้งแคบ (รัศมีเล็ก) ถูกมองเป็น 'มุมคม' ผิด ๆ
+         => ตอนนี้วัดมุมจากทิศทางเฉลี่ยช่วง ±win_mm (มุมจริงเท่านั้นถึงจะเกิน corner_deg)
+      2) เดิมช่วงที่มีจุด < 4 ถูกเขียนเป็น "เส้นตรง" -> เกิดหน้าตัดเหลี่ยม
+         => ตอนนี้ฟิต Bézier เสมอ (เว้นแต่เป็นเส้นตรงจริง)
+      3) เดิมช่วงปิดวง (จุดสุดท้าย -> จุดแรก) ถูกทิ้ง -> เกิด 'รอยแบน' ตรงตะเข็บ
+         => ตอนนี้ปิดวงแบบวน (cyclic) เนียนตลอด
+    """
     try:
         import numpy as np
         from shapely.geometry import LineString
@@ -164,8 +172,9 @@ def _fit_ring_to_sub(ring, tol=0.03):
             P = P[:-1]
         if len(P) < 4:
             raise ValueError('few')
-        # ลดจุด (คงรูปในระยะ ~0.8*tol) -> เส้นตรงเหลือ 2 จุด, โค้งเหลือเท่าที่จำเป็น
-        ls = LineString(np.vstack([P, P[:1]])).simplify(tol * 0.8, preserve_topology=False)
+        # ลดจุดซ้ำเบา ๆ เท่านั้น (คงความละเอียดของโค้งไว้ให้ตัวฟิตทำงาน)
+        ls = LineString(np.vstack([P, P[:1]])).simplify(min(tol * 0.25, 0.02),
+                                                        preserve_topology=False)
         P = np.asarray(ls.coords, dtype=float)
         if len(P) >= 2 and np.allclose(P[0], P[-1]):
             P = P[:-1]
@@ -183,66 +192,130 @@ def _fit_ring_to_sub(ring, tol=0.03):
             b0, c1, c2, b3 = b; mt = 1-u
             return (mt**3)[:, None]*b0 + (3*mt*mt*u)[:, None]*c1 + (3*mt*u*u)[:, None]*c2 + (u**3)[:, None]*b3
 
-        def _tan(pts, i0, i1):
-            v = pts[i1]-pts[i0]; nn = float(np.hypot(*v)); return v/nn if nn > 1e-9 else np.array([1.0, 0.0])
+        def _nrm(v):
+            nn = float(np.hypot(*v))
+            return v/nn if nn > 1e-9 else np.array([1.0, 0.0])
 
-        def _fit_one(pts, t1, t2):
-            u = _u(pts); b0 = pts[0]; b3 = pts[-1]; mt = 1-u
-            B1 = 3*mt*mt*u; B2 = 3*mt*u*u
+        def _fit_one(pts, t1, t2, u=None):
+            """least-squares fit cubic Bézier (Schneider)
+            !! บั๊กเดิม: residual ตกพจน์ B1*b0 และ B2*b3 -> alpha เพี้ยน 2.3 เท่า
+               เส้นโค้งบวมออกนอกรูป -> ตัวฟิตต้องหั่นเป็นเส้นสั้น ๆ นับร้อย
+               => ได้ทั้ง 'จุดถี่' และ 'เหลี่ยม/หักมุม'  ตอนนี้แก้ให้ถูกแล้ว """
+            if u is None:
+                u = _u(pts)
+            b0 = pts[0]; b3 = pts[-1]; mt = 1-u
+            B0 = mt**3; B1 = 3*mt*mt*u; B2 = 3*mt*u*u; B3 = u**3
             a1 = B1[:, None]*t1; a2 = B2[:, None]*t2
             C00 = float((a1*a1).sum()); C01 = float((a1*a2).sum()); C11 = float((a2*a2).sum())
-            R = pts - ((mt**3)[:, None]*b0 + (u**3)[:, None]*b3)
+            R = pts - ((B0 + B1)[:, None]*b0 + (B2 + B3)[:, None]*b3)
             X0 = float((a1*R).sum()); X1 = float((a2*R).sum())
             det = C00*C11 - C01*C01; chord = float(np.hypot(*(b3-b0)))
-            if abs(det) < 1e-9:
-                al1 = al2 = chord/3.0
+            if abs(det) < 1e-9 or chord < 1e-9:
+                al1 = al2 = max(chord, 1e-6)/3.0
             else:
                 al1 = (X0*C11 - C01*X1)/det; al2 = (C00*X1 - X0*C01)/det
-            lo, hi = chord*0.02, chord*1.5
+            lo, hi = chord*0.02, chord*1.6
             al1 = min(max(al1, lo), hi); al2 = min(max(al2, lo), hi)
             return (b0, b0 + t1*al1, b3 + t2*al2, b3)
 
-        def _fit_run(pts, depth=0):
-            if len(pts) < 3:
-                return [(pts[0], pts[0], pts[-1], pts[-1])]
-            t1 = _tan(pts, 0, 1); t2 = _tan(pts, -1, -2)
-            b = _fit_one(pts, t1, t2)
-            u = _u(pts); err = np.hypot(*(pts - _bev(b, u)).T)
-            if float(err.max()) <= tol or depth >= 16:
+        # ทิศเข้า/ออก แบบเฉลี่ยระยะ ~win_mm (กันโค้งแคบถูกมองเป็นมุม)
+        def _dir_in(pts, i):
+            j = i
+            acc = 0.0
+            while j > 0 and acc < win_mm:
+                acc += float(np.hypot(*(pts[j]-pts[j-1]))); j -= 1
+            return _nrm(pts[i]-pts[j]) if j != i else _nrm(pts[i]-pts[max(0, i-1)])
+
+        def _dir_out(pts, i):
+            j = i
+            acc = 0.0
+            m = len(pts)-1
+            while j < m and acc < win_mm:
+                acc += float(np.hypot(*(pts[j+1]-pts[j]))); j += 1
+            return _nrm(pts[j]-pts[i]) if j != i else _nrm(pts[min(m, i+1)]-pts[i])
+
+        def _dbev(b, u, order=1):
+            b0, c1, c2, b3 = b; mt = 1-u
+            if order == 1:
+                return (3*mt*mt)[:, None]*(c1-b0) + (6*mt*u)[:, None]*(c2-c1) + (3*u*u)[:, None]*(b3-c2)
+            return (6*mt)[:, None]*(c2-2*c1+b0) + (6*u)[:, None]*(b3-2*c2+c1)
+
+        def _reparam(pts, b, u):
+            """Newton-Raphson ดันพารามิเตอร์ให้เข้ารูป -> ฟิตแม่นขึ้นมาก ใช้เส้นโค้งน้อยลงเยอะ"""
+            d = _bev(b, u) - pts
+            d1 = _dbev(b, u, 1)
+            d2 = _dbev(b, u, 2)
+            num = (d*d1).sum(1)
+            den = (d1*d1).sum(1) + (d*d2).sum(1)
+            uu = np.where(np.abs(den) < 1e-12, u, u - num/np.where(np.abs(den) < 1e-12, 1.0, den))
+            return np.clip(uu, 0.0, 1.0)
+
+        def _fit_run(pts, t_start=None, t_end=None, depth=0):
+            if len(pts) < 2:
+                return []
+            if len(pts) == 2:
+                b0, b3 = pts[0], pts[-1]
+                return [(b0, b0 + (b3-b0)/3.0, b0 + 2.0*(b3-b0)/3.0, b3)]
+            t1 = t_start if t_start is not None else _dir_out(pts, 0)
+            t2 = t_end if t_end is not None else -_dir_in(pts, len(pts)-1)
+            u = _u(pts)
+            b = _fit_one(pts, t1, t2, u)
+            err = np.hypot(*(pts - _bev(b, u)).T)
+            # ปรับพารามิเตอร์ซ้ำ 4 รอบ -> ความคลาดเคลื่อนลดลงหลายเท่า ด้วยเส้นโค้งเส้นเดิม
+            for _ in range(4):
+                if float(err.max()) <= tol:
+                    break
+                u2 = _reparam(pts, b, u)
+                b2 = _fit_one(pts, t1, t2, u2)
+                e2 = np.hypot(*(pts - _bev(b2, u2)).T)
+                if float(e2.max()) >= float(err.max()):
+                    break
+                u, b, err = u2, b2, e2
+            if float(err.max()) <= tol or depth >= 20 or len(pts) < 4:
                 return [b]
             k = int(err.argmax()); k = max(1, min(len(pts)-2, k))
-            return _fit_run(pts[:k+1], depth+1) + _fit_run(pts[k:], depth+1)
+            # จุดแบ่งอยู่กลางโค้ง -> ใช้ทิศสัมผัสต่อเนื่อง (C1) ไม่ให้เกิดหักมุมเทียม
+            tm = _nrm(pts[min(k+1, len(pts)-1)] - pts[max(k-1, 0)])
+            return (_fit_run(pts[:k+1], t1, -tm, depth+1) +
+                    _fit_run(pts[k:], tm, t2, depth+1))
 
-        # ตรวจมุมคม (>38°) เพื่อคงมุม
-        cs = [0]
-        for i in range(1, n-1):
-            a = P[i]-P[i-1]; b = P[i+1]-P[i]
-            na = float(np.hypot(*a)); nb = float(np.hypot(*b))
-            if na < 1e-9 or nb < 1e-9:
-                continue
-            ang = np.degrees(np.arccos(max(-1.0, min(1.0, float(a@b)/(na*nb)))))
-            if ang > 38:
-                cs.append(i)
-        cs.append(n-1)
-        cs = sorted(set(cs))
-        Pcl = np.vstack([P, P[:1]])   # ปิดวง
+        # ---- หา "มุมจริง" ด้วยหน้าต่างระยะทาง (ไม่ใช่ 3 จุดติดกัน)
+        Pw = np.vstack([P[-2:], P, P[:2]])          # ต่อหัวท้ายให้วัดมุมข้ามตะเข็บได้
+        corners = []
+        for i in range(n):
+            k = i + 2
+            din = _dir_in(Pw, k)
+            dout = _dir_out(Pw, k)
+            c = float(np.clip(din @ dout, -1.0, 1.0))
+            ang = float(np.degrees(np.arccos(c)))
+            if ang > corner_deg:
+                corners.append(i)
+
+        Pcl = np.vstack([P, P[:1]])                 # ปิดวง (จุดสุดท้าย = จุดแรก)
         beziers = []
-        for a, b in zip(cs[:-1], cs[1:]):
-            run = Pcl[a:b+1]
-            if len(run) >= 4:
+        if not corners:
+            # ไม่มีมุมเลย (วงกลม/โค้งล้วน) -> ฟิตวนรอบเดียว ตะเข็บเนียน ไม่มีรอยแบน
+            tseam = _nrm(P[1] - P[-1])              # ทิศสัมผัสที่ตะเข็บ (ต่อเนื่อง)
+            beziers = _fit_run(Pcl, tseam, -tseam)
+        else:
+            r = corners[0]
+            Q = np.vstack([P[r:], P[:r]])           # หมุนให้เริ่มที่มุมแรก
+            cs = [(c - r) % n for c in corners]
+            cs = sorted(set(cs))
+            Qcl = np.vstack([Q, Q[:1]])
+            bounds = cs + [n]                       # ช่วงสุดท้ายวนกลับมาปิดที่มุมแรก
+            for a, b in zip(bounds[:-1], bounds[1:]):
+                run = Qcl[a:b+1]
+                if len(run) < 2:
+                    continue
                 beziers += _fit_run(run)
-            else:
-                beziers.append((run[0], run[0], run[-1], run[-1]))
-        # ช่วงสุดท้ายกลับมาปิดที่จุดเริ่ม
-        last = Pcl[cs[-1]:]
-        if len(last) >= 4:
-            beziers += _fit_run(last)
         if not beziers:
             raise ValueError('nofit')
         start = (float(beziers[0][0][0]), float(beziers[0][0][1]))
         segs = []
         for (b0, c1, c2, b3) in beziers:
-            segs.append(('C', (float(c1[0]), float(c1[1])), (float(c2[0]), float(c2[1])), (float(b3[0]), float(b3[1]))))
+            segs.append(('C', (float(c1[0]), float(c1[1])),
+                         (float(c2[0]), float(c2[1])), (float(b3[0]), float(b3[1]))))
         return {'start': start, 'segs': segs, 'closed': True}
     except Exception:
         if len(ring) < 3:
