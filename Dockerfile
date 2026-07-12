@@ -3,9 +3,11 @@ FROM python:3.11-slim
 
 # ระบบไลบรารีที่ opencv-headless / scikit-image ต้องใช้
 # + ghostscript สำหรับแปลง .eps/.ps/.ai(PostScript) -> PDF ก่อนดึงเวกเตอร์
+# + ฟอนต์ไทย/ละติน สำหรับ AI Concept Kit (สร้างโลโก้เวกเตอร์จากฟอนต์)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libglib2.0-0 libgomp1 ghostscript \
       libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+      fonts-thai-tlwg fonts-noto-core fonts-dejavu-core fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
