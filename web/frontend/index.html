@@ -2383,6 +2383,7 @@ function $(id){return document.getElementById(id);}
       else alert('เปิดงานไม่สำเร็จ ('+((r&&r.error)||'ไม่พบดีไซน์')+')');
     });
   }
+  window._jbOpen=openJob;      // ⚠️ ต้องมีบรรทัดนี้ ไม่งั้นปุ่ม "เปิดงาน" กดแล้วไม่ทำงาน
   // 📋 สรุปงานที่เปิดขึ้นมา — สเกลแต่ละส่วน / ความสูงตัวอักษร / โลโก้ / ราคา
   function showJobRecap(d,j){
     var box=q('wJobRecap');
