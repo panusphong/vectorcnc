@@ -1060,6 +1060,62 @@ select.numin{cursor:pointer}
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg .psd ก็ได้)<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง หรือไฟล์เวกเตอร์ .ai/.psd · แตกชิ้น/เลเยอร์ให้เลือกได้ · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span><input id="wFile" type="file" accept="image/*,.ai,.pdf,.eps,.ps,.svg,.psd,.psb,application/pdf,application/postscript,application/illustrator,image/svg+xml,image/vnd.adobe.photoshop" hidden></div>
+      <!-- 🧊 ป้าย 3 มิติจริงบนผนัง -->
+      <div style="margin-top:12px;padding:11px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
+        <label style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;color:#0f766e;cursor:pointer">
+          <input type="checkbox" id="w3On"> 🧊 แสดงป้ายเป็น 3 มิติจริง (ยกขอบ + ขอบข้าง)
+        </label>
+        <div id="w3Panel" style="display:none;margin-top:9px">
+          <div style="font-size:11px;color:#5A6B8C;margin-bottom:4px">ความหนายกขอบ (ซม.)</div>
+          <div id="w3Rd" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            <button class="chip" data-rd="2.5" type="button">2.5</button>
+            <button class="chip on" data-rd="5" type="button">5</button>
+            <button class="chip" data-rd="7.5" type="button">7.5</button>
+            <button class="chip" data-rd="10" type="button">10</button>
+            <input class="numin" id="w3RdC" type="number" placeholder="เอง" step="0.5" min="0" style="width:58px;padding:4px 6px;font-size:12px">
+          </div>
+
+          <div style="font-size:11px;color:#5A6B8C;margin:9px 0 4px">วัสดุ / สีหน้า</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+            <input type="color" id="w3Face" value="#c9ced6" style="width:38px;height:28px;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer">
+            <button class="chip w3-mat" data-f="#c9ced6" type="button" style="font-size:11px">เงิน</button>
+            <button class="chip w3-mat" data-f="#c8952b" type="button" style="font-size:11px">ทอง</button>
+            <button class="chip w3-mat" data-f="#e5e7eb" type="button" style="font-size:11px">สแตนเลส</button>
+            <button class="chip w3-mat" data-f="#1f2733" type="button" style="font-size:11px">ดำ</button>
+            <button class="chip w3-mat" data-f="#ffffff" type="button" style="font-size:11px">ขาว</button>
+            <button class="chip w3-mat" data-f="#c0392b" type="button" style="font-size:11px">แดง</button>
+          </div>
+          <div style="display:flex;gap:5px;align-items:center;margin-top:6px">
+            <span style="font-size:11px;color:#5A6B8C">สีขอบข้าง</span>
+            <input type="color" id="w3Side" value="#8f96a1" style="width:38px;height:28px;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer">
+            <button class="chip on" id="w3AutoSide" type="button" style="font-size:11px">↺ อัตโนมัติ</button>
+          </div>
+
+          <div style="font-size:11px;color:#5A6B8C;margin:9px 0 4px">เอฟเฟกต์ไฟ</div>
+          <div id="w3Fx" style="display:flex;gap:5px;flex-wrap:wrap">
+            <button class="chip on" data-fx="off" type="button" style="font-size:11px">◻ ไม่มีไฟ</button>
+            <button class="chip" data-fx="front" type="button" style="font-size:11px">🔆 ออกหน้า</button>
+            <button class="chip" data-fx="back" type="button" style="font-size:11px">🌙 ออกหลัง</button>
+          </div>
+          <div id="w3Temp" style="display:flex;gap:5px;margin-top:5px">
+            <button class="chip on" data-t="warm" type="button" style="font-size:11px;flex:1">วอร์ม</button>
+            <button class="chip" data-t="white" type="button" style="font-size:11px;flex:1">ขาว</button>
+            <button class="chip" data-t="cool" type="button" style="font-size:11px;flex:1">คูล</button>
+          </div>
+
+          <div style="font-size:11px;color:#5A6B8C;margin:9px 0 4px">มุมมอง (หมุน)</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="font-size:11px;color:#8A99B5;width:28px">↔</span>
+            <input type="range" id="w3Az" min="-70" max="70" value="30" style="flex:1">
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:3px">
+            <span style="font-size:11px;color:#8A99B5;width:28px">↕</span>
+            <input type="range" id="w3El" min="-60" max="60" value="22" style="flex:1">
+          </div>
+          <div id="w3Msg" style="font-size:11px;color:#8A99B5;margin-top:7px"></div>
+        </div>
+      </div>
+
       <div id="wLogoEdit" style="display:none;margin-top:8px;padding:11px;border:1px solid #d8b4fe;border-radius:10px;background:#faf5ff">
         <div style="font-weight:700;font-size:13px;color:#7c3aed;margin-bottom:6px">🟣 โลโก้ที่เลือก (คิดราคา + จับระยะ)</div>
         <label style="font-size:11px;color:var(--muted)">ประเภทป้าย (เพื่อคิดราคา)</label>
@@ -1161,33 +1217,66 @@ select.numin{cursor:pointer}
   </div>
 </div></div>
 <!-- ===== 🧊 3D Viewer ===== -->
-<div class="modal" id="v3dOverlay"><div class="modal-card" style="width:88vw;max-width:1000px;padding:0;overflow:hidden">
+<div class="modal" id="v3dOverlay"><div class="modal-card" style="width:90vw;max-width:1120px;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)">
-    <b style="font-size:15px">🧊 มุมมอง 3D — ลากเพื่อหมุน · หมุนอัตโนมัติได้</b>
+    <div><b style="font-size:15px">🧊 มุมมอง 3 มิติ (Perspective — เห็นขอบด้านข้างจริง)</b>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px">ผนังข้างวิ่งตามรูปตัวอักษรจริง ตามความหนายกขอบที่กำหนด · <span id="v3dInfo"></span></div></div>
     <button class="chip" id="v3dClose" type="button">✕ ปิด</button>
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:16px;padding:14px 18px">
-    <div style="flex:1;min-width:280px;background:#0e1524;border-radius:12px;overflow:hidden">
-      <canvas id="v3dCanvas" style="width:100%;display:block;cursor:grab"></canvas>
+    <div style="flex:1;min-width:300px;background:#0f1319;border-radius:12px;overflow:hidden;position:relative;min-height:320px">
+      <canvas id="v3dCv" style="width:100%;display:block;cursor:grab"></canvas>
+      <div id="v3dHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px;pointer-events:none">กด "สร้างภาพ 3 มิติ"</div>
     </div>
-    <div style="width:230px;max-width:100%">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:5px">รูปแบบชิ้นงาน 3D</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <button class="chip v3d-style on" data-style="panel" type="button" style="text-align:left">▭ แผ่นแบนมีความหนา</button>
-        <button class="chip v3d-style" data-style="channel" type="button" style="text-align:left">🔤 ตัวอักษร/โลโก้นูน</button>
-        <button class="chip v3d-style" data-style="light" type="button" style="text-align:left">💡 ป้ายไฟเรืองแสง</button>
+    <div style="width:250px;max-width:100%">
+      <label style="font-size:12px;color:var(--muted);display:block">ความกว้างป้ายจริง (ซม.)</label>
+      <input class="numin" id="v3dW" type="number" value="120" step="5" min="5" style="width:100%">
+
+      <label style="font-size:12px;color:var(--muted);display:block;margin-top:10px">ความหนายกขอบ (ซม.)</label>
+      <div id="v3dRd" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <button class="chip" data-rd="2.5" type="button">2.5</button>
+        <button class="chip on" data-rd="5" type="button">5</button>
+        <button class="chip" data-rd="7.5" type="button">7.5</button>
+        <button class="chip" data-rd="10" type="button">10</button>
+        <input class="numin" id="v3dRdC" type="number" placeholder="เอง" step="0.5" min="0" style="width:62px">
       </div>
-      <label style="font-size:12px;color:var(--muted);margin-top:12px;display:block">ความหนา <span id="v3dThickV" style="color:#7c3aed;font-weight:700">10</span></label>
-      <input id="v3dThick" type="range" min="2" max="30" value="10" step="1" style="width:100%">
-      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="v3dAuto" checked> 🔄 หมุนอัตโนมัติ</label>
-      <div style="font-size:12px;color:var(--muted);margin-top:12px;margin-bottom:5px">พื้นหลัง</div>
-      <div style="display:flex;gap:6px">
-        <button class="chip v3d-bg on" data-bg="studio" type="button" style="flex:1">สตูดิโอ</button>
-        <button class="chip v3d-bg" data-bg="dark" type="button" style="flex:1">มืด</button>
-        <button class="chip v3d-bg" data-bg="wall" type="button" style="flex:1">ผนัง</button>
+
+      <label style="font-size:12px;color:var(--muted);display:block;margin-top:12px">สีหน้า / สีขอบข้าง</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="color" id="v3dFace" value="#cfd4dc" style="width:44px;height:32px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
+        <input type="color" id="v3dSide" value="#95a0ad" style="width:44px;height:32px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
+        <button class="chip" id="v3dAutoSide" type="button" style="font-size:11px">↺ ข้างอัตโนมัติ</button>
       </div>
-      <button class="btn" id="v3dSnap" type="button" style="width:100%;margin-top:14px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📸 บันทึกภาพ 3D</button>
-      <div class="hint" style="margin-top:10px;font-size:11px">ลากเมาส์ = หมุน · สกอลล์ = ซูม</div>
+      <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">
+        <button class="chip v3d-mat" data-f="#c9ced6" type="button" style="font-size:11px">เงิน</button>
+        <button class="chip v3d-mat" data-f="#c8952b" type="button" style="font-size:11px">ทอง</button>
+        <button class="chip v3d-mat" data-f="#1f2733" type="button" style="font-size:11px">ดำ</button>
+        <button class="chip v3d-mat" data-f="#ffffff" type="button" style="font-size:11px">ขาว</button>
+        <button class="chip v3d-mat" data-f="#c0392b" type="button" style="font-size:11px">แดง</button>
+      </div>
+
+      <label style="font-size:12px;color:var(--muted);display:block;margin-top:12px">เอฟเฟกต์ไฟ</label>
+      <div id="v3dFx" style="display:flex;gap:5px;flex-wrap:wrap">
+        <button class="chip on" data-fx="off" type="button" style="font-size:11px">◻ ไม่มีไฟ</button>
+        <button class="chip" data-fx="front" type="button" style="font-size:11px">🔆 ออกหน้า</button>
+        <button class="chip" data-fx="back" type="button" style="font-size:11px">🌙 ออกหลัง</button>
+      </div>
+      <div id="v3dTemp" style="display:flex;gap:5px;margin-top:5px">
+        <button class="chip on" data-t="warm" type="button" style="font-size:11px;flex:1">วอร์ม</button>
+        <button class="chip" data-t="white" type="button" style="font-size:11px;flex:1">ขาว</button>
+        <button class="chip" data-t="cool" type="button" style="font-size:11px;flex:1">คูล</button>
+      </div>
+
+      <label style="font-size:12px;color:var(--muted);display:block;margin-top:12px">พื้นหลัง</label>
+      <div id="v3dBgs" style="display:flex;gap:5px">
+        <button class="chip on" data-bg="#0f1319" type="button" style="flex:1;font-size:11px">มืด</button>
+        <button class="chip" data-bg="#f1f5f9" type="button" style="flex:1;font-size:11px">สตูดิโอ</button>
+        <button class="chip" data-bg="#e8e2d8" type="button" style="flex:1;font-size:11px">ผนัง</button>
+      </div>
+
+      <button class="btn primary" id="v3dGo" type="button" style="width:100%;margin-top:14px">🧊 สร้างภาพ 3 มิติ</button>
+      <button class="btn" id="v3dSnap" type="button" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📸 บันทึกภาพ (PNG)</button>
+      <div class="hint" style="margin-top:10px;font-size:11px">ภาพนี้ใช้รูปทรงจริงจากไฟล์งาน — ขอบข้างจะวิ่งตามตัวอักษร ไม่ใช่กล่องแปะรูป</div>
     </div>
   </div>
 </div></div>
@@ -1436,6 +1525,439 @@ function $(id){return document.getElementById(id);}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
 })();
 
+/* ===== 🧊 3D Perspective v2 — ใช้ "รูปทรงจริง" จากไฟล์งาน · ลากหมุนได้ (canvas 2D) ===== */
+(function(){
+  function q(id){return document.getElementById(id);}
+  var G=null;                 // {polys, w_mm, h_mm}
+  var V={az:0.62, el:0.42, rd:5, face:'#cfd4dc', side:'#95a0ad', autoSide:true,
+         fx:'off', temp:'warm', bg:'#0f1319', drag:false, lx:0, ly:0, zoom:1};
+
+  function light(t){return t==='cool'?'#86b9ff':(t==='white'?'#ffffff':'#ffb457');}
+  function shade(hex,k){
+    var h=(hex||'#cfd4dc').replace('#','');
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var f=function(v){return Math.max(0,Math.min(255,Math.round(v*k)));};
+    return '#'+[0,2,4].map(function(i){return ('0'+f(parseInt(h.substr(i,2),16)).toString(16)).slice(-2);}).join('');
+  }
+  function rgba(hex,a){
+    var h=(hex||'#fff').replace('#','');
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';
+  }
+  function sideCol(){ return V.autoSide ? shade(V.face,0.72) : V.side; }
+
+  // ---- ring helper
+  function centroid(r){
+    var x=0,y=0,n=r.length-1;
+    for(var i=0;i<n;i++){x+=r[i][0];y+=r[i][1];}
+    return [x/Math.max(n,1), y/Math.max(n,1)];
+  }
+  function draw(){
+    var cv=q('v3dCv'); if(!cv||!G)return;
+    var wrap=cv.parentNode;
+    var CW=Math.max(320,wrap.clientWidth), CH=Math.max(320,Math.round(CW*0.62));
+    var dpr=Math.min(2,window.devicePixelRatio||1);
+    cv.width=CW*dpr; cv.height=CH*dpr; cv.style.height=CH+'px';
+    var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+    g.fillStyle=V.bg; g.fillRect(0,0,CW,CH);
+
+    var D=Math.max(0,V.rd)*10;                       // ความหนายกขอบ (มม.)
+    // ทิศยื่นออกตามมุมที่ลาก (oblique projection)
+    var dvx=D*Math.cos(V.el)*Math.sin(V.az);
+    var dvy=-D*Math.sin(V.el);
+    var W=G.w_mm, H=G.h_mm;
+    var bw=W+Math.abs(dvx), bh=H+Math.abs(dvy);
+    var pad=Math.max(bw,bh)*0.13+18;
+    var s=Math.min((CW-pad*2)/bw,(CH-pad*2)/bh)*V.zoom;
+    var ox=(CW-(W+Math.abs(dvx))*s)/2 - Math.min(0,dvx)*s;
+    var oy=(CH-(H+Math.abs(dvy))*s)/2 - Math.min(0,dvy)*s;
+    function T(x,y){return [ox+x*s, oy+y*s];}
+
+    var FACE=V.face, SIDE=sideCol(), L=light(V.temp);
+    if(V.fx==='front')FACE=L;
+
+    // ---- ผนังข้าง (เฉพาะด้านที่เห็น) + แรเงา
+    var lx=0.42, ly=-0.91, quads=[];
+    if(D>0.5){
+      for(var pi=0;pi<G.polys.length;pi++){
+        var P=G.polys[pi];
+        var rings=[{r:P.ext,c:centroid(P.ext),h:false}];
+        for(var hi=0;hi<P.holes.length;hi++)rings.push({r:P.holes[hi],c:centroid(P.holes[hi]),h:true});
+        for(var ri=0;ri<rings.length;ri++){
+          var R=rings[ri].r, C=rings[ri].c, isH=rings[ri].h;
+          for(var i=0;i<R.length-1;i++){
+            var ax=R[i][0],ay=R[i][1],bx=R[i+1][0],by=R[i+1][1];
+            var ex=bx-ax, ey=by-ay, len=Math.hypot(ex,ey);
+            if(len<1e-6)continue;
+            var nx=ey/len, ny=-ex/len;
+            var mx=(ax+bx)/2, my=(ay+by)/2;
+            var dot=(mx-C[0])*nx+(my-C[1])*ny;
+            if(isH ? dot>0 : dot<0){nx=-nx;ny=-ny;}   // ให้ชี้ออกจากเนื้อวัสดุ
+            if(nx*dvx+ny*dvy<=1e-6)continue;          // หันหนีคนดู
+            var lam=nx*lx+ny*ly;
+            quads.push({a:[ax,ay],b:[bx,by],z:(mx-C[0])*dvx+(my-C[1])*dvy,
+                        sh:0.36*(1-(lam+1)/2)});
+          }
+        }
+      }
+      quads.sort(function(A,B){return A.z-B.z;});
+      g.lineJoin='round';
+      for(var k=0;k<quads.length;k++){
+        var Q=quads[k];
+        var p1=T(Q.a[0],Q.a[1]), p2=T(Q.b[0],Q.b[1]);
+        var p3=T(Q.b[0]+dvx,Q.b[1]+dvy), p4=T(Q.a[0]+dvx,Q.a[1]+dvy);
+        g.beginPath(); g.moveTo(p1[0],p1[1]); g.lineTo(p2[0],p2[1]);
+        g.lineTo(p3[0],p3[1]); g.lineTo(p4[0],p4[1]); g.closePath();
+        g.fillStyle=SIDE; g.strokeStyle=SIDE; g.lineWidth=1; g.fill(); g.stroke();
+        if(Q.sh>0.02){ g.fillStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';
+          g.strokeStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')'; g.fill(); g.stroke(); }
+      }
+    }
+    // ---- หน้าป้าย
+    function facePath(){
+      g.beginPath();
+      for(var pi=0;pi<G.polys.length;pi++){
+        var P=G.polys[pi];
+        var all=[P.ext].concat(P.holes);
+        for(var ri=0;ri<all.length;ri++){
+          var R=all[ri];
+          for(var i=0;i<R.length;i++){
+            var p=T(R[i][0],R[i][1]);
+            if(i===0)g.moveTo(p[0],p[1]); else g.lineTo(p[0],p[1]);
+          }
+          g.closePath();
+        }
+      }
+    }
+    g.save();
+    if(V.fx==='front'||V.fx==='back'){
+      g.shadowColor=L; g.shadowBlur=Math.max(10,CW*0.02);
+      facePath(); g.fillStyle=(V.fx==='front')?L:V.face; g.fill('evenodd');
+      g.shadowBlur=Math.max(24,CW*0.05);
+      facePath(); g.fill('evenodd');
+    }
+    g.shadowBlur=0;
+    facePath();
+    g.fillStyle=FACE; g.fill('evenodd');
+    g.strokeStyle=shade(FACE,0.55); g.lineWidth=1; g.stroke();
+    g.restore();
+
+    // ---- เส้นจับขนาด (ซม. จริง)
+    var wcm=parseFloat(q('v3dW').value||120);
+    var hcm=wcm*(H/Math.max(W,1e-6));
+    var col='#8b95a4', fs=Math.max(11,CW*0.017);
+    g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.2;
+    g.font='600 '+fs+'px system-ui,sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    var a0=T(0,H), a1=T(W,H), b0=T(0,0);
+    var yb=Math.max(a0[1],a1[1])+fs*1.4, xl=Math.min(a0[0],b0[0])-fs*1.4;
+    g.beginPath(); g.moveTo(a0[0],yb); g.lineTo(a1[0],yb);
+    g.moveTo(xl,b0[1]); g.lineTo(xl,a0[1]); g.stroke();
+    g.fillText(wcm.toFixed(0)+' ซม.', (a0[0]+a1[0])/2, yb+fs*0.95);
+    g.save(); g.translate(xl-fs*0.85,(b0[1]+a0[1])/2); g.rotate(-Math.PI/2);
+    g.fillText(hcm.toFixed(0)+' ซม.',0,0); g.restore();
+    if(D>0.5){
+      var e0=T(W,0), e1=T(W+dvx,0+dvy);
+      g.beginPath(); g.moveTo(e0[0],e0[1]); g.lineTo(e1[0],e1[1]); g.stroke();
+      g.textAlign='left';
+      g.fillText('ยกขอบ '+V.rd+' ซม.', e1[0]+6, e1[1]-fs*0.5);
+    }
+    q('v3dInfo').innerHTML='ป้าย <b>'+wcm.toFixed(0)+' × '+hcm.toFixed(0)+' ซม.</b> · ยกขอบ '+V.rd+' ซม. · ลากเพื่อหมุน · สกอลล์ = ซูม';
+  }
+
+  function load(){
+    var f=(q('wFile')&&q('wFile').files[0])||null;
+    if(!f&&typeof fileObj!=='undefined'&&fileObj)f=fileObj;
+    if(!f){alert('ยังไม่มีไฟล์งาน — อัปโหลดภาพ/ไฟล์ป้ายก่อนนะคะ');return;}
+    var btn=q('v3dGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังอ่านรูปทรง...';
+    q('v3dHint').textContent='กำลังอ่านรูปทรงจริงจากไฟล์...';
+    var wcm=parseFloat(q('v3dW').value||120);
+    var fd=new FormData(); fd.append('file',f);
+    fd.append('real_width_mm',String(wcm*10)); fd.append('max_pts','6000');
+    fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
+    .then(function(r){return r.json();}).then(function(j){
+      btn.disabled=false; btn.textContent=old;
+      if(j.error){q('v3dHint').textContent='❌ '+j.error;return;}
+      G=j; q('v3dHint').style.display='none';
+      draw();
+    }).catch(function(e){btn.disabled=false;btn.textContent=old;q('v3dHint').textContent='❌ '+e;});
+  }
+
+  function wire(){
+    var cv=q('v3dCv'); if(!cv)return;
+    if(q('v3dGo'))q('v3dGo').onclick=load;
+    if(q('v3dW'))q('v3dW').oninput=function(){draw();};
+    var rd=q('v3dRd');
+    if(rd)rd.querySelectorAll('.chip').forEach(function(b){
+      b.onclick=function(){
+        rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); q('v3dRdC').value='';
+        V.rd=parseFloat(b.getAttribute('data-rd')); draw();
+      };
+    });
+    if(q('v3dRdC'))q('v3dRdC').oninput=function(){
+      var v=parseFloat(this.value);
+      if(!isNaN(v)&&v>=0){rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});V.rd=v;draw();}
+    };
+    if(q('v3dFace'))q('v3dFace').oninput=function(){V.face=this.value; if(V.autoSide)q('v3dSide').value=shade(V.face,0.72); draw();};
+    if(q('v3dSide'))q('v3dSide').oninput=function(){V.side=this.value; V.autoSide=false; q('v3dAutoSide').classList.remove('on'); draw();};
+    if(q('v3dAutoSide'))q('v3dAutoSide').onclick=function(){
+      V.autoSide=!V.autoSide; this.classList.toggle('on',V.autoSide);
+      if(V.autoSide)q('v3dSide').value=shade(V.face,0.72); draw();
+    };
+    document.querySelectorAll('.v3d-mat').forEach(function(b){
+      b.onclick=function(){V.face=b.getAttribute('data-f'); q('v3dFace').value=V.face;
+        if(V.autoSide)q('v3dSide').value=shade(V.face,0.72); draw();};
+    });
+    ['v3dFx','v3dTemp','v3dBgs'].forEach(function(gid){
+      var gg=q(gid); if(!gg)return;
+      gg.querySelectorAll('.chip').forEach(function(b){
+        b.onclick=function(){
+          gg.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+          b.classList.add('on');
+          if(gid==='v3dFx'){V.fx=b.getAttribute('data-fx');
+            if(V.fx!=='off'&&V.bg==='#f1f5f9'){V.bg='#0f1319';}}
+          else if(gid==='v3dTemp')V.temp=b.getAttribute('data-t');
+          else V.bg=b.getAttribute('data-bg');
+          draw();
+        };
+      });
+    });
+    if(q('v3dSnap'))q('v3dSnap').onclick=function(){
+      try{var a=document.createElement('a'); a.href=cv.toDataURL('image/png');
+        a.download='sign-3d.png'; a.click();}catch(e){alert('บันทึกไม่สำเร็จ');}
+    };
+    if(q('v3dClose'))q('v3dClose').onclick=function(){q('v3dOverlay').classList.remove('show');};
+    // ---- ลากหมุน + ซูม
+    function pt(e){var t=(e.touches&&e.touches[0])||e; return {x:t.clientX,y:t.clientY};}
+    cv.addEventListener('mousedown',function(e){V.drag=true;var p=pt(e);V.lx=p.x;V.ly=p.y;cv.style.cursor='grabbing';});
+    cv.addEventListener('touchstart',function(e){V.drag=true;var p=pt(e);V.lx=p.x;V.ly=p.y;},{passive:true});
+    window.addEventListener('mousemove',function(e){
+      if(!V.drag||!G)return; var p=pt(e);
+      V.az+=(p.x-V.lx)*0.006; V.el+=(p.y-V.ly)*0.005;
+      V.az=Math.max(-1.35,Math.min(1.35,V.az)); V.el=Math.max(-1.2,Math.min(1.2,V.el));
+      V.lx=p.x; V.ly=p.y; draw();
+    });
+    cv.addEventListener('touchmove',function(e){
+      if(!V.drag||!G)return; e.preventDefault(); var p=pt(e);
+      V.az+=(p.x-V.lx)*0.006; V.el+=(p.y-V.ly)*0.005;
+      V.az=Math.max(-1.35,Math.min(1.35,V.az)); V.el=Math.max(-1.2,Math.min(1.2,V.el));
+      V.lx=p.x; V.ly=p.y; draw();
+    },{passive:false});
+    window.addEventListener('mouseup',function(){V.drag=false;cv.style.cursor='grab';});
+    cv.addEventListener('touchend',function(){V.drag=false;});
+    cv.addEventListener('wheel',function(e){
+      if(!G)return; e.preventDefault();
+      V.zoom=Math.max(0.45,Math.min(3.2,V.zoom*(e.deltaY<0?1.1:0.91))); draw();
+    },{passive:false});
+    window.addEventListener('resize',function(){ if(G&&q('v3dOverlay').classList.contains('show'))draw(); });
+    // ปุ่มเปิด 3D (ทับ handler เดิมของ Three.js)
+    if(q('wOpen3D'))q('wOpen3D').onclick=function(){ window.open3DViewer(); };
+  }
+  // ทับตัวเปิดเดิม (Three.js) ด้วยตัวใหม่
+  window.open3DViewer=function(){
+    var ov=q('v3dOverlay'); if(!ov)return;
+    ov.classList.add('show');
+    // เดาความกว้างป้ายจากหน้าจำลองผนัง (ถ้ามี)
+    try{
+      if(typeof signWcm!=='undefined'&&signWcm>0)q('v3dW').value=Math.round(signWcm);
+    }catch(_e){}
+    setTimeout(function(){ if(G)draw(); },80);
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+
+/* ===== 🧊 ป้าย 3 มิติจริงบนผนัง (แทนภาพแบน) — ใช้รูปทรงจริงจากไฟล์งาน ===== */
+(function(){
+  function q(id){return document.getElementById(id);}
+  var W3={on:false,G:null,rd:5,face:'#c9ced6',side:'#8f96a1',autoSide:true,
+          fx:'off',temp:'warm',az:0.52,el:0.38,busy:false};
+  var FLAT=null;                       // เก็บภาพแบนเดิมไว้สลับกลับ
+  window._W3=W3;
+
+  function light(t){return t==='cool'?'#86b9ff':(t==='white'?'#ffffff':'#ffb457');}
+  function shade(hex,k){
+    var h=(hex||'#c9ced6').replace('#','');
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var f=function(v){return Math.max(0,Math.min(255,Math.round(v*k)));};
+    return '#'+[0,2,4].map(function(i){return ('0'+f(parseInt(h.substr(i,2),16)).toString(16)).slice(-2);}).join('');
+  }
+  function sideCol(){return W3.autoSide?shade(W3.face,0.72):W3.side;}
+  function cent(r){var x=0,y=0,n=r.length-1;
+    for(var i=0;i<n;i++){x+=r[i][0];y+=r[i][1];}
+    return [x/Math.max(n,1),y/Math.max(n,1)];}
+
+  // เรนเดอร์ป้าย 3 มิติลง canvas โปร่งใส (อัตราส่วน = bbox เดิม -> ขนาด/ราคาไม่เปลี่ยน)
+  function build(){
+    if(!W3.G)return null;
+    var W=W3.G.w_mm, H=W3.G.h_mm;
+    var PX=1400/Math.max(W,H);
+    var cv=document.createElement('canvas');
+    cv.width=Math.max(2,Math.round(W*PX)); cv.height=Math.max(2,Math.round(H*PX));
+    var g=cv.getContext('2d');
+    var D=Math.max(0,W3.rd)*10;
+    var dvx=D*Math.cos(W3.el)*Math.sin(W3.az);
+    var dvy=-D*Math.sin(W3.el);
+    // ย่อให้ตัวป้าย + เงายกขอบ อยู่ในกรอบเดิมพอดี
+    var k=Math.min(W/(W+Math.abs(dvx)), H/(H+Math.abs(dvy)));
+    var ox=(Math.abs(dvx)/2 - Math.min(0,dvx))*k, oy=(Math.abs(dvy)/2 - Math.min(0,dvy))*k;
+    function T(x,y){return [(x*k+ox)*PX, (y*k+oy)*PX];}
+    var dx=dvx*k, dy=dvy*k;
+
+    var FACE=W3.face, SIDE=sideCol(), L=light(W3.temp);
+    if(W3.fx==='front')FACE=L;
+    // --- ผนังข้าง
+    if(D>0.5){
+      var lx=0.42, ly=-0.91, quads=[];
+      for(var pi=0;pi<W3.G.polys.length;pi++){
+        var P=W3.G.polys[pi];
+        var rings=[{r:P.ext,c:cent(P.ext),h:false}];
+        for(var hi=0;hi<P.holes.length;hi++)rings.push({r:P.holes[hi],c:cent(P.holes[hi]),h:true});
+        for(var ri=0;ri<rings.length;ri++){
+          var R=rings[ri].r,C=rings[ri].c,isH=rings[ri].h;
+          for(var i=0;i<R.length-1;i++){
+            var ax=R[i][0],ay=R[i][1],bx=R[i+1][0],by=R[i+1][1];
+            var ex=bx-ax,ey=by-ay,len=Math.hypot(ex,ey);
+            if(len<1e-6)continue;
+            var nx=ey/len, ny=-ex/len, mx=(ax+bx)/2, my=(ay+by)/2;
+            var dot=(mx-C[0])*nx+(my-C[1])*ny;
+            if(isH?dot>0:dot<0){nx=-nx;ny=-ny;}
+            if(nx*dvx+ny*dvy<=1e-6)continue;
+            var lam=nx*lx+ny*ly;
+            quads.push({a:[ax,ay],b:[bx,by],z:(mx-C[0])*dvx+(my-C[1])*dvy,sh:0.36*(1-(lam+1)/2)});
+          }
+        }
+      }
+      quads.sort(function(A,B){return A.z-B.z;});
+      g.lineJoin='round';
+      for(var t=0;t<quads.length;t++){
+        var Q=quads[t];
+        var p1=T(Q.a[0],Q.a[1]),p2=T(Q.b[0],Q.b[1]);
+        var p3=T(Q.b[0]+dx/k,Q.b[1]+dy/k),p4=T(Q.a[0]+dx/k,Q.a[1]+dy/k);
+        g.beginPath();g.moveTo(p1[0],p1[1]);g.lineTo(p2[0],p2[1]);
+        g.lineTo(p3[0],p3[1]);g.lineTo(p4[0],p4[1]);g.closePath();
+        g.fillStyle=SIDE;g.strokeStyle=SIDE;g.lineWidth=1;g.fill();g.stroke();
+        if(Q.sh>0.02){g.fillStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';
+          g.strokeStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';g.fill();g.stroke();}
+      }
+    }
+    // --- หน้าป้าย
+    function fp(){
+      g.beginPath();
+      for(var pi=0;pi<W3.G.polys.length;pi++){
+        var P=W3.G.polys[pi], all=[P.ext].concat(P.holes);
+        for(var ri=0;ri<all.length;ri++){
+          var R=all[ri];
+          for(var i=0;i<R.length;i++){var p=T(R[i][0],R[i][1]);
+            if(i===0)g.moveTo(p[0],p[1]);else g.lineTo(p[0],p[1]);}
+          g.closePath();
+        }
+      }
+    }
+    g.save();
+    if(W3.fx==='front'||W3.fx==='back'){
+      g.shadowColor=L; g.shadowBlur=Math.max(10,cv.width*0.014);
+      fp(); g.fillStyle=(W3.fx==='front')?L:W3.face; g.fill('evenodd');
+      g.shadowBlur=Math.max(26,cv.width*0.035); fp(); g.fill('evenodd');
+    }
+    g.shadowBlur=0;
+    fp(); g.fillStyle=FACE; g.fill('evenodd');
+    g.strokeStyle=shade(FACE,0.5); g.lineWidth=Math.max(1,cv.width*0.001); g.stroke();
+    g.restore();
+    return cv;
+  }
+
+  function apply(){
+    if(!W3.on||!W3.G)return;
+    var cv=build(); if(!cv)return;
+    wallImg=cv;
+    try{wallDraw();}catch(_e){}
+  }
+  window._w3Apply=apply;
+
+  function load(){
+    var f=(q('wFile')&&q('wFile').files[0])||null;
+    if(!f){q('w3Msg').innerHTML='<span style="color:#EF4444">ยังไม่มีไฟล์ป้าย — อัปโหลดที่ช่อง "ภาพป้าย" ก่อนนะคะ</span>';
+      q('w3On').checked=false; W3.on=false; q('w3Panel').style.display='none'; return;}
+    W3.busy=true; q('w3Msg').textContent='⏳ กำลังอ่านรูปทรงจริงจากไฟล์...';
+    var fd=new FormData(); fd.append('file',f);
+    fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
+    fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
+    .then(function(r){return r.json();}).then(function(j){
+      W3.busy=false;
+      if(j.error){q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+j.error+'</span>';
+        q('w3On').checked=false;W3.on=false;q('w3Panel').style.display='none';return;}
+      W3.G=j;
+      q('w3Msg').innerHTML='✅ อ่านรูปทรงแล้ว ('+j.points+' จุด) — ปรับสี/ไฟ/มุมได้เลย';
+      apply();
+    }).catch(function(e){W3.busy=false;q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+e+'</span>';});
+  }
+
+  function wire(){
+    var on=q('w3On'); if(!on)return;
+    on.onchange=function(){
+      W3.on=this.checked;
+      q('w3Panel').style.display=W3.on?'block':'none';
+      if(W3.on){
+        if(typeof wallImg!=='undefined'&&wallImg&&!FLAT)FLAT=wallImg;
+        if(W3.G)apply(); else load();
+      }else{
+        if(FLAT){wallImg=FLAT;}
+        try{wallDraw();}catch(_e){}
+      }
+    };
+    var rd=q('w3Rd');
+    if(rd)rd.querySelectorAll('.chip').forEach(function(b){
+      b.onclick=function(){
+        rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); q('w3RdC').value='';
+        W3.rd=parseFloat(b.getAttribute('data-rd')); apply();
+      };
+    });
+    if(q('w3RdC'))q('w3RdC').oninput=function(){
+      var v=parseFloat(this.value);
+      if(!isNaN(v)&&v>=0){rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});W3.rd=v;apply();}
+    };
+    if(q('w3Face'))q('w3Face').oninput=function(){W3.face=this.value;
+      if(W3.autoSide)q('w3Side').value=shade(W3.face,0.72); apply();};
+    document.querySelectorAll('.w3-mat').forEach(function(b){
+      b.onclick=function(){W3.face=b.getAttribute('data-f'); q('w3Face').value=W3.face;
+        if(W3.autoSide)q('w3Side').value=shade(W3.face,0.72); apply();};
+    });
+    if(q('w3Side'))q('w3Side').oninput=function(){W3.side=this.value;W3.autoSide=false;
+      q('w3AutoSide').classList.remove('on'); apply();};
+    if(q('w3AutoSide'))q('w3AutoSide').onclick=function(){
+      W3.autoSide=!W3.autoSide; this.classList.toggle('on',W3.autoSide);
+      if(W3.autoSide)q('w3Side').value=shade(W3.face,0.72); apply();};
+    ['w3Fx','w3Temp'].forEach(function(gid){
+      var gg=q(gid); if(!gg)return;
+      gg.querySelectorAll('.chip').forEach(function(b){
+        b.onclick=function(){
+          gg.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+          b.classList.add('on');
+          if(gid==='w3Fx'){W3.fx=b.getAttribute('data-fx');
+            // เปิดไฟ -> สลับโหมดกลางคืนให้เห็นชัด (ถ้ามีสวิตช์)
+            if(W3.fx!=='off'&&q('wNight')&&!q('wNight').checked){q('wNight').checked=true;}
+          } else W3.temp=b.getAttribute('data-t');
+          apply();
+        };
+      });
+    });
+    if(q('w3Az'))q('w3Az').oninput=function(){W3.az=parseFloat(this.value)*Math.PI/180; apply();};
+    if(q('w3El'))q('w3El').oninput=function(){W3.el=parseFloat(this.value)*Math.PI/180; apply();};
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+
+  // อัปโหลดไฟล์ใหม่ -> ล้างรูปทรงเดิม
+  var _fi=setInterval(function(){
+    var wf=q('wFile');
+    if(wf&&!wf._w3hook){ wf._w3hook=1;
+      wf.addEventListener('change',function(){ W3.G=null; FLAT=null;
+        if(W3.on)setTimeout(load,900); });
+      clearInterval(_fi);
+    }
+  },500);
+})();
+
 /* ===== 🗂️ Jobs: บันทึก/ค้นหางานจำลองผนัง (Google Sheet ผ่าน Apps Script) ===== */
 (function(){
   var JBKEY='saai_jobs_api';
@@ -1466,7 +1988,10 @@ function $(id){return document.getElementById(id);}
       wall:{ w:gv('wWall'), h:gv('hWall'), color:gv('wColor'),
              night:(q('wNight')&&q('wNight').checked), ratio:gv('wRatio'), mode:gv('wMode'),
              bg:(window.wallBgImg?window.wallBgImg.src:'') },
-      sign:{ img:(window.wallImg?window.wallImg.src:''), pos:window.wallPos||{fx:0.5,fy:0.5} },
+      sign:{ img:(function(){ var w=window.wallImg; if(!w)return '';
+               if(w.src)return w.src;
+               try{ return w.toDataURL?w.toDataURL('image/png'):''; }catch(_e){ return ''; } })(),
+             pos:window.wallPos||{fx:0.5,fy:0.5} },
       textBoxes:(window.textBoxes||[]).map(function(t){return clean(t);}),
       wLogos:(window.wLogos||[]).map(function(L){ var o=clean(L,['img','_silCanvas']); o.src=(L.img?L.img.src:(L.src||'')); return o; }),
       shapes:(window.shapes||[]).map(function(s){return clean(s);}),
