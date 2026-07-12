@@ -177,7 +177,6 @@ select.numin{cursor:pointer}
 <nav><div class="nav-in">
   <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 7 L14 15 L20 5"/></svg></span>Graphic Design <b>Solution</b></div>
   <div class="nav-right">
-    <button class="nav-btn" id="btnAI">✨ AI ออกแบบ</button>
     <button class="nav-btn" id="btnNest">▦ Nesting</button>
     <button class="nav-btn" id="btnMulti">🗂 จัดวางหลายไฟล์</button>
     <button class="nav-btn" id="btnLayer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
@@ -500,7 +499,7 @@ select.numin{cursor:pointer}
       <ol>
         <li><a href="#m1">ประโยชน์ของระบบ (ภาพรวม)</a></li>
         <li><a href="#m2">ประโยชน์แยกตามฝ่าย</a></li>
-        <li><a href="#m3">เมนูหลัก 7 เมนู (ภาพรวม)</a></li>
+        <li><a href="#m3">เมนูหลัก (ภาพรวม)</a></li>
         <li><a href="#mIK"><b style="color:#0d9488">🚀 Intake Studio — รับงาน / กรอง / เสนอ (ใหม่)</b></a></li>
         <li><a href="#m4">คู่มือใช้งานทีละฟีเจอร์</a></li>
         <li><a href="#m5">ความรู้ประเภทป้าย 1–7 + ค่าเผื่อ</a></li>
@@ -532,10 +531,9 @@ select.numin{cursor:pointer}
       <tr><td><b>ผู้จัดการ / เจ้าของ</b></td><td>ประวัติ Job, มาตรฐานค่าเผื่อ, ควบคุมของเสีย</td><td>งานสม่ำเสมอ ตรวจสอบย้อนหลังได้ ลดของเสีย/แก้งาน</td></tr>
     </table>
 
-    <h2 id="m3">3. เมนูหลัก 7 เมนู (ภาพรวม)</h2>
+    <h2 id="m3">3. เมนูหลัก (ภาพรวม)</h2>
     <table>
       <tr><th>เมนู</th><th>หน้าที่</th></tr>
-      <tr><td>✨ AI ออกแบบ</td><td>สร้าง/ช่วยออกแบบภาพต้นแบบ</td></tr>
       <tr><td>หน้าแปลงเส้นตัด (หน้าหลัก)</td><td>ภาพ→เส้นตัด SVG/DXF, ดราฟท์→.ai, เลือกประเภทป้าย→ชุดชั้นตัด+3มิติ</td></tr>
       <tr><td>▦ Nesting</td><td>จัดวางชิ้นงาน 1 ไฟล์ลงแผ่นวัตถุดิบ</td></tr>
       <tr><td>🗂 จัดวางหลายไฟล์</td><td>รวมหลายไฟล์ (สูงสุด 10) จัดวางแผ่นเดียว แยกโซน+เส้นกั้น</td></tr>
@@ -1571,11 +1569,11 @@ function genDesign(){
     $('aiOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">ต่อ backend ไม่ได้ '+e+'</div>';
   });
 }
-$('btnAI').onclick=openAIDesign;
+if($('btnAI'))$('btnAI').onclick=openAIDesign;   // ปุ่ม AI ออกแบบ ถูกถอดออกแล้ว (กันพัง ถ้าไม่มีปุ่ม)
 var lastNestDxf='',NSHEET={w:1220,h:2440},NPM='parts',NLOCK=true,NASP=0;
 function nchip(k,v){return '<span style="font-size:12px;background:#EEF2F8;border:1px solid #D6E0EE;border-radius:8px;padding:6px 10px"><span style="color:#8A99B5">'+k+':</span> <b style="color:#2563EB">'+v+'</b></span>';}
 function openNesting(){
-  if(!fileObj){openModal('Nesting','ต้องมีรูปก่อน','<p style="color:#5A6B8C">อัปโหลดรูป หรือสร้างด้วย ✨AI ออกแบบ ก่อน แล้วค่อยกด Nesting นะคะ</p>');return;}
+  if(!fileObj){openModal('Nesting','ต้องมีรูปก่อน','<p style="color:#5A6B8C">อัปโหลดไฟล์งานก่อน แล้วค่อยกด Nesting นะคะ (ถ้ายังไม่มีโลโก้ ใช้ 🚀 Intake Studio → AI Concept ได้)</p>');return;}
   $('mBadge').textContent='Deep NFP · จัดวางจริง';
   $('mTitle').textContent='Nesting จัดวางบนแผ่น';
   $('mBody').innerHTML=''+
