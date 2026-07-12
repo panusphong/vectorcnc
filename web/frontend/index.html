@@ -1718,21 +1718,26 @@ function $(id){return document.getElementById(id);}
   }
 
   function load(){
-    var f=(q('wFile')&&q('wFile').files[0])||null;
-    if(!f&&typeof fileObj!=='undefined'&&fileObj)f=fileObj;
-    if(!f){alert('ยังไม่มีไฟล์งาน — อัปโหลดภาพ/ไฟล์ป้ายก่อนนะคะ');return;}
     var btn=q('v3dGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังอ่านรูปทรง...';
-    q('v3dHint').textContent='กำลังอ่านรูปทรงจริงจากไฟล์...';
+    q('v3dHint').style.display='flex';
+    q('v3dHint').textContent='กำลังอ่านรูปทรงจากป้ายที่วางบนผนัง...';
     var wcm=parseFloat(q('v3dW').value||120);
-    var fd=new FormData(); fd.append('file',f);
-    fd.append('real_width_mm',String(wcm*10)); fd.append('max_pts','6000');
-    fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
-    .then(function(r){return r.json();}).then(function(j){
-      btn.disabled=false; btn.textContent=old;
-      if(j.error){q('v3dHint').textContent='❌ '+j.error;return;}
-      G=j; q('v3dHint').style.display='none';
-      draw();
-    }).catch(function(e){btn.disabled=false;btn.textContent=old;q('v3dHint').textContent='❌ '+e;});
+    // ต้นทาง = ป้ายที่วางบนผนัง (ไฟล์อัป / ลากวาง / เปิดงานเก่า ก็ใช้ได้หมด)
+    var pick=window.wallSignFile||function(cb){ cb((q('wFile')&&q('wFile').files[0])||null); };
+    pick(function(f){
+      if(!f&&typeof fileObj!=='undefined'&&fileObj)f=fileObj;
+      if(!f){ btn.disabled=false; btn.textContent=old;
+        q('v3dHint').textContent='ยังไม่มีป้ายบนผนัง — วางภาพป้ายก่อนนะคะ'; return; }
+      var fd=new FormData(); fd.append('file',f);
+      fd.append('real_width_mm',String(wcm*10)); fd.append('max_pts','6000');
+      fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
+      .then(function(r){return r.json();}).then(function(j){
+        btn.disabled=false; btn.textContent=old;
+        if(j.error){q('v3dHint').textContent='❌ '+j.error;return;}
+        G=j; q('v3dHint').style.display='none';
+        draw();
+      }).catch(function(e){btn.disabled=false;btn.textContent=old;q('v3dHint').textContent='❌ '+e;});
+    });
   }
 
   function wire(){
@@ -1810,11 +1815,12 @@ function $(id){return document.getElementById(id);}
   window.open3DViewer=function(){
     var ov=q('v3dOverlay'); if(!ov)return;
     ov.classList.add('show');
-    // เดาความกว้างป้ายจากหน้าจำลองผนัง (ถ้ามี)
+    // ดึงความกว้างป้ายจริงจากหน้าจำลองผนังมาให้เลย
     try{
-      if(typeof signWcm!=='undefined'&&signWcm>0)q('v3dW').value=Math.round(signWcm);
+      var s=(typeof wallSignReal==='function')?wallSignReal():null;
+      if(s&&s.w>0)q('v3dW').value=Math.round(s.w);
     }catch(_e){}
-    setTimeout(function(){ if(G)draw(); },80);
+    setTimeout(function(){ if(G)draw(); else load(); },120);   // เปิดปุ๊บ อ่านรูปทรงให้เลย
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
 })();
@@ -1927,22 +1933,26 @@ function $(id){return document.getElementById(id);}
   }
   window._w3Apply=apply;
 
+  function fail(m){
+    q('w3Msg').innerHTML='<span style="color:#EF4444">'+m+'</span>';
+    q('w3On').checked=false; W3.on=false; q('w3Panel').style.display='none';
+  }
   function load(){
-    var f=(q('wFile')&&q('wFile').files[0])||null;
-    if(!f){q('w3Msg').innerHTML='<span style="color:#EF4444">ยังไม่มีไฟล์ป้าย — อัปโหลดที่ช่อง "ภาพป้าย" ก่อนนะคะ</span>';
-      q('w3On').checked=false; W3.on=false; q('w3Panel').style.display='none'; return;}
-    W3.busy=true; q('w3Msg').textContent='⏳ กำลังอ่านรูปทรงจริงจากไฟล์...';
-    var fd=new FormData(); fd.append('file',f);
-    fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
-    fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
-    .then(function(r){return r.json();}).then(function(j){
-      W3.busy=false;
-      if(j.error){q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+j.error+'</span>';
-        q('w3On').checked=false;W3.on=false;q('w3Panel').style.display='none';return;}
-      W3.G=j;
-      q('w3Msg').innerHTML='✅ อ่านรูปทรงแล้ว ('+j.points+' จุด) — ปรับสี/ไฟ/มุมได้เลย';
-      apply();
-    }).catch(function(e){W3.busy=false;q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+e+'</span>';});
+    W3.busy=true; q('w3Msg').textContent='⏳ กำลังอ่านรูปทรงจากป้ายที่วางบนผนัง...';
+    // ใช้ "ป้ายที่วางอยู่บนผนัง" เป็นต้นทาง (ไม่ต้องมีไฟล์ในช่องอัปโหลดก็ได้)
+    (window.wallSignFile||function(cb){cb(null);})(function(f){
+      if(!f){ W3.busy=false; fail('ยังไม่มีป้ายบนผนัง — วางภาพป้ายก่อนนะคะ'); return; }
+      var fd=new FormData(); fd.append('file',f);
+      fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
+      fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
+      .then(function(r){return r.json();}).then(function(j){
+        W3.busy=false;
+        if(j.error){ fail('❌ '+j.error); return; }
+        W3.G=j;
+        q('w3Msg').innerHTML='✅ อ่านรูปทรงแล้ว ('+j.points+' จุด) — ปรับสี/ไฟ/มุมได้เลย';
+        apply();
+      }).catch(function(e){W3.busy=false;q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+e+'</span>';});
+    });
   }
 
   function wire(){
@@ -1951,10 +1961,11 @@ function $(id){return document.getElementById(id);}
       W3.on=this.checked;
       q('w3Panel').style.display=W3.on?'block':'none';
       if(W3.on){
-        if(typeof wallImg!=='undefined'&&wallImg&&!FLAT)FLAT=wallImg;
+        if(typeof wallImg!=='undefined'&&wallImg&&!FLAT){FLAT=wallImg; window._wallFlatImg=FLAT;}
         if(W3.G)apply(); else load();
       }else{
         if(FLAT){wallImg=FLAT;}
+        window._wallFlatImg=null;
         try{wallDraw();}catch(_e){}
       }
     };
@@ -2205,27 +2216,38 @@ function $(id){return document.getElementById(id);}
   var _jp=0;
   function jobsJsonp(url,cb){
     var name='__jbjp'+(++_jp), s=document.createElement('script');
-    var t=setTimeout(function(){cleanup();cb({ok:false,error:'timeout'});},20000);
+    var t=setTimeout(function(){cleanup();cb({ok:false,error:'timeout'});},60000);
     function cleanup(){clearTimeout(t);try{delete window[name];}catch(e){window[name]=null;}if(s.parentNode)s.parentNode.removeChild(s);}
     window[name]=function(d){cleanup();cb(d);};
     s.src=url+(url.indexOf('?')<0?'?':'&')+'callback='+name;
     s.onerror=function(){cleanup();cb({ok:false,error:'โหลดไม่ได้ (ตรวจลิงก์/สิทธิ์ Anyone)'});};
     document.body.appendChild(s);
   }
+  // ย่อภาพก่อนบันทึก — กันดีไซน์บวมเป็นหลาย MB จนเปิดงานแล้วค้าง
+  function _shrink(src,maxPx,mime,qly){
+    try{
+      if(!src)return '';
+      var w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+      if(!w||!h)return (src.src||'');
+      var sc=Math.min(1,maxPx/Math.max(w,h));
+      var c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(w*sc)); c.height=Math.max(1,Math.round(h*sc));
+      c.getContext('2d').drawImage(src,0,0,c.width,c.height);
+      return c.toDataURL(mime||'image/png', qly||0.85);
+    }catch(e){ return (src&&src.src)||''; }
+  }
   function serializeDesign(){
     var gv=function(id){return q(id)?q(id).value:'';};
     var clean=function(o,skip){ var r={}; for(var k in o){ if(k[0]==='_')continue; if(skip&&skip.indexOf(k)>=0)continue; r[k]=o[k]; } return r; };
     return {
-      v:1,
+      v:2,
       wall:{ w:gv('wWall'), h:gv('hWall'), color:gv('wColor'),
              night:(q('wNight')&&q('wNight').checked), ratio:gv('wRatio'), mode:gv('wMode'),
-             bg:(window.wallBgImg?window.wallBgImg.src:'') },
-      sign:{ img:(function(){ var w=window.wallImg; if(!w)return '';
-               if(w.src)return w.src;
-               try{ return w.toDataURL?w.toDataURL('image/png'):''; }catch(_e){ return ''; } })(),
+             bg:(window.wallBgImg?_shrink(window.wallBgImg,1100,'image/jpeg',0.72):'') },
+      sign:{ img:(window.wallImg?_shrink(window.wallImg,760,'image/png'):''),   // PNG = คงพื้นหลังโปร่ง
              pos:window.wallPos||{fx:0.5,fy:0.5} },
       textBoxes:(window.textBoxes||[]).map(function(t){return clean(t);}),
-      wLogos:(window.wLogos||[]).map(function(L){ var o=clean(L,['img','_silCanvas']); o.src=(L.img?L.img.src:(L.src||'')); return o; }),
+      wLogos:(window.wLogos||[]).map(function(L){ var o=clean(L,['img','_silCanvas']); o.src=(L.img?_shrink(L.img,620,'image/png'):(L.src||'')); return o; }),
       shapes:(window.shapes||[]).map(function(s){return clean(s);}),
       // 📐 กรอบจับสเกลแต่ละส่วน (โลโก้ / ตัวอักษร 1-3) + ประเภทป้ายของแต่ละกรอบ
       measBoxes:(typeof measBoxes!=='undefined'?measBoxes:[]).map(function(b){return clean(b);}),
@@ -2323,7 +2345,7 @@ function $(id){return document.getElementById(id);}
              '<div style="font-size:12px;color:var(--muted)">📐 '+esc(j.wCm||'?')+'×'+esc(j.hCm||'?')+' ซม.'+(j.price?(' · 💰 '+Number(j.price).toLocaleString()+' บาท'):'')+'</div>'+
            '</div>'+
            '<div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto">'+
-             '<button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="window._jbOpen(\''+esc(j.id)+'\')">เปิดงาน</button>'+
+             '<button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="window._jbOpen(\''+esc(j.id)+'\',this)">เปิดงาน</button>'+
              (mine?('<button class="btn ghost" style="padding:5px 10px;font-size:12px;color:#ef4444;border-color:#fecaca" onclick="window._jbDel(\''+esc(j.id)+'\')">🗑 ลบ</button>'):'')+
            '</div>'+
            '</div>';
@@ -2331,9 +2353,18 @@ function $(id){return document.getElementById(id);}
       q('jbResults').innerHTML=h;
     });
   }
-  function openJob(id){
+  function openJob(id,btn){
     var url=jobsUrl(); if(!url)return;
+    var old='';
+    if(btn){ old=btn.textContent; btn.textContent='⏳ กำลังเปิด...'; btn.disabled=true; }
+    var msg=q('jbResults');
+    var note=document.createElement('div');
+    note.style.cssText='font-size:12px;color:#0d9488;padding:6px 0';
+    note.textContent='⏳ กำลังดึงข้อมูลงาน... (งานที่มีภาพใหญ่อาจใช้เวลา 10-30 วิ)';
+    if(msg)msg.insertBefore(note,msg.firstChild);
+    function fin(){ if(btn){btn.textContent=old;btn.disabled=false;} if(note.parentNode)note.parentNode.removeChild(note); }
     jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=get&id='+encodeURIComponent(id),function(r){
+      fin();
       if(r&&r.ok&&r.design){
         applyDesign(r.design);
         var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show');
@@ -2342,9 +2373,14 @@ function $(id){return document.getElementById(id);}
           try{ if(typeof renderBoxRows==='function')renderBoxRows(); }catch(e){}
           try{ wallDraw(); }catch(e){}
           try{ showJobRecap(r.design, r.job||{}); }catch(e){}
-        },600);
+        },700);
       }
-      else alert('เปิดงานไม่สำเร็จ (ไม่พบดีไซน์)');
+      else if(r&&r.error==='timeout'){
+        alert('เปิดงานไม่สำเร็จ — งานนี้ใหญ่เกินไป (ภาพความละเอียดสูงถูกบันทึกไว้ในงาน)\n\n' +
+              'งานที่บันทึกหลังอัปเดตนี้จะเล็กลงมากและเปิดได้ปกติค่ะ\n' +
+              'ลองเปิดใหม่อีกครั้ง หรือบันทึกงานนี้ใหม่');
+      }
+      else alert('เปิดงานไม่สำเร็จ ('+((r&&r.error)||'ไม่พบดีไซน์')+')');
     });
   }
   // 📋 สรุปงานที่เปิดขึ้นมา — สเกลแต่ละส่วน / ความสูงตัวอักษร / โลโก้ / ราคา
@@ -4131,7 +4167,28 @@ if($('wDrop')){ $('wDrop').onclick=function(){$('wFile').click();}; $('wFile').o
 function _wallLoad(src,label){ var im=new Image(); im.onload=function(){ wallImg=im; $('wDrop').innerHTML='📎 '+label; if($('wImgClear'))$('wImgClear').style.display='inline'; wallPos={fx:0.5,fy:0.5}; wallDraw(); }; im.src=src; }
 if($('wImgClear'))$('wImgClear').onclick=function(){ wallImg=null; if($('wFile'))$('wFile').value=''; if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">\u2702 ตัดพื้นหลังอัตโนมัติ</span>'; this.style.display='none'; wallDraw(); };
 var _wallSignOrig=null;
+var _wallFile=null;          // ไฟล์ป้ายล่าสุด (ครอบคลุมทั้ง คลิกเลือก / ลากวาง / เปิดงานเก่า)
+/* หา "ไฟล์ป้าย" สำหรับส่งไปทำ 3 มิติ
+   ลำดับ: ไฟล์ที่อัป → ไฟล์ที่ลากวาง → ถ้าไม่มีไฟล์เลย ให้แปลง 'ภาพป้ายที่วางบนผนัง' เป็นไฟล์
+   (เปิดงานเก่ามาก็ใช้ได้ เพราะดึงจาก wallImg ตรง ๆ) */
+function wallSignFile(cb){
+  var f=($('wFile')&&$('wFile').files&&$('wFile').files[0])||_wallFile||null;
+  if(f){ cb(f); return; }
+  // ถ้าโหมด 3 มิติเปิดอยู่ wallImg จะเป็นภาพ 3D ที่เรนเดอร์แล้ว -> ใช้ภาพแบนต้นฉบับแทน
+  var im=window._wallFlatImg||((typeof wallImg!=='undefined')?wallImg:null);
+  if(!im){ cb(null); return; }
+  try{
+    var w=im.width||im.naturalWidth, h=im.height||im.naturalHeight;
+    if(!w||!h){ cb(null); return; }
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(im,0,0);
+    if(c.toBlob){ c.toBlob(function(b){ cb(b?new File([b],'sign_on_wall.png',{type:'image/png'}):null); },'image/png'); }
+    else { cb(null); }
+  }catch(e){ cb(null); }
+}
+window.wallSignFile=wallSignFile;
 function wallSetImg(f){
+  try{ _wallFile=f; }catch(_e){}
   // ไฟล์เวกเตอร์/PSD (.ai/.pdf/.eps/.ps/.svg/.psd) -> แตกเป็นชิ้น/เลเยอร์ให้เลือก แล้ววางเหมือน JPG
   if(/\.(ai|pdf|eps|ps|svg|psd|psb)$/i.test(f.name||'')){
     $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแตกชิ้นจากไฟล์เวกเตอร์...</div>';
