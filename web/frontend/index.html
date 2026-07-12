@@ -319,6 +319,53 @@ select.numin{cursor:pointer}
       </div>
     </div>
   </div>
+  <!-- ================= 📊 สถิติการเข้าใช้งาน (สะสม) ================= -->
+  <div id="statsWidget" style="margin-top:26px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+    <style>
+      #statsWidget .sw-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+      #statsWidget .sw-h b{font-size:15px;color:#0f172a}
+      #statsWidget .sw-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin-bottom:16px}
+      #statsWidget .sw-c{background:#f8fafc;border-radius:12px;padding:12px 14px}
+      #statsWidget .sw-c .k{font-size:11.5px;color:#64748b;margin-bottom:3px}
+      #statsWidget .sw-c .v{font-size:23px;font-weight:800;color:#0f172a;line-height:1.15}
+      #statsWidget .sw-c .s{font-size:11px;color:#94a3b8;margin-top:2px}
+      #statsWidget .sw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+      #statsWidget .sw-box{border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px}
+      #statsWidget .sw-box h5{margin:0 0 8px;font-size:12.5px;color:#334155;font-weight:700}
+      #statsWidget table{width:100%;border-collapse:collapse;font-size:12px}
+      #statsWidget td{padding:3px 0;color:#475569}
+      #statsWidget td.n{text-align:right;font-weight:700;color:#0d9488}
+      #statsWidget .bar{height:4px;background:#e2e8f0;border-radius:100px;overflow:hidden;margin-top:2px}
+      #statsWidget .bar i{display:block;height:100%;background:#0d9488}
+      #statsWidget .sw-btn{font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer}
+      #statsWidget .sw-btn:hover{border-color:#0d9488;color:#0d9488}
+      #statsWidget .sw-log{max-height:190px;overflow:auto}
+      #statsWidget .sw-log td{font-size:11px;border-bottom:1px solid #f1f5f9;padding:4px 0}
+    </style>
+    <div class="sw-h">
+      <b>📊 สถิติการเข้าใช้งาน (สะสม)</b>
+      <span id="swWhen" style="font-size:11.5px;color:#94a3b8"></span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="sw-btn" id="swRefresh">↻ รีเฟรช</button>
+        <button class="sw-btn" id="swCsv">⬇ CSV</button>
+      </span>
+    </div>
+    <div class="sw-cards" id="swCards"></div>
+    <div class="sw-grid">
+      <div class="sw-box"><h5>📅 30 วันล่าสุด (เซสชัน/วัน)</h5><canvas id="swChart" height="110"></canvas></div>
+      <div class="sw-box"><h5>🧭 เมนูที่เข้าใช้บ่อย</h5><table id="swMenus"></table></div>
+      <div class="sw-box"><h5>🔗 เข้ามาจากไหน</h5><table id="swRefs"></table></div>
+      <div class="sw-box"><h5>👤 ผู้ใช้ (บัญชี)</h5><table id="swAccs"></table></div>
+    </div>
+    <div class="sw-box" style="margin-top:14px">
+      <h5>🕘 กิจกรรมล่าสุด</h5>
+      <div class="sw-log"><table id="swRecent"></table></div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:#94a3b8">
+      เก็บถาวรได้ด้วย Google Sheet — ตั้งค่า env <code>ANALYTICS_WEBHOOK</code> บน Render (ดูไฟล์ <code>apps_script/Analytics.gs</code>)
+    </div>
+  </div>
+
   <footer>Graphic Design Solution · โดย Saai Tech</footer>
 </div>
 
@@ -1956,6 +2003,176 @@ function $(id){return document.getElementById(id);}
       clearInterval(_fi);
     }
   },500);
+})();
+
+/* ===== 📊 ANALYTICS — เก็บสถิติการเข้าใช้ + วิดเจ็ตสรุปท้ายหน้า ===== */
+(function(){
+  function q(id){return document.getElementById(id);}
+  var SID, T0=Date.now(), LASTDUR=0, SENT=false;
+  function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);}
+  try{ SID=sessionStorage.getItem('vc_sid'); if(!SID){SID=uid(); sessionStorage.setItem('vc_sid',SID);} }
+  catch(e){ SID=uid(); }
+  function acct(){
+    try{ if(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)return String(CURRENT_USER); }catch(e){}
+    return 'guest';
+  }
+  function device(){
+    var u=navigator.userAgent;
+    if(/iPad|Tablet/i.test(u))return 'tablet';
+    if(/Mobi|Android|iPhone/i.test(u))return 'mobile';
+    return 'desktop';
+  }
+  function browser(){
+    var u=navigator.userAgent;
+    if(/Edg\//.test(u))return 'Edge';
+    if(/OPR\//.test(u))return 'Opera';
+    if(/Chrome\//.test(u))return 'Chrome';
+    if(/Safari\//.test(u))return 'Safari';
+    if(/Firefox\//.test(u))return 'Firefox';
+    return 'อื่นๆ';
+  }
+  function refhost(){
+    var r=document.referrer||'';
+    if(!r)return '';
+    try{
+      var h=new URL(r).hostname.replace(/^www\./,'');
+      if(h===location.hostname)return '';       // เดินภายในเว็บเอง
+      return h;
+    }catch(e){return '';}
+  }
+  function send(ev,menu,beacon){
+    var body=JSON.stringify({sid:SID,account:acct(),ev:ev,page:location.pathname,
+      menu:menu||'',ref:document.referrer||'',refhost:refhost(),
+      device:device(),browser:browser(),dur:Math.round((Date.now()-T0)/1000)});
+    var url=(typeof API!=='undefined'?API:'')+'/api/track';
+    try{
+      if(beacon&&navigator.sendBeacon){
+        navigator.sendBeacon(url,new Blob([body],{type:'application/json'})); return;
+      }
+      fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
+    }catch(e){}
+  }
+  window.vcTrack=function(menu){ send('menu',menu); };
+
+  // เข้าเว็บ
+  send('visit');
+  // heartbeat เก็บเวลาที่อยู่บนหน้า
+  setInterval(function(){ if(!document.hidden)send('heartbeat'); },60000);
+  window.addEventListener('pagehide',function(){ if(!SENT){SENT=true; send('leave','',true);} });
+  window.addEventListener('beforeunload',function(){ if(!SENT){SENT=true; send('leave','',true);} });
+
+  // ผูกกับปุ่มเมนูทั้งหมด (ชื่อเมนูตามข้อความบนปุ่ม)
+  function bindMenus(){
+    var M={btnNest:'▦ Nesting',btnMulti:'🗂 จัดวางหลายไฟล์',btnLayer:'🏭 ชุดชั้นตัด',
+           btnCsheet:'📋 BOM Check Sheet',btnWall:'📐 จำลองผนัง',
+           btnIntake:'🚀 Intake Studio',btnManual:'📖 คู่มือ',wOpen3D:'🧊 มุมมอง 3 มิติ'};
+    Object.keys(M).forEach(function(id){
+      var b=q(id); if(!b||b._trk)return; b._trk=1;
+      b.addEventListener('click',function(){ window.vcTrack(M[id]); });
+    });
+    // แท็บใน Intake Studio
+    document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(t){
+      if(t._trk)return; t._trk=1;
+      t.addEventListener('click',function(){ window.vcTrack('Intake · '+t.textContent.trim()); });
+    });
+  }
+
+  // ---------- วิดเจ็ตสรุป ----------
+  var LAST=null;
+  function fmtSec(s){
+    s=Math.max(0,Math.round(s||0));
+    if(s<60)return s+' วิ';
+    var m=Math.floor(s/60), ss=s%60;
+    if(m<60)return m+' นาที '+ss+' วิ';
+    return Math.floor(m/60)+' ชม. '+(m%60)+' นาที';
+  }
+  function rows(el,arr,unit){
+    if(!el)return;
+    if(!arr||!arr.length){el.innerHTML='<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';return;}
+    var mx=Math.max.apply(null,arr.map(function(a){return a.n||a.sessions||0;}))||1;
+    el.innerHTML=arr.map(function(a){
+      var v=(a.n!==undefined?a.n:a.sessions)||0;
+      var extra=a.sec!==undefined?('<div style="font-size:10px;color:#94a3b8">รวม '+fmtSec(a.sec)+(a.last?(' · ล่าสุด '+String(a.last).slice(5,16).replace('T',' ')):'')+'</div>'):'';
+      return '<tr><td>'+a.name+extra+'<div class="bar"><i style="width:'+Math.round(100*v/mx)+'%"></i></div></td>'+
+             '<td class="n">'+v+(unit||'')+'</td></tr>';
+    }).join('');
+  }
+  function chart(daily){
+    var cv=q('swChart'); if(!cv)return;
+    var W=cv.clientWidth||300, H=110, dpr=Math.min(2,window.devicePixelRatio||1);
+    cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+    var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+    g.clearRect(0,0,W,H);
+    if(!daily||!daily.length){g.fillStyle='#cbd5e1';g.font='12px system-ui';g.fillText('ยังไม่มีข้อมูล',8,60);return;}
+    var mx=Math.max.apply(null,daily.map(function(d){return d.sessions;}))||1;
+    var n=daily.length, bw=Math.max(3,(W-10)/n-2);
+    daily.forEach(function(d,i){
+      var h=Math.max(2,(d.sessions/mx)*(H-24));
+      var x=5+i*((W-10)/n), y=H-16-h;
+      g.fillStyle='#0d9488'; g.fillRect(x,y,bw,h);
+    });
+    g.fillStyle='#94a3b8'; g.font='10px system-ui';
+    g.fillText(String(daily[0].day).slice(5),5,H-4);
+    g.textAlign='right'; g.fillText(String(daily[n-1].day).slice(5),W-5,H-4);
+  }
+  function render(j){
+    LAST=j;
+    var t=j.totals||{};
+    q('swCards').innerHTML=
+      card('👤 บัญชีสะสม',t.accounts,'ผู้ใช้ที่เคยเข้า')+
+      card('🔢 จำนวนครั้งที่เข้าดู',t.views,'ครั้ง (นับทุกการเปิดหน้า)')+
+      card('🧾 เซสชันทั้งหมด',t.sessions,'ครั้งเข้าใช้')+
+      card('⏱ เวลาเฉลี่ย/ครั้ง',fmtSec(t.avg_sec),'อยู่บนเว็บ',true)+
+      card('⌛ เวลารวมทั้งหมด',fmtSec(t.total_sec),'สะสม',true)+
+      card('📆 วันนี้',t.today_sessions,(t.today_accounts||0)+' บัญชี');
+    chart(j.daily);
+    rows(q('swMenus'),j.menus,' ครั้ง');
+    rows(q('swRefs'),j.refs,'');
+    rows(q('swAccs'),j.accounts,'');
+    var r=q('swRecent');
+    var EV={visit:'🟢 เข้าเว็บ',menu:'🧭 เปิดเมนู',heartbeat:'⏱ อยู่บนหน้า',leave:'⚪ ออก'};
+    r.innerHTML=(j.recent||[]).length? (j.recent||[]).map(function(x){
+      return '<tr><td style="color:#94a3b8;white-space:nowrap">'+String(x.ts).slice(5,16).replace('T',' ')+'</td>'+
+        '<td style="font-weight:600;color:#0f172a">'+(x.account||'guest')+'</td>'+
+        '<td>'+(EV[x.ev]||x.ev)+(x.menu?(' · <b style="color:#0d9488">'+x.menu+'</b>'):'')+'</td>'+
+        '<td style="color:#94a3b8;white-space:nowrap">'+(x.ref||'เข้าตรง')+' · '+(x.device||'')+'</td>'+
+        '<td class="n">'+(x.dur?fmtSec(x.dur):'')+'</td></tr>';
+    }).join('') : '<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';
+    q('swWhen').textContent='อัปเดต '+new Date().toLocaleTimeString('th-TH');
+  }
+  function card(k,v,s,raw){
+    return '<div class="sw-c"><div class="k">'+k+'</div><div class="v">'+
+      (raw?v:(Number(v||0)).toLocaleString())+'</div><div class="s">'+s+'</div></div>';
+  }
+  function load(){
+    fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30')
+    .then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok)render(j);
+      else q('swCards').innerHTML='<div class="sw-c"><div class="k">สถิติ</div><div class="v">—</div><div class="s">ยังต่อ backend ไม่ได้</div></div>';
+    }).catch(function(){
+      q('swCards').innerHTML='<div class="sw-c"><div class="k">สถิติ</div><div class="v">—</div><div class="s">ยังต่อ backend ไม่ได้</div></div>';
+    });
+  }
+  function csv(){
+    if(!LAST)return;
+    var L=['ประเภท,ชื่อ,จำนวน'];
+    (LAST.menus||[]).forEach(function(x){L.push('เมนู,"'+x.name+'",'+x.n);});
+    (LAST.refs||[]).forEach(function(x){L.push('แหล่งที่มา,"'+x.name+'",'+x.n);});
+    (LAST.accounts||[]).forEach(function(x){L.push('บัญชี,"'+x.name+'",'+x.sessions);});
+    (LAST.daily||[]).forEach(function(x){L.push('รายวัน,'+x.day+','+x.sessions);});
+    var a=document.createElement('a');
+    a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(L.join('\n'));
+    a.download='vectorcnc_stats.csv'; a.click();
+  }
+  function boot(){
+    bindMenus();
+    if(q('swRefresh'))q('swRefresh').onclick=load;
+    if(q('swCsv'))q('swCsv').onclick=csv;
+    load();
+    setInterval(load,120000);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+  else setTimeout(boot,300);
 })();
 
 /* ===== 🗂️ Jobs: บันทึก/ค้นหางานจำลองผนัง (Google Sheet ผ่าน Apps Script) ===== */
