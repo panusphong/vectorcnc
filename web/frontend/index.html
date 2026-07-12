@@ -2227,6 +2227,20 @@ function $(id){return document.getElementById(id);}
       textBoxes:(window.textBoxes||[]).map(function(t){return clean(t);}),
       wLogos:(window.wLogos||[]).map(function(L){ var o=clean(L,['img','_silCanvas']); o.src=(L.img?L.img.src:(L.src||'')); return o; }),
       shapes:(window.shapes||[]).map(function(s){return clean(s);}),
+      // 📐 กรอบจับสเกลแต่ละส่วน (โลโก้ / ตัวอักษร 1-3) + ประเภทป้ายของแต่ละกรอบ
+      measBoxes:(typeof measBoxes!=='undefined'?measBoxes:[]).map(function(b){return clean(b);}),
+      split:!!(q('wDsgnSplit')&&q('wDsgnSplit').checked),
+      // 💰 ค่าประเมินราคา
+      price:{ type:gv('wPType'), colorN:gv('wPColorN'), frame:gv('wPFrame'),
+              total:(typeof _wLast!=='undefined'&&_wLast?Math.round(_wLast.total):0),
+              lines:(typeof _wLast!=='undefined'&&_wLast&&_wLast.lines?_wLast.lines.map(function(l){
+                if(l.colorLine)return {colorLine:true,n:l.n,fee:l.fee};
+                if(!l.r)return null;
+                return {label:l.label,type:l.type,w:l.w,h:l.h,
+                        sqm:+(l.r.billable||0).toFixed(3), tier:(l.r.tiered?l.r.tier:''),
+                        total:Math.round(l.r.total)};
+              }).filter(Boolean):[]) },
+      lock:{x:(typeof wLockX!=='undefined'?wLockX:false), y:(typeof wLockY!=='undefined'?wLockY:false)},
       wmode:(typeof WMODE!=='undefined'?WMODE:'design')
     };
   }
@@ -2241,6 +2255,21 @@ function $(id){return document.getElementById(id);}
       window.textBoxes=(d.textBoxes||[]).map(function(t){var o={};for(var k in t)o[k]=t[k];return o;});
       window.shapes=(d.shapes||[]).map(function(s){var o={};for(var k in s)o[k]=s[k];return o;});
       window._txtSel=-1; window._shpSel=-1; window._lgSel=-1;
+      // 📐 คืนกรอบจับสเกลแต่ละส่วน + ประเภทป้ายของแต่ละกรอบ
+      if(d.measBoxes&&d.measBoxes.length&&typeof measBoxes!=='undefined'){
+        window.measBoxes=d.measBoxes.map(function(b){var o={};for(var k in b)o[k]=b[k];return o;});
+        try{renderBoxRows();}catch(e){}
+      }
+      if(q('wDsgnSplit'))q('wDsgnSplit').checked=!!d.split;
+      // 💰 คืนค่าประเมินราคา
+      if(d.price){
+        if(q('wPType')&&d.price.type)q('wPType').value=d.price.type;
+        if(q('wPColorN'))q('wPColorN').value=(d.price.colorN||0);
+        if(q('wPFrame')&&d.price.frame)q('wPFrame').value=d.price.frame;
+      }
+      if(d.lock){ window.wLockX=!!d.lock.x; window.wLockY=!!d.lock.y;
+        if(q('wCenX'))q('wCenX').classList.toggle('on',!!d.lock.x);
+        if(q('wCenY'))q('wCenY').classList.toggle('on',!!d.lock.y); }
       if(typeof WMODE!=='undefined'&&d.wmode) window.WMODE=d.wmode;
       if(d.sign&&d.sign.pos) window.wallPos=d.sign.pos;
       var pending=0, done=function(){ if(--pending<=0){ try{wallDraw();}catch(e){} } };
@@ -2305,11 +2334,52 @@ function $(id){return document.getElementById(id);}
   function openJob(id){
     var url=jobsUrl(); if(!url)return;
     jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=get&id='+encodeURIComponent(id),function(r){
-      if(r&&r.ok&&r.design){ applyDesign(r.design); var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show'); }
+      if(r&&r.ok&&r.design){
+        applyDesign(r.design);
+        var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show');
+        // คำนวณ + วาดใหม่ให้เส้นจับขนาด/ราคา ขึ้นครบ แล้วโชว์สรุปงานที่เปิด
+        setTimeout(function(){
+          try{ if(typeof renderBoxRows==='function')renderBoxRows(); }catch(e){}
+          try{ wallDraw(); }catch(e){}
+          try{ showJobRecap(r.design, r.job||{}); }catch(e){}
+        },600);
+      }
       else alert('เปิดงานไม่สำเร็จ (ไม่พบดีไซน์)');
     });
   }
-  window._jbOpen=openJob;
+  // 📋 สรุปงานที่เปิดขึ้นมา — สเกลแต่ละส่วน / ความสูงตัวอักษร / โลโก้ / ราคา
+  function showJobRecap(d,j){
+    var box=q('wJobRecap');
+    if(!box){
+      box=document.createElement('div'); box.id='wJobRecap';
+      box.style.cssText='margin-top:12px;border:1px solid #a7f3d0;border-radius:12px;padding:11px 13px;background:#f0fdf4';
+      var host=q('wPResult'); if(host&&host.parentNode)host.parentNode.appendChild(box);
+      else return;
+    }
+    var P=d.price||{}, L=P.lines||[];
+    var W=(d.wall&&d.wall.w)||'?', H=(d.wall&&d.wall.h)||'?';
+    var rows=L.map(function(l){
+      if(l.colorLine)return '<tr><td colspan="2" style="padding:3px 0">🎨 สีพิเศษ '+l.n+' สี × 1,500</td>'+
+        '<td style="text-align:right;font-weight:700;color:#0d9488">'+Number(l.fee).toLocaleString()+'</td></tr>';
+      return '<tr><td style="padding:3px 0"><b>'+(l.label||'ป้าย')+'</b>'+
+        '<div style="font-size:10.5px;color:#64748b">'+(l.type||'')+'</div></td>'+
+        '<td style="font-size:11px;color:#475569;white-space:nowrap;padding-left:8px">'+
+          (l.w||'?')+'×'+(l.h||'?')+' ซม.<br>'+
+          '<span style="color:#94a3b8">'+(l.sqm||0)+' ตร.ม.'+(l.tier?(' · สูง '+l.tier):'')+'</span></td>'+
+        '<td style="text-align:right;font-weight:700;color:#0d9488;white-space:nowrap;padding-left:8px">'+
+          Number(l.total||0).toLocaleString()+'</td></tr>';
+    }).join('');
+    box.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'+
+      '<b style="font-size:13px;color:#065f46">📋 งานที่เปิด: '+esc(j.jobName||d._name||'—')+'</b>'+
+      '<span style="margin-left:auto;font-size:11px;color:#059669;cursor:pointer" onclick="this.parentNode.parentNode.remove()">✕ ปิด</span></div>'+
+      '<div style="font-size:11.5px;color:#475569;margin-bottom:7px">🧱 ผนัง '+W+'×'+H+' ซม.'+
+        (j.customer?(' · 🏷️ '+esc(j.customer)):'')+(j.user?(' · 👤 '+esc(j.user)):'')+'</div>'+
+      (rows?('<table style="width:100%;border-collapse:collapse;font-size:12px">'+rows+'</table>'+
+        '<div style="border-top:1px dashed #86efac;margin-top:6px;padding-top:6px;display:flex;align-items:center">'+
+        '<b style="font-size:12px;color:#065f46">💰 ราคารวม (ยังไม่รวม VAT)</b>'+
+        '<b style="margin-left:auto;font-size:17px;color:#059669">'+Number(P.total||0).toLocaleString()+' บาท</b></div>')
+        :'<div style="font-size:12px;color:#94a3b8">— งานเก่า (บันทึกก่อนอัปเดต) ไม่มีรายละเอียดสเกล/ราคา —</div>');
+  }
   function delJob(id){
     var url=jobsUrl(); if(!url)return;
     if(!confirm('ลบงานนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
