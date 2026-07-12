@@ -183,6 +183,7 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnLayer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
     <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
     <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
+    <button class="nav-btn" id="btnIntake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
     <button class="nav-btn" id="btnManual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
@@ -329,6 +330,141 @@ select.numin{cursor:pointer}
   <button class="btn ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('modal').classList.remove('show')">ปิด</button>
 </div></div>
 
+<!-- ==================== 🚀 INTAKE STUDIO (รับงาน–กรอง–เสนอ) ==================== -->
+<div id="intakeOverlay" style="display:none;position:fixed;inset:0;z-index:118;background:#f1f5f9;overflow:auto">
+  <style>
+    #intakeOverlay .ik-wrap{max-width:1180px;margin:0 auto;padding:18px 20px 60px}
+    #intakeOverlay .ik-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 18px}
+    #intakeOverlay .ik-tab{font-family:inherit;font-size:14px;font-weight:700;padding:10px 18px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;transition:.15s}
+    #intakeOverlay .ik-tab.on{background:#0d9488;color:#fff;border-color:#0d9488;box-shadow:0 4px 12px rgba(13,148,136,.28)}
+    #intakeOverlay .ik-pane{display:none}
+    #intakeOverlay .ik-pane.on{display:block}
+    #intakeOverlay .ik-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+    #intakeOverlay h4{font-size:15px;color:#0f172a;margin:0 0 4px}
+    #intakeOverlay .ik-sub{font-size:12.5px;color:#64748b;margin-bottom:12px;line-height:1.6}
+    #intakeOverlay label{display:block;font-size:12.5px;font-weight:600;color:#334155;margin:0 0 4px}
+    #intakeOverlay input[type=text],#intakeOverlay input[type=number],#intakeOverlay select,#intakeOverlay textarea{width:100%;font-family:inherit;font-size:13.5px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;box-sizing:border-box}
+    #intakeOverlay .ik-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+    #intakeOverlay .ik-btn{font-family:inherit;font-size:13.5px;font-weight:700;padding:9px 18px;border-radius:9px;border:none;background:#0d9488;color:#fff;cursor:pointer}
+    #intakeOverlay .ik-btn:disabled{opacity:.5;cursor:not-allowed}
+    #intakeOverlay .ik-btn.alt{background:#475569}
+    #intakeOverlay .ik-btn.warn{background:#f59e0b}
+    #intakeOverlay .ik-asset{border:2px solid #e2e8f0;border-radius:10px;padding:8px;background:#fff;cursor:pointer;transition:.15s;text-align:center}
+    #intakeOverlay .ik-asset:hover{border-color:#0d9488;transform:translateY(-2px)}
+    #intakeOverlay .ik-asset img{max-width:100%;max-height:110px;object-fit:contain;display:block;margin:0 auto 6px}
+    #intakeOverlay .ik-chip{display:inline-block;font-size:11px;font-weight:700;border-radius:100px;padding:2px 9px;margin-bottom:4px}
+    #intakeOverlay .c-vec{background:#dcfce7;color:#166534}
+    #intakeOverlay .c-img{background:#fee2e2;color:#991b1b}
+    #intakeOverlay .c-txt{background:#e0e7ff;color:#3730a3}
+    #intakeOverlay .c-pg{background:#f1f5f9;color:#475569}
+    #intakeOverlay .ik-score{font-size:44px;font-weight:800;line-height:1}
+    #intakeOverlay .ik-issue{border-left:4px solid #f59e0b;background:#fffbeb;padding:8px 12px;border-radius:0 8px 8px 0;margin:7px 0;font-size:13px}
+    #intakeOverlay .ik-issue.err{border-color:#ef4444;background:#fef2f2}
+    #intakeOverlay .ik-issue b{display:block;color:#0f172a;margin-bottom:2px}
+    #intakeOverlay .ik-issue .fx{color:#0d9488;font-weight:600;margin-top:3px;display:block}
+    #intakeOverlay .ik-msg{font-size:13px;color:#64748b;padding:10px 0}
+    #intakeOverlay pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:10px;font-size:12px;line-height:1.65;overflow:auto;white-space:pre-wrap}
+  </style>
+  <div style="position:sticky;top:0;z-index:2;background:#0f172a;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)">
+    <b style="font-size:16px">🚀 Intake Studio</b>
+    <span style="font-size:12.5px;color:#94a3b8">รับงาน → กรอง → เสนอ · ลดเวลากราฟิก ตัดงานแก้ซ้ำ</span>
+    <button onclick="document.getElementById('intakeOverlay').style.display='none'" style="margin-left:auto;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">✕ ปิด</button>
+  </div>
+  <div class="ik-wrap">
+    <div class="ik-tabs">
+      <button class="ik-tab on" data-p="ex">🧲 แตกไฟล์ PDF</button>
+      <button class="ik-tab" data-p="pc">✅ ตรวจว่าผลิตได้</button>
+      <button class="ik-tab" data-p="cc">💡 AI Concept (ไม่มีโลโก้)</button>
+      <button class="ik-tab" data-p="br">📝 Sales Brief</button>
+    </div>
+
+    <!-- ---------- 1) EXTRACT ---------- -->
+    <div class="ik-pane on" id="ikEx">
+      <div class="ik-card">
+        <h4>🧲 แตก "ของ" ออกจากไฟล์ลูกค้า</h4>
+        <div class="ik-sub">ลูกค้าส่งเมนู / นามบัตร / โบรชัวร์เป็น PDF มา → ระบบแตกทุกชิ้นให้เลือก<br>
+          <b style="color:#16a34a">ถ้าชิ้นนั้นเป็นเวกเตอร์อยู่แล้ว = ได้ .ai ของจริงทันที ไม่ต้อง trace ไม่เสียความคม</b></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="ikExFile" accept=".pdf,.ai,.eps" style="font-size:13px">
+          <button class="ik-btn" id="ikExGo">แตกไฟล์</button>
+          <span class="ik-msg" id="ikExMsg"></span>
+        </div>
+      </div>
+      <div id="ikExOut"></div>
+    </div>
+
+    <!-- ---------- 2) PRODUCIBILITY ---------- -->
+    <div class="ik-pane" id="ikPc">
+      <div class="ik-card">
+        <h4>✅ ด่านกรอง — ไฟล์นี้ "ตัดได้จริงไหม"</h4>
+        <div class="ik-sub">ใช้ก่อนรับปากลูกค้า โดยเฉพาะภาพที่สร้างจาก AI ตัวอื่น (Midjourney / ChatGPT)<br>
+          ตรวจ: เส้นบางเกิน · ไส้ในจิ๋ว · ชิ้นหลุดร่วง · ชิ้นชิดกัน · จุดถี่จนเครื่องดัดกรีดพับ</div>
+        <div class="ik-grid" style="margin-bottom:12px">
+          <div><label>ไฟล์งาน</label><input type="file" id="ikPcFile" accept="image/*,.ai,.pdf,.svg,.eps,.psd" style="font-size:12.5px;padding:6px"></div>
+          <div><label>ความกว้างจริง (มม.)</label><input type="number" id="ikPcW" value="600" step="10"></div>
+          <div><label>ความสูงจริง (มม.) — เว้นได้</label><input type="number" id="ikPcH" value="0" step="10"></div>
+          <div><label>วัสดุ</label><select id="ikPcMat"></select></div>
+          <div><label>ความหนาต่ำสุด (มม.) — 0=ตามวัสดุ</label><input type="number" id="ikPcMs" value="0" step="0.5"></div>
+        </div>
+        <button class="ik-btn" id="ikPcGo">ตรวจเลย</button>
+        <button class="ik-btn warn" id="ikPcFix" style="display:none">🔧 แก้อัตโนมัติ + ดาวน์โหลด .ai</button>
+        <span class="ik-msg" id="ikPcMsg"></span>
+      </div>
+      <div id="ikPcOut"></div>
+    </div>
+
+    <!-- ---------- 3) AI CONCEPT ---------- -->
+    <div class="ik-pane" id="ikCc">
+      <div class="ik-card">
+        <h4>💡 ลูกค้าไม่มี idea / ไม่มีชื่อ / ไม่มีโลโก้</h4>
+        <div class="ik-sub">เจนชื่อร้าน + สร้างโลโก้ <b>เวกเตอร์จริงจากฟอนต์</b> หลายแบบให้เซลล์กดโชว์ลูกค้าหน้างาน<br>
+          <b style="color:#16a34a">ไม่ใช่ภาพ — เป็นเส้นตัดตั้งแต่ต้น ส่งเข้าชุดชั้นตัดได้เลย</b></div>
+        <div class="ik-grid" style="margin-bottom:10px">
+          <div><label>ประเภทธุรกิจ</label>
+            <select id="ikCcBiz">
+              <option value="cafe">คาเฟ่ / กาแฟ</option><option value="food">ร้านอาหาร</option>
+              <option value="beauty">ความงาม / สปา</option><option value="clinic">คลินิก</option>
+              <option value="auto">อู่ / ยานยนต์</option><option value="shop">ร้านค้าทั่วไป</option>
+              <option value="hotel">โรงแรม / ที่พัก</option><option value="fitness">ฟิตเนส</option>
+            </select></div>
+          <div><label>โทน</label>
+            <select id="ikCcTone"><option>โมเดิร์น</option><option>หรูหรา</option><option>อบอุ่น เป็นกันเอง</option><option>แข็งแรง ลุย</option><option>มินิมอล</option></select></div>
+          <div><label>รายละเอียดเพิ่ม (ไม่บังคับ)</label><input type="text" id="ikCcDetail" placeholder="เช่น ขายกาแฟดริป ย่านอารีย์"></div>
+        </div>
+        <button class="ik-btn alt" id="ikCcNames">🎲 ขอชื่อร้าน 10 ชื่อ</button>
+        <span class="ik-msg" id="ikCcNMsg"></span>
+        <div id="ikCcNames_out" style="margin-top:10px"></div>
+      </div>
+      <div class="ik-card">
+        <h4>สร้างโลโก้ตัวอย่าง (เวกเตอร์)</h4>
+        <div class="ik-grid" style="margin-bottom:10px">
+          <div><label>ชื่อบนป้าย</label><input type="text" id="ikCcName" placeholder="เช่น SAAI COFFEE / ไซ่ กาแฟ"></div>
+          <div><label>คำบรรยาย (ไม่บังคับ)</label><input type="text" id="ikCcSub" placeholder="เช่น SPECIALTY ROASTER"></div>
+          <div><label>ความสูงตัวอักษร (มม.)</label><input type="number" id="ikCcCap" value="200" step="10"></div>
+          <div><label>วัสดุ (ใช้ตรวจผลิตได้)</label><select id="ikCcMat"></select></div>
+        </div>
+        <button class="ik-btn" id="ikCcGo">✨ สร้างคอนเซปต์</button>
+        <span class="ik-msg" id="ikCcMsg"></span>
+      </div>
+      <div id="ikCcOut"></div>
+    </div>
+
+    <!-- ---------- 4) BRIEF ---------- -->
+    <div class="ik-pane" id="ikBr">
+      <div class="ik-card">
+        <h4>📝 บรีฟรับงานมาตรฐาน — ตัดเวลา "ถามกลับ"</h4>
+        <div class="ik-sub">เซลล์กรอกที่หน้าลูกค้า → ระบบบอกทันทีว่าบรีฟครบกี่ % และ <b>ยังขาดอะไร</b> → กราฟิกไม่ต้องเดา</div>
+        <div class="ik-grid" id="ikBrForm"></div>
+        <div style="margin-top:14px">
+          <button class="ik-btn" id="ikBrGo">ตรวจความครบ + สร้างใบบรีฟ</button>
+          <button class="ik-btn alt" id="ikBrDl" style="display:none">⬇ ดาวน์โหลดใบบรีฟ (.txt)</button>
+        </div>
+      </div>
+      <div id="ikBrOut"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== คู่มือใช้งาน (ออนไลน์) ==================== -->
 <div id="manualOverlay" style="display:none;position:fixed;inset:0;z-index:120;background:#f1f5f9;overflow:auto">
   <div style="position:sticky;top:0;z-index:2;background:#0f172a;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)">
@@ -365,6 +501,7 @@ select.numin{cursor:pointer}
         <li><a href="#m1">ประโยชน์ของระบบ (ภาพรวม)</a></li>
         <li><a href="#m2">ประโยชน์แยกตามฝ่าย</a></li>
         <li><a href="#m3">เมนูหลัก 7 เมนู (ภาพรวม)</a></li>
+        <li><a href="#mIK"><b style="color:#0d9488">🚀 Intake Studio — รับงาน / กรอง / เสนอ (ใหม่)</b></a></li>
         <li><a href="#m4">คู่มือใช้งานทีละฟีเจอร์</a></li>
         <li><a href="#m5">ความรู้ประเภทป้าย 1–7 + ค่าเผื่อ</a></li>
         <li><a href="#m6">ตัวอย่าง Workflow (ตั้งแต่รับงานถึงตัด)</a></li>
@@ -405,7 +542,78 @@ select.numin{cursor:pointer}
       <tr><td>🏭 ชุดชั้นตัด (ตามแบบป้าย)</td><td>แตกโครงสร้างป้าย 1–7 เป็นชั้นตัด + ภาพ 3 มิติ</td></tr>
       <tr><td>📋 BOM Check Sheet</td><td>ใบตรวจรายการวัสดุ/ชิ้นงาน</td></tr>
       <tr><td>📐 ขนาดป้าย + จำลองผนัง</td><td>วัดขนาดจริง, วางบนผนัง, ดู 3 มิติ, เสนอราคา, บันทึก Job</td></tr>
+      <tr><td><b style="color:#0d9488">🚀 Intake Studio</b></td><td><b>ใหม่</b> — แตกไฟล์ PDF ลูกค้า · ตรวจว่าผลิตได้ · AI Concept (ลูกค้าไม่มีโลโก้) · Sales Brief</td></tr>
     </table>
+
+    <h2 id="mIK">🚀 Intake Studio — ด่านหน้าของงาน (สำคัญที่สุด)</h2>
+    <div class="card">
+      <p><b>ปัญหาที่แก้:</b> เวลากราฟิกไม่ได้หมดไปกับ "การออกแบบ" แต่หมดไปกับ (1) ขุดของจากไฟล์ลูกค้า
+      (2) รอ/ถามข้อมูลกลับ (3) แก้ให้ผลิตได้ (4) รอบแก้กับลูกค้า</p>
+      <p><b>แนวคิด:</b> ย้าย "ด่านกรอง" ไปไว้ที่เซลล์ ไม่ใช่ที่กราฟิก —
+      เซลล์ใช้เครื่องมือ 4 ตัวนี้ที่หน้าลูกค้า → กราฟิกได้ไฟล์ที่พร้อม ~80% + บรีฟครบ</p>
+      <div class="tip">เปิดจากปุ่ม <span class="pill">🚀 Intake Studio</span> บนแถบเมนูด้านบน</div>
+    </div>
+
+    <div class="card">
+      <h3>🧲 1) แตกไฟล์ PDF — เอา "ของ" ออกจากไฟล์ลูกค้า</h3>
+      <p><b>ใช้เมื่อ:</b> ลูกค้าส่งเมนู / นามบัตร / โบรชัวร์ / โปรไฟล์บริษัท มาเป็น PDF และเราต้องการโลโก้ในนั้น</p>
+      <div class="step"><b>1.</b> อัปโหลดไฟล์ <span class="pill">.pdf</span> <span class="pill">.ai</span> <span class="pill">.eps</span></div>
+      <div class="step"><b>2.</b> ระบบแตกทุก object ออกมาให้เห็นเป็นการ์ด พร้อมป้ายกำกับ:
+        <span class="pill">เวกเตอร์ ✓</span> = ใช้ได้เลย ·
+        <span class="pill">ภาพ</span> = ต้องดราฟท์ต่อ ·
+        <span class="pill">ข้อความ</span> = บอกชื่อฟอนต์ให้ด้วย</div>
+      <div class="step"><b>3.</b> กดการ์ดที่ต้องการ → ดาวน์โหลดเป็น <b>.ai</b> ทันที</div>
+      <div class="tip"><b>จุดสำคัญ:</b> ถ้าชิ้นนั้นเป็นเวกเตอร์อยู่แล้ว ระบบจะ<b>ตัดออกมาเป็นเวกเตอร์ต้นฉบับ 100%</b>
+        — ไม่ trace ใหม่ ไม่เสียความคม ไฟล์เล็ก (หลัก KB) และเปิดแก้ path ได้ใน Illustrator</div>
+      <div class="warn">ถ้าโลโก้ในไฟล์เป็น <b>ภาพ raster</b> (ฝังในเป็นรูป) จะได้ .png ออกมา ต้องส่งเข้า
+        <b>ดราฟท์ .ai</b> ที่หน้าหลักต่อ เพื่อแปลงเป็นเวกเตอร์</div>
+    </div>
+
+    <div class="card">
+      <h3>✅ 2) ตรวจว่าผลิตได้ — ด่านกรองก่อนรับปากลูกค้า</h3>
+      <p><b>ใช้เมื่อ:</b> ลูกค้าส่งภาพจาก AI ตัวอื่น (Midjourney / ChatGPT / Gemini) หรือภาพที่ดูสวยแต่ไม่รู้ว่าตัดได้ไหม</p>
+      <p><b>ระบบตรวจ 7 ข้อ:</b></p>
+      <table>
+        <tr><th>ตรวจ</th><th>ทำไมสำคัญ</th></tr>
+        <tr><td>🔴 เส้น/แขนบางเกินไป</td><td>วัด "จุดแคบที่สุด" จริง ๆ (ไม่ใช่แค่ชิ้นเล็ก) — บางเกินตัดแล้วหัก/บิด</td></tr>
+        <tr><td>🟠 ชิ้นเล็กเกินไป</td><td>หลุดร่วงตอนตัด เก็บงานยาก หาย</td></tr>
+        <tr><td>🟣 ช่อง/ไส้ในเล็กเกินไป</td><td>ดอกกัดเข้าไม่ถึง และคิ้วจะปิดทับ</td></tr>
+        <tr><td>🔵 ชิ้นชิดกันเกินไป</td><td>ตัดแล้วเชื่อมติดกัน</td></tr>
+        <tr><td>จุดบนเส้นถี่เกิน</td><td>เครื่องดัดจะกรีดพับถี่ → ขอบเป็นเหลี่ยม ไม่เนียน</td></tr>
+        <tr><td>เส้นซ้อน/ตัดกันเอง</td><td>CAM ตัดผิด</td></tr>
+        <tr><td>ชิ้นย่อยเยอะผิดปกติ</td><td>บอกว่าเป็นภาพถ่าย/ไล่เฉด — ป้ายทำไม่ได้</td></tr>
+      </table>
+      <div class="step"><b>ผลลัพธ์:</b> คะแนน <b>0–100</b> + <span class="pill">ผลิตได้ ✓</span>
+        <span class="pill">ต้องแก้ก่อน</span> <span class="pill">ผลิตไม่ได้ ✕</span>
+        + ภาพวงแดงชี้จุดที่มีปัญหา + บอกว่าต้อง "หนาขึ้นอีกกี่ มม." หรือ "ขยายงานกี่ %"</div>
+      <div class="step"><b>ปุ่ม 🔧 แก้อัตโนมัติ:</b> ระบบซ่อมให้เอง — เพิ่มความหนาให้ถึงขั้นต่ำ · อุดช่องเล็ก · ลบชิ้นจิ๋ว ·
+        ลดจุดบนเส้น · ซ่อมเส้นซ้อน → ดาวน์โหลด <b>.ai ที่ผลิตได้จริง</b></div>
+      <div class="tip"><b>เกณฑ์ต่อวัสดุ (ปรับได้):</b> อะคริลิค 4 มม. · ซิ้งค์/โลหะ 3 มม. · พลาสวูด 6 มม. ·
+        สแตนเลส 2.5 มม. · กล่องไฟ 8 มม.</div>
+      <div class="warn"><b>ใช้ก่อนเสนอราคา</b> — ไม่ใช่หลังกราฟิกทำไปครึ่งวันแล้ว นี่คือจุดที่ประหยัดเวลามากที่สุด</div>
+    </div>
+
+    <div class="card">
+      <h3>💡 3) AI Concept — ลูกค้าไม่มี idea / ไม่มีชื่อ / ไม่มีโลโก้</h3>
+      <p><b>ใช้เมื่อ:</b> ลูกค้ามาแบบว่างเปล่า เซลล์ไม่มีอะไรให้ดู งานค้างอยู่ตรงนั้น</p>
+      <div class="step"><b>1. ขอชื่อร้าน:</b> เลือกประเภทธุรกิจ + โทน → กด 🎲 ได้ชื่อ 10 ชื่อ พร้อมเหตุผล
+        (กดชื่อที่ชอบ → เด้งไปช่อง "ชื่อบนป้าย" ให้เลย)</div>
+      <div class="step"><b>2. สร้างโลโก้:</b> ใส่ชื่อ + ความสูงตัวอักษร → ได้แบบหลายสิบแบบ
+        (สไตล์ฟอนต์ × เลย์เอาต์ 7 แบบ: ตัวอักษรล้วน / คิ้วรอบ / เส้นใต้ / แผ่นป้าย / ตราวงกลม / กรอบ / ชื่อ+คำบรรยาย)</div>
+      <div class="step"><b>3.</b> ทุกแบบ<b>ตรวจผลิตได้แล้วในตัว</b> — เรียงตามคะแนน กดแบบที่ชอบ → ได้ .ai ทันที</div>
+      <div class="tip"><b>จุดสำคัญ:</b> โลโก้ที่ได้เป็น <b>เวกเตอร์จริงจากฟอนต์</b> ไม่ใช่ภาพ AI —
+        คมกริบ ตัดได้จริง ส่งเข้าชุดชั้นตัด / Nesting ต่อได้เลย (ต่างจากภาพ Midjourney ที่ผลิตไม่ได้)</div>
+    </div>
+
+    <div class="card">
+      <h3>📝 4) Sales Brief — ตัดเวลา "ถามกลับ"</h3>
+      <p><b>ใช้เมื่อ:</b> เซลล์รับงาน — กรอกที่หน้าลูกค้าเลย</p>
+      <p>14 ช่องมาตรฐาน: ชื่อลูกค้า · ข้อความบนป้าย · ประเภทป้าย 1–7 · กว้าง × สูง · ความหนายกขอบ ·
+        วัสดุ · จำนวน · ติดตั้งที่ไหน · ไฟฟ้าถึงหรือยัง · กำหนดส่ง · งบ · ไฟล์ต้นแบบ · หมายเหตุ</p>
+      <div class="step">กด "ตรวจความครบ" → ระบบบอก <b>% ความครบ</b> และ <b>ยังขาดอะไรบ้าง</b>
+        + สร้าง <b>ใบบรีฟ</b> ดาวน์โหลดส่งกราฟิกได้เลย</div>
+      <div class="warn">ช่องที่มี <b style="color:#ef4444">*</b> = จำเป็น — ถ้าไม่ครบ กราฟิกจะต้องเดา และงานจะวนแก้</div>
+    </div>
 
     <h2 id="m4">4. คู่มือใช้งานทีละฟีเจอร์</h2>
 
@@ -713,7 +921,7 @@ select.numin{cursor:pointer}
 <div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#16a34a">v68 · TrimFix</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#0d9488">v70 · Intake Studio</b></div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
@@ -1715,6 +1923,217 @@ function runLayer(){
 }
 $('btnLayer').onclick=openLayer;
 if($('btnManual'))$('btnManual').onclick=function(){var o=$('manualOverlay');if(o){o.style.display='block';o.scrollTop=0;}};
+
+/* ==================== 🚀 INTAKE STUDIO ==================== */
+var IK_TOK='', IK_MATS=[], IK_BR=null, IK_BRTXT='';
+function ikDl(b64,name,mime){var a=document.createElement('a');a.href='data:'+(mime||'application/pdf')+';base64,'+b64;a.download=name;document.body.appendChild(a);a.click();a.remove();}
+function ikDlTxt(txt,name){var a=document.createElement('a');a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);a.download=name;document.body.appendChild(a);a.click();a.remove();}
+function ikVerdict(v){return v==='pass'?['#16a34a','ผลิตได้ ✓']:(v==='fix'?['#f59e0b','ต้องแก้ก่อน']:['#ef4444','ผลิตไม่ได้ ✕']);}
+
+if($('btnIntake'))$('btnIntake').onclick=function(){var o=$('intakeOverlay');if(o){o.style.display='block';o.scrollTop=0;ikInit();}};
+document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(t){
+  t.onclick=function(){
+    document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(x){x.classList.remove('on');});
+    document.querySelectorAll('#intakeOverlay .ik-pane').forEach(function(x){x.classList.remove('on');});
+    t.classList.add('on');
+    var id={ex:'ikEx',pc:'ikPc',cc:'ikCc',br:'ikBr'}[t.getAttribute('data-p')];
+    if($(id))$(id).classList.add('on');
+  };
+});
+
+var IK_READY=false;
+function ikInit(){
+  if(IK_READY)return; IK_READY=true;
+  fetch(API+'/api/brief-fields').then(function(r){return r.json();}).then(function(j){
+    IK_MATS=j.materials||[];
+    var mo=IK_MATS.map(function(m){return '<option value="'+m.key+'">'+m.label+'</option>';}).join('');
+    if($('ikPcMat'))$('ikPcMat').innerHTML=mo;
+    if($('ikCcMat'))$('ikCcMat').innerHTML=mo;
+    var sts=(j.sign_types||[]);
+    var html=(j.fields||[]).map(function(f){
+      var req=f.required?' <span style="color:#ef4444">*</span>':'';
+      var inp;
+      if(f.type==='sign') inp='<select id="ikbr_'+f.key+'"><option value="">— เลือก —</option>'+sts.map(function(s){return '<option value="'+s.key+'">'+s.key+'. '+s.label+'</option>';}).join('')+'</select>';
+      else if(f.type==='mat') inp='<select id="ikbr_'+f.key+'"><option value="">— เลือก —</option>'+mo+'</select>';
+      else if(f.type==='num') inp='<input type="number" id="ikbr_'+f.key+'" step="0.5">';
+      else inp='<input type="text" id="ikbr_'+f.key+'">';
+      return '<div><label>'+f.label+req+'</label>'+inp+(f.hint?'<div style="font-size:11px;color:#94a3b8;margin-top:3px">'+f.hint+'</div>':'')+'</div>';
+    }).join('');
+    if($('ikBrForm'))$('ikBrForm').innerHTML=html;
+    IK_BR=j.fields||[];
+  }).catch(function(){});
+}
+
+/* ---------- 1) EXTRACT ---------- */
+if($('ikExGo'))$('ikExGo').onclick=function(){
+  var f=$('ikExFile').files[0];
+  if(!f){$('ikExMsg').textContent='เลือกไฟล์ PDF / .ai ก่อนนะ';return;}
+  $('ikExMsg').textContent='กำลังแตกไฟล์...';$('ikExOut').innerHTML='';
+  var fd=new FormData();fd.append('file',f);
+  fetch(API+'/api/extract-assets',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){$('ikExMsg').textContent='❌ '+j.error;return;}
+    IK_TOK=j.token;
+    var as=j.assets||[];
+    var nv=as.filter(function(a){return a.kind==='vector';}).length;
+    $('ikExMsg').innerHTML='พบ <b>'+as.length+'</b> ชิ้น'+(nv?(' · <b style="color:#16a34a">'+nv+' ชิ้นเป็นเวกเตอร์ (ได้ของจริงเลย)</b>'):'');
+    var K={vector:['c-vec','เวกเตอร์ ✓'],image:['c-img','ภาพ (ต้องดราฟท์)'],text:['c-txt','ข้อความ'],page:['c-pg','ทั้งหน้า']};
+    $('ikExOut').innerHTML='<div class="ik-card"><h4>เลือกชิ้นที่ต้องการ</h4><div class="ik-sub">กดชิ้นที่ต้องการ → ดาวน์โหลดเป็น .ai ทันที</div><div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">'+
+      as.map(function(a,i){var k=K[a.kind]||['c-pg',a.kind];
+        return '<div class="ik-asset" data-i="'+i+'">'+(a.thumb?'<img src="'+a.thumb+'">':'<div style="height:110px"></div>')+
+          '<span class="ik-chip '+k[0]+'">'+k[1]+'</span>'+
+          '<div style="font-size:12px;font-weight:700;color:#0f172a;line-height:1.35">'+a.label+'</div>'+
+          '<div style="font-size:11px;color:#64748b">'+a.w_mm+' × '+a.h_mm+' มม.</div></div>';}).join('')+'</div></div>';
+    document.querySelectorAll('#ikExOut .ik-asset').forEach(function(el){
+      el.onclick=function(){
+        var a=as[parseInt(el.getAttribute('data-i'),10)];
+        el.style.opacity='.5';
+        fetch(API+'/api/extract-asset',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({token:IK_TOK,kind:a.kind,page:a.page,bbox:a.bbox,xref:a.xref||0})})
+        .then(function(r){return r.json();}).then(function(k){
+          el.style.opacity='1';
+          if(k.error){alert('❌ '+k.error);return;}
+          if(k.kind==='image'){ikDl(k.png_base64,'asset_'+a.id+'.png','image/png');alert('📷 ได้ภาพแล้ว — ภาพ raster ต้องส่งเข้า "ดราฟท์ .ai" ต่อเพื่อแปลงเป็นเวกเตอร์');}
+          else{ikDl(k.ai_base64,'asset_'+a.id+'.ai');}
+        }).catch(function(e){el.style.opacity='1';alert('❌ '+e);});
+      };
+    });
+  }).catch(function(e){$('ikExMsg').textContent='❌ '+e;});
+};
+
+/* ---------- 2) PRODUCIBILITY ---------- */
+function ikPcFD(){
+  var f=$('ikPcFile').files[0]; if(!f)return null;
+  var fd=new FormData();fd.append('file',f);
+  fd.append('real_width_mm',$('ikPcW').value||600);
+  fd.append('real_height_mm',$('ikPcH').value||0);
+  fd.append('material',$('ikPcMat').value||'acrylic');
+  fd.append('min_stroke_mm',$('ikPcMs').value||0);
+  return fd;
+}
+if($('ikPcGo'))$('ikPcGo').onclick=function(){
+  var fd=ikPcFD(); if(!fd){$('ikPcMsg').textContent='เลือกไฟล์ก่อนนะ';return;}
+  $('ikPcMsg').textContent='กำลังตรวจ...';$('ikPcOut').innerHTML='';$('ikPcFix').style.display='none';
+  fetch(API+'/api/check-producible',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){$('ikPcMsg').textContent='❌ '+j.error;return;}
+    $('ikPcMsg').textContent='';
+    var v=ikVerdict(j.verdict), s=j.stats||{};
+    var iss=(j.issues||[]).map(function(i){
+      return '<div class="ik-issue'+(i.sev==='error'?' err':'')+'"><b>'+(i.sev==='error'?'🔴 ':'🟠 ')+i.title+'</b>'+i.detail+'<span class="fx">→ '+i.fix+'</span></div>';}).join('')
+      ||'<div class="ik-msg" style="color:#16a34a;font-weight:700">✓ ไม่พบปัญหา — ส่งเข้าผลิตได้เลย</div>';
+    var svg=(j.svg||'').replace(/width="[^"]*"/,'width="100%"');
+    $('ikPcOut').innerHTML='<div class="ik-card" style="display:grid;grid-template-columns:1fr 1.15fr;gap:20px;align-items:start">'+
+      '<div><div style="text-align:center;padding:10px 0 16px"><div class="ik-score" style="color:'+v[0]+'">'+j.score+'</div>'+
+        '<div style="font-weight:800;color:'+v[0]+';margin-top:4px">'+v[1]+'</div>'+
+        '<div style="font-size:11px;color:#94a3b8;margin-top:2px">คะแนนความพร้อมผลิต</div></div>'+
+        '<table style="width:100%;font-size:12px;border-collapse:collapse">'+
+        '<tr><td style="padding:3px 0;color:#64748b">ชิ้นย่อย</td><td style="text-align:right;font-weight:700">'+s.parts+'</td></tr>'+
+        '<tr><td style="padding:3px 0;color:#64748b">จุดแคบสุด</td><td style="text-align:right;font-weight:700;color:'+((s.min_width_mm<(s.rules||{}).min_stroke_mm)?'#ef4444':'#16a34a')+'">'+s.min_width_mm+' มม.</td></tr>'+
+        '<tr><td style="padding:3px 0;color:#64748b">ขั้นต่ำวัสดุนี้</td><td style="text-align:right;font-weight:700">'+((s.rules||{}).min_stroke_mm||'-')+' มม.</td></tr>'+
+        '<tr><td style="padding:3px 0;color:#64748b">จำนวนจุดบนเส้น</td><td style="text-align:right;font-weight:700">'+s.points+'</td></tr>'+
+        '<tr><td style="padding:3px 0;color:#64748b">ความหนาแน่นจุด</td><td style="text-align:right;font-weight:700">'+s.pt_density+' /100มม.</td></tr>'+
+        '<tr><td style="padding:3px 0;color:#64748b">ขนาดงาน</td><td style="text-align:right;font-weight:700">'+(s.bbox_mm||[]).join(' × ')+' มม.</td></tr>'+
+        '</table></div>'+
+      '<div><div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#f8fafc;margin-bottom:10px">'+svg+'</div>'+
+        '<div style="font-size:11px;color:#94a3b8;margin-bottom:8px">🔴 บาง · 🟠 ชิ้นจิ๋ว · 🟣 ช่องเล็ก · 🔵 ชิดกัน</div>'+iss+'</div></div>';
+    if(j.verdict!=='pass')$('ikPcFix').style.display='inline-block';
+  }).catch(function(e){$('ikPcMsg').textContent='❌ '+e;});
+};
+if($('ikPcFix'))$('ikPcFix').onclick=function(){
+  var fd=ikPcFD(); if(!fd)return;
+  $('ikPcMsg').textContent='กำลังแก้อัตโนมัติ...';
+  fetch(API+'/api/autofix',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j.error){$('ikPcMsg').textContent='❌ '+j.error;return;}
+    $('ikPcMsg').textContent='';
+    var a=ikVerdict(j.after.verdict);
+    var svg=(j.svg||'').replace(/width="[^"]*"/,'width="100%"');
+    $('ikPcOut').innerHTML='<div class="ik-card"><h4>🔧 แก้อัตโนมัติแล้ว</h4>'+
+      '<div style="display:flex;gap:26px;align-items:center;margin:10px 0 14px">'+
+        '<div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#94a3b8">'+j.before.score+'</div><div style="font-size:11px;color:#94a3b8">ก่อน</div></div>'+
+        '<div style="font-size:24px;color:#cbd5e1">→</div>'+
+        '<div style="text-align:center"><div class="ik-score" style="color:'+a[0]+'">'+j.after.score+'</div><div style="font-size:11px;font-weight:700;color:'+a[0]+'">'+a[1]+'</div></div>'+
+        '<div style="flex:1"><ul style="margin:0 0 0 18px;font-size:13px;color:#334155;line-height:1.8">'+(j.log||[]).map(function(l){return '<li>'+l+'</li>';}).join('')+'</ul></div>'+
+      '</div>'+
+      '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#f8fafc;margin-bottom:12px">'+svg+'</div>'+
+      '<div style="font-size:12px;color:#64748b;margin-bottom:10px">ขนาดหลังแก้: <b>'+j.w_mm+' × '+j.h_mm+' มม.</b></div>'+
+      '<button class="ik-btn" id="ikPcDlAi">⬇ ดาวน์โหลด .ai (ผลิตได้)</button> '+
+      '<button class="ik-btn alt" id="ikPcDlSvg">⬇ ดาวน์โหลด .svg</button></div>';
+    if($('ikPcDlAi'))$('ikPcDlAi').onclick=function(){if(j.ai_base64)ikDl(j.ai_base64,'fixed.ai');else alert('สร้าง .ai ไม่สำเร็จ');};
+    if($('ikPcDlSvg'))$('ikPcDlSvg').onclick=function(){ikDlTxt(j.svg_mm||'','fixed.svg');};
+  }).catch(function(e){$('ikPcMsg').textContent='❌ '+e;});
+};
+
+/* ---------- 3) AI CONCEPT ---------- */
+if($('ikCcNames'))$('ikCcNames').onclick=function(){
+  $('ikCcNMsg').textContent='กำลังคิดชื่อ...';
+  fetch(API+'/api/concept-names',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({biz:$('ikCcBiz').value,tone:$('ikCcTone').value,detail:$('ikCcDetail').value})})
+  .then(function(r){return r.json();}).then(function(j){
+    $('ikCcNMsg').textContent=(j.source==='ai'?'(จาก AI)':'(คลังคำสำรอง — ตั้งค่า ANTHROPIC_API_KEY เพื่อใช้ AI)');
+    $('ikCcNames_out').innerHTML='<div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">'+
+      (j.names||[]).map(function(n){return '<div class="ik-asset" style="text-align:left;padding:10px 12px" data-n="'+String(n.name).replace(/"/g,'&quot;')+'">'+
+        '<div style="font-weight:800;font-size:14px;color:#0f172a">'+n.name+'</div>'+
+        '<div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.5">'+(n.why||'')+'</div></div>';}).join('')+'</div>';
+    document.querySelectorAll('#ikCcNames_out .ik-asset').forEach(function(el){
+      el.onclick=function(){$('ikCcName').value=el.getAttribute('data-n');$('ikCcName').scrollIntoView({behavior:'smooth',block:'center'});};
+    });
+  }).catch(function(e){$('ikCcNMsg').textContent='❌ '+e;});
+};
+if($('ikCcGo'))$('ikCcGo').onclick=function(){
+  var nm=($('ikCcName').value||'').trim();
+  if(!nm){$('ikCcMsg').textContent='ใส่ชื่อบนป้ายก่อนนะ';return;}
+  $('ikCcMsg').textContent='กำลังสร้างเวกเตอร์...';$('ikCcOut').innerHTML='';
+  var sub=($('ikCcSub').value||'').trim();
+  var lay=['plain','outline','underline','plate','badge','frame']; if(sub)lay.push('stacked');
+  fetch(API+'/api/concept',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:nm,sub:sub,cap_mm:parseFloat($('ikCcCap').value||200),
+      material:$('ikCcMat').value||'acrylic',layouts:lay})})
+  .then(function(r){return r.json();}).then(function(j){
+    if(j.error){$('ikCcMsg').textContent='❌ '+j.error;return;}
+    $('ikCcMsg').textContent='ได้ '+j.count+' แบบ (เรียงตามคะแนนผลิตได้)';
+    $('ikCcOut').innerHTML='<div class="ik-card"><h4>เลือกแบบที่ชอบ → ได้ .ai ทันที</h4><div class="ik-sub">ทุกแบบเป็นเวกเตอร์จริง + ตรวจผลิตได้แล้ว</div>'+
+      '<div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">'+
+      (j.concepts||[]).map(function(c,i){var v=ikVerdict(c.verdict);
+        return '<div class="ik-asset" data-i="'+i+'" style="padding:10px">'+
+          '<div style="background:#fff;border-radius:8px;overflow:hidden;margin-bottom:8px">'+(c.svg||'').replace(/width="[^"]*"/,'width="100%"')+'</div>'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px">'+
+            '<span style="font-weight:700;color:#0f172a">'+c.layout_label+'</span>'+
+            '<span style="font-weight:800;color:'+v[0]+'">'+c.score+' · '+v[1]+'</span></div>'+
+          '<div style="font-size:11px;color:#64748b;margin-top:2px;text-align:left">'+c.style_label+' · '+c.font+'<br>'+c.w_mm+' × '+c.h_mm+' มม.</div></div>';}).join('')+'</div></div>';
+    document.querySelectorAll('#ikCcOut .ik-asset').forEach(function(el){
+      el.onclick=function(){
+        var c=j.concepts[parseInt(el.getAttribute('data-i'),10)];
+        el.style.opacity='.5';
+        fetch(API+'/api/concept-use',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({name:nm,sub:sub,style:c.style,layout:c.layout,cap_mm:parseFloat($('ikCcCap').value||200)})})
+        .then(function(r){return r.json();}).then(function(k){
+          el.style.opacity='1';
+          if(k.error){alert('❌ '+k.error);return;}
+          if(k.ai_base64)ikDl(k.ai_base64,'concept_'+c.layout+'.ai');
+          else ikDlTxt(k.svg_mm||'','concept_'+c.layout+'.svg');
+        }).catch(function(e){el.style.opacity='1';alert('❌ '+e);});
+      };
+    });
+  }).catch(function(e){$('ikCcMsg').textContent='❌ '+e;});
+};
+
+/* ---------- 4) BRIEF ---------- */
+if($('ikBrGo'))$('ikBrGo').onclick=function(){
+  var vals={};(IK_BR||[]).forEach(function(f){var el=$('ikbr_'+f.key);if(el)vals[f.key]=el.value;});
+  fetch(API+'/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:vals})})
+  .then(function(r){return r.json();}).then(function(j){
+    IK_BRTXT=j.text||'';
+    var col=j.ready?'#16a34a':(j.score>=70?'#f59e0b':'#ef4444');
+    $('ikBrOut').innerHTML='<div class="ik-card">'+
+      '<div style="display:flex;align-items:center;gap:20px;margin-bottom:12px">'+
+        '<div style="text-align:center"><div class="ik-score" style="color:'+col+'">'+j.score+'%</div><div style="font-size:11px;color:#94a3b8">ความครบของบรีฟ</div></div>'+
+        '<div style="flex:1;font-size:13.5px;color:'+col+';font-weight:700">'+
+          (j.ready?'✓ บรีฟครบ — ส่งกราฟิกได้เลย':'⚠ ยังขาด: '+(j.missing||[]).join(' · '))+'</div></div>'+
+      '<pre>'+(j.text||'').replace(/</g,'&lt;')+'</pre></div>';
+    $('ikBrDl').style.display='inline-block';
+  }).catch(function(e){$('ikBrOut').innerHTML='<div class="ik-msg">❌ '+e+'</div>';});
+};
+if($('ikBrDl'))$('ikBrDl').onclick=function(){ikDlTxt(IK_BRTXT,'job_brief.txt');};
+
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
 var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm'}, FCOL='#c9cdd4', SCOL='#9aa1ac';
 function _glowColor(t){return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
