@@ -332,6 +332,7 @@ def build_layout(kind, main_g, sub_g=None, cap_mm=100.0):
 
 
 def concept_svg(g, width_px=340, fill="#1f2733", bg="#f4f6fa"):
+    """SVG พรีวิว — สีอยู่ใน <style> เพื่อให้ frontend เปลี่ยนสี/ใส่เอฟเฟกต์ไฟได้สด ๆ"""
     if g is None or g.is_empty:
         return ""
     b = g.bounds
@@ -350,13 +351,14 @@ def concept_svg(g, width_px=340, fill="#1f2733", bg="#f4f6fa"):
         d = ring(list(p.exterior.coords))
         for r in p.interiors:
             d += " " + ring(list(r.coords))
-        ps.append('<path d="%s" fill="%s" fill-rule="evenodd"/>' % (d, fill))
+        ps.append('<path class="cc-art" d="%s" fill-rule="evenodd"/>' % d)
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="%dpx" viewBox="0 0 %.2f %.2f">'
-            '<rect width="%.2f" height="%.2f" fill="%s"/>%s</svg>'
-            % (width_px, W, H, W, H, bg, "".join(ps)))
+            '<style>.cc-bg{fill:%s}.cc-art{fill:%s}</style>'
+            '<rect class="cc-bg" width="%.2f" height="%.2f"/>%s</svg>'
+            % (width_px, W, H, bg, fill, W, H, "".join(ps)))
 
 
-def concept_svg_mm(g):
+def concept_svg_mm(g, fill="#000000"):
     """SVG หน่วย mm จริง (เอาไปแปลง .ai / เข้าชุดชั้นตัดได้)"""
     if g is None or g.is_empty:
         return ""
@@ -375,9 +377,157 @@ def concept_svg_mm(g):
         d = ring(list(p.exterior.coords))
         for r in p.interiors:
             d += " " + ring(list(r.coords))
-        ps.append('<path d="%s" fill="#000000" fill-rule="evenodd"/>' % d)
+        ps.append('<path d="%s" fill="%s" fill-rule="evenodd"/>' % (d, fill))
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="%.3fmm" height="%.3fmm" '
             'viewBox="0 0 %.3f %.3f">%s</svg>' % (W, H, W, H, "".join(ps)))
+
+
+# ---------------------------------------------------------------- perspective 3D
+def _rings_of(poly):
+    rs = [list(poly.exterior.coords)]
+    for r in poly.interiors:
+        rs.append(list(r.coords))
+    return rs
+
+
+def perspective_svg(g, depth_mm=50.0, width_px=760,
+                    face="#cfd4dc", side="#98a0ac", edge="#5c6470",
+                    bg="#0f1319", dims=True, label=""):
+    """
+    ภาพ perspective (oblique extrude) — เห็น 'ขอบด้านข้าง' ตามความหนายกขอบจริง
+    คลาสใน SVG:  .cc-side (ผนังข้าง) · .cc-face (หน้า) · .cc-edge (เส้นขอบ)
+    -> frontend เปลี่ยนสี/ใส่เอฟเฟกต์ไฟได้สด ๆ
+    """
+    if g is None or g.is_empty:
+        return ""
+    comps = [p for p in (g.geoms if getattr(g, "geom_type", "") == "MultiPolygon" else [g])
+             if getattr(p, "geom_type", "") == "Polygon" and not p.is_empty]
+    if not comps:
+        return ""
+
+    d = max(0.0, float(depth_mm))
+    dvx = d * 0.60          # ทิศยื่นออก (ขวา-บน) — มุมมองมาตรฐานงานป้าย
+    dvy = -d * 0.42
+
+    b = g.bounds
+    W0, H0 = b[2] - b[0], b[3] - b[1]
+    m = max(W0, H0)
+    fs = max(m * 0.028, 7.0)
+    padL = m * 0.085 + fs * 2.6
+    padT = m * 0.055 + fs * 1.2
+    padB = m * 0.055 + fs * 2.8
+    padR = m * 0.03 + (fs * 8.5 if d > 0.01 else fs * 1.2)   # เผื่อป้าย "ยกขอบ x cm"
+
+    x0 = b[0] - padL
+    y0 = b[1] + min(0.0, dvy) - padT
+    W = W0 + max(0.0, dvx) + padL + padR
+    H = H0 + abs(dvy) + padT + padB
+
+    def T(x, y):
+        return (x - x0, y - y0)
+
+    def dpath(pts, close=True):
+        s = "M " + " L ".join("%.2f,%.2f" % T(px, py) for px, py in pts)
+        return s + (" Z" if close else "")
+
+    sw = max(m * 0.0016, 0.35)
+    out = []
+
+    # ---- ผนังข้าง (เฉพาะด้านที่คนดูเห็น) + แรเงาตามทิศ (ทำให้ดูมีมิติจริง)
+    if d > 0.01:
+        lx_, ly_ = 0.45, -0.89          # ทิศแสงหลัก (บน-ขวา)
+        quads = []
+        for p in comps:
+            cx, cy = p.centroid.x, p.centroid.y
+            for ring in _rings_of(p):
+                n = len(ring)
+                for i in range(n - 1):
+                    ax, ay = ring[i]
+                    bx, by = ring[i + 1]
+                    ex, ey = bx - ax, by - ay
+                    L = math.hypot(ex, ey)
+                    if L < 1e-9:
+                        continue
+                    nx, ny = ey / L, -ex / L
+                    mx, my = (ax + bx) / 2, (ay + by) / 2
+                    if (mx - cx) * nx + (my - cy) * ny < 0:
+                        nx, ny = -nx, -ny
+                    if nx * dvx + ny * dvy <= 1e-6:
+                        continue
+                    lam = nx * lx_ + ny * ly_                 # -1..1
+                    shade = 0.34 * (1.0 - (lam + 1.0) / 2.0)  # 0 (สว่าง) .. 0.34 (มืด)
+                    quads.append((((ax, ay), (bx, by),
+                                   (bx + dvx, by + dvy), (ax + dvx, ay + dvy)),
+                                  (mx - cx) * dvx + (my - cy) * dvy, shade))
+        quads.sort(key=lambda q: q[1])                        # ไกล -> ใกล้
+        # ผนังทั้งหมด: fill=สีข้าง + stroke สีเดียวกัน (ปิดรอยต่อ ไม่เป็นริ้ว)
+        for q, _z, _s in quads:
+            out.append('<path class="cc-side" d="%s" fill="%s" stroke="%s" '
+                       'stroke-width="%.2f" stroke-linejoin="round"/>'
+                       % (dpath(list(q)), side, side, sw * 1.1))
+        # เงา: ทับด้วยดำโปร่ง -> ไม่ผูกกับสี เปลี่ยนสีข้างได้อิสระ
+        for q, _z, s_ in quads:
+            if s_ > 0.015:
+                out.append('<path class="cc-shade" d="%s" fill="#000" opacity="%.3f" '
+                           'stroke="#000" stroke-opacity="%.3f" stroke-width="%.2f"/>'
+                           % (dpath(list(q)), s_, s_, sw * 1.1))
+
+    # ---- หน้าป้าย
+    for p in comps:
+        dd = " ".join(dpath(r) for r in _rings_of(p))
+        out.append('<path class="cc-face" d="%s" fill="%s" fill-rule="evenodd" '
+                   'stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
+                   % (dd, face, edge, sw))
+
+    # ---- เส้นบอกขนาด
+    if dims:
+        gcol = "#8b95a4"
+        lw = max(m * 0.0011, 0.3)
+        yb = b[3] + m * 0.048
+        xl = b[0] - m * 0.048
+        tick = m * 0.012
+        out.append('<g class="cc-dim" stroke="%s" stroke-width="%.2f" fill="none" '
+                   'stroke-linecap="round">'
+                   '<path d="%s"/><path d="%s"/><path d="%s"/><path d="%s"/>'
+                   '<path d="%s"/><path d="%s"/></g>'
+                   % (gcol, lw,
+                      dpath([(b[0], yb), (b[2], yb)], False),
+                      dpath([(b[0], yb - tick), (b[0], yb + tick)], False),
+                      dpath([(b[2], yb - tick), (b[2], yb + tick)], False),
+                      dpath([(xl, b[1]), (xl, b[3])], False),
+                      dpath([(xl - tick, b[1]), (xl + tick, b[1])], False),
+                      dpath([(xl - tick, b[3]), (xl + tick, b[3])], False)))
+        cxw = T((b[0] + b[2]) / 2, yb + fs * 1.25)
+        out.append('<text x="%.1f" y="%.1f" font-size="%.1f" fill="%s" text-anchor="middle" '
+                   'font-family="system-ui,sans-serif" font-weight="600">%.0f mm</text>'
+                   % (cxw[0], cxw[1], fs, gcol, W0))
+        cyh = T(xl - fs * 0.55, (b[1] + b[3]) / 2)
+        out.append('<text x="%.1f" y="%.1f" font-size="%.1f" fill="%s" text-anchor="middle" '
+                   'font-family="system-ui,sans-serif" font-weight="600" '
+                   'transform="rotate(-90 %.1f %.1f)">%.0f mm</text>'
+                   % (cyh[0], cyh[1], fs, gcol, cyh[0], cyh[1], H0))
+        if d > 0.01:
+            ex_, ey_ = b[2], b[1]
+            out.append('<g class="cc-dim" stroke="%s" stroke-width="%.2f" fill="none" '
+                       'stroke-linecap="round"><path d="%s"/></g>'
+                       % (gcol, lw, dpath([(ex_, ey_), (ex_ + dvx, ey_ + dvy)], False)))
+            px, py = T(ex_ + dvx + m * 0.015, ey_ + dvy + fs * 0.35)
+            out.append('<text x="%.1f" y="%.1f" font-size="%.1f" fill="%s" '
+                       'font-family="system-ui,sans-serif" font-weight="600">ยกขอบ %s cm</text>'
+                       % (px, py, fs, gcol, ("%.1f" % (d / 10.0)).rstrip("0").rstrip(".")))
+        if label:
+            lx2, ly2 = T(b[0] - m * 0.045, b[3] + m * 0.048 + fs * 2.6)
+            out.append('<text x="%.1f" y="%.1f" font-size="%.1f" fill="%s" font-weight="700" '
+                       'font-family="system-ui,sans-serif">%s</text>'
+                       % (lx2, ly2, fs * 0.95, gcol, _esc(label)))
+
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="%dpx" viewBox="0 0 %.2f %.2f">'
+            '<rect class="cc-bg" width="%.2f" height="%.2f" fill="%s"/>%s</svg>'
+            % (width_px, W, H, W, H, bg, "".join(out)))
+
+
+def _esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 # ---------------------------------------------------------------- generate
