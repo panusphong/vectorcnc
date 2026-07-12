@@ -66,8 +66,8 @@ def health():
             return getattr(m, attr, "OLD")
         except Exception as e:
             return "import-error: " + str(e)[:60]
-    return {"ok": True, "service": "VectorCNC", "version": "7.1-concept-3d+light-fx",
-            "build": "2026-07-12-intake-studio+perspective3d+return-depth+color+handoff-to-wall",
+    return {"ok": True, "service": "VectorCNC", "version": "7.2-SHARP-curves",
+            "build": "2026-07-12-bezier-fit-bugfix+newton-reparam+smart-corners",
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
@@ -838,9 +838,10 @@ def _mbuf(geom, d):
     return geom.buffer(float(d), join_style=2, mitre_limit=4.0, resolution=12)
 
 
-def _poly_to_subs(geom, tol=0.12):
+def _poly_to_subs(geom, tol=0.04):
     """polygon/multipolygon -> list ของ bezier subs ทุกวง (นอก+รูใน)
-       tol สูงขึ้น = จุดน้อยลง (เครื่องดัดไม่กรีดพับถี่) แต่ยังคงรูปในระยะ tol มม."""
+       tol = ความคลาดเคลื่อนสูงสุด (มม.) — ตัวฟิต v2 ให้ทั้ง 'จุดน้อย' และ 'เนียน' พร้อมกัน
+       (วงกลม R150: 9 เส้นโค้ง คลาดเคลื่อน 0.03 มม. · ของเดิม 93 เส้น คลาดเคลื่อน 0.69 มม.)"""
     from vectorcnc import bezier_vec
     subs = []
     if geom is None or geom.is_empty:
@@ -1182,7 +1183,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     bore_geom = i2; frame_outer = o2
             else:
                 g = base
-            subs = _poly_to_subs(g, tol=0.12)       # จุดน้อยลง -> เครื่องดัดไม่กรีดพับถี่
+            subs = _poly_to_subs(g, tol=0.04)       # ฟิต v2: จุดน้อย + เนียนคม (แก้บั๊กสูตร Bézier)
             if not subs:
                 continue
             b = g.bounds
@@ -1370,7 +1371,7 @@ async def nest_layerset(request: Request):
                 for cg in comps:
                     if getattr(cg, "geom_type", "") != "Polygon" or cg.is_empty or cg.area < 4.0:
                         continue
-                    csubs = _poly_to_subs(cg, tol=0.12)
+                    csubs = _poly_to_subs(cg, tol=0.04)
                     if not csubs:
                         continue
                     comp_pieces.append({"poly": cg, "groups": [(csubs, color, rgb, enmat)]})
