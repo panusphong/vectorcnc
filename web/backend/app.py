@@ -66,8 +66,8 @@ def health():
             return getattr(m, attr, "OLD")
         except Exception as e:
             return "import-error: " + str(e)[:60]
-    return {"ok": True, "service": "VectorCNC", "version": "7.0-intake+producible+concept",
-            "build": "2026-07-12-pdf-asset-extractor+producibility-gate+sales-brief+ai-concept-kit",
+    return {"ok": True, "service": "VectorCNC", "version": "7.1-concept-3d+light-fx",
+            "build": "2026-07-12-intake-studio+perspective3d+return-depth+color+handoff-to-wall",
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
@@ -2400,6 +2400,53 @@ async def api_concept(request: Request):
                             status_code=400)
 
 
+@app.post("/api/concept-3d")
+async def concept_3d(request: Request):
+    """ภาพ perspective ของคอนเซปต์ที่เลือก — เห็นขอบด้านข้างตามความหนายกขอบที่ user กำหนด"""
+    d = await request.json()
+    name = str(d.get("name", "")).strip()
+    if not name:
+        return JSONResponse({"error": "ยังไม่ได้ใส่ชื่อร้าน"}, status_code=400)
+    sub = str(d.get("sub", "")).strip()
+    style = str(d.get("style", "bold-modern"))
+    layout = str(d.get("layout", "plain"))
+    cap = float(d.get("cap_mm", 200) or 200)
+    ret_cm = float(d.get("return_cm", 5) or 0)
+    face = str(d.get("face_color", "") or "#cfd4dc")
+    side = str(d.get("side_color", "") or "")
+    bg = str(d.get("bg", "") or "#0f1319")
+    label = str(d.get("label", "") or "")
+    try:
+        from vectorcnc import concept as CC
+        cs = CC.generate(name, sub=sub, styles=[style], layouts=[layout], cap_mm=cap)
+        if not cs:
+            return JSONResponse({"error": "สร้างไม่สำเร็จ"}, status_code=400)
+        g = cs[0]["geom"]
+        if not side:
+            side = _shade_hex(face, 0.72)      # สีข้าง = สีหน้าเข้มลง (ถ้าไม่ระบุ)
+        svg = CC.perspective_svg(g, depth_mm=ret_cm * 10.0, face=face, side=side,
+                                 bg=bg, label=label)
+        b = g.bounds
+        return {"svg3d": svg, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                "depth_cm": ret_cm, "font": cs[0]["font"]}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+
+
+def _shade_hex(hx, k):
+    """ทำสีให้เข้ม/สว่างขึ้น k เท่า (ใช้ทำสีขอบข้างจากสีหน้า)"""
+    try:
+        h = str(hx).lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        f = lambda v: max(0, min(255, int(round(v * float(k)))))
+        return "#%02x%02x%02x" % (f(r), f(g), f(b))
+    except Exception:
+        return "#98a0ac"
+
+
 @app.post("/api/concept-use")
 async def concept_use(request: Request):
     """เลือกคอนเซปต์ 1 อัน -> ได้ .ai + .svg (mm) เอาไปเข้าชุดชั้นตัด / Nesting ต่อได้ทันที"""
@@ -2409,13 +2456,14 @@ async def concept_use(request: Request):
     style = str(d.get("style", "bold-modern"))
     layout = str(d.get("layout", "plain"))
     cap = float(d.get("cap_mm", 200) or 200)
+    fill = str(d.get("fill", "") or "#000000")
     try:
         from vectorcnc import concept as CC
         cs = CC.generate(name, sub=sub, styles=[style], layouts=[layout], cap_mm=cap)
         if not cs:
             return JSONResponse({"error": "สร้างไม่สำเร็จ"}, status_code=400)
         g = cs[0]["geom"]
-        svg_mm = CC.concept_svg_mm(g)
+        svg_mm = CC.concept_svg_mm(g, fill=fill)
         ai_b64 = ""
         try:
             import cairosvg
