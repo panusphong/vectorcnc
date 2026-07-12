@@ -522,6 +522,36 @@ select.numin{cursor:pointer}
         </div>
       </div>
 
+      <!-- 🏢 พรีวิวบนหน้าร้านจริง (ในหน้าเดียว) -->
+      <div class="ik-card" id="ikMock" style="display:none">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+          <h4 style="margin:0">🏢 พรีวิวบนหน้าร้านจริง</h4>
+          <span class="ik-msg" id="ikMockMsg" style="padding:0"></span>
+        </div>
+        <div class="ik-sub">ใส่ภาพหน้าร้าน/หน้าตึกของลูกค้า + ขนาดผนังจริง → เห็นภาพจริงทันที · <b>ลากป้ายเพื่อจัดตำแหน่ง</b></div>
+        <div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:12px">
+          <div><label>ภาพหน้าร้าน / ตึก</label>
+            <input type="file" id="ikMkBg" accept="image/*" style="font-size:12px;padding:5px">
+            <button class="fxc" id="ikMkBgX" style="margin-top:5px">✕ ใช้สีผนังแทน</button></div>
+          <div><label>สีผนัง (ถ้าไม่มีภาพ)</label>
+            <input type="color" id="ikMkWall" value="#e8e2d8" style="width:100%;height:34px;padding:2px;border-radius:8px;cursor:pointer"></div>
+          <div><label>ผนัง กว้าง (ซม.)</label><input type="number" id="ikMkWW" value="400" step="10" min="30"></div>
+          <div><label>ผนัง สูง (ซม.)</label><input type="number" id="ikMkWH" value="300" step="10" min="30"></div>
+          <div><label>ป้าย กว้าง (ซม.) <b id="ikMkSWv" style="color:#0d9488"></b></label>
+            <input type="number" id="ikMkSW" value="120" step="5" min="5">
+            <input type="range" id="ikMkSWr" min="5" max="100" value="30" style="width:100%;margin-top:5px">
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">แถบเลื่อน = % ของความกว้างผนัง</div></div>
+        </div>
+        <div id="ikMkWrap" style="border-radius:12px;overflow:hidden;background:#0b0e13;position:relative">
+          <canvas id="ikMkCv" style="width:100%;display:block;cursor:grab"></canvas>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">
+          <button class="ik-btn" id="ikMkDl">⬇ บันทึกภาพพรีวิว (PNG)</button>
+          <button class="ik-btn alt" id="ikMkCenter">⊹ จัดกลาง</button>
+          <span class="ik-msg" id="ikMkInfo" style="padding:0"></span>
+        </div>
+      </div>
+
       <div id="ikCcOut"></div>
     </div>
 
@@ -2187,7 +2217,8 @@ function fxStage(svg){
 }
 var CC_SEL=-1, CC_3DBUSY=false;
 function ccRender(){
-  if(!CC_LIST.length){$('ikCcOut').innerHTML='';$('ikFx').style.display='none';$('ikCc3d').style.display='none';return;}
+  if(!CC_LIST.length){$('ikCcOut').innerHTML='';$('ikFx').style.display='none';
+    $('ikCc3d').style.display='none';$('ikMock').style.display='none';return;}
   $('ikFx').style.display='block';
   var dark=(FX.mode!=='off');
   var wrapBg=dark?'#0b0e13':'#fff', bd=dark?'#1e293b':'#e2e8f0';
@@ -2234,15 +2265,16 @@ function cc3d(){
     else if(FX.mode==='back'){var L2=fxLight(FX.temp);
       glow='filter:drop-shadow(0 0 14px '+fxA(L2,.75)+') drop-shadow(0 0 40px '+fxA(L2,.45)+')';}
     $('ikCc3dStage').innerHTML='<div style="width:100%;'+glow+'">'+svg+'</div>';
+    try{mkLoadSign();}catch(_e){}          // อัปเดตพรีวิวหน้าร้านด้วย
   }).catch(function(e){CC_3DBUSY=false;$('ikCc3dMsg').textContent='❌ '+e;});
 }
 // --- ส่งต่อ: ดาวน์โหลด / วางบนผนัง / ชุดชั้นตัด
-function ccUse(cb){
+function ccUse(cb,fillOverride){
   if(CC_SEL<0){alert('เลือกแบบก่อนนะ');return;}
   var c=CC_LIST[CC_SEL];
   fetch(API+'/api/concept-use',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name:CC_NM,sub:CC_SUB,style:c.style,layout:c.layout,
-      cap_mm:parseFloat($('ikCcCap').value||200),fill:FX.art})})
+      cap_mm:parseFloat($('ikCcCap').value||200),fill:(fillOverride||FX.art)})})
   .then(function(r){return r.json();}).then(function(k){
     if(k.error){alert('❌ '+k.error);return;}
     cb(k,c);
@@ -2273,6 +2305,162 @@ if($('ikCcLayer'))$('ikCcLayer').onclick=function(){ccUse(function(k,c){
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(e){alert('ส่งเข้าชุดชั้นตัดไม่สำเร็จ — ดาวน์โหลด .svg แล้วอัปเองได้นะ\n'+e);}
 });};
+
+/* ---------- 🏢 พรีวิวบนหน้าร้านจริง (canvas) ---------- */
+var MK={bg:null,sign:null,sw_mm:0,sh_mm:0,x:0.5,y:0.4,drag:false,dx:0,dy:0};
+function mkSvgImg(svgTxt,cb){
+  var m=/viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svgTxt||'');
+  if(!m){cb(null);return;}
+  var W=parseFloat(m[1]),H=parseFloat(m[2]);
+  var s=svgTxt.replace(/width="[^"]*"/,'width="'+Math.round(W*4)+'"')
+              .replace(/height="[^"]*"/,'height="'+Math.round(H*4)+'"');
+  var im=new Image();
+  im.onload=function(){cb(im,W,H);};
+  im.onerror=function(){cb(null);};
+  im.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));
+}
+function mkLoadSign(){
+  if(CC_SEL<0)return;
+  $('ikMock').style.display='block';
+  $('ikMockMsg').textContent='กำลังโหลดแบบ...';
+  var lit=(FX.mode==='front');
+  ccUse(function(k){
+    mkSvgImg(k.svg_mm||'',function(im,W,H){
+      if(!im){$('ikMockMsg').textContent='โหลดแบบไม่สำเร็จ';return;}
+      MK.sign=im; MK.sw_mm=W; MK.sh_mm=H;
+      $('ikMockMsg').textContent='';
+      // ตั้งความกว้างป้ายเริ่มต้น = ขนาดจริงของแบบ
+      if(!$('ikMkSW').dataset.touched){
+        $('ikMkSW').value=Math.round(W/10);
+        mkSyncSlider();
+      }
+      mkDraw();
+    });
+  }, lit?fxLight(FX.temp):FX.art);
+}
+function mkSyncSlider(){
+  var ww=parseFloat($('ikMkWW').value||400), sw=parseFloat($('ikMkSW').value||120);
+  var pct=Math.round(100*sw/Math.max(ww,1));
+  $('ikMkSWr').value=Math.max(5,Math.min(100,pct));
+  $('ikMkSWv').textContent='('+pct+'% ของผนัง)';
+}
+function mkDraw(){
+  var cv=$('ikMkCv'); if(!cv)return;
+  var ww=Math.max(30,parseFloat($('ikMkWW').value||400));
+  var wh=Math.max(30,parseFloat($('ikMkWH').value||300));
+  var CW=1400, CH=Math.round(CW*wh/ww);
+  cv.width=CW; cv.height=CH;
+  var g=cv.getContext('2d');
+  // --- พื้นหลัง
+  if(MK.bg){
+    var ar=MK.bg.width/MK.bg.height, cr=CW/CH, sw,sh,sx,sy;
+    if(ar>cr){sh=MK.bg.height; sw=sh*cr; sx=(MK.bg.width-sw)/2; sy=0;}
+    else{sw=MK.bg.width; sh=sw/cr; sx=0; sy=(MK.bg.height-sh)/2;}
+    g.drawImage(MK.bg,sx,sy,sw,sh,0,0,CW,CH);
+  }else{
+    g.fillStyle=$('ikMkWall').value||'#e8e2d8'; g.fillRect(0,0,CW,CH);
+    g.strokeStyle='rgba(0,0,0,.05)'; g.lineWidth=1;
+    for(var i=1;i<10;i++){g.beginPath();g.moveTo(0,CH*i/10);g.lineTo(CW,CH*i/10);g.stroke();}
+  }
+  if(!MK.sign){$('ikMkInfo').textContent='';return;}
+  // --- ป้าย (สเกลจริง)
+  var swcm=Math.max(2,parseFloat($('ikMkSW').value||120));
+  var shcm=swcm*(MK.sh_mm/Math.max(MK.sw_mm,1e-6));
+  var pxcm=CW/ww;
+  var W=swcm*pxcm, H=shcm*pxcm;
+  var x=MK.x*CW-W/2, y=MK.y*CH-H/2;
+  var L=fxLight(FX.temp);
+  g.save();
+  if(FX.mode==='front'||FX.mode==='back'){
+    g.shadowColor=L; g.shadowBlur=Math.max(12,W*0.05);
+    g.drawImage(MK.sign,x,y,W,H);
+    g.shadowBlur=Math.max(26,W*0.11); g.drawImage(MK.sign,x,y,W,H);
+  }
+  g.shadowBlur=0;
+  g.drawImage(MK.sign,x,y,W,H);
+  g.restore();
+  // --- เส้นจับขนาด กว้าง × สูง (สเกลจริง)
+  var R='#e11d48', fs=Math.max(15,CW*0.014);
+  g.strokeStyle=R; g.fillStyle=R; g.lineWidth=Math.max(1.6,CW*0.0016);
+  g.font='700 '+fs+'px system-ui,sans-serif';
+  function arrow(x1,y1,x2,y2){
+    var a=Math.atan2(y2-y1,x2-x1), s=fs*0.55;
+    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+    [[x1,y1,a],[x2,y2,a+Math.PI]].forEach(function(p){
+      g.beginPath(); g.moveTo(p[0],p[1]);
+      g.lineTo(p[0]+s*Math.cos(p[2]-0.4), p[1]+s*Math.sin(p[2]-0.4));
+      g.lineTo(p[0]+s*Math.cos(p[2]+0.4), p[1]+s*Math.sin(p[2]+0.4));
+      g.closePath(); g.fill();
+    });
+  }
+  var gap=fs*1.5;
+  arrow(x, y+H+gap, x+W, y+H+gap);                  // กว้าง
+  arrow(x-gap, y, x-gap, y+H);                      // สูง
+  g.beginPath();
+  g.moveTo(x,y+H); g.lineTo(x,y+H+gap*1.35);
+  g.moveTo(x+W,y+H); g.lineTo(x+W,y+H+gap*1.35);
+  g.moveTo(x,y); g.lineTo(x-gap*1.35,y);
+  g.moveTo(x,y+H); g.lineTo(x-gap*1.35,y+H);
+  g.stroke();
+  function tag(t,cx,cy){
+    var w=g.measureText(t).width+fs*0.7;
+    g.fillStyle='rgba(255,255,255,.92)';
+    g.fillRect(cx-w/2, cy-fs*0.82, w, fs*1.35);
+    g.strokeStyle=R; g.lineWidth=1.2; g.strokeRect(cx-w/2, cy-fs*0.82, w, fs*1.35);
+    g.fillStyle=R; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(t, cx, cy-fs*0.13);
+    g.strokeStyle=R; g.lineWidth=Math.max(1.6,CW*0.0016);
+  }
+  tag(swcm.toFixed(0)+' ซม.', x+W/2, y+H+gap+fs*0.1);
+  g.save(); g.translate(x-gap-fs*0.2, y+H/2); g.rotate(-Math.PI/2);
+  tag(shcm.toFixed(0)+' ซม.', 0, 0); g.restore();
+  // --- แถบสรุปมุมล่าง
+  g.textAlign='left'; g.textBaseline='alphabetic';
+  var txt='ผนัง '+ww+' × '+wh+' ซม.   |   ป้าย '+swcm.toFixed(0)+' × '+shcm.toFixed(0)+' ซม.   |   พื้นที่ป้าย '+((swcm*shcm)/10000).toFixed(2)+' ตร.ม.';
+  g.font='600 '+(fs*0.85)+'px system-ui,sans-serif';
+  var tw=g.measureText(txt).width+fs;
+  g.fillStyle='rgba(15,19,25,.82)'; g.fillRect(0, CH-fs*2.1, tw, fs*2.1);
+  g.fillStyle='#e2e8f0'; g.fillText(txt, fs*0.5, CH-fs*0.75);
+  $('ikMkInfo').innerHTML='ป้าย <b>'+swcm.toFixed(0)+' × '+shcm.toFixed(0)+' ซม.</b> · '+((swcm*shcm)/10000).toFixed(2)+' ตร.ม.';
+}
+function mkWire(){
+  var cv=$('ikMkCv'); if(!cv)return;
+  ['ikMkWW','ikMkWH'].forEach(function(id){ if($(id))$(id).oninput=function(){mkSyncSlider();mkDraw();}; });
+  if($('ikMkWall'))$('ikMkWall').oninput=mkDraw;
+  if($('ikMkSW'))$('ikMkSW').oninput=function(){this.dataset.touched='1';mkSyncSlider();mkDraw();};
+  if($('ikMkSWr'))$('ikMkSWr').oninput=function(){
+    var ww=parseFloat($('ikMkWW').value||400);
+    $('ikMkSW').value=Math.round(ww*parseFloat(this.value)/100);
+    $('ikMkSW').dataset.touched='1'; mkSyncSlider(); mkDraw();
+  };
+  if($('ikMkBg'))$('ikMkBg').onchange=function(){
+    var f=this.files[0]; if(!f)return;
+    var r=new FileReader();
+    r.onload=function(){var im=new Image(); im.onload=function(){MK.bg=im;mkDraw();}; im.src=r.result;};
+    r.readAsDataURL(f);
+  };
+  if($('ikMkBgX'))$('ikMkBgX').onclick=function(){MK.bg=null;$('ikMkBg').value='';mkDraw();};
+  if($('ikMkCenter'))$('ikMkCenter').onclick=function(){MK.x=0.5;MK.y=0.4;mkDraw();};
+  if($('ikMkDl'))$('ikMkDl').onclick=function(){
+    try{cv.toBlob(function(b){
+      var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+      a.download='mockup_'+(CC_NM||'sign')+'.png'; a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);},1500);
+    },'image/png');}catch(e){alert('บันทึกไม่สำเร็จ: '+e);}
+  };
+  function pos(e){
+    var r=cv.getBoundingClientRect();
+    var t=(e.touches&&e.touches[0])||e;
+    return {x:(t.clientX-r.left)/r.width, y:(t.clientY-r.top)/r.height};
+  }
+  function down(e){ if(!MK.sign)return; MK.drag=true; var p=pos(e); MK.dx=p.x-MK.x; MK.dy=p.y-MK.y; cv.style.cursor='grabbing'; }
+  function move(e){ if(!MK.drag)return; e.preventDefault(); var p=pos(e);
+    MK.x=Math.max(0,Math.min(1,p.x-MK.dx)); MK.y=Math.max(0,Math.min(1,p.y-MK.dy)); mkDraw(); }
+  function up(){ MK.drag=false; cv.style.cursor='grab'; }
+  cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  cv.addEventListener('touchstart',down,{passive:true}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',up);
+}
+mkWire();
 
 function fxWire(){
   ['ikFxMode','ikFxTemp'].forEach(function(gid){
