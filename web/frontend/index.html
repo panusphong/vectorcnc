@@ -2138,7 +2138,10 @@ function $(id){return document.getElementById(id);}
         '<td style="color:#94a3b8;white-space:nowrap">'+(x.ref||'เข้าตรง')+' · '+(x.device||'')+'</td>'+
         '<td class="n">'+(x.dur?fmtSec(x.dur):'')+'</td></tr>';
     }).join('') : '<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';
-    q('swWhen').textContent='อัปเดต '+new Date().toLocaleTimeString('th-TH');
+    var src=(j.source==='sheet')
+      ? '<b style="color:#16a34a">📗 Google Sheet (ถาวร)</b>'
+      : '<b style="color:#f59e0b">💾 ในเครื่อง (รีเซ็ตตอน deploy)</b>';
+    q('swWhen').innerHTML='อัปเดต '+new Date().toLocaleTimeString('th-TH')+' · แหล่งข้อมูล: '+src;
   }
   function card(k,v,s,raw){
     return '<div class="sw-c"><div class="k">'+k+'</div><div class="v">'+
