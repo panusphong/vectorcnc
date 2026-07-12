@@ -2401,6 +2401,104 @@ async def api_concept(request: Request):
                             status_code=400)
 
 
+@app.post("/api/geom3d")
+async def api_geom3d(file: UploadFile = File(...),
+                     real_width_mm: float = Form(600.0),
+                     real_height_mm: float = Form(0.0),
+                     n_colors: int = Form(6),
+                     max_pts: int = Form(6000)):
+    """ส่ง 'รูปทรงจริง' (วงนอก+รูใน หน่วย มม.) ให้ frontend เรนเดอร์ 3 มิติแบบหมุนได้สด ๆ"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        b = full.bounds
+        W = b[2] - b[0]
+        H = b[3] - b[1]
+        polys = list(full.geoms) if getattr(full, "geom_type", "") == "MultiPolygon" else [full]
+
+        def _cnt(gs):
+            n = 0
+            for p in gs:
+                n += len(p.exterior.coords)
+                for r in p.interiors:
+                    n += len(r.coords)
+            return n
+
+        # ลดจุดจนพอไหวสำหรับเรนเดอร์สด (ภาพพรีวิวเท่านั้น — ไฟล์ตัดไม่เกี่ยว)
+        tol = max(W, H) * 0.0008
+        gs = polys
+        for _ in range(8):
+            if _cnt(gs) <= int(max_pts):
+                break
+            tol *= 1.6
+            gs2 = []
+            for p in polys:
+                q = p.simplify(tol, preserve_topology=True)
+                if q.geom_type == "Polygon" and not q.is_empty:
+                    gs2.append(q)
+                elif q.geom_type == "MultiPolygon":
+                    gs2.extend([x for x in q.geoms if not x.is_empty])
+            gs = gs2 or gs
+        out = []
+        for p in gs:
+            if getattr(p, "geom_type", "") != "Polygon" or p.is_empty or p.area < 1.0:
+                continue
+            ext = [[round(x - b[0], 2), round(y - b[1], 2)] for x, y in p.exterior.coords]
+            holes = []
+            for r in p.interiors:
+                if abs(r.length) < 1.0:
+                    continue
+                holes.append([[round(x - b[0], 2), round(y - b[1], 2)] for x, y in r.coords])
+            out.append({"ext": ext, "holes": holes})
+        if not out:
+            return JSONResponse({"error": "ไม่พบรูปทรง"}, status_code=400)
+        return {"polys": out, "w_mm": round(W, 1), "h_mm": round(H, 1),
+                "points": _cnt(gs)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/perspective")
+async def api_perspective(file: UploadFile = File(...),
+                          real_width_mm: float = Form(600.0),
+                          real_height_mm: float = Form(0.0),
+                          return_cm: float = Form(5.0),
+                          face_color: str = Form("#cfd4dc"),
+                          side_color: str = Form(""),
+                          bg: str = Form("#0f1319"),
+                          label: str = Form(""),
+                          n_colors: int = Form(6)):
+    """ภาพ perspective จาก 'รูปทรงจริง' ของไฟล์งาน — ผนังข้างวิ่งตามรูปตัวอักษร (ไม่ใช่กล่องแปะรูป)"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import concept as CC
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        face = face_color or "#cfd4dc"
+        side = side_color or _shade_hex(face, 0.72)
+        svg = CC.perspective_svg(full, depth_mm=float(return_cm) * 10.0,
+                                 face=face, side=side, bg=(bg or "#0f1319"),
+                                 label=label, width_px=900)
+        b = full.bounds
+        return {"svg3d": svg, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                "depth_cm": float(return_cm)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
+                            status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @app.post("/api/concept-3d")
 async def concept_3d(request: Request):
     """ภาพ perspective ของคอนเซปต์ที่เลือก — เห็นขอบด้านข้างตามความหนายกขอบที่ user กำหนด"""
