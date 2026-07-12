@@ -2413,6 +2413,11 @@ _AN_DB = os.environ.get("ANALYTICS_DB",
                         os.path.join(os.environ.get("DATA_DIR", "/tmp"), "vectorcnc_stats.db"))
 TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
+# ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
+#   ฝังไว้ตรงนี้เลย ไม่ต้องตั้ง env บน Render (ถ้าอยากเปลี่ยน ตั้ง env ANALYTICS_WEBHOOK ทับได้)
+ANALYTICS_SHEET_URL = ("https://script.google.com/macros/s/"
+                       "AKfycbwY0lih8PDlfgM4eA6EQr36dVv3e7xgOMU9WW9fAlV_Qry2b41-HFqPAykpXTUeZ39Q/exec")
+
 
 def _an_conn():
     c = sqlite3.connect(_AN_DB, timeout=8)
@@ -2449,8 +2454,8 @@ async def api_track(request: Request):
             c.close()
     except Exception:
         return {"ok": False}
-    # ส่งต่อ Google Sheet ให้เก็บถาวร (ถ้าตั้ง env ANALYTICS_WEBHOOK)
-    hook = os.environ.get("ANALYTICS_WEBHOOK", "")
+    # ส่งต่อ Google Sheet ให้เก็บถาวร (ไม่หายตอน deploy) — แก้ทับได้ด้วย env ANALYTICS_WEBHOOK
+    hook = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
     if hook:
         try:
             import urllib.request
@@ -2465,9 +2470,40 @@ async def api_track(request: Request):
     return {"ok": True}
 
 
+_AN_CACHE = {"t": 0.0, "data": None}
+
+
+def _stats_from_sheet(days):
+    """อ่านสถิติสะสมจาก Google Sheet (แหล่งจริง — ไม่หายตอน deploy)"""
+    hook = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
+    if not hook:
+        return None
+    import time as _t
+    if _AN_CACHE["data"] and (_t.time() - _AN_CACHE["t"]) < 60:
+        return _AN_CACHE["data"]
+    try:
+        import urllib.request
+        import urllib.parse
+        u = hook + ("&" if "?" in hook else "?") + urllib.parse.urlencode(
+            {"api": "stats", "days": int(days)})
+        with urllib.request.urlopen(u, timeout=12) as r:
+            j = json.loads(r.read().decode("utf-8"))
+        if j.get("ok"):
+            j["source"] = "sheet"
+            _AN_CACHE["t"] = _t.time()
+            _AN_CACHE["data"] = j
+            return j
+    except Exception:
+        pass
+    return None
+
+
 @app.get("/api/stats")
 def api_stats(days: int = 30):
-    """สรุปสถิติสะสม + ราย 'วัน/เมนู/แหล่งที่มา' + เซสชันล่าสุด"""
+    """สรุปสถิติสะสม — อ่านจาก Google Sheet ก่อน (ถาวร) ถ้าไม่ได้ค่อยใช้ฐานข้อมูลในเครื่อง"""
+    j = _stats_from_sheet(days)
+    if j:
+        return j
     try:
         with _AN_LOCK:
             c = _an_conn()
@@ -2505,7 +2541,7 @@ def api_stats(days: int = 30):
                 "SELECT ts,account,ev,menu,refhost,device,dur FROM ev "
                 "ORDER BY id DESC LIMIT 40").fetchall()]
             c.close()
-        return {"ok": True, "totals": {
+        return {"ok": True, "source": "local", "totals": {
                     "accounts": tot_acc, "sessions": tot_ses, "views": tot_view,
                     "avg_sec": avg_dur, "total_sec": tot_dur,
                     "today_sessions": t_ses, "today_accounts": t_acc},
