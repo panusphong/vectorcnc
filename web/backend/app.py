@@ -2506,21 +2506,24 @@ async def api_track(request: Request):
     except Exception:
         ok_local = False        # ⚠️ เขียนในเครื่องพลาด ก็ยังต้องยิงเข้าชีตอยู่ดี
 
-    ok_sheet = _push_sheet(row)
-    return {"ok": True, "local": ok_local, "sheet": ok_sheet}
+    _push_sheet(row)                       # ยิงเข้าชีตแบบ background (ไม่หน่วงหน้าเว็บ)
+    return {"ok": True, "local": ok_local}
 
 
 def _sheet_hook():
-    return os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
+    """URL Apps Script — ล้างช่องว่าง/ขึ้นบรรทัดใหม่ที่ติดมาตอน copy-paste ใส่ Render
+       (ถ้ามี \n ปนอยู่ urllib จะโยน InvalidURL ทันที -> เขียนชีตไม่ได้เลย)"""
+    u = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL or ""
+    return "".join(str(u).split())          # ตัด space/tab/newline ทั้งหมด
 
 
 def _push_sheet(row, blocking=False):
     """ยิง event เข้า Google Sheet (Apps Script)
-       แก้บั๊ก: เดิม timeout 3 วิ -> Apps Script ตอบไม่ทัน (มี redirect) -> ไม่มีแถวลงชีตเลย
-       ตอนนี้: ยิงใน background thread + timeout 20 วิ -> ไม่หน่วง response และไม่หลุด"""
+       - เดิม timeout 3 วิ -> Apps Script ตอบไม่ทัน (มี redirect) -> ไม่มีแถวลงชีต
+       - ตอนนี้ ยิงใน background thread + timeout 25 วิ + ตาม redirect เอง"""
     hook = _sheet_hook()
     if not hook:
-        return False
+        return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
 
     def _go():
         try:
@@ -2531,31 +2534,53 @@ def _push_sheet(row, blocking=False):
                                          "ref": row[7], "device": row[9],
                                          "browser": row[10], "dur": row[11]})
             url = hook + ("&" if "?" in hook else "?") + qs
-            req = urllib.request.Request(url, headers={"User-Agent": "VectorCNC/1.0"})
-            with urllib.request.urlopen(req, timeout=20) as r:   # Apps Script ช้าได้ถึง ~10 วิ
-                return r.read(200)
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                body = r.read(400).decode("utf-8", "ignore")
+                if '"ok":true' in body.replace(" ", ""):
+                    return True, "ok"
+                return False, ("Apps Script ตอบกลับผิดปกติ: " + body[:200])
         except Exception as e:
-            print("[analytics] push failed:", e, flush=True)
-            return None
+            msg = "%s: %s" % (type(e).__name__, e)
+            print("[analytics] push failed:", msg, flush=True)
+            return False, msg
 
     if blocking:
-        return _go() is not None
-    threading.Thread(target=_go, daemon=True).start()
-    return True
+        return _go()
+    threading.Thread(target=lambda: _go(), daemon=True).start()
+    return True, "sent"
 
 
 @app.get("/api/track-test")
 def api_track_test():
-    """ทดสอบว่าเขียนลง Google Sheet ได้จริงไหม (เปิดใน browser แล้วดูผล)"""
+    """ทดสอบว่าเขียนลง Google Sheet ได้จริงไหม + บอกสาเหตุถ้าไม่ได้"""
     now = datetime.now(TZ7)
     row = (now.isoformat(timespec="seconds"), now.strftime("%Y-%m-%d"),
            "TEST", "test", "visit", "/", "ทดสอบระบบสถิติ", "", "(ทดสอบ)",
            "desktop", "Test", 0)
-    ok = _push_sheet(row, blocking=True)
-    return {"ok": bool(ok), "hook_set": bool(_sheet_hook()),
-            "hook": (_sheet_hook()[:60] + "...") if _sheet_hook() else "",
+    hook = _sheet_hook()
+    ok, detail = _push_sheet(row, blocking=True)
+    hint = ""
+    if not ok:
+        d = str(detail)
+        if "InvalidURL" in d or "control characters" in d:
+            hint = "URL ใน ANALYTICS_WEBHOOK มีตัวขึ้นบรรทัด/ช่องว่างปน — ลบแล้ววางใหม่ให้เป็นบรรทัดเดียว"
+        elif "HTTP Error 401" in d or "HTTP Error 403" in d or "sign in" in d.lower() or "<html" in d.lower():
+            hint = "Apps Script ยังไม่เปิดสาธารณะ — Deploy ใหม่โดยตั้ง Who has access = Anyone"
+        elif "HTTP Error 500" in d:
+            hint = "โค้ดใน Apps Script พัง — เปิด Apps Script > Executions ดู error"
+        elif "timed out" in d.lower():
+            hint = "Apps Script ตอบช้าเกินไป — ลองกดซ้ำอีกครั้ง"
+        else:
+            hint = "เช็ก Deploy > Manage deployments ว่าเป็น Web app / Anyone และกด New version แล้ว"
+    return {"ok": bool(ok),
+            "hook_len": len(hook),
+            "hook_ok": hook.startswith("https://script.google.com/") and hook.endswith("/exec"),
+            "hook_tail": hook[-14:] if hook else "",
+            "detail": str(detail)[:400],
+            "hint": hint,
             "msg": ("✅ เขียนลงชีตสำเร็จ — ไปดูแท็บ Events ได้เลย" if ok
-                    else "❌ เขียนลงชีตไม่สำเร็จ — เช็ก Apps Script (Deploy: Anyone) และ ANALYTICS_WEBHOOK")}
+                    else "❌ เขียนลงชีตไม่สำเร็จ")}
 
 
 _AN_CACHE = {"t": 0.0, "data": None}
