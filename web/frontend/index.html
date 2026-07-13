@@ -2128,6 +2128,8 @@ function $(id){return document.getElementById(id);}
     try{
       var h=new URL(r).hostname.replace(/^www\./,'');
       if(h===location.hostname)return '';       // เดินภายในเว็บเอง
+      // ตัดโดเมนของ Google Apps Script เอง (มาจากหน้าทดสอบ ไม่ใช่คนเข้าจริง)
+      if(/googleusercontent\.com$|script\.google\.com$/i.test(h))return '';
       return h;
     }catch(e){return '';}
   }
@@ -2176,6 +2178,25 @@ function $(id){return document.getElementById(id);}
 
   // ---------- วิดเจ็ตสรุป ----------
   var LAST=null;
+  /* Google Sheet ส่งวันที่กลับมาได้หลายรูปแบบ (ข้อความ / ISO / Date.toString)
+     -> แปลงให้เป็นรูปเดียวกันเสมอ ไม่ต้องพึ่ง Apps Script */
+  function _d(v){
+    if(!v)return null;
+    var s=String(v);
+    var m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);      // 2026-07-13 21:26 / ISO
+    if(m)return {mo:m[2],dy:m[3],hh:m[4],mi:m[5]};
+    var m2=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);                       // 2026-07-13
+    if(m2)return {mo:m2[2],dy:m2[3],hh:'',mi:''};
+    var dt=new Date(s);                                               // "Mon Jul 13 2026 ..."
+    if(!isNaN(dt.getTime())){
+      var p=function(n){return ('0'+n).slice(-2);};
+      return {mo:p(dt.getMonth()+1),dy:p(dt.getDate()),hh:p(dt.getHours()),mi:p(dt.getMinutes())};
+    }
+    return null;
+  }
+  function fmtDay(v){ var d=_d(v); return d?(d.mo+'-'+d.dy):String(v||'').slice(0,10); }
+  function fmtTs(v){ var d=_d(v); if(!d)return String(v||'').slice(0,16);
+    return d.mo+'-'+d.dy+(d.hh?(' '+d.hh+':'+d.mi):''); }
   function fmtSec(s){
     s=Math.max(0,Math.round(s||0));
     if(s<60)return s+' วิ';
@@ -2189,7 +2210,7 @@ function $(id){return document.getElementById(id);}
     var mx=Math.max.apply(null,arr.map(function(a){return a.n||a.sessions||0;}))||1;
     el.innerHTML=arr.map(function(a){
       var v=(a.n!==undefined?a.n:a.sessions)||0;
-      var extra=a.sec!==undefined?('<div style="font-size:10px;color:#94a3b8">รวม '+fmtSec(a.sec)+(a.last?(' · ล่าสุด '+String(a.last).slice(5,16).replace('T',' ')):'')+'</div>'):'';
+      var extra=a.sec!==undefined?('<div style="font-size:10px;color:#94a3b8">รวม '+fmtSec(a.sec)+(a.last?(' · ล่าสุด '+fmtTs(a.last)):'')+'</div>'):'';
       return '<tr><td>'+a.name+extra+'<div class="bar"><i style="width:'+Math.round(100*v/mx)+'%"></i></div></td>'+
              '<td class="n">'+v+(unit||'')+'</td></tr>';
     }).join('');
@@ -2209,8 +2230,8 @@ function $(id){return document.getElementById(id);}
       g.fillStyle='#0d9488'; g.fillRect(x,y,bw,h);
     });
     g.fillStyle='#94a3b8'; g.font='10px system-ui';
-    g.fillText(String(daily[0].day).slice(5),5,H-4);
-    g.textAlign='right'; g.fillText(String(daily[n-1].day).slice(5),W-5,H-4);
+    g.fillText(fmtDay(daily[0].day),5,H-4);
+    g.textAlign='right'; g.fillText(fmtDay(daily[n-1].day),W-5,H-4);
   }
   function render(j){
     LAST=j;
@@ -2229,7 +2250,7 @@ function $(id){return document.getElementById(id);}
     var r=q('swRecent');
     var EV={visit:'🟢 เข้าเว็บ',menu:'🧭 เปิดเมนู',heartbeat:'⏱ อยู่บนหน้า',leave:'⚪ ออก'};
     r.innerHTML=(j.recent||[]).length? (j.recent||[]).map(function(x){
-      return '<tr><td style="color:#94a3b8;white-space:nowrap">'+String(x.ts).slice(5,16).replace('T',' ')+'</td>'+
+      return '<tr><td style="color:#94a3b8;white-space:nowrap">'+fmtTs(x.ts)+'</td>'+
         '<td style="font-weight:600;color:#0f172a">'+(x.account||'guest')+'</td>'+
         '<td>'+(EV[x.ev]||x.ev)+(x.menu?(' · <b style="color:#0d9488">'+x.menu+'</b>'):'')+'</td>'+
         '<td style="color:#94a3b8;white-space:nowrap">'+(x.ref||'เข้าตรง')+' · '+(x.device||'')+'</td>'+
