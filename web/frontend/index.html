@@ -2244,8 +2244,8 @@ function $(id){return document.getElementById(id);}
     return '<div class="sw-c"><div class="k">'+k+'</div><div class="v">'+
       (raw?v:(Number(v||0)).toLocaleString())+'</div><div class="s">'+s+'</div></div>';
   }
-  function load(){
-    fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30')
+  function load(fresh){
+    fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30'+(fresh?'&fresh=1':''))
     .then(function(r){return r.json();}).then(function(j){
       if(j&&j.ok)render(j);
       else q('swCards').innerHTML='<div class="sw-c"><div class="k">สถิติ</div><div class="v">—</div><div class="s">ยังต่อ backend ไม่ได้</div></div>';
@@ -2266,10 +2266,10 @@ function $(id){return document.getElementById(id);}
   }
   function boot(){
     bindMenus();
-    if(q('swRefresh'))q('swRefresh').onclick=load;
+    if(q('swRefresh'))q('swRefresh').onclick=function(){ load(1); };   // ↻ = ไม่ใช้แคช
     if(q('swCsv'))q('swCsv').onclick=csv;
     load();
-    setInterval(load,120000);
+    setInterval(function(){ load(); },120000);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else setTimeout(boot,300);
