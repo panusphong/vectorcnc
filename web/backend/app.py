@@ -838,6 +838,35 @@ def _mbuf(geom, d):
     return geom.buffer(float(d), join_style=2, mitre_limit=4.0, resolution=12)
 
 
+def _clean_layer(geom, min_area_mm2=30.0, min_width_mm=1.8):
+    """เก็บกวาดชั้นที่ 'หด' แล้วแตกเป็นเศษ (เช่น อะคริลิค −0.25 ซม. บนลายเส้นบาง)
+       - ทิ้งชิ้นที่เล็กเกิน (เศษขยะในไฟล์ตัด)
+       - ทิ้งชิ้นที่บางเกินจนตัดไม่ได้จริง
+       คืน (geom_สะอาด, จำนวนเศษที่ทิ้ง)"""
+    if geom is None or geom.is_empty:
+        return geom, 0
+    from shapely.ops import unary_union
+    gs = list(geom.geoms) if getattr(geom, "geom_type", "") == "MultiPolygon" else [geom]
+    keep, drop = [], 0
+    r = float(min_width_mm) / 2.0
+    for p in gs:
+        if getattr(p, "geom_type", "") != "Polygon" or p.is_empty:
+            continue
+        if p.area < float(min_area_mm2):
+            drop += 1
+            continue
+        try:                                   # บางเกิน -> กัดเข้าแล้วหายหมด
+            if p.buffer(-r, join_style=2).is_empty:
+                drop += 1
+                continue
+        except Exception:
+            pass
+        keep.append(p)
+    if not keep:
+        return geom, 0                         # ถ้าลบหมดก็คืนของเดิม (ปลอดภัยกว่า)
+    return (unary_union(keep) if len(keep) > 1 else keep[0]), drop
+
+
 def _poly_to_subs(geom, tol=0.04):
     """polygon/multipolygon -> list ของ bezier subs ทุกวง (นอก+รูใน)
        tol = ความคลาดเคลื่อนสูงสุด (มม.) — ตัวฟิต v2 ให้ทั้ง 'จุดน้อย' และ 'เนียน' พร้อมกัน
@@ -1163,6 +1192,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         TRIM_OUT = (str(trim_dir or "out").lower() != "in")
         bore_geom = None; frame_outer = None
         out_layers = []
+        warns = []
         for L in rec["layers"]:
             off = float(L["off"]); kind = L.get("kind", "solid")
             base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
@@ -1183,12 +1213,22 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     bore_geom = i2; frame_outer = o2
             else:
                 g = base
+            # ⚠️ ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) จะทำให้ลายเส้นบางแตกเป็นเศษ -> เก็บกวาดทิ้ง
+            junk = 0
+            if off < -0.01:
+                g, junk = _clean_layer(g)
+            if g is None or g.is_empty:
+                continue
             subs = _poly_to_subs(g, tol=0.04)       # ฟิต v2: จุดน้อย + เนียนคม (แก้บั๊กสูตร Bézier)
             if not subs:
                 continue
             b = g.bounds
             out_layers.append({"name": L["name"], "off": off, "kind": kind, "color": L["color"], "rgb": L["rgb"],
-                               "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1)})
+                               "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                               "junk": junk})
+            if junk:
+                warns.append("%s: ลบเศษที่แตกจากการหดเส้น %d ชิ้น (ลายเส้นบางเกินไป)"
+                             % (_en_layer(L["name"]), junk))
         if not out_layers:
             return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
         # bbox รวม (ชั้นที่ขยายสุด)
@@ -1284,8 +1324,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
-                            "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"]} for L in out_layers],
-                "walls": rec["walls"], "wall_pieces": wall_pieces,
+                            "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"],
+                            "junk": L.get("junk", 0)} for L in out_layers],
+                "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
@@ -2270,6 +2311,15 @@ BRIEF_FIELDS = [
 ]
 
 
+@app.get("/api/sign-types")
+def api_sign_types():
+    """รายการแบบป้าย 1-7 (ไว้ให้หน้าจำลองผนังเลือก)"""
+    return {"types": [{"key": k, "label": v["label"], "label_en": _en_type(v["label"]),
+                       "depth_cm": v.get("depth_cm", 5),
+                       "has_trim": any(L.get("kind") == "frame" for L in v["layers"])}
+                      for k, v in SIGN_TYPES.items()]}
+
+
 @app.get("/api/brief-fields")
 def brief_fields():
     """โครงบรีฟรับงาน — ให้ frontend เรนเดอร์ฟอร์ม"""
@@ -2551,22 +2601,104 @@ def api_stats(days: int = 30):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
+def _rings_of_geom(g, bx, by, tol=0.0, min_area=1.0):
+    """shapely -> [{ext:[[x,y]..], holes:[[...]]}] เลื่อนให้เริ่มที่ 0,0"""
+    out = []
+    if g is None or getattr(g, "is_empty", True):
+        return out
+    if tol > 0:
+        try:
+            g = g.simplify(tol, preserve_topology=True)
+        except Exception:
+            pass
+    gs = list(g.geoms) if getattr(g, "geom_type", "") == "MultiPolygon" else [g]
+    for p in gs:
+        if getattr(p, "geom_type", "") != "Polygon" or p.is_empty or p.area < min_area:
+            continue
+        out.append({
+            "ext": [[round(x - bx, 2), round(y - by, 2)] for x, y in p.exterior.coords],
+            "holes": [[[round(x - bx, 2), round(y - by, 2)] for x, y in r.coords]
+                      for r in p.interiors if abs(r.length) > 1.0],
+        })
+    return out
+
+
+# ลำดับการวาด (หลัง -> หน้า) ของแต่ละชั้น
+_Z_ORDER = {"แผ่นพื้น": 0, "ไส้": 1, "แผงกลาง": 1, "อะคริลิค": 2, "ซิ้งค์": 2, "คิ้ว": 3}
+
+
+def _z_of(name):
+    n = str(name)
+    for k, v in _Z_ORDER.items():
+        if k in n:
+            return v
+    return 2
+
+
 @app.post("/api/geom3d")
 async def api_geom3d(file: UploadFile = File(...),
                      real_width_mm: float = Form(600.0),
                      real_height_mm: float = Form(0.0),
                      n_colors: int = Form(6),
-                     max_pts: int = Form(6000)):
-    """ส่ง 'รูปทรงจริง' (วงนอก+รูใน หน่วย มม.) ให้ frontend เรนเดอร์ 3 มิติแบบหมุนได้สด ๆ"""
+                     max_pts: int = Form(6000),
+                     sign_type: str = Form(""),
+                     trim_width_cm: float = Form(1.0),
+                     trim_dir: str = Form("out")):
+    """ส่ง 'รูปทรงจริง' (วงนอก+รูใน หน่วย มม.) ให้ frontend เรนเดอร์ 3 มิติแบบหมุนได้สด ๆ
+       ถ้าระบุ sign_type (1-7) จะส่ง 'ชั้นโครงสร้าง' (คิ้ว / หน้า / แผ่นพื้น) มาด้วย
+       -> จำลองผนังจะเห็นป้ายจริงตามแบบ (มีคิ้ว / ไม่มีคิ้ว / กล่องไฟ ฯลฯ)"""
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "in.png")
     with open(inp, "wb") as f:
         f.write(await file.read())
     try:
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
-        b = full.bounds
+
+        # ---- ชั้นโครงสร้างตามแบบป้าย 1-7 (ถ้าเลือก)
+        rec = SIGN_TYPES.get(str(sign_type)) if sign_type else None
+        layers_out = []
+        outer = full
+        if rec:
+            TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
+            TOUT = (str(trim_dir or "out").lower() != "in")
+            fb = full.bounds
+            for L in rec["layers"]:
+                off = float(L["off"])
+                kind = L.get("kind", "solid")
+                base = _mbuf(full, off)
+                if base is None or base.is_empty:
+                    continue
+                if kind == "frame":
+                    band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
+                    if TOUT:
+                        o2 = _mbuf(full, off + band); i2 = base
+                    else:
+                        o2 = base; i2 = _mbuf(full, off - band)
+                    g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
+                    if g.is_empty:
+                        g = o2
+                    if o2.area > outer.area:
+                        outer = o2
+                else:
+                    g = base
+                    if g.area > outer.area:
+                        outer = g
+                layers_out.append({"name": L["name"], "en": _en_layer(L["name"]),
+                                   "kind": kind, "z": _z_of(L["name"]),
+                                   "color": L.get("color", "#c9ced6"),
+                                   "geom": g})
+            layers_out.sort(key=lambda x: x["z"])
+
+        b = outer.bounds
         W = b[2] - b[0]
         H = b[3] - b[1]
+        tol0 = max(W, H) * 0.0008
+        if layers_out:
+            for L in layers_out:
+                L["polys"] = _rings_of_geom(L.pop("geom"), b[0], b[1], tol=tol0 * 2.0)
+            layers_out = [L for L in layers_out if L["polys"]]
+
+        full = outer          # ผนังข้าง (extrusion) วิ่งตามชั้นนอกสุด
         polys = list(full.geoms) if getattr(full, "geom_type", "") == "MultiPolygon" else [full]
 
         def _cnt(gs):
@@ -2605,8 +2737,15 @@ async def api_geom3d(file: UploadFile = File(...),
             out.append({"ext": ext, "holes": holes})
         if not out:
             return JSONResponse({"error": "ไม่พบรูปทรง"}, status_code=400)
-        return {"polys": out, "w_mm": round(W, 1), "h_mm": round(H, 1),
-                "points": _cnt(gs)}
+        res = {"polys": out, "w_mm": round(W, 1), "h_mm": round(H, 1),
+               "points": _cnt(gs)}
+        if rec:
+            res["layers"] = layers_out
+            res["type_name"] = rec["label"]
+            res["type_en"] = _en_type(rec["label"])
+            res["depth_cm"] = rec.get("depth_cm", 5)
+            res["has_trim"] = any(L.get("kind") == "frame" for L in layers_out)
+        return res
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-600:]},
                             status_code=400)
