@@ -1113,7 +1113,26 @@ select.numin{cursor:pointer}
           <input type="checkbox" id="w3On"> 🧊 แสดงป้ายเป็น 3 มิติจริง (ยกขอบ + ขอบข้าง)
         </label>
         <div id="w3Panel" style="display:none;margin-top:9px">
-          <div style="font-size:11px;color:#5A6B8C;margin-bottom:4px">ความหนายกขอบ (ซม.)</div>
+          <div style="font-size:11px;color:#5A6B8C;margin-bottom:4px">ประเภทป้าย (โครงสร้างจริง)</div>
+          <select class="numin" id="w3Type" style="width:100%;font-size:12px">
+            <option value="">— ไม่ระบุ (ตัวอักษรตันเฉย ๆ) —</option>
+          </select>
+          <div id="w3TypeInfo" style="font-size:10.5px;color:#94a3b8;margin-top:3px"></div>
+
+          <div id="w3TrimWrap" style="display:none;margin-top:8px">
+            <div style="font-size:11px;color:#5A6B8C;margin-bottom:4px">ความหนาคิ้ว (ซม.) + สีคิ้ว</div>
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+              <div id="w3Tw" style="display:flex;gap:4px">
+                <button class="chip" data-tw="0.7" type="button" style="font-size:11px">0.7</button>
+                <button class="chip on" data-tw="1" type="button" style="font-size:11px">1</button>
+                <button class="chip" data-tw="1.5" type="button" style="font-size:11px">1.5</button>
+                <button class="chip" data-tw="2" type="button" style="font-size:11px">2</button>
+              </div>
+              <input type="color" id="w3Trim" value="#c9ced6" style="width:38px;height:28px;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer">
+            </div>
+          </div>
+
+          <div style="font-size:11px;color:#5A6B8C;margin:9px 0 4px">ความหนายกขอบ (ซม.)</div>
           <div id="w3Rd" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
             <button class="chip" data-rd="2.5" type="button">2.5</button>
             <button class="chip on" data-rd="5" type="button">5</button>
@@ -1829,7 +1848,8 @@ function $(id){return document.getElementById(id);}
 (function(){
   function q(id){return document.getElementById(id);}
   var W3={on:false,G:null,rd:5,face:'#c9ced6',side:'#8f96a1',autoSide:true,
-          fx:'off',temp:'warm',az:0.52,el:0.38,busy:false};
+          fx:'off',temp:'warm',az:0.52,el:0.38,busy:false,
+          type:'',trim:'#c9ced6',tw:1};
   var FLAT=null;                       // เก็บภาพแบนเดิมไว้สลับกลับ
   window._W3=W3;
 
@@ -1899,11 +1919,11 @@ function $(id){return document.getElementById(id);}
           g.strokeStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';g.fill();g.stroke();}
       }
     }
-    // --- หน้าป้าย
-    function fp(){
+    // --- วาดชั้นใด ๆ (list ของ {ext,holes})
+    function pathOf(list){
       g.beginPath();
-      for(var pi=0;pi<W3.G.polys.length;pi++){
-        var P=W3.G.polys[pi], all=[P.ext].concat(P.holes);
+      for(var pi=0;pi<list.length;pi++){
+        var P=list[pi], all=[P.ext].concat(P.holes||[]);
         for(var ri=0;ri<all.length;ri++){
           var R=all[ri];
           for(var i=0;i<R.length;i++){var p=T(R[i][0],R[i][1]);
@@ -1912,15 +1932,34 @@ function $(id){return document.getElementById(id);}
         }
       }
     }
+    function fp(){ pathOf(W3.G.polys); }
+
     g.save();
+    // เรืองแสง (ใช้เงาที่เงาของรูปนอกสุด)
     if(W3.fx==='front'||W3.fx==='back'){
       g.shadowColor=L; g.shadowBlur=Math.max(10,cv.width*0.014);
       fp(); g.fillStyle=(W3.fx==='front')?L:W3.face; g.fill('evenodd');
       g.shadowBlur=Math.max(26,cv.width*0.035); fp(); g.fill('evenodd');
     }
     g.shadowBlur=0;
-    fp(); g.fillStyle=FACE; g.fill('evenodd');
-    g.strokeStyle=shade(FACE,0.5); g.lineWidth=Math.max(1,cv.width*0.001); g.stroke();
+
+    var LY=(W3.G.layers||[]);
+    if(LY.length && W3.type){
+      // ── ป้ายตามโครงสร้างจริง: วาดทีละชั้น หลัง -> หน้า
+      for(var li=0;li<LY.length;li++){
+        var Ly=LY[li], nm=String(Ly.name||''), col;
+        if(nm.indexOf('คิ้ว')>=0)            col=W3.trim;                   // คิ้ว = โลหะ
+        else if(nm.indexOf('แผ่นพื้น')>=0)   col=shade(W3.face,0.45);       // แผ่นหลัง (มืด)
+        else if(nm.indexOf('ไส้')>=0||nm.indexOf('แผงกลาง')>=0) col=shade(W3.face,0.7);
+        else col=FACE;                                                       // หน้า/อะคริลิค/ซิ้งค์
+        pathOf(Ly.polys);
+        g.fillStyle=col; g.fill('evenodd');
+        g.strokeStyle=shade(col,0.55); g.lineWidth=Math.max(1,cv.width*0.0009); g.stroke();
+      }
+    }else{
+      fp(); g.fillStyle=FACE; g.fill('evenodd');
+      g.strokeStyle=shade(FACE,0.5); g.lineWidth=Math.max(1,cv.width*0.001); g.stroke();
+    }
     g.restore();
     return cv;
   }
@@ -1944,19 +1983,54 @@ function $(id){return document.getElementById(id);}
       if(!f){ W3.busy=false; fail('ยังไม่มีป้ายบนผนัง — วางภาพป้ายก่อนนะคะ'); return; }
       var fd=new FormData(); fd.append('file',f);
       fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
+      if(W3.type){ fd.append('sign_type',W3.type);
+        fd.append('trim_width_cm',String(W3.tw)); fd.append('trim_dir','out'); }
       fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
       .then(function(r){return r.json();}).then(function(j){
         W3.busy=false;
         if(j.error){ fail('❌ '+j.error); return; }
         W3.G=j;
+        if(j.depth_cm&&!W3._rdSet){ W3.rd=j.depth_cm;
+          q('w3Rd').querySelectorAll('.chip').forEach(function(x){
+            x.classList.toggle('on', parseFloat(x.getAttribute('data-rd'))===W3.rd); }); }
+        q('w3TypeInfo').textContent=j.type_name?('โครงสร้าง: '+j.type_name+' · '+((j.layers||[]).length)+' ชั้น'):'';
         q('w3Msg').innerHTML='✅ อ่านรูปทรงแล้ว ('+j.points+' จุด) — ปรับสี/ไฟ/มุมได้เลย';
         apply();
       }).catch(function(e){W3.busy=false;q('w3Msg').innerHTML='<span style="color:#EF4444">❌ '+e+'</span>';});
     });
   }
+  // โหลดรายการแบบป้าย 1-7 ใส่ dropdown
+  function loadTypes(){
+    var sel=q('w3Type'); if(!sel||sel._done)return; sel._done=1;
+    fetch((typeof API!=='undefined'?API:'')+'/api/sign-types')
+    .then(function(r){return r.json();}).then(function(j){
+      (j.types||[]).forEach(function(t){
+        var o=document.createElement('option'); o.value=t.key;
+        o.textContent=t.key+' · '+t.label+(t.has_trim?' (มีคิ้ว)':'');
+        sel.appendChild(o);
+      });
+    }).catch(function(){});
+  }
 
   function wire(){
     var on=q('w3On'); if(!on)return;
+    loadTypes();
+    // ── ประเภทป้าย 1-7 (มีคิ้ว / ไม่มีคิ้ว / กล่องไฟ ...)
+    if(q('w3Type'))q('w3Type').onchange=function(){
+      W3.type=this.value;
+      q('w3TrimWrap').style.display=W3.type?'block':'none';
+      W3.G=null; W3._rdSet=false;
+      if(W3.on)load();
+    };
+    var tw=q('w3Tw');
+    if(tw)tw.querySelectorAll('.chip').forEach(function(b){
+      b.onclick=function(){
+        tw.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); W3.tw=parseFloat(b.getAttribute('data-tw'));
+        W3.G=null; if(W3.on)load();
+      };
+    });
+    if(q('w3Trim'))q('w3Trim').oninput=function(){W3.trim=this.value; apply();};
     on.onchange=function(){
       W3.on=this.checked;
       q('w3Panel').style.display=W3.on?'block':'none';
@@ -1974,12 +2048,12 @@ function $(id){return document.getElementById(id);}
       b.onclick=function(){
         rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});
         b.classList.add('on'); q('w3RdC').value='';
-        W3.rd=parseFloat(b.getAttribute('data-rd')); apply();
+        W3.rd=parseFloat(b.getAttribute('data-rd')); W3._rdSet=true; apply();
       };
     });
     if(q('w3RdC'))q('w3RdC').oninput=function(){
       var v=parseFloat(this.value);
-      if(!isNaN(v)&&v>=0){rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});W3.rd=v;apply();}
+      if(!isNaN(v)&&v>=0){rd.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');});W3.rd=v;W3._rdSet=true;apply();}
     };
     if(q('w3Face'))q('w3Face').oninput=function(){W3.face=this.value;
       if(W3.autoSide)q('w3Side').value=shade(W3.face,0.72); apply();};
@@ -3479,6 +3553,10 @@ $('goLayer').onclick=function(){
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
         '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
+      ((j.warns&&j.warns.length)?('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#92400e">'+
+        '<b>⚠️ ทำความสะอาดไฟล์ตัดให้แล้ว</b><ul style="margin:4px 0 0 16px">'+
+        j.warns.map(function(w){return '<li>'+w+'</li>';}).join('')+'</ul>'+
+        '<div style="font-size:11px;color:#b45309;margin-top:4px">สาเหตุ: ชั้นที่ "หดเข้า" (เช่น อะคริลิค −0.25 ซม.) จะกัดลายเส้นบางจนแตกเป็นเศษ — ระบบลบเศษออกให้แล้ว ถ้าอยากเก็บลายเส้นนั้นไว้ ต้องทำให้เส้นหนาขึ้นก่อน (ใช้ Intake Studio → ✅ ตรวจว่าผลิตได้ → 🔧 แก้อัตโนมัติ)</div></div>'):'')+
       '<div style="font-size:13px;font-weight:700;color:#4f46e5;margin:2px 0 5px">📐 Cut Layers — เรียงบนลงล่าง + จับขนาดต่อชิ้น</div>'+
       '<div style="border:1px solid #D6E0EE;border-radius:12px;padding:14px;background:#fff;text-align:center;margin-bottom:8px">'+
         '<div style="max-width:560px;margin:0 auto">'+disp+'</div></div>'+
