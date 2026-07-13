@@ -2495,6 +2495,7 @@ async def api_track(request: Request):
            str(d.get("menu", ""))[:80], str(d.get("ref", ""))[:200],
            str(d.get("refhost", ""))[:80], str(d.get("device", ""))[:20],
            str(d.get("browser", ""))[:40], int(d.get("dur", 0) or 0))
+    ok_local = True
     try:
         with _AN_LOCK:
             c = _an_conn()
@@ -2503,10 +2504,25 @@ async def api_track(request: Request):
             c.commit()
             c.close()
     except Exception:
-        return {"ok": False}
-    # ส่งต่อ Google Sheet ให้เก็บถาวร (ไม่หายตอน deploy) — แก้ทับได้ด้วย env ANALYTICS_WEBHOOK
-    hook = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
-    if hook:
+        ok_local = False        # ⚠️ เขียนในเครื่องพลาด ก็ยังต้องยิงเข้าชีตอยู่ดี
+
+    ok_sheet = _push_sheet(row)
+    return {"ok": True, "local": ok_local, "sheet": ok_sheet}
+
+
+def _sheet_hook():
+    return os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
+
+
+def _push_sheet(row, blocking=False):
+    """ยิง event เข้า Google Sheet (Apps Script)
+       แก้บั๊ก: เดิม timeout 3 วิ -> Apps Script ตอบไม่ทัน (มี redirect) -> ไม่มีแถวลงชีตเลย
+       ตอนนี้: ยิงใน background thread + timeout 20 วิ -> ไม่หน่วง response และไม่หลุด"""
+    hook = _sheet_hook()
+    if not hook:
+        return False
+
+    def _go():
         try:
             import urllib.request
             import urllib.parse
@@ -2514,10 +2530,32 @@ async def api_track(request: Request):
                                          "ev": row[4], "page": row[5], "menu": row[6],
                                          "ref": row[7], "device": row[9],
                                          "browser": row[10], "dur": row[11]})
-            urllib.request.urlopen(hook + ("&" if "?" in hook else "?") + qs, timeout=3).read(1)
-        except Exception:
-            pass
-    return {"ok": True}
+            url = hook + ("&" if "?" in hook else "?") + qs
+            req = urllib.request.Request(url, headers={"User-Agent": "VectorCNC/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:   # Apps Script ช้าได้ถึง ~10 วิ
+                return r.read(200)
+        except Exception as e:
+            print("[analytics] push failed:", e, flush=True)
+            return None
+
+    if blocking:
+        return _go() is not None
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
+@app.get("/api/track-test")
+def api_track_test():
+    """ทดสอบว่าเขียนลง Google Sheet ได้จริงไหม (เปิดใน browser แล้วดูผล)"""
+    now = datetime.now(TZ7)
+    row = (now.isoformat(timespec="seconds"), now.strftime("%Y-%m-%d"),
+           "TEST", "test", "visit", "/", "ทดสอบระบบสถิติ", "", "(ทดสอบ)",
+           "desktop", "Test", 0)
+    ok = _push_sheet(row, blocking=True)
+    return {"ok": bool(ok), "hook_set": bool(_sheet_hook()),
+            "hook": (_sheet_hook()[:60] + "...") if _sheet_hook() else "",
+            "msg": ("✅ เขียนลงชีตสำเร็จ — ไปดูแท็บ Events ได้เลย" if ok
+                    else "❌ เขียนลงชีตไม่สำเร็จ — เช็ก Apps Script (Deploy: Anyone) และ ANALYTICS_WEBHOOK")}
 
 
 _AN_CACHE = {"t": 0.0, "data": None}
@@ -2549,8 +2587,12 @@ def _stats_from_sheet(days):
 
 
 @app.get("/api/stats")
-def api_stats(days: int = 30):
-    """สรุปสถิติสะสม — อ่านจาก Google Sheet ก่อน (ถาวร) ถ้าไม่ได้ค่อยใช้ฐานข้อมูลในเครื่อง"""
+def api_stats(days: int = 30, fresh: int = 0):
+    """สรุปสถิติสะสม — อ่านจาก Google Sheet ก่อน (ถาวร) ถ้าไม่ได้ค่อยใช้ฐานข้อมูลในเครื่อง
+       fresh=1 = ไม่ใช้แคช (ปุ่ม ↻ รีเฟรช)"""
+    if fresh:
+        _AN_CACHE["data"] = None
+        _AN_CACHE["t"] = 0.0
     j = _stats_from_sheet(days)
     if j:
         return j
