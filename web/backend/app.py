@@ -2525,25 +2525,46 @@ def _push_sheet(row, blocking=False):
     if not hook:
         return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
 
+    payload = {"sid": row[2], "account": row[3], "ev": row[4], "page": row[5],
+               "menu": row[6], "refhost": row[8] or row[7], "device": row[9],
+               "browser": row[10], "dur": row[11]}
+
     def _go():
+        import urllib.request
+        import urllib.parse
+        import urllib.error
+        # ── วิธีหลัก: POST + JSON body (ไม่ต้องยัดภาษาไทยลง URL -> Google ไม่ตีกลับ 400)
         try:
-            import urllib.request
-            import urllib.parse
-            qs = urllib.parse.urlencode({"api": "hit", "sid": row[2], "u": row[3],
-                                         "ev": row[4], "page": row[5], "menu": row[6],
-                                         "ref": row[7], "device": row[9],
-                                         "browser": row[10], "dur": row[11]})
-            url = hook + ("&" if "?" in hook else "?") + qs
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            req = urllib.request.Request(
+                hook, data=data, method="POST",
+                headers={"Content-Type": "text/plain;charset=utf-8",
+                         "User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                body = r.read(400).decode("utf-8", "ignore")
+            if '"ok":true' in body.replace(" ", ""):
+                return True, "ok (POST)"
+            err_post = "POST ตอบผิดปกติ: " + body[:150]
+        except Exception as e:
+            err_post = "POST %s: %s" % (type(e).__name__, e)
+        # ── สำรอง: GET (ตัดภาษาไทยออกจาก URL กัน 400)
+        try:
+            safe = {"api": "hit", "sid": row[2], "u": row[3], "ev": row[4],
+                    "page": row[5], "device": row[9], "browser": row[10],
+                    "dur": row[11],
+                    "menu": urllib.parse.quote(str(row[6] or ""), safe=""),
+                    "ref": urllib.parse.quote(str(row[8] or row[7] or ""), safe="")}
+            url = hook + ("&" if "?" in hook else "?") + urllib.parse.urlencode(safe)
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=25) as r:
                 body = r.read(400).decode("utf-8", "ignore")
-                if '"ok":true' in body.replace(" ", ""):
-                    return True, "ok"
-                return False, ("Apps Script ตอบกลับผิดปกติ: " + body[:200])
+            if '"ok":true' in body.replace(" ", ""):
+                return True, "ok (GET fallback)"
+            msg = err_post + " | GET ตอบผิดปกติ: " + body[:120]
         except Exception as e:
-            msg = "%s: %s" % (type(e).__name__, e)
-            print("[analytics] push failed:", msg, flush=True)
-            return False, msg
+            msg = err_post + " | GET %s: %s" % (type(e).__name__, e)
+        print("[analytics] push failed:", msg, flush=True)
+        return False, msg
 
     if blocking:
         return _go()
@@ -2565,9 +2586,12 @@ def api_track_test():
         d = str(detail)
         if "InvalidURL" in d or "control characters" in d:
             hint = "URL ใน ANALYTICS_WEBHOOK มีตัวขึ้นบรรทัด/ช่องว่างปน — ลบแล้ววางใหม่ให้เป็นบรรทัดเดียว"
-        elif "HTTP Error 401" in d or "HTTP Error 403" in d or "sign in" in d.lower() or "<html" in d.lower():
+        elif "401" in d or "403" in d or "sign in" in d.lower():
             hint = "Apps Script ยังไม่เปิดสาธารณะ — Deploy ใหม่โดยตั้ง Who has access = Anyone"
-        elif "HTTP Error 500" in d:
+        elif "HTTP Error 400" in d:
+            hint = ("Apps Script ยังไม่มีฟังก์ชัน doPost — ต้องเอาโค้ด Analytics.gs ตัวใหม่ไปวาง "
+                    "แล้ว Deploy > Manage deployments > New version")
+        elif "500" in d:
             hint = "โค้ดใน Apps Script พัง — เปิด Apps Script > Executions ดู error"
         elif "timed out" in d.lower():
             hint = "Apps Script ตอบช้าเกินไป — ลองกดซ้ำอีกครั้ง"
