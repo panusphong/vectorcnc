@@ -2311,6 +2311,50 @@ BRIEF_FIELDS = [
 ]
 
 
+# ==================================================================
+#  🔒 ตารางราคา/ต้นทุนบริษัท — เสิร์ฟเฉพาะคนใน (ห้ามฝังใน frontend)
+# ==================================================================
+def _internal_key():
+    return os.environ.get("INTERNAL_KEY", "") or os.environ.get("VECTORCNC_API_KEY", "")
+
+
+def _is_internal(request: Request):
+    """ผ่านได้ถ้า: มีคีย์ภายในถูกต้อง  หรือ  ยังไม่ตั้งคีย์เลย (โหมดวงในล้วน ยังไม่เปิด public)"""
+    key = _internal_key()
+    if not key:
+        return True                      # ยังไม่เปิด public -> ให้ผ่าน (ทีมพี่ใช้ได้ตามปกติ)
+    got = (request.headers.get("X-Internal-Key")
+           or request.query_params.get("k") or "")
+    return str(got) == str(key)
+
+
+@app.get("/api/plans")
+def api_plans():
+    """ตารางแพ็กเกจสาธารณะ (ให้หน้า Landing/Pricing เรนเดอร์)"""
+    from vectorcnc import billing as B
+    return {"plans": B.public_plans(), "features": B.FEATURES}
+
+
+@app.get("/welcome")
+def welcome_page():
+    p = os.path.join(os.path.dirname(FRONTEND), "landing.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    return JSONResponse({"error": "landing.html not found"}, status_code=404)
+
+
+@app.get("/api/price-catalog")
+def api_price_catalog(request: Request):
+    """ตารางราคาจริง — คนนอกเรียกได้ก็ได้แค่ 403"""
+    if not _is_internal(request):
+        return JSONResponse(
+            {"error": "forbidden",
+             "msg": "เมนูประเมินราคาเปิดให้เฉพาะทีมงานภายในเท่านั้น"},
+            status_code=403)
+    from vectorcnc import price_catalog as PC
+    return PC.get_catalog()
+
+
 @app.get("/api/sign-types")
 def api_sign_types():
     """รายการแบบป้าย 1-7 (ไว้ให้หน้าจำลองผนังเลือก)"""
