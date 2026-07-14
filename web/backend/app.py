@@ -10,7 +10,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (JSONResponse, FileResponse, PlainTextResponse,
-                               Response, HTMLResponse)
+                               Response, HTMLResponse, RedirectResponse)
 import datetime as _dt
 
 # ให้ import แพ็กเกจ vectorcnc (อยู่ที่ราก VectorCNC_App)
@@ -1777,10 +1777,35 @@ async def nest_batch(request: Request):
 
 
 @app.get("/")
-def home():
+def home(request: Request):
+    """หน้าแรก = หน้าขาย (landing)  ·  ตัวแอปย้ายไป /app
+
+    ทำไมไม่ "ปิด / ไปเลย":
+      - คนที่กดมาจาก Google / โฆษณา / ลิงก์ที่แชร์กัน จะเจอหน้า error ทันที = เสียลูกค้าฟรี ๆ
+      - Google เก็บหน้าแรกไม่ได้ = SEO พัง
+      ทางที่ถูกคือ "ย้าย" ไม่ใช่ "ปิด"
+
+    ยกเว้น: ถ้าถือตั๋ว SSO จาก CRM Hub มา (?t=...) = พนักงาน -> ส่งเข้าแอปเลย
+            ไม่ต้องให้ทีมงานมานั่งดูหน้าขายของตัวเองทุกวัน
+    """
+    if request.query_params.get("t"):
+        q = str(request.url.query)
+        return RedirectResponse("/app" + ("?" + q if q else ""), status_code=302)
+
+    landing = os.path.join(os.path.dirname(FRONTEND), "landing.html")
+    if os.path.exists(landing):
+        return FileResponse(landing)
+    if os.path.exists(FRONTEND):
+        return FileResponse(FRONTEND)          # ยังไม่ได้อัป landing.html -> กันหน้าขาว
+    return {"msg": "VectorCNC API running. POST /api/vectorize"}
+
+
+@app.get("/app")
+def app_page():
+    """ตัวแอปจริง — เปิดได้ทุกคน (Free ใช้ได้) แต่เมนูภายในถูกกันด้วยสิทธิ์อีกชั้น"""
     if os.path.exists(FRONTEND):
         return FileResponse(FRONTEND)
-    return {"msg": "VectorCNC API running. POST /api/vectorize"}
+    return JSONResponse({"error": "index.html not found"}, status_code=404)
 
 
 # ============ BOM Check Sheet (upload + params -> Check Sheet + BOM + record) ============
@@ -2316,49 +2341,52 @@ BRIEF_FIELDS = [
 # ==================================================================
 #  🔒 ตารางราคา/ต้นทุนบริษัท — เสิร์ฟเฉพาะคนใน (ห้ามฝังใน frontend)
 # ==================================================================
-def _public_mode():
-    """เว็บเปิดให้คนนอกใช้แล้วหรือยัง
+# ⚠️⚠️ กติกาความปลอดภัย — ปิดตายเป็นค่าเริ่มต้น (fail-closed) ⚠️⚠️
+#
+#  บทเรียนที่เคยพลาดมาแล้ว 2 รอบ:
+#    รอบ 1: ใช้ VECTORCNC_API_KEY มาแยกคนใน/คนนอก -> ทีมงานโดนตัดเมนู
+#    รอบ 2: "ถ้ายังไม่ตั้งคีย์ ให้ผ่านทุกคน" -> คนนอกทั้งอินเทอร์เน็ตเห็นตารางต้นทุนบริษัท
+#
+#  กติกาใหม่ ไม่มีสวิตช์ให้ลืมกดอีก:
+#    ❌ ไม่มีคีย์ = คนนอก เสมอ ไม่มีข้อยกเว้น
+#    ✅ ทีมงานเข้าด้วย  ?k=<INTERNAL_KEY>  ครั้งเดียว แล้วเบราว์เซอร์จำให้
+#
+#  ผลข้างเคียงที่ตั้งใจ: ถ้าลืมตั้ง INTERNAL_KEY ใน Render
+#    -> ทีมงานจะไม่เห็นเมนูภายใน (รู้ตัวทันที แก้ได้ใน 1 นาที)
+#    -> ดีกว่าปล่อยให้ต้นทุนบริษัทหลุดออกไปโดยไม่มีใครรู้
 
-    ⚠️ จุดนี้เคยพลาด: เดิมถ้ายังไม่ตั้ง INTERNAL_KEY จะถือว่า "ทุกคนเป็นคนใน"
-       ซึ่งแปลว่าคนที่กด 'ทดลองใช้ฟรี' จากอินเทอร์เน็ต เห็นเมนูประเมินราคา
-       + ตารางต้นทุนบริษัททั้งชุด  ← อันตรายมาก
+#  ทางเข้าของทีมงานมี 2 แบบ
+#    ① 🎫 ตั๋ว SSO จาก CRM Hub  (แนะนำ — พนักงานไม่ต้องทำอะไรเลย)
+#         CRM Hub เซ็นตั๋วด้วย APP_SECRET ให้ทีละคน ผูกกับอีเมล หมดอายุ 12 ชม.
+#         พนักงานลาออก -> ถอดออกจาก CRM Hub -> วันรุ่งขึ้นตั๋วหมดอายุเอง
+#    ② 🔑 คีย์รวม ?k=<INTERNAL_KEY>  (สำรอง — ใช้ตอน CRM Hub ล่ม)
 
-    กติกาใหม่ (fail-closed):
-       ตั้ง PUBLIC=1  หรือ  PAYMENTS_OPEN=1  หรือ  ตั้ง INTERNAL_KEY ไว้แล้ว
-       => ถือว่าเปิด public -> "ไม่มีคีย์ = คนนอก" เสมอ
-    """
-    if str(os.environ.get("PUBLIC", "")).lower() in ("1", "true", "yes", "on"):
-        return True
-    if str(os.environ.get("PAYMENTS_OPEN", "")).lower() in ("1", "true", "yes", "on"):
-        return True
-    return bool(os.environ.get("INTERNAL_KEY", ""))
+def _token_of(request: Request) -> str:
+    return (request.headers.get("X-User-Token")
+            or request.query_params.get("t") or "")
+
+
+def _role_of(request: Request) -> str:
+    """อ่านบทบาทจากตั๋ว SSO · คืน 'admin' / 'internal' / '' """
+    from vectorcnc import auth as A
+    return A.role_of(_token_of(request))
 
 
 def _internal_key():
-    # ⚠️ ห้ามใช้ VECTORCNC_API_KEY มาเป็นตัวแยกคนใน/คนนอก
-    #    (มันเป็นคีย์ของ API เดิม ถ้าเอามาใช้ ทีมงานจะโดนมองเป็น "คนนอก" ทันที)
     return os.environ.get("INTERNAL_KEY", "")
 
 
 def _is_internal(request: Request):
-    """คนใน = ต้องมี INTERNAL_KEY ที่ถูกต้อง
+    """คนใน = มีตั๋ว SSO ที่ถูกต้อง หรือ มี INTERNAL_KEY ถูกต้อง · ไม่มีเลย = คนนอก"""
+    if _role_of(request) in ("internal", "admin"):
+        return True                      # ① ตั๋วจาก CRM Hub
 
-    ถ้ายังไม่เปิด public เลย (ไม่ได้ตั้ง PUBLIC / PAYMENTS_OPEN / INTERNAL_KEY)
-    -> ยังเป็นเครื่องมือใช้กันเองในทีม ให้ผ่านทุกคน (ไม่งั้นทีมจะเข้าไม่ได้)
-    """
-    key = _internal_key()
-
-    if not _public_mode():
-        return True                      # โหมดใช้กันเองในทีม (ยังไม่เปิดคนนอก)
-
+    key = _internal_key()                # ② คีย์รวม (สำรอง)
     if not key:
-        # เปิด public แล้ว แต่ลืมตั้ง INTERNAL_KEY
-        # -> ต้องปิดไว้ก่อน ปลอดภัยกว่าปล่อยต้นทุนบริษัทหลุด
-        return False
-
+        return False                     # 🔒 ยังไม่ตั้งคีย์ -> ปิดไว้ก่อน
     got = (request.headers.get("X-Internal-Key")
            or request.query_params.get("k") or "")
-    return str(got) == str(key)
+    return bool(got) and str(got) == str(key)
 
 
 def _admin_key():
@@ -2366,19 +2394,33 @@ def _admin_key():
 
 
 def _is_admin(request: Request):
-    """แอดมินจริง = ต้องมี ADMIN_KEY ที่ถูกต้อง
+    """แอดมิน = ตั๋ว SSO ที่ role=admin  หรือ  ADMIN_KEY ถูกต้อง
        ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้"""
+    if _role_of(request) == "admin":
+        return True
+
     key = _admin_key()
-
-    if not _public_mode():
-        return True                      # โหมดใช้กันเองในทีม
-
     if not key:
-        return False                     # เปิด public แล้วแต่ลืมตั้ง ADMIN_KEY -> ปิดไว้ก่อน
-
+        return False                     # 🔒 ยังไม่ตั้งคีย์ -> ปิดไว้ก่อน
     got = (request.headers.get("X-Admin-Key")
            or request.query_params.get("ak") or "")
-    return str(got) == str(key)
+    return bool(got) and str(got) == str(key)
+
+
+@app.get("/api/security-check")
+def api_security_check():
+    """เช็กว่าตั้งคีย์ครบหรือยัง — เปิดดูได้ทุกคน แต่ไม่บอกค่าคีย์ บอกแค่ว่า 'ตั้งแล้ว/ยัง'"""
+    from vectorcnc import auth as A, billing as B
+    ok_int = bool(_internal_key())
+    ok_adm = bool(_admin_key())
+    ok_sec = A.secret_is_set()
+    return {
+        "internal_key": "✅ ตั้งแล้ว" if ok_int else "❌ ยังไม่ตั้ง — ทีมงานจะไม่เห็นเมนูภายใน",
+        "admin_key":    "✅ ตั้งแล้ว" if ok_adm else "❌ ยังไม่ตั้ง — เข้าหน้าสถิติ/อนุมัติสลิปไม่ได้",
+        "app_secret":   "✅ ตั้งแล้ว" if ok_sec else "❌ ยังไม่ตั้ง — ลูกค้าจะหลุด login ทุกครั้งที่ deploy",
+        "payments_open": B.PAYMENTS_OPEN,
+        "all_ok": ok_int and ok_adm and ok_sec,
+    }
 
 
 @app.get("/api/whoami")
@@ -2448,13 +2490,18 @@ def robots_txt():
         "User-agent: *\n"
         "Allow: /$\n"
         "Allow: /welcome\n"
+        "Allow: /app\n"
         "Disallow: /api/\n"
         "Disallow: /jobs\n"
-        "Disallow: /?u=\n"
+        "Disallow: /admin/\n"
+        "Disallow: /pay\n"
+        "Disallow: /*?t=\n"          # 🔒 ตั๋ว SSO ห้าม index เด็ดขาด
         "Disallow: /*?k=\n"
         "Disallow: /*?ak=\n"
+        "Disallow: /*?u=\n"
         "\n"
         "User-agent: GPTBot\n"
+        "Allow: /$\n"
         "Allow: /welcome\n"
         "Disallow: /api/\n"
         "\n"
@@ -2467,8 +2514,9 @@ def sitemap_xml():
     site = _site_url()
     today = _dt.datetime.utcnow().strftime("%Y-%m-%d")
     pages = [
-        (f"{site}/welcome", "1.0", "weekly"),
-        (f"{site}/",        "0.9", "weekly"),
+        (f"{site}/",        "1.0", "weekly"),   # หน้าแรก = หน้าขาย
+        (f"{site}/welcome", "0.9", "weekly"),   # หน้าเดิม (ยังเปิดอยู่ กันลิงก์เก่าพัง)
+        (f"{site}/app",     "0.7", "monthly"),  # ตัวแอป
     ]
     items = ""
     for loc, pri, freq in pages:
