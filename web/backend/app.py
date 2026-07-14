@@ -9,7 +9,8 @@ import os, sys, tempfile, base64, re, json, traceback
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
+import datetime as _dt
 
 # ให้ import แพ็กเกจ vectorcnc (อยู่ที่ราก VectorCNC_App)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -2315,7 +2316,9 @@ BRIEF_FIELDS = [
 #  🔒 ตารางราคา/ต้นทุนบริษัท — เสิร์ฟเฉพาะคนใน (ห้ามฝังใน frontend)
 # ==================================================================
 def _internal_key():
-    return os.environ.get("INTERNAL_KEY", "") or os.environ.get("VECTORCNC_API_KEY", "")
+    # ⚠️ ห้ามใช้ VECTORCNC_API_KEY มาเป็นตัวแยกคนใน/คนนอก
+    #    (มันเป็นคีย์ของ API เดิม ถ้าเอามาใช้ ทีมงานจะโดนมองเป็น "คนนอก" ทันที)
+    return os.environ.get("INTERNAL_KEY", "")
 
 
 def _is_internal(request: Request):
@@ -2328,22 +2331,46 @@ def _is_internal(request: Request):
     return str(got) == str(key)
 
 
+def _admin_key():
+    return os.environ.get("ADMIN_KEY", "")
+
+
+def _is_admin(request: Request):
+    """แอดมินจริง = ต้องมี ADMIN_KEY ที่ถูกต้อง
+       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้
+       ถ้ายังไม่ตั้ง ADMIN_KEY ใน Render -> ถือว่ายังเป็นโหมดวงใน ให้ผ่าน"""
+    key = _admin_key()
+    if not key:
+        return True
+    got = (request.headers.get("X-Admin-Key")
+           or request.query_params.get("ak") or "")
+    return str(got) == str(key)
+
+
 @app.get("/api/whoami")
 def api_whoami(request: Request):
-    """บอก frontend ว่าเป็น 'คนใน' หรือ 'คนนอก' — ใช้ซ่อนเมนูที่มีต้นทุนบริษัท"""
+    """บอก frontend ว่าเป็น 'คนใน / แอดมิน / คนนอก' — ใช้ซ่อนเมนู"""
     from vectorcnc import billing as B
     internal = _is_internal(request)
-    plan = "internal" if internal else "free"
-    return {"internal": internal, "plan": plan,
-            "features": B.PLANS[plan]["features"],
-            "hidden": [] if internal else B.INTERNAL_ONLY}
+    admin = _is_admin(request) and internal
+    plan = "admin" if admin else ("internal" if internal else "free")
+    hidden = []
+    if not internal:
+        hidden = B.INTERNAL_ONLY
+    elif not admin:
+        hidden = ["stats"]                  # คนในธรรมดา -> ไม่เห็นสถิติ
+    return {"internal": internal, "is_admin": admin, "plan": plan,
+            "features": B.PLANS[plan]["features"], "hidden": hidden}
 
 
 @app.get("/api/plans")
 def api_plans():
     """ตารางแพ็กเกจสาธารณะ (ให้หน้า Landing/Pricing เรนเดอร์)"""
     from vectorcnc import billing as B
-    return {"plans": B.public_plans(), "features": B.FEATURES}
+    return {"plans": B.public_plans(), "features": B.FEATURES,
+            "features_en": B.FEATURES_EN,
+            "payments_open": B.PAYMENTS_OPEN,     # 💳 ยังไม่ต่อ payment -> ปุ่ม Upgrade ปิด
+            "contact_email": B.CONTACT_EMAIL}
 
 
 @app.get("/welcome")
@@ -2352,6 +2379,66 @@ def welcome_page():
     if os.path.exists(p):
         return FileResponse(p)
     return JSONResponse({"error": "landing.html not found"}, status_code=404)
+
+
+# ==================================================================== 🔍 SEO
+#  ตั้ง env SITE_URL ให้เป็นโดเมนจริงเมื่อย้ายออกจาก onrender.com
+def _site_url():
+    return os.environ.get("SITE_URL", "https://vectorcnc.onrender.com").rstrip("/")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    """บอก Google ว่าเก็บอะไรได้ / ห้ามเก็บอะไร
+       ⚠️ /api/* ห้าม index เด็ดขาด — มีตารางราคา/ข้อมูลภายในอยู่"""
+    site = _site_url()
+    return (
+        "User-agent: *\n"
+        "Allow: /$\n"
+        "Allow: /welcome\n"
+        "Disallow: /api/\n"
+        "Disallow: /jobs\n"
+        "Disallow: /?u=\n"
+        "Disallow: /*?k=\n"
+        "Disallow: /*?ak=\n"
+        "\n"
+        "User-agent: GPTBot\n"
+        "Allow: /welcome\n"
+        "Disallow: /api/\n"
+        "\n"
+        f"Sitemap: {site}/sitemap.xml\n"
+    )
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    site = _site_url()
+    today = _dt.datetime.utcnow().strftime("%Y-%m-%d")
+    pages = [
+        (f"{site}/welcome", "1.0", "weekly"),
+        (f"{site}/",        "0.9", "weekly"),
+    ]
+    items = ""
+    for loc, pri, freq in pages:
+        items += (
+            "  <url>\n"
+            f"    <loc>{loc}</loc>\n"
+            f"    <lastmod>{today}</lastmod>\n"
+            f"    <changefreq>{freq}</changefreq>\n"
+            f"    <priority>{pri}</priority>\n"
+            f'    <xhtml:link rel="alternate" hreflang="th" href="{loc}?lang=th"/>\n'
+            f'    <xhtml:link rel="alternate" hreflang="en" href="{loc}?lang=en"/>\n'
+            f'    <xhtml:link rel="alternate" hreflang="x-default" href="{loc}"/>\n'
+            "  </url>\n"
+        )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n'
+        '        xmlns:xhtml="http://www.w3.org/1999/xhtml">\n'
+        f"{items}"
+        "</urlset>\n"
+    )
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/api/price-catalog")
@@ -2691,9 +2778,14 @@ def _stats_from_sheet(days):
 
 
 @app.get("/api/stats")
-def api_stats(days: int = 30, fresh: int = 0):
-    """สรุปสถิติสะสม — อ่านจาก Google Sheet ก่อน (ถาวร) ถ้าไม่ได้ค่อยใช้ฐานข้อมูลในเครื่อง
+def api_stats(request: Request, days: int = 30, fresh: int = 0):
+    """สรุปสถิติสะสม — 🔒 แอดมินเท่านั้น
        fresh=1 = ไม่ใช้แคช (ปุ่ม ↻ รีเฟรช)"""
+    if not (_is_internal(request) and _is_admin(request)):
+        return JSONResponse(
+            {"ok": False, "error": "forbidden",
+             "msg": "สถิติการเข้าใช้งานเปิดให้เฉพาะผู้ดูแลระบบ"},
+            status_code=403)
     if fresh:
         _AN_CACHE["data"] = None
         _AN_CACHE["t"] = 0.0
