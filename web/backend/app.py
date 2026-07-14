@@ -2316,6 +2316,24 @@ BRIEF_FIELDS = [
 # ==================================================================
 #  🔒 ตารางราคา/ต้นทุนบริษัท — เสิร์ฟเฉพาะคนใน (ห้ามฝังใน frontend)
 # ==================================================================
+def _public_mode():
+    """เว็บเปิดให้คนนอกใช้แล้วหรือยัง
+
+    ⚠️ จุดนี้เคยพลาด: เดิมถ้ายังไม่ตั้ง INTERNAL_KEY จะถือว่า "ทุกคนเป็นคนใน"
+       ซึ่งแปลว่าคนที่กด 'ทดลองใช้ฟรี' จากอินเทอร์เน็ต เห็นเมนูประเมินราคา
+       + ตารางต้นทุนบริษัททั้งชุด  ← อันตรายมาก
+
+    กติกาใหม่ (fail-closed):
+       ตั้ง PUBLIC=1  หรือ  PAYMENTS_OPEN=1  หรือ  ตั้ง INTERNAL_KEY ไว้แล้ว
+       => ถือว่าเปิด public -> "ไม่มีคีย์ = คนนอก" เสมอ
+    """
+    if str(os.environ.get("PUBLIC", "")).lower() in ("1", "true", "yes", "on"):
+        return True
+    if str(os.environ.get("PAYMENTS_OPEN", "")).lower() in ("1", "true", "yes", "on"):
+        return True
+    return bool(os.environ.get("INTERNAL_KEY", ""))
+
+
 def _internal_key():
     # ⚠️ ห้ามใช้ VECTORCNC_API_KEY มาเป็นตัวแยกคนใน/คนนอก
     #    (มันเป็นคีย์ของ API เดิม ถ้าเอามาใช้ ทีมงานจะโดนมองเป็น "คนนอก" ทันที)
@@ -2323,10 +2341,21 @@ def _internal_key():
 
 
 def _is_internal(request: Request):
-    """ผ่านได้ถ้า: มีคีย์ภายในถูกต้อง  หรือ  ยังไม่ตั้งคีย์เลย (โหมดวงในล้วน ยังไม่เปิด public)"""
+    """คนใน = ต้องมี INTERNAL_KEY ที่ถูกต้อง
+
+    ถ้ายังไม่เปิด public เลย (ไม่ได้ตั้ง PUBLIC / PAYMENTS_OPEN / INTERNAL_KEY)
+    -> ยังเป็นเครื่องมือใช้กันเองในทีม ให้ผ่านทุกคน (ไม่งั้นทีมจะเข้าไม่ได้)
+    """
     key = _internal_key()
+
+    if not _public_mode():
+        return True                      # โหมดใช้กันเองในทีม (ยังไม่เปิดคนนอก)
+
     if not key:
-        return True                      # ยังไม่เปิด public -> ให้ผ่าน (ทีมพี่ใช้ได้ตามปกติ)
+        # เปิด public แล้ว แต่ลืมตั้ง INTERNAL_KEY
+        # -> ต้องปิดไว้ก่อน ปลอดภัยกว่าปล่อยต้นทุนบริษัทหลุด
+        return False
+
     got = (request.headers.get("X-Internal-Key")
            or request.query_params.get("k") or "")
     return str(got) == str(key)
@@ -2338,11 +2367,15 @@ def _admin_key():
 
 def _is_admin(request: Request):
     """แอดมินจริง = ต้องมี ADMIN_KEY ที่ถูกต้อง
-       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้
-       ถ้ายังไม่ตั้ง ADMIN_KEY ใน Render -> ถือว่ายังเป็นโหมดวงใน ให้ผ่าน"""
+       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้"""
     key = _admin_key()
+
+    if not _public_mode():
+        return True                      # โหมดใช้กันเองในทีม
+
     if not key:
-        return True
+        return False                     # เปิด public แล้วแต่ลืมตั้ง ADMIN_KEY -> ปิดไว้ก่อน
+
     got = (request.headers.get("X-Admin-Key")
            or request.query_params.get("ak") or "")
     return str(got) == str(key)
