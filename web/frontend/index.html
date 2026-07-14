@@ -177,13 +177,14 @@ select.numin{cursor:pointer}
 <nav><div class="nav-in">
   <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 7 L14 15 L20 5"/></svg></span>Graphic Design <b>Solution</b></div>
   <div class="nav-right">
-    <button class="nav-btn" id="btnNest">▦ Nesting</button>
-    <button class="nav-btn" id="btnMulti">🗂 จัดวางหลายไฟล์</button>
-    <button class="nav-btn" id="btnLayer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
-    <button class="nav-btn" id="btnCsheet">📋 BOM Check Sheet</button>
-    <button class="nav-btn" id="btnWall">📐 ขนาดป้าย + จำลองผนัง</button>
-    <button class="nav-btn" id="btnIntake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
-    <button class="nav-btn" id="btnManual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
+    <button class="nav-btn" id="btnNest" data-i18n="nav.nest">▦ Nesting</button>
+    <button class="nav-btn" id="btnMulti" data-i18n="nav.multi">🗂 จัดวางหลายไฟล์</button>
+    <button class="nav-btn" id="btnLayer" data-i18n="nav.layer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
+    <button class="nav-btn" id="btnCsheet" data-i18n="nav.bom">📋 BOM Check Sheet</button>
+    <button class="nav-btn" id="btnWall" data-i18n="nav.wall">📐 ขนาดป้าย + จำลองผนัง</button>
+    <button class="nav-btn" id="btnIntake" data-i18n="nav.intake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
+    <button class="nav-btn" id="btnManual" data-i18n="nav.manual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
+    <button class="nav-btn" id="btnLang" title="เปลี่ยนภาษา / Change language" style="font-weight:700;min-width:64px">🌐 EN</button>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -199,7 +200,7 @@ select.numin{cursor:pointer}
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
 
         <div class="grp">
-          <div class="gt">วัสดุ / เครื่องตัด</div>
+          <div class="gt"  data-i18n="sec.material">วัสดุ / เครื่องตัด</div>
           <div class="chips" id="presetChips">
             <button class="chip" data-preset="fiber_ss">Fiber · สแตนเลส</button>
             <button class="chip" data-preset="fiber_zn">Fiber · ซิงค์</button>
@@ -210,7 +211,7 @@ select.numin{cursor:pointer}
         </div>
 
         <div class="set">
-          <label>โหมดการแปลง</label>
+          <label  data-i18n="sec.mode">โหมดการแปลง</label>
           <div class="seg" id="modeSeg">
             <button type="button" class="sbtn on" data-mode="auto">✨ อัตโนมัติ</button>
             <button type="button" class="sbtn" data-mode="cutout">✂️ ตัดชิ้น</button>
@@ -221,13 +222,13 @@ select.numin{cursor:pointer}
           <label>จำนวนสี / เลเยอร์ <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
 
-          <label>กำหนดขนาดจาก</label>
+          <label  data-i18n="lbl.sizefrom">กำหนดขนาดจาก</label>
           <select class="numin" id="sizeBy" onchange="var m={width:'ค่าความกว้างรวม (มม.)',height:'ค่าความสูงรวม (มม.)',letter:'ค่าความสูงตัวอักษร (มม.)'};var e=document.getElementById('sizeLbl');if(e)e.textContent=m[this.value]||m.width;if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}"><option value="width">กว้างรวม (มม.)</option><option value="height">สูงรวม (มม.)</option><option value="letter">สูงตัวอักษร (มม.)</option></select>
           <label id="sizeLbl" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
           <div class="hint" id="sizeHint">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
 
-          <label>ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
+          <label  data-i18n="lbl.signtype">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
           <select class="numin" id="mainSignType">
             <option value="">— เส้นตัดแบน (ปกติ) —</option>
             <option value="1">1 · ไฟออกหน้า มีคิ้ว</option>
@@ -285,7 +286,7 @@ select.numin{cursor:pointer}
       </div>
 
       <div class="out">
-        <h4>ผลลัพธ์</h4>
+        <h4  data-i18n="res.title">ผลลัพธ์</h4>
         <div id="layers"><div class="muted-note">ยังไม่มีผล</div></div>
         <h4 style="margin-top:4px">ไฟล์ตัด</h4>
         <div class="stat"><span>วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
@@ -319,8 +320,12 @@ select.numin{cursor:pointer}
       </div>
     </div>
   </div>
-  <!-- ================= 📊 สถิติการเข้าใช้งาน (สะสม) ================= -->
-  <div id="statsWidget" style="margin-top:26px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+  <!-- ================= 📊 สถิติการเข้าใช้งาน (เฉพาะผู้ดูแลระบบ) ================= -->
+  <div id="statsGate" style="display:none;margin-top:26px;text-align:center">
+    <button id="statsOpen" data-i18n="stats.open" style="font-family:inherit;font-size:13px;font-weight:700;padding:9px 20px;border-radius:10px;
+      border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer">🔒 สถิติการเข้าใช้งาน (ผู้ดูแลระบบ)</button>
+  </div>
+  <div id="statsWidget" style="display:none;margin-top:26px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
     <style>
       #statsWidget .sw-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
       #statsWidget .sw-h b{font-size:15px;color:#0f172a}
@@ -423,10 +428,10 @@ select.numin{cursor:pointer}
   </div>
   <div class="ik-wrap">
     <div class="ik-tabs">
-      <button class="ik-tab on" data-p="ex">🧲 แตกไฟล์ PDF</button>
-      <button class="ik-tab" data-p="pc">✅ ตรวจว่าผลิตได้</button>
-      <button class="ik-tab" data-p="cc">💡 AI Concept (ไม่มีโลโก้)</button>
-      <button class="ik-tab" data-p="br">📝 Sales Brief</button>
+      <button class="ik-tab on" data-p="ex" data-i18n="ik.tab.ex">🧲 แตกไฟล์ PDF</button>
+      <button class="ik-tab" data-p="pc" data-i18n="ik.tab.pc">✅ ตรวจว่าผลิตได้</button>
+      <button class="ik-tab" data-p="cc" data-i18n="ik.tab.cc">💡 AI Concept (ไม่มีโลโก้)</button>
+      <button class="ik-tab" data-p="br" data-i18n="ik.tab.br">📝 Sales Brief</button>
     </div>
 
     <!-- ---------- 1) EXTRACT ---------- -->
@@ -2096,6 +2101,85 @@ function $(id){return document.getElementById(id);}
   },500);
 })();
 
+/* ===== 🌐 ระบบ 2 ภาษา (ไทย / English) =====
+   วิธีเพิ่มคำแปล: ใส่ data-i18n="key" ที่ element  แล้วเติม key ลง I18N
+   - data-i18n       -> แปลข้อความในปุ่ม/หัวข้อ
+   - data-i18n-ph    -> แปล placeholder
+   - data-i18n-title -> แปล tooltip                                          */
+var I18N={
+ th:{
+  'nav.nest':'▦ Nesting','nav.multi':'🗂 จัดวางหลายไฟล์','nav.layer':'🏭 ชุดชั้นตัด (ตามแบบป้าย)',
+  'nav.bom':'📋 BOM Check Sheet','nav.wall':'📐 ขนาดป้าย + จำลองผนัง',
+  'nav.intake':'🚀 Intake Studio','nav.manual':'📖 คู่มือ',
+  'drop.title':'ลากไฟล์มาวาง','drop.sub':'รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)',
+  'sec.material':'วัสดุ / เครื่องตัด','sec.mode':'โหมดการแปลง',
+  'mode.auto':'✨ อัตโนมัติ','mode.piece':'✂️ ตัดชิ้น','mode.line':'🖊 เส้น',
+  'lbl.colors':'จำนวนสี / เลเยอร์','lbl.sizefrom':'กำหนดขนาดจาก','lbl.signtype':'ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)',
+  'lbl.return':'ความหนายกขอบ / ความลึกตัว (ซม.)','lbl.trimw':'ความหนาคิ้ว (ซม.)',
+  'lbl.kerf':'Kerf ชดเชยลำ/ดอก','lbl.tool':'ขนาดดอกกัด / ปัดมุม',
+  'btn.convert':'⚡ แปลงเป็นเส้นตัด','btn.layerset':'🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)',
+  'res.title':'ผลลัพธ์','res.none':'ยังไม่มีผล','res.cutfile':'ไฟล์ตัด',
+  'dl.svg':'⬇ ดาวน์โหลด SVG (มม.)','dl.dxf':'⬇ DXF','dl.copy':'คัดลอก',
+  'dl.ai':'🎨 ดาวน์โหลด .ai (ให้กราฟิค)','dl.stl':'🧊 ดาวน์โหลด STL',
+  'ik.tab.ex':'🧲 แตกไฟล์ PDF','ik.tab.pc':'✅ ตรวจว่าผลิตได้',
+  'ik.tab.cc':'💡 AI Concept (ไม่มีโลโก้)','ik.tab.br':'📝 Sales Brief',
+  'stats.open':'🔒 สถิติการเข้าใช้งาน (ผู้ดูแลระบบ)',
+  'lang.btn':'🌐 EN'
+ },
+ en:{
+  'nav.nest':'▦ Nesting','nav.multi':'🗂 Multi-file Nesting','nav.layer':'🏭 Cut Layers (by sign type)',
+  'nav.bom':'📋 BOM Check Sheet','nav.wall':'📐 Sign Size + Wall Mockup',
+  'nav.intake':'🚀 Intake Studio','nav.manual':'📖 Manual',
+  'drop.title':'Drop your file here','drop.sub':'Image (JPG PNG PSD) or vector (AI PDF SVG EPS)',
+  'sec.material':'Material / Machine','sec.mode':'Trace mode',
+  'mode.auto':'✨ Auto','mode.piece':'✂️ Cut pieces','mode.line':'🖊 Line',
+  'lbl.colors':'Colours / layers','lbl.sizefrom':'Set size by','lbl.signtype':'Sign type (3D structure + cut layers)',
+  'lbl.return':'Return depth (cm)','lbl.trimw':'Trim width (cm)',
+  'lbl.kerf':'Kerf compensation','lbl.tool':'Tool diameter / corner radius',
+  'btn.convert':'⚡ Convert to cut lines','btn.layerset':'🏭 Cut Layers + 3D (by sign type)',
+  'res.title':'Result','res.none':'No result yet','res.cutfile':'Cut file',
+  'dl.svg':'⬇ Download SVG (mm)','dl.dxf':'⬇ DXF','dl.copy':'Copy',
+  'dl.ai':'🎨 Download .ai (for designer)','dl.stl':'🧊 Download STL',
+  'ik.tab.ex':'🧲 Extract from PDF','ik.tab.pc':'✅ Producibility check',
+  'ik.tab.cc':'💡 AI Concept (no logo yet)','ik.tab.br':'📝 Sales Brief',
+  'stats.open':'🔒 Usage analytics (admin only)',
+  'lang.btn':'🌐 ไทย'
+ }
+};
+var LANG='th';
+try{ LANG=localStorage.getItem('vc_lang')||((navigator.language||'').slice(0,2)==='th'?'th':'th'); }catch(e){}
+function t(k){ var d=I18N[LANG]||I18N.th; return d[k]||(I18N.th[k]||k); }
+function applyLang(){
+  var D=I18N[LANG]||I18N.th;
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var v=D[el.getAttribute('data-i18n')]; if(v!=null)el.textContent=v;
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(function(el){
+    var v=D[el.getAttribute('data-i18n-ph')]; if(v!=null)el.placeholder=v;
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(function(el){
+    var v=D[el.getAttribute('data-i18n-title')]; if(v!=null)el.title=v;
+  });
+  var b=document.getElementById('btnLang'); if(b)b.textContent=D['lang.btn'];
+  document.documentElement.lang=LANG;
+  try{ document.body.classList.toggle('lang-en',LANG==='en'); }catch(e){}
+}
+function setLang(L){
+  LANG=(L==='en')?'en':'th';
+  try{ localStorage.setItem('vc_lang',LANG); }catch(e){}
+  applyLang();
+}
+window.setLang=setLang; window.t=t;
+(function(){
+  function wire(){
+    var b=document.getElementById('btnLang');
+    if(b)b.onclick=function(){ setLang(LANG==='th'?'en':'th'); };
+    applyLang();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);
+  else wire();
+})();
+
 /* ===== 📊 ANALYTICS — เก็บสถิติการเข้าใช้ + วิดเจ็ตสรุปท้ายหน้า ===== */
 (function(){
   function q(id){return document.getElementById(id);}
@@ -2285,12 +2369,38 @@ function $(id){return document.getElementById(id);}
     a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(L.join('\n'));
     a.download='vectorcnc_stats.csv'; a.click();
   }
-  function boot(){
-    bindMenus();
-    if(q('swRefresh'))q('swRefresh').onclick=function(){ load(1); };   // ↻ = ไม่ใช้แคช
+  /* 🔒 สถิติ = เฉพาะผู้ดูแลระบบ (แอปจะเปิด public ให้ลูกค้าที่จ่าย subscription ใช้) */
+  function isAdmin(){
+    try{
+      if(typeof VC_ROLE!=='undefined' && String(VC_ROLE).toLowerCase()==='admin') return true;
+      var u=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)?String(CURRENT_USER).toLowerCase():'';
+      if(ADMIN_USERS.indexOf(u)>=0) return true;
+      if(localStorage.getItem('vc_admin')==='1') return true;   // ปลดล็อกด้วยรหัสแล้ว
+    }catch(e){}
+    return false;
+  }
+  var ADMIN_USERS=['admin','panusphong','saaitech'];   // ⬅ เพิ่ม/ลบชื่อผู้ดูแลได้ตรงนี้
+  var _statsOn=false;
+  function openStats(){
+    if(_statsOn)return; _statsOn=true;
+    q('statsGate').style.display='none';
+    q('statsWidget').style.display='block';
+    if(q('swRefresh'))q('swRefresh').onclick=function(){ load(1); };
     if(q('swCsv'))q('swCsv').onclick=csv;
     load();
     setInterval(function(){ load(); },120000);
+  }
+  function boot(){
+    bindMenus();
+    if(isAdmin()){
+      q('statsGate').style.display='block';
+      q('statsOpen').onclick=openStats;
+    }else{
+      // ไม่ใช่แอดมิน -> ซ่อนทั้งปุ่มและวิดเจ็ต (แต่ยังเก็บสถิติเบื้องหลังตามปกติ)
+      q('statsGate').style.display='none';
+      q('statsWidget').style.display='none';
+    }
+    return;
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else setTimeout(boot,300);
@@ -4224,7 +4334,17 @@ function wallDraw(){
   var lab={width:'ของกว้าง',height:'ของสูง',area:'ของพื้นที่'}[s.mode];
   $('wInfo').innerHTML='ป้าย: <b>'+s.w.toFixed(1)+' × '+s.h.toFixed(1)+' cm</b> ('+Math.round(s.r*100)+'% '+lab+') · ผนัง '+Math.round(s.Wm)+'×'+Math.round(s.Hm)+' cm'+'<div style="font-size:11px;color:#f59e0b;margin-top:4px">ระยะขอบ (ซม.) ซ้าย <b>'+mLcm.toFixed(1)+'</b> · ขวา <b>'+mRcm.toFixed(1)+'</b> · บน <b>'+mTcm.toFixed(1)+'</b> · ล่าง <b>'+mBcm.toFixed(1)+'</b></div>';
 }
-if($('btnWall'))$('btnWall').onclick=function(){ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw(); try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} try{vcStartPresence();}catch(_e){} };
+if($('btnWall'))$('btnWall').onclick=function(){
+  // 🔒 ตารางราคาอยู่ที่ backend — โหลดก่อนเปิด (คนนอกจะโดน 403)
+  loadPriceCatalog(function(ok){
+    if(!ok){
+      alert('🔒 เมนูนี้เปิดให้เฉพาะทีมงานภายใน\n\n'+(WCAT_ERR||'')+'\n\nInternal team only — pricing module is restricted.');
+      return;
+    }
+    $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw();
+    try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} try{vcStartPresence();}catch(_e){}
+  });
+};
 if($('wHistLink'))$('wHistLink').onclick=function(){ try{openLogModal();}catch(_e){} };
 function wallReset(){ if(!confirm('เคลียร์ทุกอย่างให้ว่างเหมือนเปิดครั้งแรก?'))return;
   wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false; _armTopFy=0;
@@ -4438,7 +4558,27 @@ if($('wCut'))$('wCut').addEventListener('change',function(){ if(!_wallSignOrig)r
 var PRICEAPI_KEY='saai_price_api';
 function wallSignAreaSqm(){ var s=wallSignReal(); var w,h; if(WMODE==='measure'){ w=measBoxes[0].fw*s.Wm; h=measBoxes[0].fh*s.Hm; } else { w=s.w; h=s.h; } return {w:w,h:h,sqm:(w*h)/10000}; }
 // ===== App ประเมินราคา ในตัว (embedded catalog + สูตรตรงกับ calcSignPrice · ไม่พึ่งแอปเดิม) =====
-var WCAT={"Print Blacklit Film":{"t":"f","p":720},"Print Blacklit Sticker":{"t":"f","p":720},"Print Photo Glossy":{"t":"f","p":720},"Print Canvas":{"t":"f","p":720},"Print Canvas + โครงไม้":{"t":"f","p":1800},"Print ไวนิล inkjet":{"t":"f","p":240},"Print ไวนิล UV":{"t":"f","p":480},"Print ไวนิล โปร่งแสง UV":{"t":"f","p":600},"Print ไวนิล + โครงไม้":{"t":"f","p":840},"Print ไวนิล + โครงเหล็ก":{"t":"f","p":2040},"Print ไวนิล พิมพ์ UV":{"t":"f","p":480},"Print ไวนิล พิมพ์ UV + โครงไม้":{"t":"f","p":1800},"Print ไวนิล พิมพ์ UV + โครงเหล็ก":{"t":"f","p":2400},"Print ไวนิลโปร่งแสง พิมพ์ Solvent":{"t":"f","p":600},"Print ไวนิลโปร่งแสง พิมพ์ Solvent + โครงไม้":{"t":"f","p":1200},"Print ไวนิลโปร่งแสง พิมพ์ Solvent + โครงเหล็ก":{"t":"f","p":2400},"Print ไวนิลโปร่งแสง พิมพ์ UV":{"t":"f","p":600},"Print ไวนิลโปร่งแสง พิมพ์ UV + โครงไม้":{"t":"f","p":1200},"Print ไวนิลโปร่งแสง พิมพ์ UV + โครงเหล็ก":{"t":"f","p":2400},"Print สติ๊กเกอร์ 3M -ij1220 เป็นแบบ Remove ได้":{"t":"f","p":960},"Print สติ๊กเกอร์ 3M -ij38 เหมาะสำหรับติดผนังที่พื้นผิวไม่เรียบ":{"t":"f","p":960},"Print สติ๊กเกอร์ C2":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC + ฟิวเจอร์บอร์ด 3 mm.":{"t":"f","p":600},"Print สติ๊กเกอร์ PP ฟิวเจอร์บอร์ด 5 mm.":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC + แผ่น HIP 1 mm.":{"t":"f","p":1080},"Print แผ่น HIP 1 mm. พิมพ์ UV":{"t":"f","p":1200},"Print สติ๊กเกอร์ PP PVC + แผ่นริจิ 0.4 mm.":{"t":"f","p":1200},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 10 mm.":{"t":"f","p":3600},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 3 mm.":{"t":"f","p":2400},"Print สติ๊กเกอร์ PP PVC + พลาสวูด 5 mm.":{"t":"f","p":3000},"Print สติ๊กเกอร์ PP PVC + โฟมบอร์ด 5 mm.":{"t":"f","p":840},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 20-30 cm.":{"t":"f","p":21600},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 31-50 cm.":{"t":"f","p":21600},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 51-70 cm.":{"t":"f","p":18000},"Print สติ๊กเกอร์ PP PVC ติด แผ่น ซิงค์ 1 mm. ความสูง 71-100 cm.":{"t":"f","p":14400},"Print สติ๊กเกอร์ PVC + ฟิวเจอร์บอร์ด 5 mm.":{"t":"f","p":960},"Print สติ๊กเกอร์ PVC แบบทึบ-แบบใส":{"t":"f","p":720},"Print สติ๊กเกอร์ พิมพ์ UV":{"t":"f","p":1320},"สติ๊กเกอร์กล่องไฟ (Blacklit)":{"t":"f","p":600},"กล่องไฟ ผ้า 3P":{"t":"f","p":10800},"ป้ายไฟ Slim":{"t":"f","p":10800},"คอมโพสิต + โครงเหล็ก":{"t":"f","p":3600},"คอมโพสิต + ฉลุแผ่น + โครงเหล็ก":{"t":"f","p":4800},"โครง สแตนเลสยึดป้าย":{"t":"f","p":4800},"โครงเหล็กยึดป้าย":{"t":"f","p":1800},"แผ่นหลัง + พลาสวูด 10 mm":{"t":"f","p":3000},"แผ่นหลัง + พลาสวูด 5 mm":{"t":"f","p":1800},"แผ่นหลัง Metal Sheet":{"t":"f","p":3600},"ซิงค์-กล่องไฟไวนิล":{"t":"f","p":10800},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":18000},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":21600},"ซิงค์-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":15600},"ซิงค์-โลโก้-กล่องฉลุหน้า ไม่มีแขน ไม่มีไฟ":{"t":"f","p":12000},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":15600},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":18000},"ซิงค์-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":14400},"ซิงค์-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":10800},"ซิงค์-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":7200},"ซิงค์-แผ่นหลัง + โครงเหล็กทำสี":{"t":"f","p":3600},"ซิงค์-อักษรแบน":{"t":"t","ti":[24840,18360,14640,12240,10800,9480,8640,7920,7200,6480]},"ซิงค์-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[26520,19560,15600,12960,11520,10080,9240,8400,7680,6960]},"ซิงค์-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[44160,32520,26040,21600,19200,16800,15360,13920,12720,11520]},"ซิงค์-อักษรยกขอบ ไฟปิงปอง ไฟกระสุน":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[55200,40560,32520,27000,24000,21000,19200,17400,15840,14280]},"ซิงค์-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[33120,24360,19560,16200,14400,12600,11520,10440,9600,8640]},"ซิงค์-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[39840,29280,23400,19440,17280,15120,13920,12600,11520,10320]},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":23400},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":28080},"สแตนเลสเงิน-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":20280},"สแตนเลสเงิน-โลโก้-กล่องฉลุหน้า ไม่มีแขน ไม่มีไฟ":{"t":"f","p":16224},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":20280},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":23400},"สแตนเลสเงิน-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":18720},"สแตนเลสเงิน-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":14040},"สแตนเลสเงิน-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":9360},"สแตนเลสเงิน-กล่องไฟไวนิล":{"t":"f","p":32400},"สแตนเลสเงิน-แผ่นหลัง":{"t":"f","p":7200},"สแตนเลสเงิน พิมพ์ UV":{"t":"f","p":6000},"สแตนเลสเงิน-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[0,31680,25320,21120,18720,16440,15000,13680,12360,11160]},"สแตนเลสเงิน-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[34560,25320,20280,16920,15000,13200,12000,10920,9960,9000]},"สแตนเลสเงิน-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[43080,31680,25320,21120,18720,16440,15000,13680,12360,11160]},"สแตนเลสเงิน-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[71760,52800,42240,35160,31200,27360,24960,22680,20640,18600]},"สแตนเลสเงิน-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[57480,42240,33840,28080,24960,21840,20040,18120,16560,14880]},"สแตนเลสเงิน-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[71760,52800,42240,35160,31200,27360,24960,22680,20640,18600]},"สแตนเลสเงิน-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[48840,35880,28800,23880,21240,18600,17040,15480,14040,12720]},"สแตนเลสเงิน-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[51720,38040,30480,25320,22560,19680,18000,16320,14880,13440]},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า มีแขน 1 หน้า":{"t":"f","p":30420},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า มีแขน 2 หน้า":{"t":"f","p":36504},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟฉลุหน้า ไม่มีแขน":{"t":"f","p":26364},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 1 หน้า":{"t":"f","p":26364},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค มีแขน 2 หน้า":{"t":"f","p":30420},"สแตนเลสทอง-โรสโกลด์-โลโก้-กล่องไฟหน้าอะคลิริค ไม่มีแขน":{"t":"f","p":24336},"สแตนเลสทอง-โรสโกลด์-โลโก้-ฉลุแบน ขาลอย มีไฟ":{"t":"f","p":18252},"สแตนเลสทอง-โรสโกลด์-โลโก้-ฉลุแบน ขาลอย ไม่มีไฟ":{"t":"f","p":12168},"สแตนเลสทอง -โรสโกลด์-กล่องไฟไวนิล":{"t":"f","p":33600},"สแตนเลสทอง-โรสโกลด์-อักษรแบน":{"t":"t","ti":[42000,30960,24840,20640,18360,16080,14640,13320,12120,10920]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน ขาลอย ไฟออกหลัง":{"t":"t","ti":[56040,41160,33000,27480,24360,21360,19560,17760,16080,14520]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน ขาลอย ไม่มีไฟ":{"t":"t","ti":[44880,33000,26400,21960,19560,17040,15600,14160,12960,11640]},"สแตนเลสทอง-โรสโกลด์-อักษรแบน แปะบนอะคลิริค":{"t":"t","ti":[56040,41160,33000,27480,24360,21360,19560,17760,16080,14520]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟออกหน้า":{"t":"t","ti":[93360,68640,54960,45720,40560,35520,32520,29520,26880,24240]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟออกหลัง":{"t":"t","ti":[74640,54840,43920,36600,32520,28440,26040,23640,21480,19320]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไฟหลัง อะคริลิค":{"t":"t","ti":[93360,68640,54960,45720,40560,35520,32520,29520,26880,24240]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไม่มีไฟ":{"t":"t","ti":[63480,46680,37320,31080,27600,24240,22080,20040,18240,16440]},"สแตนเลสทอง-โรสโกลด์-อักษรยกขอบ ไส้พลาสวูด":{"t":"t","ti":[67200,49440,39600,32880,29280,25560,23400,21240,19320,17400]},"อลูมิเนียม-กล่องไฟไวนิล":{"t":"f","p":26400},"อลูมิเนียม-แผ่นหลังทำสี":{"t":"f","p":5400},"อะคริลิค 3 mm. พิมพ์ UV":{"t":"f","p":3000},"อะคริลิค 5 mm. พิมพ์ UV":{"t":"f","p":4200},"อะคริลิค 8 mm. พิมพ์ UV":{"t":"f","p":6000},"อะคริลิค 10 mm. พิมพ์ UV":{"t":"f","p":7800},"อะคริลิค-กล่องใสใส่ไฟนีออน":{"t":"f","p":14400},"อะคริลิค-ป้ายไฟนีออน เส้นคู่":{"t":"f","p":16800},"อะคริลิค-ป้ายไฟนีออน เส้นเดี่ยว":{"t":"f","p":12600},"อะคริลิค-อะคริลิค 5 mm. +Sticker ไม่มีไฟ":{"t":"f","p":6600},"อะคริลิค-อะคริลิค 5 mm. พิมพ์ UV มีไฟหลัง":{"t":"f","p":12000},"อะคริลิค-อะคริลิค 8 mm. +Sticker ไม่มีไฟ":{"t":"f","p":9600},"อะคริลิค-อะคริลิค 8 mm. พิมพ์ UV มีไฟหลัง":{"t":"f","p":14400},"อะคริลิค-อักษรอะคริลิค 5 mm. ไม่มีไฟ":{"t":"f","p":5400},"อะคริลิค-อักษรอะคริลิค 8 mm. ไม่มีไฟ":{"t":"f","p":8400},"อะคริลิค-อักษรอะคริลิค 10 mm. ไม่มีไฟ":{"t":"f","p":11400},"อักษร อะคริลิค ปั้มนูนขึ้นขอบไฟออกรอบ":{"t":"f","p":31200},"อักษร อะคริลิค ขึ้นขอบไฟออกรอบ":{"t":"f","p":31200},"พลาสวูด 3 mm. พิมพ์ UV":{"t":"f","p":2280},"พลาสวูด 5 mm. พิมพ์ UV":{"t":"f","p":2520},"พลาสวูด 10 mm พิมพ์ UV + ไดคัท":{"t":"f","p":4800},"พลาสวูด 10 mm. ไม่มีไฟ":{"t":"f","p":3600},"พลาสวูด 10 mm. เดินเส้นนีออนเฟล็กซ์ เส้นเดี่ยว":{"t":"f","p":12000},"พลาสวูด 10 mm. เดินเส้นนีออนเฟล็กซ์ เส้นคู่":{"t":"f","p":12000},"ตัวอักษรพลาสวูด 10 mm. +Sticker ไม่มีไฟ":{"t":"f","p":4800},"ตัวอักษรพลาสวูด 10 mm. ยกขอบ Stanless เงิน":{"t":"f","p":5400},"อักษรพลาสวูด 10 mm. ไฟออกหลัง":{"t":"f","p":5400},"อักษรพลาสวูด 10 mm. ไม่มีไฟ":{"t":"f","p":4800}};
+// 🔒 ตารางราคา/ต้นทุนบริษัท -> ย้ายไป backend แล้ว (ห้ามเอากลับมาฝังที่นี่)
+//    ใครเปิด View Source ก็ไม่เห็นตัวเลขสักตัว · โหลดผ่าน /api/price-catalog เฉพาะคนใน
+var WCAT={}, WCAT_READY=false, WCAT_ERR='';
+function vcKey(){ try{ return localStorage.getItem('vc_internal_key')||_qp('k')||''; }catch(e){ return ''; } }
+function loadPriceCatalog(cb){
+  if(WCAT_READY){ if(cb)cb(true); return; }
+  var k=vcKey();
+  fetch((typeof API!=='undefined'?API:'')+'/api/price-catalog'+(k?('?k='+encodeURIComponent(k)):''),
+        {headers: k?{'X-Internal-Key':k}:{}})
+  .then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
+  .then(function(o){
+    if(o.s===403){ WCAT_ERR=(o.j&&o.j.msg)||'ไม่มีสิทธิ์ใช้เมนูประเมินราคา'; if(cb)cb(false); return; }
+    if(o.j&&o.j.catalog){
+      WCAT=o.j.catalog; WCAT_READY=true;
+      if(o.j.tiers)WTIER=o.j.tiers;
+      try{ buildTypeList(); }catch(e){}
+      try{ wallDraw(); }catch(e){}
+      if(cb)cb(true);
+    } else { WCAT_ERR='โหลดตารางราคาไม่สำเร็จ'; if(cb)cb(false); }
+  }).catch(function(e){ WCAT_ERR='ต่อ backend ไม่ได้ '+e; if(cb)cb(false); });
+}
 var WTIER=['10-15','16-20','21-25','26-30','31-35','36-40','41-45','46-50','51-55','55-80'];
 function wTierIdx(h){ if(h<16)return 0;if(h<21)return 1;if(h<26)return 2;if(h<31)return 3;if(h<36)return 4;if(h<41)return 5;if(h<46)return 6;if(h<51)return 7;if(h<55)return 8;return 9; }
 function wIsPrint(k){ return !!k&&(k.indexOf('\u0e1e\u0e34\u0e21\u0e1e\u0e4c')>=0||/print/i.test(k)); }
@@ -4541,10 +4681,11 @@ function wAddBox(){ var n=measBoxes.length, col=WBOXCOLORS[n%WBOXCOLORS.length],
   nb.name='\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23 '+n; nb.color=col; nb.type=''; nb.role='text';
   measBoxes.push(nb); renderBoxRows(); wallDraw(); }
 if($('wPAddBox'))$('wPAddBox').onclick=wAddBox;
-(function(){ var opts='';
+function buildTypeList(){ var opts='';
   Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var hint=(it.t==='f'?(it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.'):'\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23'); opts+='<option value="'+k.replace(/"/g,'&quot;')+'">'+hint+'</option>'; });
   if($('wPTypeList'))$('wPTypeList').innerHTML=opts;
-})();
+}
+buildTypeList();
 renderBoxRows();
 var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0}, _txtMode='move', _txtCorner=-1;
 function _txtFit(t){ if(!t)return; var cv=$('wCanvas'); if(!cv)return; var s=wallSignReal(),ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; var g=cv.getContext('2d'); var px=Math.max(4,(t.sizeCm||20)*ppm); g.font='700 '+px+'px "'+t.font+'", sans-serif'; var m=g.measureText(t.text||' '); var asc=(m.actualBoundingBoxAscent||px*0.72),desc=(m.actualBoundingBoxDescent||px*0.04),lft=(m.actualBoundingBoxLeft||0),rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width); t.fw=Math.max(0.01,(lft+rgt)/ww); t.fh=Math.max(0.008,(asc+desc)/wh); }
@@ -4774,61 +4915,4 @@ if($('wSpotI'))$('wSpotI').oninput=function(){ if($('wSpotIV'))$('wSpotIV').text
 function openTextEdit(){ var e=$('wTextEdit'); if(_txtSel<0||!textBoxes[_txtSel]){ if(e)e.style.display='none'; return; } var t=textBoxes[_txtSel]; if(e)e.style.display='block'; if($('wTxt'))$('wTxt').value=t.text; if($('wTxtFont'))$('wTxtFont').value=t.font; if($('wTxtSize'))$('wTxtSize').value=t.sizeCm; if($('wTxtColor'))$('wTxtColor').value=t.color; if($('wTxtType'))$('wTxtType').value=t.type||''; if($('wTxtLight'))$('wTxtLight').value=t.light||''; _txtLightUI(); updateTxtInfo(); }
 if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.45,fw:0.18,fh:0.06,text:'ข้อความ',font:'Prompt',sizeCm:20,color:'#333333'}); _txtSel=textBoxes.length-1; loadGFont('Prompt'); openTextEdit(); setTimeout(function(){ try{_txtFit(textBoxes[_txtSel]);}catch(_e){} wallDraw(); },60); };
 ['wTxt','wTxtFont','wTxtSize','wTxtColor','wTxtType'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; if($('wTxtType'))t.type=$('wTxtType').value; loadGFont(t.font); var _refit=(id==='wTxt'||id==='wTxtFont'||id==='wTxtSize'); if(_refit){try{_txtFit(t);}catch(_e){}} setTimeout(wallDraw,30); try{document.fonts.load('700 40px "'+t.font+'"').then(function(){ if(_refit){try{_txtFit(t);}catch(_e){}} wallDraw();});}catch(_e){} }; el.onchange=el.oninput; });
-if($('wTxtCenterH'))$('wTxtCenterH').onclick=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; var s=wallSignReal(),ww=s.Wm*s.ppm; t.fx=0.5-((t._iw||0)/2)/ww; wallDraw(); };
-if($('wTxtCenterV'))$('wTxtCenterV').onclick=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; var s=wallSignReal(),wh=s.Hm*s.ppm; t.fy=0.5-((t._ih||0)/2)/wh; wallDraw(); };
-if($('wTxtDel'))$('wTxtDel').onclick=function(){ if(_txtSel<0)return; textBoxes.splice(_txtSel,1); _txtSel=-1; openTextEdit(); wallDraw(); };
-if($('wPCopy'))$('wPCopy').onclick=function(){
-  if(!_wLast||!_wLast.lines){ alert('\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e01\u0e48\u0e2d\u0e19'); return; }
-  try{ var _l0=(_wLast.lines.filter(function(l){return l.r;})[0])||{}; vcLogSim('\u0e1b\u0e23\u0e30\u0e40\u0e21\u0e34\u0e19\u0e23\u0e32\u0e04\u0e32 '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17'+(_l0.w?(' \u00b7 '+_l0.w+'x'+_l0.h+' \u0e0b\u0e21.'):'')+(_l0.type?(' \u00b7 '+_l0.type):'')); }catch(_e){}
-  var L=['\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32 \u2014 VectorCNC'];
-  _wLast.lines.forEach(function(l){
-    if(l.colorLine){ L.push('\ud83c\udfa8 \u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 '+l.n+' \u0e2a\u0e35 \u00d7 1,500 = '+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17'); return; }
-    if(!l.r)return;
-    L.push((l.label?l.label+' ':'')+l.type);
-    L.push('  \u0e02\u0e19\u0e32\u0e14 '+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):''));
-    L.push('  '+_pDetail(l.r)+' = '+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17'); });
-  L.push('\u0e23\u0e27\u0e21: '+Math.round(_wLast.total).toLocaleString()+' \u0e1a\u0e32\u0e17 (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e23\u0e27\u0e21 VAT)');
-  var txt=L.join('\n');
-  function done(){ var b=$('wPCopy'); var t=b.textContent; b.textContent='\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e41\u0e25\u0e49\u0e27 \u2713'; setTimeout(function(){b.textContent=t;},1500); }
-  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,function(){ alert(txt); }); }
-  else { alert(txt); }
-};
-function wallLoadJsPDF(cb){ if(window.jspdf&&window.jspdf.jsPDF){cb();return;} var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload=cb; sc.onerror=function(){alert('โหลด PDF ไม่ได้ (เช็คเน็ต)');}; document.head.appendChild(sc); }
-if($('wPdf'))$('wPdf').onclick=function(){ wallLoadJsPDF(function(){ var cv=wallExportCanvas()||$('wCanvas'); var data=cv.toDataURL('image/jpeg',0.95); var J=window.jspdf.jsPDF; var land=cv.width>=cv.height; var pdf=new J({orientation:land?'landscape':'portrait',unit:'mm',format:'a4'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(); var ar=cv.width/cv.height; var w=pw-20,h=w/ar; if(h>ph-20){h=ph-20;w=h*ar;} pdf.addImage(data,'JPEG',(pw-w)/2,(ph-h)/2,w,h); pdf.save('wall_mockup.pdf'); }); };
-
-
-// ---- ✏️ แก้พื้นหลังเอง (brush erase/restore) ----
-var _ecOrig=null,_ecMode='erase',_ecDraw=false;
-function openEraser(){ if(!_wallSignOrig){ alert('อัปโหลดภาพป้ายก่อน'); return; }
-  var im=new Image(); im.onload=function(){ _ecOrig=im;
-    var cap=1400,w=im.width,h=im.height,sc=Math.min(1,cap/Math.max(w,h));
-    var cw=Math.round(w*sc),ch=Math.round(h*sc);
-    var cv=$('ecCanvas'); if(!cv)return; cv.width=cw; cv.height=ch;
-    var g=cv.getContext('2d'); g.clearRect(0,0,cw,ch); g.drawImage(im,0,0,cw,ch);
-    _ecMode='erase'; if($('ecErase'))$('ecErase').classList.add('on'); if($('ecRestore'))$('ecRestore').classList.remove('on');
-    if($('eraseOverlay'))$('eraseOverlay').classList.add('show');
-  }; im.src=_wallSignOrig;
-}
-function _ecPos(e){ var cv=$('ecCanvas'),r=cv.getBoundingClientRect(); var sx=cv.width/r.width,sy=cv.height/r.height; var cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left, cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:cx*sx,y:cy*sy}; }
-function _ecPaint(p){ var cv=$('ecCanvas'); if(!cv)return; var g=cv.getContext('2d'); var rad=(parseInt(($('ecSize')&&$('ecSize').value)||36,10))/2;
-  g.save(); g.beginPath(); g.arc(p.x,p.y,rad,0,Math.PI*2); g.closePath(); g.clip();
-  if(_ecMode==='erase'){ g.clearRect(p.x-rad,p.y-rad,rad*2,rad*2); }
-  else if(_ecOrig){ g.drawImage(_ecOrig,0,0,cv.width,cv.height); }
-  g.restore();
-}
-(function(){ var cv=$('ecCanvas'); if(!cv)return;
-  function down(e){ _ecDraw=true; _ecPaint(_ecPos(e)); e.preventDefault(); }
-  function move(e){ if(_ecDraw){ _ecPaint(_ecPos(e)); e.preventDefault(); } }
-  function up(){ _ecDraw=false; }
-  cv.addEventListener('mousedown',down); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
-  cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
-})();
-if($('ecErase'))$('ecErase').onclick=function(){ _ecMode='erase'; this.classList.add('on'); if($('ecRestore'))$('ecRestore').classList.remove('on'); };
-if($('ecRestore'))$('ecRestore').onclick=function(){ _ecMode='restore'; this.classList.add('on'); if($('ecErase'))$('ecErase').classList.remove('on'); };
-if($('ecReset'))$('ecReset').onclick=function(){ if(!_ecOrig)return; var cv=$('ecCanvas'),g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height); g.drawImage(_ecOrig,0,0,cv.width,cv.height); };
-if($('ecClose'))$('ecClose').onclick=function(){ if($('eraseOverlay'))$('eraseOverlay').classList.remove('show'); };
-if($('ecDone'))$('ecDone').onclick=function(){ var cv=$('ecCanvas'); if(!cv)return; var url=cv.toDataURL('image/png'); _wallSignOrig=url; if($('wCut'))$('wCut').checked=false; _wallLoad(url,'แก้พื้นหลังแล้ว ✓'); if($('eraseOverlay'))$('eraseOverlay').classList.remove('show'); };
-if($('wEditBg'))$('wEditBg').onclick=openEraser;
-</script>
-</body>
-</html>
+if($('wTxtCenterH'))$('wTxtCenterH').onclick=function(){ if(_txtSel<0)return; var
