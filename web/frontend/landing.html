@@ -3,8 +3,96 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VectorCNC — Artwork to production-ready cut files</title>
-<meta name="description" content="Turn any artwork into production-ready cut files. Sharp vectors, layered sign structures, nesting, 3D preview.">
+
+<!-- ========================= 🔍 SEO ========================= -->
+<title>VectorCNC — แปลงภาพเป็นไฟล์ตัด CNC / เลเซอร์ (SVG, DXF) ออนไลน์ | Sign Making Software</title>
+<meta name="description" content="อัปโหลดโลโก้หรือภาพ แล้วได้ไฟล์ตัด CNC/เลเซอร์คมชัดทันที — SVG, DXF, .ai, STL · แตกชุดชั้นตัดตามแบบป้าย (ไฟออกหน้า/ออกรอบ/กล่องไฟ/ยกขอบ) · จัดวางลงแผ่น (nesting) · พรีวิว 3 มิติ · ใช้ฟรีได้เลย ไม่ต้องติดตั้งโปรแกรม | Turn artwork into production-ready CNC & laser cut files online.">
+<meta name="keywords" content="แปลงภาพเป็นไฟล์ตัด, ไฟล์ตัด CNC, ไฟล์ตัดเลเซอร์, DXF ออนไลน์, แปลงรูปเป็น vector, ทำป้าย, ป้ายอักษรโลหะ, ตัวอักษรสแตนเลส, กล่องไฟ, nesting, image to DXF, image to SVG, raster to vector, CNC cut file, laser cut file generator, sign making software, vectorize logo">
+<link rel="canonical" href="https://vectorcnc.onrender.com/welcome">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="VectorCNC">
+<meta name="theme-color" content="#0d9488">
+<link rel="alternate" hreflang="th" href="https://vectorcnc.onrender.com/welcome?lang=th">
+<link rel="alternate" hreflang="en" href="https://vectorcnc.onrender.com/welcome?lang=en">
+<link rel="alternate" hreflang="x-default" href="https://vectorcnc.onrender.com/welcome">
+
+<!-- Open Graph (Facebook / LINE) -->
+<meta property="og:type"        content="website">
+<meta property="og:site_name"   content="VectorCNC">
+<meta property="og:url"         content="https://vectorcnc.onrender.com/welcome">
+<meta property="og:title"       content="VectorCNC — แปลงภาพเป็นไฟล์ตัด CNC / เลเซอร์ ออนไลน์">
+<meta property="og:description" content="อัปโหลดโลโก้ → ได้ไฟล์ตัด SVG/DXF คมชัด + ชุดชั้นตัดตามแบบป้าย + จัดวางลงแผ่น + พรีวิว 3 มิติ ใช้ฟรีได้เลย">
+<meta property="og:image"       content="https://vectorcnc.onrender.com/static/og.png">
+<meta property="og:locale"      content="th_TH">
+<meta property="og:locale:alternate" content="en_US">
+
+<!-- Twitter / X -->
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="VectorCNC — Artwork to production-ready CNC cut files">
+<meta name="twitter:description" content="Upload a logo, get sharp SVG/DXF cut files, layered sign structures, nesting and a 3D preview. Free to try.">
+<meta name="twitter:image"       content="https://vectorcnc.onrender.com/static/og.png">
+
+<!-- Structured data: ตัวซอฟต์แวร์ + ราคา -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "VectorCNC",
+  "alternateName": "Graphic Design Solution",
+  "applicationCategory": "DesignApplication",
+  "applicationSubCategory": "CAD / CAM · Sign making",
+  "operatingSystem": "Web browser (Windows, macOS, Linux, iOS, Android)",
+  "url": "https://vectorcnc.onrender.com/welcome",
+  "description": "Turn any artwork into production-ready CNC and laser cut files. Vectorize logos into sharp SVG/DXF, generate layered cut sets for sign structures, nest parts onto sheets, and preview the sign in 3D.",
+  "inLanguage": ["th", "en"],
+  "featureList": [
+    "Raster to vector (image to SVG / DXF)",
+    "Layered cut sets for sign structures",
+    "Sheet nesting / material optimisation",
+    "3D perspective preview",
+    "Illustrator (.ai) draft export",
+    "STL export for Fusion 360 / 3D printing"
+  ],
+  "offers": [
+    {"@type": "Offer", "name": "Free",   "price": "0",  "priceCurrency": "USD",
+     "description": "Vectorize up to 5 files per month, SVG download, full manual."},
+    {"@type": "Offer", "name": "Pro",    "price": "19", "priceCurrency": "USD",
+     "description": "DXF, layered cut sets, nesting, Intake Studio."},
+    {"@type": "Offer", "name": "Studio", "price": "49", "priceCurrency": "USD",
+     "description": "Multi-file nesting, STL export, unlimited conversions."}
+  ],
+  "publisher": {"@type": "Organization", "name": "VectorCNC",
+                "email": "panusphong@gmail.com",
+                "url": "https://vectorcnc.onrender.com"}
+}
+</script>
+
+<!-- Structured data: FAQ (ช่วยให้ขึ้น rich result ใน Google) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question",
+     "name": "แปลงภาพ JPG/PNG เป็นไฟล์ตัด CNC ได้ไหม",
+     "acceptedAnswer": {"@type": "Answer",
+       "text": "ได้ อัปโหลดภาพ JPG, PNG, PSD หรือไฟล์เวกเตอร์ AI, PDF, SVG, EPS แล้วระบบจะแปลงเป็นเส้นตัดเวกเตอร์คมชัด ดาวน์โหลดเป็น SVG หรือ DXF เข้าเครื่อง CNC และเลเซอร์ได้ทันที"}},
+    {"@type": "Question",
+     "name": "ไฟล์ SVG กับ DXF ต่างกันอย่างไร",
+     "acceptedAnswer": {"@type": "Answer",
+       "text": "DXF เป็นมาตรฐานงาน CAD/CAM ใช้กับ CypCut, เครื่องไฟเบอร์เลเซอร์ และ Fusion 360 ส่วน SVG เหมาะกับ LightBurn และงานกราฟิก ทั้งสองแบบเก็บขนาดจริงเป็นมิลลิเมตร"}},
+    {"@type": "Question",
+     "name": "What is VectorCNC?",
+     "acceptedAnswer": {"@type": "Answer",
+       "text": "VectorCNC is an online tool that turns artwork into production-ready cut files. It vectorizes logos into sharp SVG and DXF, builds layered cut sets for sign structures, nests parts onto sheets, and previews the finished sign in 3D."}},
+    {"@type": "Question",
+     "name": "Is it free to use?",
+     "acceptedAnswer": {"@type": "Answer",
+       "text": "Yes. The Free plan lets you convert up to 5 files per month and download SVG cut files, with no installation required."}}
+  ]
+}
+</script>
+
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--teal:#0d9488;--indigo:#4f46e5;--bg:#f8fafc}
@@ -23,6 +111,10 @@
   .btn.p{background:var(--teal);color:#fff;border-color:var(--teal)}
   .btn.p:hover{background:#0f766e;color:#fff}
   .btn.lg{padding:13px 28px;font-size:15px}
+  /* 💳 ปุ่มแพ็กเกจที่ยังไม่เปิดรับชำระเงิน */
+  .btn.soon{background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:pointer}
+  .btn.soon:hover{background:#e2e8f0;color:#475569;border-color:#cbd5e1}
+  .soonnote{font-size:11px;color:#94a3b8;text-align:center;margin-top:8px;line-height:1.45}
 
   .hero{padding:74px 0 60px;text-align:center;background:radial-gradient(1000px 400px at 50% -60px,#e6fffa,transparent)}
   .tag{display:inline-block;font-size:12.5px;font-weight:700;color:var(--teal);background:#ccfbf1;padding:5px 14px;border-radius:100px;margin-bottom:18px}
@@ -161,21 +253,33 @@
   <a href="/" class="btn p lg"><span class="th">เข้าใช้งาน</span><span class="en">Launch app</span></a>
 </div></section>
 
-<footer><div class="wrap">VectorCNC · <span class="th">โดย</span><span class="en">by</span> Saai Tech &nbsp;·&nbsp; <a href="/" style="color:var(--teal)">app</a></div></footer>
+<footer><div class="wrap">
+  VectorCNC · <span class="th">โดย</span><span class="en">by</span> Saai Tech
+  &nbsp;·&nbsp; <a href="/" style="color:var(--teal)"><span class="th">เข้าใช้งาน</span><span class="en">Launch app</span></a>
+  &nbsp;·&nbsp; <a href="mailto:panusphong@gmail.com" style="color:var(--teal)"><span class="th">ติดต่อเรา</span><span class="en">Contact</span></a>
+</div></footer>
 
 <script>
-var LANG = localStorage.getItem('vc_lang') || ((navigator.language||'').slice(0,2)==='th' ? 'th' : 'en');
+/* 🔍 SEO: ?lang=en / ?lang=th มาก่อนเสมอ (ให้ hreflang ของ Google ชี้มาแล้วเจอภาษาที่ถูก) */
+var _qlang = (location.search.match(/[?&]lang=(th|en)/)||[])[1];
+var LANG = _qlang || localStorage.getItem('vc_lang')
+        || ((navigator.language||'').slice(0,2)==='th' ? 'th' : 'en');
 function setLang(L){
   LANG = (L==='en') ? 'en' : 'th';
   localStorage.setItem('vc_lang', LANG);
   document.documentElement.lang = LANG;
   document.getElementById('lang').textContent = (LANG==='th') ? '🌐 EN' : '🌐 ไทย';
+  /* บอก crawler/แชร์ลิงก์ว่าหน้านี้ภาษาอะไร */
+  var og = document.querySelector('meta[property="og:locale"]');
+  if(og) og.setAttribute('content', LANG==='th' ? 'th_TH' : 'en_US');
   renderPlans();
 }
 document.getElementById('lang').onclick = function(){ setLang(LANG==='th'?'en':'th'); };
 
 var PLANS = null;
 var HOT = 'pro';
+var PAY_OPEN = false;   /* 💳 ยังไม่ต่อ payment gateway -> ปุ่ม Upgrade ปิดไว้ก่อน */
+var CONTACT  = '';
 function renderPlans(){
   var box = document.getElementById('plans');
   if(!PLANS){ box.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#94a3b8">…</div>'; return; }
@@ -188,28 +292,66 @@ function renderPlans(){
     else               price = '$'+p.price_usd+'<small>/'+(TH?'เดือน':'mo')+'</small>';
     var thb = (p.price_thb && !p.contact) ? ('≈ '+p.price_thb.toLocaleString()+' '+(TH?'บาท/เดือน':'THB/mo')) : '&nbsp;';
     var q = p.quota && p.quota.vectorize;
+    var lb = function(f){ return (!TH && f.label_en) ? f.label_en : f.label; };
     var feats = p.features.map(function(f){
-      var lab = f.label;
+      var lab = lb(f);
       if(f.key==='vectorize' && q) lab += TH ? (' — '+q+' ครั้ง/เดือน') : (' — '+q+'/month');
       return '<li>✅ <span>'+lab+'</span></li>';
     }).join('');
     var locked = p.locked.slice(0,3).map(function(f){
-      return '<li class="no">🔒 <span>'+f.label+'</span></li>';
+      return '<li class="no">🔒 <span>'+lb(f)+'</span></li>';
     }).join('');
-    var cta = p.contact ? (TH?'ติดต่อฝ่ายขาย':'Contact sales')
-            : (!p.price_usd ? (TH?'เริ่มฟรี':'Start free') : (TH?'อัปเกรด':'Upgrade'));
+    var isFree = (!p.price_usd && !p.contact);
+    var mailFor = function(subj, body){
+      var mail = p.contact_email || CONTACT || 'panusphong@gmail.com';
+      return 'mailto:'+mail+'?subject='+encodeURIComponent(subj)+'&body='+body;
+    };
+
+    var cta, href = '/', cls = '', extra = '';
+
+    if(p.contact){
+      /* 📧 Enterprise -> อีเมลฝ่ายขาย */
+      cta  = TH ? 'ติดต่อฝ่ายขาย' : 'Contact sales';
+      href = mailFor(
+        TH ? 'สอบถามแพ็กเกจ Enterprise — VectorCNC' : 'Enterprise plan enquiry — VectorCNC',
+        TH ? 'สวัสดีครับ/ค่ะ%0D%0A%0D%0Aสนใจแพ็กเกจ Enterprise ของ VectorCNC%0D%0A%0D%0Aชื่อบริษัท:%0D%0Aจำนวนผู้ใช้:%0D%0Aเบอร์ติดต่อ:%0D%0A'
+           : 'Hello,%0D%0A%0D%0AI would like to know more about the VectorCNC Enterprise plan.%0D%0A%0D%0ACompany:%0D%0ANumber of users:%0D%0APhone:%0D%0A');
+    }else if(isFree){
+      /* 🆓 Free -> ใช้งานได้เลย */
+      cta = TH ? 'เริ่มใช้ฟรี' : 'Start free';
+      href = '/';
+    }else if(PAY_OPEN){
+      cta = TH ? 'อัปเกรด' : 'Upgrade';
+      href = '/';
+    }else{
+      /* 💳 ยังไม่เปิดรับชำระเงิน -> ปุ่มปิด + ให้แจ้งความจำนงทางอีเมลแทน */
+      cta  = TH ? '🔒 เร็ว ๆ นี้' : '🔒 Coming soon';
+      cls  = ' soon';
+      href = mailFor(
+        TH ? ('แจ้งความสนใจแพ็กเกจ '+p.label+' — VectorCNC')
+           : ('Notify me — VectorCNC '+p.label+' plan'),
+        TH ? ('สนใจแพ็กเกจ '+p.label+' รบกวนแจ้งเมื่อเปิดให้ชำระเงินด้วยครับ/ค่ะ%0D%0A%0D%0Aชื่อ:%0D%0Aบริษัท:%0D%0A')
+           : ('I am interested in the '+p.label+' plan. Please let me know when payments open.%0D%0A%0D%0AName:%0D%0ACompany:%0D%0A'));
+      extra = '<div class="soonnote">'+(TH
+        ? 'ระบบชำระเงินกำลังจะเปิด — ระหว่างนี้ลองใช้แพ็กเกจ Free ได้เลย'
+        : 'Payments open soon — try the Free plan in the meantime')+'</div>';
+    }
+
     return '<div class="plan'+(hot?' hot':'')+'">'+
       (hot ? '<div class="badge">'+(TH?'ยอดนิยม':'Most popular')+'</div>' : '')+
       '<h3>'+p.label+'</h3>'+
       '<div class="px">'+price+'</div>'+
       '<div class="thb">'+thb+'</div>'+
       '<ul>'+feats+locked+'</ul>'+
-      '<a href="/" class="btn'+(hot?' p':'')+'">'+cta+'</a>'+
+      '<a href="'+href+'" class="btn'+(hot&&!cls?' p':'')+cls+'">'+cta+'</a>'+
+      extra+
     '</div>';
   }).join('');
 }
 fetch('/api/plans').then(function(r){return r.json();}).then(function(j){
-  PLANS = j.plans || [];
+  PLANS    = j.plans || [];
+  PAY_OPEN = !!j.payments_open;
+  CONTACT  = j.contact_email || '';
   renderPlans();
 }).catch(function(){
   document.getElementById('plans').innerHTML =
