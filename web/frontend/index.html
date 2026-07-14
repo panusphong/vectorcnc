@@ -4956,4 +4956,27 @@ if($('wSpotI'))$('wSpotI').oninput=function(){ if($('wSpotIV'))$('wSpotIV').text
 function openTextEdit(){ var e=$('wTextEdit'); if(_txtSel<0||!textBoxes[_txtSel]){ if(e)e.style.display='none'; return; } var t=textBoxes[_txtSel]; if(e)e.style.display='block'; if($('wTxt'))$('wTxt').value=t.text; if($('wTxtFont'))$('wTxtFont').value=t.font; if($('wTxtSize'))$('wTxtSize').value=t.sizeCm; if($('wTxtColor'))$('wTxtColor').value=t.color; if($('wTxtType'))$('wTxtType').value=t.type||''; if($('wTxtLight'))$('wTxtLight').value=t.light||''; _txtLightUI(); updateTxtInfo(); }
 if($('wAddText'))$('wAddText').onclick=function(){ textBoxes.push({fx:0.4,fy:0.45,fw:0.18,fh:0.06,text:'ข้อความ',font:'Prompt',sizeCm:20,color:'#333333'}); _txtSel=textBoxes.length-1; loadGFont('Prompt'); openTextEdit(); setTimeout(function(){ try{_txtFit(textBoxes[_txtSel]);}catch(_e){} wallDraw(); },60); };
 ['wTxt','wTxtFont','wTxtSize','wTxtColor','wTxtType'].forEach(function(id){ var el=$(id); if(!el)return; el.oninput=function(){ if(_txtSel<0)return; var t=textBoxes[_txtSel]; t.text=$('wTxt').value; t.font=$('wTxtFont').value; t.sizeCm=parseFloat($('wTxtSize').value)||10; t.color=$('wTxtColor').value; if($('wTxtType'))t.type=$('wTxtType').value; loadGFont(t.font); var _refit=(id==='wTxt'||id==='wTxtFont'||id==='wTxtSize'); if(_refit){try{_txtFit(t);}catch(_e){}} setTimeout(wallDraw,30); try{document.fonts.load('700 40px "'+t.font+'"').then(function(){ if(_refit){try{_txtFit(t);}catch(_e){}} wallDraw();});}catch(_e){} }; el.onchange=el.oninput; });
-if($('wTxtCenterH'))$('wTxtCenterH').onclick=function(){ if(_txtSel<0)return; var
+/* ---- กู้คืนท้ายไฟล์ (ปุ่มจัดกึ่งกลาง / ลบข้อความ) ---- */
+if($('wTxtCenterH'))$('wTxtCenterH').onclick=function(){
+  if(_txtSel<0||!textBoxes[_txtSel])return;
+  var t=textBoxes[_txtSel];
+  t.fx=Math.max(0,(1-(t.fw||0))/2);
+  wallDraw();
+};
+if($('wTxtCenterV'))$('wTxtCenterV').onclick=function(){
+  if(_txtSel<0||!textBoxes[_txtSel])return;
+  var t=textBoxes[_txtSel];
+  t.fy=Math.max(0,(1-(t.fh||0))/2);
+  wallDraw();
+};
+if($('wTxtDel'))$('wTxtDel').onclick=function(){
+  if(_txtSel<0)return;
+  textBoxes.splice(_txtSel,1);
+  _txtSel=-1;
+  if($('wTextEdit'))$('wTextEdit').style.display='none';
+  try{updateTxtInfo();}catch(_e){}
+  wallDraw();
+};
+</script>
+</body>
+</html>
