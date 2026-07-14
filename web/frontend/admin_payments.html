@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>อนุมัติการชำระเงิน · VectorCNC Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--teal:#0d9488;--red:#ef4444;--bg:#f8fafc}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Prompt',system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 20px 70px}
+  h1{font-size:22px;font-weight:800;margin-bottom:3px}
+  .sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+
+  .gate{background:#fff;border:1px solid var(--line);border-radius:16px;padding:34px;text-align:center;max-width:420px;margin:60px auto}
+  .gate input{width:100%;font-family:inherit;font-size:14px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:10px;margin:14px 0}
+  .btn{font-family:inherit;font-size:14px;font-weight:700;padding:11px 20px;border-radius:10px;border:0;
+    background:var(--teal);color:#fff;cursor:pointer}
+  .btn:hover{background:#0f766e}
+  .btn.g{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.r{background:var(--red)} .btn.r:hover{background:#dc2626}
+  .btn.sm{font-size:12.5px;padding:8px 14px}
+
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+  .s{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 18px}
+  .s b{display:block;font-size:22px;font-weight:800}
+  .s span{font-size:12px;color:var(--muted)}
+  .s.bad b{color:var(--red)}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
+  h2{font-size:16px;font-weight:800;margin-bottom:14px}
+
+  .p{display:flex;gap:16px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:11px;align-items:flex-start}
+  .p img{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;background:#f1f5f9}
+  .p .info{flex:1;font-size:13.5px}
+  .p .info div{display:flex;gap:8px;padding:1px 0}
+  .p .info .k{color:var(--muted);min-width:82px}
+  .p .info .ref{font-family:ui-monospace,monospace;background:#fffbeb;border:1px solid #fde68a;
+    padding:1px 8px;border-radius:6px;font-weight:700}
+  .p .act{display:flex;flex-direction:column;gap:7px;min-width:120px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:700;color:var(--muted);font-size:11.5px;text-transform:uppercase;
+    padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid #f1f5f9}
+  .tag{font-size:11px;font-weight:700;padding:2px 9px;border-radius:100px}
+  .tag.paid{background:#dcfce7;color:#166534}
+  .tag.pending{background:#fef3c7;color:#92400e}
+  .tag.rejected{background:#fee2e2;color:#991b1b}
+  .tag.await_slip{background:#e0e7ff;color:#3730a3}
+
+  .prov{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px}
+  .prov div{border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:#fff}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+  .dot.on{background:#22c55e} .dot.off{background:#cbd5e1}
+  .empty{text-align:center;color:var(--muted);font-size:13.5px;padding:26px}
+  .lb{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;place-items:center;z-index:99;cursor:zoom-out}
+  .lb img{max-width:92vw;max-height:92vh;border-radius:12px}
+</style>
+</head>
+<body>
+
+<!-- ต้องมี ADMIN_KEY ถึงจะเข้าได้ (backend ตรวจซ้ำอีกชั้น) -->
+<div class="gate" id="gate">
+  <div style="font-size:40px">🔐</div>
+  <h1 style="margin-top:10px">แอดมิน — อนุมัติการชำระเงิน</h1>
+  <div class="sub" style="margin-bottom:0">ใส่ Admin Key เพื่อเข้าใช้งาน</div>
+  <input type="password" id="key" placeholder="ADMIN_KEY" autocomplete="off">
+  <button class="btn" id="enter" style="width:100%">เข้าสู่ระบบ</button>
+  <div id="gerr" style="color:#b91c1c;font-size:13px;margin-top:10px"></div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <h1>💳 อนุมัติการชำระเงิน</h1>
+  <div class="sub">สลิปโอนเงินที่รอตรวจ · ประวัติการจ่ายทั้งหมด · สถานะช่องทางที่เปิดใช้</div>
+
+  <div class="stat">
+    <div class="s bad"><b id="nPending">–</b><span>สลิปรอตรวจ</span></div>
+    <div class="s"><b id="nPaid">–</b><span>จ่ายสำเร็จ (60 รายการล่าสุด)</span></div>
+    <div class="s"><b id="nSum">–</b><span>ยอดรวม (บาท)</span></div>
+  </div>
+
+  <div class="card">
+    <h2>🧾 สลิปรอตรวจ</h2>
+    <div id="pending"><div class="empty">กำลังโหลด…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>📋 ประวัติการชำระเงิน</h2>
+    <div style="overflow:auto"><table id="hist"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>🔌 สถานะช่องทางชำระเงิน</h2>
+    <div class="prov" id="prov"></div>
+    <div class="sub" style="margin:12px 0 0">
+      ช่องที่เป็นสีเทา = ยังไม่ได้ตั้งคีย์ใน Render → Environment · ลูกค้าจะไม่เห็นช่องนั้น
+    </div>
+  </div>
+</div>
+
+<div class="lb" id="lb"><img id="lbImg" alt=""></div>
+
+<script>
+function $(i){ return document.getElementById(i); }
+var AK = '';
+
+/* ═══ เข้าระบบ ═══ */
+$('enter').onclick = function(){
+  AK = ($('key').value||'').trim();
+  if(!AK){ $('gerr').textContent = 'ยังไม่ได้ใส่ key'; return; }
+  load(true);
+};
+$('key').onkeydown = function(e){ if(e.key==='Enter') $('enter').click(); };
+
+/* ⚠️ เก็บใน sessionStorage เท่านั้น — ปิดแท็บแล้วหาย ไม่ค้างในเครื่อง */
+try{
+  var k = sessionStorage.getItem('vc_ak');
+  if(k){ AK = k; load(true); }
+}catch(e){}
+
+function hdr(){ return {'X-Admin-Key': AK, 'X-Internal-Key': AK}; }
+
+function load(first){
+  fetch('/api/admin/payments', {headers: hdr()})
+    .then(function(r){
+      if(r.status === 403) throw new Error('Admin Key ไม่ถูกต้อง');
+      return r.json();
+    })
+    .then(function(j){
+      try{ sessionStorage.setItem('vc_ak', AK); }catch(e){}
+      $('gate').style.display = 'none';
+      $('app').style.display  = 'block';
+      paint(j);
+    })
+    .catch(function(e){
+      $('gerr').textContent = String(e.message || e);
+      if(!first) alert(e.message || e);
+    });
+}
+
+function paint(j){
+  var pend = j.pending || [], rec = j.recent || [];
+
+  $('nPending').textContent = pend.length;
+  var paid = rec.filter(function(r){ return r.status === 'paid'; });
+  $('nPaid').textContent = paid.length;
+  $('nSum').textContent = paid.reduce(function(s,r){
+    return s + (parseFloat(r.amount)||0);
+  }, 0).toLocaleString();
+
+  /* ── สลิปรอตรวจ ── */
+  if(!pend.length){
+    $('pending').innerHTML = '<div class="empty">✅ ไม่มีสลิปค้าง</div>';
+  }else{
+    $('pending').innerHTML = pend.map(function(p){
+      return '<div class="p">'+
+        (p.slip_url
+          ? '<img src="'+p.slip_url+'" data-big="'+p.slip_url+'" alt="slip">'
+          : '<div style="width:120px;height:120px;border-radius:10px;background:#f1f5f9;display:grid;place-items:center;color:#94a3b8;font-size:12px">ไม่มีรูป</div>')+
+        '<div class="info">'+
+          '<div><span class="k">อ้างอิง</span><span class="ref">'+(p.ref||'-')+'</span></div>'+
+          '<div><span class="k">อีเมล</span><b>'+(p.email||'-')+'</b></div>'+
+          '<div><span class="k">แพ็กเกจ</span><b>'+(p.plan||'-')+'</b></div>'+
+          '<div><span class="k">ยอด</span><b>'+(parseFloat(p.amount)||0).toLocaleString()+' บาท</b></div>'+
+          '<div><span class="k">เวลา</span>'+(p.ts||'-')+'</div>'+
+        '</div>'+
+        '<div class="act">'+
+          '<button class="btn sm" data-ok="'+p.ref+'">✅ อนุมัติ 30 วัน</button>'+
+          '<button class="btn sm g" data-ok365="'+p.ref+'">📅 อนุมัติ 365 วัน</button>'+
+          '<button class="btn sm r" data-no="'+p.ref+'">✕ ปฏิเสธ</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+
+    $('pending').querySelectorAll('img[data-big]').forEach(function(im){
+      im.onclick = function(){
+        $('lbImg').src = im.getAttribute('data-big');
+        $('lb').style.display = 'grid';
+      };
+    });
+    $('pending').querySelectorAll('[data-ok]').forEach(function(b){
+      b.onclick = function(){ act(b.getAttribute('data-ok'), 'approve', 30); };
+    });
+    $('pending').querySelectorAll('[data-ok365]').forEach(function(b){
+      b.onclick = function(){ act(b.getAttribute('data-ok365'), 'approve', 365); };
+    });
+    $('pending').querySelectorAll('[data-no]').forEach(function(b){
+      b.onclick = function(){
+        var why = prompt('เหตุผลที่ปฏิเสธ:', 'ยอดเงินไม่ตรง / สลิปอ่านไม่ออก');
+        if(why !== null) act(b.getAttribute('data-no'), 'reject', 0, why);
+      };
+    });
+  }
+
+  /* ── ประวัติ ── */
+  $('hist').innerHTML =
+    '<tr><th>เวลา</th><th>อ้างอิง</th><th>อีเมล</th><th>แพ็กเกจ</th>'+
+    '<th>ช่องทาง</th><th>ยอด</th><th>สถานะ</th></tr>' +
+    (rec.length ? rec.map(function(r){
+      return '<tr>'+
+        '<td>'+(r.ts||'')+'</td>'+
+        '<td style="font-family:ui-monospace,monospace">'+(r.ref||'')+'</td>'+
+        '<td>'+(r.email||'')+'</td>'+
+        '<td>'+(r.plan||'')+'</td>'+
+        '<td>'+(r.provider||'')+'</td>'+
+        '<td>'+(parseFloat(r.amount)||0).toLocaleString()+' '+(r.currency||'')+'</td>'+
+        '<td><span class="tag '+(r.status||'')+'">'+(r.status||'')+'</span></td>'+
+      '</tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">ยังไม่มีรายการ</td></tr>');
+
+  /* ── สถานะช่องทาง ── */
+  var pv = j.providers || {};
+  var rows = [
+    ['PayPal', pv.paypal && pv.paypal.ready,
+     pv.paypal ? ('โหมด: '+pv.paypal.mode+
+        ' · Plan Pro '+(pv.paypal.plan_pro?'✓':'✕')+
+        ' · Studio '+(pv.paypal.plan_studio?'✓':'✕')) : ''],
+    ['Omise (บัตร / พร้อมเพย์ / E-Banking)', pv.omise && pv.omise.ready,
+     (pv.omise && pv.omise.ready) ? 'พร้อมใช้งาน' : 'ยังไม่ได้ตั้ง OMISE_SECRET_KEY'],
+    ['โอนเงิน + สลิป', pv.transfer && pv.transfer.ready,
+     (pv.transfer && pv.transfer.bank && pv.transfer.bank.bank)
+        ? (pv.transfer.bank.bank+' · '+pv.transfer.bank.account)
+        : 'ยังไม่ได้ตั้ง BANK_NAME / BANK_ACCOUNT_NO']
+  ];
+  $('prov').innerHTML = rows.map(function(r){
+    return '<div style="'+(r[1]?'':'opacity:.55')+'">'+
+      '<b><span class="dot '+(r[1]?'on':'off')+'"></span>'+r[0]+'</b>'+
+      '<div style="font-size:12px;color:#64748b;margin-top:3px">'+r[2]+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function act(ref, action, days, reason){
+  fetch('/api/admin/approve', {
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, hdr()),
+    body: JSON.stringify({ref:ref, action:action, days:days, reason:reason||''})
+  }).then(function(r){ return r.json(); })
+    .then(function(j){
+      if(j.error){ alert('❌ '+j.error); return; }
+      load();
+    }).catch(function(e){ alert(String(e)); });
+}
+
+$('lb').onclick = function(){ $('lb').style.display = 'none'; };
+</script>
+</body>
+</html>

@@ -335,8 +335,8 @@ function renderPlans(){
       cta = TH ? 'เริ่มใช้ฟรี' : 'Start free';
       href = '/';
     }else if(PAY_OPEN){
-      cta = TH ? 'อัปเกรด' : 'Upgrade';
-      href = '/';
+      cta  = TH ? 'อัปเกรด' : 'Upgrade';
+      href = '/pay?plan=' + p.key + '&lang=' + LANG;
     }else{
       /* 💳 ยังไม่เปิดรับชำระเงิน -> ปุ่มปิด + ให้แจ้งความจำนงทางอีเมลแทน */
       cta  = TH ? '🔒 เร็ว ๆ นี้' : '🔒 Coming soon';

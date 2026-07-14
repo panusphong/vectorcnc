@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ชำระเงิน · VectorCNC</title>
+<meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.omise.co/omise.js"></script>
+<style>
+  :root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--teal:#0d9488;--indigo:#4f46e5;--bg:#f8fafc}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Prompt',system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+  .wrap{max-width:820px;margin:0 auto;padding:26px 20px 60px}
+  a{text-decoration:none;color:inherit}
+
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px}
+  .logo i{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--indigo),var(--teal));
+    display:grid;place-items:center;color:#fff;font-style:normal;font-size:15px}
+  .sp{margin-left:auto}
+  .langsw{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .langsw button{font-family:inherit;font-size:13px;font-weight:700;padding:7px 13px;border:0;
+    background:#fff;color:#94a3b8;cursor:pointer}
+  .langsw button.on{background:var(--teal);color:#fff}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:16px}
+  h2{font-size:18px;font-weight:800;margin-bottom:4px}
+  .sub{font-size:13px;color:var(--muted);margin-bottom:16px}
+
+  label{display:block;font-size:12.5px;font-weight:700;color:#475569;margin:12px 0 5px}
+  input,select{width:100%;font-family:inherit;font-size:14px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:10px;background:#fff;color:var(--ink)}
+  input:focus,select:focus{outline:0;border-color:var(--teal)}
+
+  .plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .pl{border:2px solid var(--line);border-radius:12px;padding:13px 15px;cursor:pointer;background:#fff;transition:.15s}
+  .pl:hover{border-color:#cbd5e1}
+  .pl.on{border-color:var(--teal);background:#f0fdfa}
+  .pl b{display:block;font-size:15px}
+  .pl span{font-size:13px;color:var(--muted)}
+
+  .ms{display:grid;gap:9px;margin-top:6px}
+  .m{display:flex;align-items:center;gap:12px;border:2px solid var(--line);border-radius:12px;
+    padding:13px 15px;cursor:pointer;background:#fff;transition:.15s}
+  .m:hover{border-color:#cbd5e1}
+  .m.on{border-color:var(--teal);background:#f0fdfa}
+  .m .ic{font-size:22px;width:30px;text-align:center}
+  .m .tx b{display:block;font-size:14px;font-weight:700}
+  .m .tx span{font-size:12px;color:var(--muted)}
+  .m .auto{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--teal);
+    background:#ccfbf1;padding:3px 9px;border-radius:100px;white-space:nowrap}
+
+  .btn{width:100%;font-family:inherit;font-size:15px;font-weight:700;padding:14px;border-radius:12px;
+    border:0;background:var(--teal);color:#fff;cursor:pointer;margin-top:18px;transition:.15s}
+  .btn:hover{background:#0f766e}
+  .btn:disabled{background:#cbd5e1;cursor:not-allowed}
+
+  .note{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5}
+  .err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13px;
+    padding:11px 14px;border-radius:10px;margin-top:14px;display:none}
+  .okbox{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:13px;
+    padding:11px 14px;border-radius:10px;margin-top:14px;display:none}
+
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hide{display:none!important}
+  .qr{text-align:center;padding:10px 0}
+  .qr img{width:250px;height:250px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  .bankbox{background:#f8fafc;border:1px dashed var(--line);border-radius:12px;padding:15px 17px;font-size:14px}
+  .bankbox div{display:flex;justify-content:space-between;padding:4px 0}
+  .bankbox b{font-weight:700}
+  .ref{font-family:ui-monospace,monospace;background:#fffbeb;border:1px solid #fde68a;
+    padding:3px 9px;border-radius:6px;font-weight:700}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;
+    border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  html[lang="en"] .th{display:none}
+  html[lang="th"] .en{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <a href="/welcome" class="logo"><i>▲</i> VectorCNC</a>
+    <span class="sp"></span>
+    <div class="langsw" id="lang">
+      <button type="button" data-l="th">ไทย</button><button type="button" data-l="en">EN</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ ยังไม่เปิดรับชำระเงิน ═══════════ -->
+  <div class="card hide" id="closed" style="text-align:center;padding:46px 30px">
+    <div style="font-size:44px">🔒</div>
+    <h2 style="margin-top:12px"><span class="th">ระบบชำระเงินกำลังจะเปิด</span><span class="en">Payments open soon</span></h2>
+    <p class="sub" style="margin-bottom:22px">
+      <span class="th">ระหว่างนี้ใช้แพ็กเกจ Free ได้เลย ไม่มีค่าใช้จ่าย</span>
+      <span class="en">In the meantime, the Free plan is available at no cost.</span>
+    </p>
+    <a href="/" class="btn" style="display:block;text-align:center">
+      <span class="th">เริ่มใช้ฟรี</span><span class="en">Start free</span></a>
+  </div>
+
+  <!-- ═══════════ ฟอร์มชำระเงิน ═══════════ -->
+  <div id="form" class="hide">
+
+    <div class="card">
+      <h2><span class="th">เลือกแพ็กเกจ</span><span class="en">Choose your plan</span></h2>
+      <div class="sub"><span class="th">ยกเลิกได้ตลอดเวลา</span><span class="en">Cancel anytime</span></div>
+      <div class="plans" id="plans"></div>
+
+      <label><span class="th">อีเมล (ใช้เป็นบัญชีของคุณ)</span><span class="en">Email (this is your account)</span></label>
+      <input type="email" id="email" placeholder="you@company.com" autocomplete="email">
+    </div>
+
+    <div class="card">
+      <h2><span class="th">ช่องทางชำระเงิน</span><span class="en">Payment method</span></h2>
+      <div class="sub" id="msub"></div>
+      <div class="ms" id="methods"></div>
+
+      <!-- บัตรเครดิต -->
+      <div id="cardBox" class="hide">
+        <label><span class="th">หมายเลขบัตร</span><span class="en">Card number</span></label>
+        <input id="cNo" inputmode="numeric" placeholder="4242 4242 4242 4242" autocomplete="cc-number">
+        <label><span class="th">ชื่อบนบัตร</span><span class="en">Name on card</span></label>
+        <input id="cName" placeholder="SOMCHAI JAIDEE" autocomplete="cc-name">
+        <div class="row2">
+          <div>
+            <label><span class="th">เดือน/ปี</span><span class="en">Expiry</span></label>
+            <div class="row2">
+              <input id="cM" inputmode="numeric" placeholder="MM" maxlength="2">
+              <input id="cY" inputmode="numeric" placeholder="YYYY" maxlength="4">
+            </div>
+          </div>
+          <div>
+            <label>CVV</label>
+            <input id="cC" inputmode="numeric" placeholder="123" maxlength="4" autocomplete="cc-csc">
+          </div>
+        </div>
+        <div class="note">🔐 <span class="th">ข้อมูลบัตรส่งตรงไปที่ Omise ไม่ผ่านเซิร์ฟเวอร์ของเรา</span>
+          <span class="en">Card details go straight to Omise — they never touch our server.</span></div>
+      </div>
+
+      <!-- E-Banking -->
+      <div id="bankBox" class="hide">
+        <label><span class="th">เลือกธนาคาร</span><span class="en">Select your bank</span></label>
+        <select id="bankSel"></select>
+      </div>
+
+      <button class="btn" id="go" disabled>
+        <span class="th">ชำระเงิน</span><span class="en">Pay</span>
+      </button>
+      <div class="err" id="err"></div>
+      <div class="note">
+        <span class="th">ราคายังไม่รวม VAT · ใบเสร็จส่งไปที่อีเมลของคุณ</span>
+        <span class="en">Prices exclude VAT · receipt sent to your email</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ QR พร้อมเพย์ ═══════════ -->
+  <div class="card hide" id="qrBox">
+    <h2><span class="th">สแกนจ่ายด้วยพร้อมเพย์</span><span class="en">Scan with PromptPay</span></h2>
+    <div class="sub" id="qrAmt"></div>
+    <div class="qr"><img id="qrImg" alt="PromptPay QR"></div>
+    <div class="note" id="qrStat">
+      <span class="spin" style="border-color:#94a3b8;border-top-color:transparent"></span>
+      <span class="th">กำลังรอการชำระเงิน…</span><span class="en">Waiting for payment…</span>
+    </div>
+    <div class="okbox" id="qrOk"></div>
+  </div>
+
+  <!-- ═══════════ โอนเงิน + สลิป ═══════════ -->
+  <div class="card hide" id="trBox">
+    <h2><span class="th">โอนเงินแล้วแนบสลิป</span><span class="en">Transfer, then upload your slip</span></h2>
+    <div class="sub">
+      <span class="th">โอนตามยอดด้านล่าง แล้วอัปโหลดสลิป — แอดมินตรวจแล้วเปิดสิทธิ์ให้ภายใน 24 ชม.</span>
+      <span class="en">Transfer the amount below and upload the slip. We verify and activate within 24 h.</span>
+    </div>
+
+    <div class="bankbox" id="bankInfo"></div>
+
+    <label><span class="th">อัปโหลดสลิป (JPG/PNG)</span><span class="en">Upload slip (JPG/PNG)</span></label>
+    <input type="file" id="slip" accept="image/*">
+    <button class="btn" id="sendSlip">
+      <span class="th">ส่งสลิป</span><span class="en">Send slip</span>
+    </button>
+    <div class="err" id="trErr"></div>
+    <div class="okbox" id="trOk"></div>
+  </div>
+
+</div>
+
+<script>
+/* ═══════════════════════════ ภาษา ═══════════════════════════ */
+var _q = new URLSearchParams(location.search);
+var LANG = _q.get('lang') || localStorage.getItem('vc_lang') || 'th';
+function setLang(L){
+  LANG = (L==='en')?'en':'th';
+  localStorage.setItem('vc_lang', LANG);
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('#lang button').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-l')===LANG);
+  });
+  boot();
+}
+document.querySelectorAll('#lang button').forEach(function(b){
+  b.onclick = function(){ setLang(b.getAttribute('data-l')); };
+});
+function TH(){ return LANG==='th'; }
+
+/* ═══════════════════════════ สถานะ ═══════════════════════════ */
+var PLAN   = _q.get('plan') || 'pro';
+var METHOD = '';
+var PRICES = {};          /* {pro:{thb,usd}, studio:{...}} */
+var METHODS = [];
+var OMISE_PK = '';
+var REF = '';
+
+function $(i){ return document.getElementById(i); }
+function show(i,on){ $(i).classList.toggle('hide', !on); }
+function err(id,msg){ var e=$(id); e.textContent=msg; e.style.display = msg?'block':'none'; }
+
+/* ═══════════════════════════ โหลดข้อมูล ═══════════════════════════ */
+function boot(){
+  Promise.all([
+    fetch('/api/plans').then(function(r){return r.json();}),
+    fetch('/api/pay-methods?lang='+LANG).then(function(r){return r.json();})
+  ]).then(function(res){
+    var pj = res[0], mj = res[1];
+
+    (pj.plans||[]).forEach(function(p){
+      if(p.key==='pro'||p.key==='studio')
+        PRICES[p.key] = {thb:p.price_thb, usd:p.price_usd, label:p.label};
+    });
+
+    if(!mj.open || !(mj.methods||[]).length){
+      show('closed', true); show('form', false);
+      return;
+    }
+    show('closed', false); show('form', true);
+
+    METHODS  = mj.methods || [];
+    OMISE_PK = mj.omise_public_key || '';
+    if(OMISE_PK && window.Omise) Omise.setPublicKey(OMISE_PK);
+
+    renderPlans();
+    renderMethods();
+  }).catch(function(){
+    show('closed', true);
+  });
+}
+
+function renderPlans(){
+  $('plans').innerHTML = ['pro','studio'].map(function(k){
+    var p = PRICES[k]; if(!p) return '';
+    return '<div class="pl'+(k===PLAN?' on':'')+'" data-p="'+k+'">'+
+      '<b>'+p.label+'</b>'+
+      '<span>$'+p.usd+(TH()?'/เดือน · ≈ ':'/mo · ≈ ')+p.thb.toLocaleString()+(TH()?' บาท':' THB')+'</span>'+
+    '</div>';
+  }).join('');
+  $('plans').querySelectorAll('.pl').forEach(function(el){
+    el.onclick = function(){
+      PLAN = el.getAttribute('data-p');
+      $('plans').querySelectorAll('.pl').forEach(function(x){ x.classList.remove('on'); });
+      el.classList.add('on');
+      paintBtn();
+    };
+  });
+}
+
+function renderMethods(){
+  $('msub').textContent = TH()
+    ? 'ช่องที่มีป้าย “อัตโนมัติ” จะต่ออายุให้เอง ไม่ต้องจ่ายซ้ำทุกเดือน'
+    : 'Methods marked “Auto” renew by themselves — no manual payment each month.';
+
+  $('methods').innerHTML = METHODS.map(function(m){
+    return '<div class="m" data-m="'+m.id+'">'+
+      '<span class="ic">'+m.icon+'</span>'+
+      '<span class="tx"><b>'+m.label+'</b><span>'+m.note+'</span></span>'+
+      (m.auto ? '<span class="auto">'+(TH()?'อัตโนมัติ':'Auto')+'</span>' : '')+
+    '</div>';
+  }).join('');
+
+  $('methods').querySelectorAll('.m').forEach(function(el){
+    el.onclick = function(){
+      METHOD = el.getAttribute('data-m');
+      $('methods').querySelectorAll('.m').forEach(function(x){ x.classList.remove('on'); });
+      el.classList.add('on');
+
+      show('cardBox', METHOD==='card');
+      show('bankBox', METHOD==='ebanking');
+
+      if(METHOD==='ebanking'){
+        var m = METHODS.filter(function(x){return x.id==='ebanking';})[0] || {};
+        $('bankSel').innerHTML = (m.banks||[]).map(function(b){
+          return '<option value="'+b.code+'">'+(TH()?b.name:b.name_en)+'</option>';
+        }).join('');
+      }
+      paintBtn();
+    };
+  });
+  paintBtn();
+}
+
+function paintBtn(){
+  var p = PRICES[PLAN] || {};
+  var m = METHODS.filter(function(x){return x.id===METHOD;})[0];
+  var b = $('go');
+  b.disabled = !METHOD;
+
+  if(!m){ b.innerHTML = TH()?'เลือกช่องทางชำระเงิน':'Choose a payment method'; return; }
+
+  var amt = (m.currency==='USD')
+    ? ('$'+p.usd + (TH()?'/เดือน':'/mo'))
+    : (p.thb.toLocaleString() + (TH()?' บาท/เดือน':' THB/mo'));
+  b.innerHTML = (TH()?'ชำระเงิน ':'Pay ') + amt;
+}
+
+/* ═══════════════════════════ กดจ่าย ═══════════════════════════ */
+$('go').onclick = function(){
+  err('err','');
+  var email = ($('email').value||'').trim();
+  if(email.indexOf('@') < 0){
+    err('err', TH()?'กรุณากรอกอีเมลให้ถูกต้อง':'Please enter a valid email');
+    $('email').focus(); return;
+  }
+
+  var b = $('go');
+  b.disabled = true;
+  b.innerHTML = '<span class="spin"></span>'+(TH()?'กำลังดำเนินการ…':'Processing…');
+
+  if(METHOD === 'card'){ payCard(email); return; }
+  post({email:email, plan:PLAN, method:METHOD,
+        bank: METHOD==='ebanking' ? $('bankSel').value : ''});
+};
+
+/* บัตร: tokenize ที่ browser ก่อน -> เลขบัตรไม่ผ่าน server เรา */
+function payCard(email){
+  if(!window.Omise){ fail('โหลด Omise ไม่สำเร็จ'); return; }
+  Omise.createToken('card', {
+    name:             ($('cName').value||'').trim(),
+    number:           ($('cNo').value||'').replace(/\s/g,''),
+    expiration_month: ($('cM').value||'').trim(),
+    expiration_year:  ($('cY').value||'').trim(),
+    security_code:    ($('cC').value||'').trim()
+  }, function(st, resp){
+    if(st !== 200){
+      fail((resp && resp.message) || (TH()?'ข้อมูลบัตรไม่ถูกต้อง':'Invalid card details'));
+      return;
+    }
+    post({email:email, plan:PLAN, method:'card', card_token:resp.id});
+  });
+}
+
+function fail(msg){
+  err('err', msg);
+  $('go').disabled = false;
+  paintBtn();
+}
+
+function post(body){
+  fetch('/api/checkout', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json().then(function(j){ j._s=r.status; return j; }); })
+  .then(function(j){
+    if(j.error){ fail(j.msg || j.error); return; }
+    REF = j.ref || '';
+
+    if(j.kind === 'redirect'){ location.href = j.url; return; }
+
+    if(j.kind === 'done'){
+      if(j.token) localStorage.setItem('vc_token', j.token);
+      location.href = '/pay/done?ref=' + REF;
+      return;
+    }
+
+    if(j.kind === 'qr'){
+      show('form', false); show('qrBox', true);
+      $('qrImg').src = j.qr_url;
+      $('qrAmt').textContent = (TH()?'ยอด ':'Amount ') + j.amount.toLocaleString() +
+                               (TH()?' บาท · อ้างอิง ':' THB · ref ') + REF;
+      pollQR(j.charge_id, body.email);
+      return;
+    }
+
+    if(j.kind === 'transfer'){
+      show('form', false); show('trBox', true);
+      var b = j.bank || {};
+      $('bankInfo').innerHTML =
+        row(TH()?'ธนาคาร':'Bank', b.bank) +
+        row(TH()?'ชื่อบัญชี':'Account name', b.name) +
+        row(TH()?'เลขบัญชี':'Account no.', b.account) +
+        (b.promptpay ? row('พร้อมเพย์ / PromptPay', b.promptpay) : '') +
+        row(TH()?'ยอดโอน':'Amount', j.amount.toLocaleString()+(TH()?' บาท':' THB')) +
+        row(TH()?'ใส่ในหมายเหตุ':'Put in the note', '<span class="ref">'+REF+'</span>');
+      return;
+    }
+
+    fail(TH()?'ไม่รู้จักผลลัพธ์':'Unexpected response');
+  }).catch(function(e){ fail(String(e)); });
+}
+
+function row(k,v){ return '<div><span>'+k+'</span><b>'+(v||'-')+'</b></div>'; }
+
+/* ═══════════════════════════ QR: เช็กทุก 3 วิ ═══════════════════════════ */
+function pollQR(chargeId, email){
+  var tries = 0;
+  var iv = setInterval(function(){
+    tries++;
+    if(tries > 200){ clearInterval(iv); return; }   /* ~10 นาที */
+    fetch('/api/pay-status?charge_id='+encodeURIComponent(chargeId)+
+          '&ref='+encodeURIComponent(REF)+
+          '&email='+encodeURIComponent(email)+'&plan='+PLAN)
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j.status === 'successful'){
+          clearInterval(iv);
+          if(j.token) localStorage.setItem('vc_token', j.token);
+          location.href = '/pay/done?ref=' + REF;
+        }
+      }).catch(function(){});
+  }, 3000);
+}
+
+/* ═══════════════════════════ ส่งสลิป ═══════════════════════════ */
+$('sendSlip').onclick = function(){
+  err('trErr','');
+  var f = $('slip').files[0];
+  if(!f){ err('trErr', TH()?'ยังไม่ได้เลือกไฟล์สลิป':'Please choose your slip image'); return; }
+
+  var b = $('sendSlip');
+  b.disabled = true;
+  b.innerHTML = '<span class="spin"></span>'+(TH()?'กำลังส่ง…':'Sending…');
+
+  var fd = new FormData();
+  fd.append('ref', REF);
+  fd.append('email', ($('email').value||'').trim());
+  fd.append('plan', PLAN);
+  fd.append('file', f);
+
+  fetch('/api/slip', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      b.disabled = false;
+      b.innerHTML = TH()?'ส่งสลิป':'Send slip';
+      if(j.error){ err('trErr', j.error); return; }
+      var ok = $('trOk');
+      ok.textContent = TH()
+        ? '✅ ได้รับสลิปแล้ว (อ้างอิง '+REF+') แอดมินจะตรวจสอบและเปิดสิทธิ์ให้ภายใน 24 ชั่วโมง เราจะแจ้งทางอีเมล'
+        : '✅ Slip received (ref '+REF+'). We will verify and activate your plan within 24 hours and email you.';
+      ok.style.display = 'block';
+      b.style.display = 'none';
+    }).catch(function(e){
+      b.disabled = false; b.innerHTML = TH()?'ส่งสลิป':'Send slip';
+      err('trErr', String(e));
+    });
+};
+
+setLang(LANG);
+</script>
+</body>
+</html>
