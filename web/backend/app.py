@@ -9,7 +9,8 @@ import os, sys, tempfile, base64, re, json, traceback
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, Response
+from fastapi.responses import (JSONResponse, FileResponse, PlainTextResponse,
+                               Response, HTMLResponse)
 import datetime as _dt
 
 # ให้ import แพ็กเกจ vectorcnc (อยู่ที่ราก VectorCNC_App)
@@ -2350,17 +2351,35 @@ def _is_admin(request: Request):
 @app.get("/api/whoami")
 def api_whoami(request: Request):
     """บอก frontend ว่าเป็น 'คนใน / แอดมิน / คนนอก' — ใช้ซ่อนเมนู"""
-    from vectorcnc import billing as B
+    from vectorcnc import billing as B, auth as A
     internal = _is_internal(request)
     admin = _is_admin(request) and internal
-    plan = "admin" if admin else ("internal" if internal else "free")
+
+    if admin:
+        plan = "admin"
+    elif internal:
+        plan = "internal"
+    else:
+        # 💳 คนนอก: อ่านสิทธิ์จากโทเคนที่ได้ตอนจ่ายเงิน (ปลอมไม่ได้ เพราะเซ็นด้วย APP_SECRET)
+        tok = (request.headers.get("X-User-Token")
+               or request.query_params.get("t") or "")
+        p = A.verify(tok)
+        plan = (p or {}).get("p", "free")
+        if plan not in B.PLANS or plan in ("internal", "admin"):
+            plan = "free"          # ⚠️ กันคนยัด plan=admin มาในโทเคนของตัวเอง
+
     hidden = []
     if not internal:
         hidden = B.INTERNAL_ONLY
     elif not admin:
         hidden = ["stats"]                  # คนในธรรมดา -> ไม่เห็นสถิติ
+
     return {"internal": internal, "is_admin": admin, "plan": plan,
-            "features": B.PLANS[plan]["features"], "hidden": hidden}
+            "plan_label": B.PLANS[plan]["label"],
+            "email": (A.verify(request.headers.get("X-User-Token", "")) or {}).get("e", ""),
+            "features": B.PLANS[plan]["features"],
+            "payments_open": B.PAYMENTS_OPEN,
+            "hidden": hidden}
 
 
 @app.get("/api/plans")
@@ -3101,3 +3120,369 @@ async def concept_use(request: Request):
                 "w_mm": cs[0]["w_mm"], "h_mm": cs[0]["h_mm"], "font": cs[0]["font"]}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  💳 ระบบรับชำระเงิน — PayPal / บัตร / พร้อมเพย์ / E-Banking / โอนเงิน
+# ══════════════════════════════════════════════════════════════════
+#  โครง:  checkout -> ได้ ref + ทางไปจ่าย
+#         จ่ายเสร็จ -> webhook (หรือแอดมินอนุมัติสลิป) -> activate ในชีต
+#         ผู้ใช้ได้ token (HMAC) เก็บใน localStorage -> /api/whoami อ่านสิทธิ์จาก token
+#
+#  🔐 คีย์ทุกตัวอยู่ใน Render → Environment เท่านั้น
+#     ช่องทางที่ยังไม่ตั้งคีย์ จะไม่ปรากฏให้ลูกค้าเห็น
+
+def _billing_hook():
+    return (os.environ.get("BILLING_WEBHOOK", "") or "").strip()
+
+
+def _billing_key():
+    return (os.environ.get("BILLING_KEY", "") or "").strip()
+
+
+def _sheet_post(api: str, **kw):
+    """ยิงคำสั่งไปที่ Apps Script (Billing.gs) — POST + JSON body"""
+    hook = _billing_hook()
+    if not hook:
+        return {"ok": False, "error": "ยังไม่ได้ตั้ง BILLING_WEBHOOK"}
+    import urllib.request
+    body = dict(kw)
+    body["api"] = api
+    body["key"] = _billing_key()
+    req = urllib.request.Request(hook, data=json.dumps(body).encode("utf-8"),
+                                 method="POST")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return json.loads(r.read().decode("utf-8") or "{}")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _sheet_get(api: str, **kw):
+    hook = _billing_hook()
+    if not hook:
+        return {"ok": False, "error": "ยังไม่ได้ตั้ง BILLING_WEBHOOK"}
+    import urllib.request, urllib.parse
+    q = dict(kw)
+    q["api"] = api
+    q["key"] = _billing_key()
+    url = hook + ("&" if "?" in hook else "?") + urllib.parse.urlencode(q)
+    try:
+        with urllib.request.urlopen(url, timeout=25) as r:
+            return json.loads(r.read().decode("utf-8") or "{}")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _price_of(plan_key: str, currency: str = "THB"):
+    from vectorcnc import billing as B
+    P = B.PLANS.get(plan_key) or {}
+    return P.get("price_usd", 0) if currency == "USD" else P.get("price_thb", 0)
+
+
+def _base_url(request: Request):
+    return os.environ.get("SITE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+
+
+# ---------------------------------------------------------------- ช่องทางที่เปิดใช้
+@app.get("/api/pay-methods")
+def api_pay_methods(lang: str = "th"):
+    from vectorcnc import billing as B, payments as PY
+    if not B.PAYMENTS_OPEN:
+        return {"open": False, "methods": [],
+                "msg": "ระบบชำระเงินกำลังจะเปิดเร็ว ๆ นี้"}
+    return {"open": True,
+            "methods": PY.available(lang),
+            "omise_public_key": PY.omise_public_key()}   # คีย์ public เปิดเผยได้
+
+
+# ---------------------------------------------------------------- เริ่มจ่าย
+@app.post("/api/checkout")
+async def api_checkout(request: Request):
+    """สร้างคำสั่งซื้อ 1 รายการ -> คืนวิธีไปจ่ายตามช่องทางที่เลือก"""
+    from vectorcnc import billing as B, payments as PY, auth as A
+
+    if not B.PAYMENTS_OPEN:
+        return JSONResponse({"error": "closed",
+                             "msg": "ระบบชำระเงินยังไม่เปิด"}, status_code=403)
+
+    d = await request.json()
+    email = str(d.get("email", "")).strip().lower()
+    plan = str(d.get("plan", "pro")).strip().lower()
+    method = str(d.get("method", "")).strip().lower()
+
+    if "@" not in email:
+        return JSONResponse({"error": "อีเมลไม่ถูกต้อง"}, status_code=400)
+    if plan not in ("pro", "studio"):
+        return JSONResponse({"error": "แพ็กเกจไม่ถูกต้อง"}, status_code=400)
+
+    ref = A.order_ref()
+    base = _base_url(request)
+    thb = _price_of(plan, "THB")
+    usd = _price_of(plan, "USD")
+
+    try:
+        # ---- PayPal: subscription ตัดอัตโนมัติ
+        if method == "paypal":
+            r = PY.paypal_create_subscription(
+                plan, email, ref,
+                return_url=f"{base}/pay/done?ref={ref}",
+                cancel_url=f"{base}/pay?cancel=1")
+            _sheet_post("record_pay", ref=ref, email=email, plan=plan,
+                        provider="paypal", amount=usd, currency="USD",
+                        status="pending", charge_id=r["id"])
+            return {"ref": ref, "kind": "redirect", "url": r["approve_url"]}
+
+        # ---- บัตรเครดิต (Omise) — frontend ส่ง card token มาให้
+        if method == "card":
+            tok = str(d.get("card_token", "")).strip()
+            if not tok:
+                return JSONResponse({"error": "ไม่มี card token"}, status_code=400)
+            cus = PY.omise_create_customer(email, tok)
+            chg = PY.omise_charge_customer(cus.get("id", ""), thb, ref,
+                                           f"VectorCNC {plan}")
+            paid = (chg.get("status") == "successful")
+            _sheet_post("record_pay", ref=ref, email=email, plan=plan,
+                        provider="card", amount=thb, currency="THB",
+                        status="paid" if paid else "failed",
+                        charge_id=chg.get("id", ""))
+            if not paid:
+                return JSONResponse({"error": "ตัดบัตรไม่สำเร็จ",
+                                     "detail": chg.get("failure_message", "")},
+                                    status_code=402)
+            # ตั้งตารางตัดเงินเดือนถัดไป
+            try:
+                sch = PY.omise_create_schedule(cus.get("id", ""), thb, ref)
+            except Exception:
+                sch = {}
+            _sheet_post("activate", email=email, plan=plan, provider="card",
+                        sub_id=sch.get("id", ""), customer_id=cus.get("id", ""),
+                        amount=thb, currency="THB", days=30, ref=ref,
+                        auto_renew=True)
+            return {"ref": ref, "kind": "done",
+                    "token": A.sign(email, plan, days=31)}
+
+        # ---- พร้อมเพย์ (Thai QR)
+        if method == "promptpay":
+            r = PY.omise_promptpay(thb, ref)
+            _sheet_post("record_pay", ref=ref, email=email, plan=plan,
+                        provider="promptpay", amount=thb, currency="THB",
+                        status="pending", charge_id=r["charge_id"])
+            return {"ref": ref, "kind": "qr", "qr_url": r["qr_url"],
+                    "charge_id": r["charge_id"], "amount": thb,
+                    "expires_at": r.get("expires_at", "")}
+
+        # ---- E-Banking
+        if method == "ebanking":
+            bank = str(d.get("bank", "")).strip()
+            if not bank:
+                return JSONResponse({"error": "ยังไม่ได้เลือกธนาคาร"}, status_code=400)
+            r = PY.omise_internet_banking(bank, thb, ref,
+                                          return_uri=f"{base}/pay/done?ref={ref}")
+            _sheet_post("record_pay", ref=ref, email=email, plan=plan,
+                        provider="ebanking", amount=thb, currency="THB",
+                        status="pending", charge_id=r["charge_id"])
+            return {"ref": ref, "kind": "redirect", "url": r["authorize_uri"]}
+
+        # ---- โอนเงิน + สลิป
+        if method == "transfer":
+            _sheet_post("record_pay", ref=ref, email=email, plan=plan,
+                        provider="transfer", amount=thb, currency="THB",
+                        status="await_slip")
+            return {"ref": ref, "kind": "transfer",
+                    "bank": PY.bank_info(), "amount": thb,
+                    "msg": f"โอนแล้วใส่เลขอ้างอิง {ref} ในหมายเหตุ แล้วอัปโหลดสลิป"}
+
+        return JSONResponse({"error": "ไม่รู้จักช่องทาง: " + method}, status_code=400)
+
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+# ---------------------------------------------------------------- เช็กสถานะ QR
+@app.get("/api/pay-status")
+def api_pay_status(ref: str = "", charge_id: str = "", email: str = "",
+                   plan: str = "pro"):
+    """หน้า QR เรียกซ้ำทุก 3 วิ จนกว่าจะ successful"""
+    from vectorcnc import payments as PY, auth as A
+    if not charge_id:
+        return {"status": "unknown"}
+    try:
+        c = PY.omise_get_charge(charge_id)
+        st = c.get("status", "")
+        if st == "successful":
+            _sheet_post("activate", email=email, plan=plan, provider="promptpay",
+                        amount=(c.get("amount", 0) / 100.0), currency="THB",
+                        days=30, ref=ref, auto_renew=False)
+            return {"status": "successful", "token": A.sign(email, plan, days=31)}
+        return {"status": st}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+# ---------------------------------------------------------------- อัปโหลดสลิป
+@app.post("/api/slip")
+async def api_slip(ref: str = Form(...), email: str = Form(...),
+                   plan: str = Form("pro"), file: UploadFile = File(...)):
+    """ลูกค้าอัปโหลดสลิป -> เก็บ base64 ลงชีต -> รอแอดมินกดอนุมัติ"""
+    raw = await file.read()
+    if len(raw) > 4 * 1024 * 1024:
+        return JSONResponse({"error": "ไฟล์ใหญ่เกิน 4 MB"}, status_code=400)
+
+    # ย่อรูปก่อนเก็บ (ชีตมีลิมิตช่องละ 50,000 ตัวอักษร)
+    try:
+        from PIL import Image
+        import io
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        im.thumbnail((720, 720))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=62)
+        raw = buf.getvalue()
+    except Exception:
+        pass
+
+    b64 = "data:image/jpeg;base64," + base64.b64encode(raw).decode()
+    if len(b64) > 48000:
+        b64 = ""          # ใหญ่เกิน -> ไม่เก็บรูป แต่ยังบันทึกรายการไว้
+
+    r = _sheet_post("record_pay", ref=ref, email=email.strip().lower(), plan=plan,
+                    provider="transfer", amount=_price_of(plan, "THB"),
+                    currency="THB", status="pending", slip_url=b64,
+                    note="รอตรวจสลิป")
+    if not r.get("ok"):
+        return JSONResponse({"error": r.get("error", "บันทึกไม่สำเร็จ")}, status_code=400)
+    return {"ok": True, "ref": ref,
+            "msg": "ได้รับสลิปแล้ว แอดมินจะตรวจสอบและเปิดสิทธิ์ให้ภายใน 24 ชั่วโมง"}
+
+
+# ---------------------------------------------------------------- Webhook
+@app.post("/api/webhook/paypal")
+async def wh_paypal(request: Request):
+    from vectorcnc import payments as PY
+    raw = (await request.body()).decode("utf-8", "ignore")
+
+    # ⚠️ ห้ามเชื่อ body ลอย ๆ — ต้องให้ PayPal ยืนยันลายเซ็นก่อน
+    if not PY.paypal_verify_webhook(dict(request.headers), raw):
+        return JSONResponse({"error": "signature invalid"}, status_code=400)
+
+    try:
+        ev = json.loads(raw or "{}")
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+
+    et = ev.get("event_type", "")
+    res = ev.get("resource", {}) or {}
+    ref = res.get("custom_id", "") or ""
+    email = ((res.get("subscriber") or {}).get("email_address", "") or "").lower()
+
+    if et in ("BILLING.SUBSCRIPTION.ACTIVATED", "PAYMENT.SALE.COMPLETED"):
+        plan = "pro"
+        pid = res.get("plan_id", "")
+        if pid and pid == PY.paypal_plan_id("studio"):
+            plan = "studio"
+        _sheet_post("activate", email=email, plan=plan, provider="paypal",
+                    sub_id=res.get("id", ""), amount=_price_of(plan, "USD"),
+                    currency="USD", days=31, ref=ref, auto_renew=True)
+
+    elif et in ("BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED",
+                "BILLING.SUBSCRIPTION.SUSPENDED"):
+        _sheet_post("cancel", email=email)
+
+    return {"ok": True}
+
+
+@app.post("/api/webhook/omise")
+async def wh_omise(request: Request):
+    """Omise ส่ง event มา -> เราไปถามสถานะจริงจาก API อีกที (กันของปลอม)"""
+    from vectorcnc import payments as PY
+    try:
+        ev = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+
+    if ev.get("key") not in ("charge.complete", "charge.create"):
+        return {"ok": True, "skipped": ev.get("key", "")}
+
+    cid = (ev.get("data") or {}).get("id", "")
+    if not cid:
+        return {"ok": True}
+
+    try:
+        c = PY.omise_get_charge(cid)          # ← ยืนยันกับ Omise เอง
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    if c.get("status") != "successful":
+        return {"ok": True, "status": c.get("status", "")}
+
+    meta = c.get("metadata") or {}
+    ref = meta.get("ref", "")
+    _sheet_post("record_pay", ref=ref, provider="omise",
+                amount=(c.get("amount", 0) / 100.0), currency="THB",
+                status="paid", charge_id=cid)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- แอดมิน: สลิปรออนุมัติ
+@app.get("/api/admin/payments")
+def admin_payments(request: Request):
+    if not (_is_internal(request) and _is_admin(request)):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    from vectorcnc import payments as PY
+    return {"pending": _sheet_get("pending").get("items", []),
+            "recent": _sheet_get("payments").get("items", [])[:60],
+            "providers": PY.status()}
+
+
+@app.post("/api/admin/approve")
+async def admin_approve(request: Request):
+    if not (_is_internal(request) and _is_admin(request)):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    d = await request.json()
+    ref = str(d.get("ref", ""))
+    if str(d.get("action", "approve")) == "reject":
+        return _sheet_post("reject_slip", ref=ref, by="admin",
+                           reason=str(d.get("reason", "สลิปไม่ถูกต้อง")))
+    return _sheet_post("approve_slip", ref=ref, by="admin",
+                       days=int(d.get("days", 30)))
+
+
+# ---------------------------------------------------------------- หน้าเว็บ
+@app.get("/pay")
+def pay_page():
+    p = os.path.join(os.path.dirname(FRONTEND), "checkout.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    return JSONResponse({"error": "checkout.html not found"}, status_code=404)
+
+
+@app.get("/pay/done", response_class=HTMLResponse)
+def pay_done(ref: str = ""):
+    return f"""<!doctype html><html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ชำระเงินสำเร็จ · VectorCNC</title>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;800&display=swap" rel="stylesheet">
+<style>body{{font-family:Prompt,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;
+background:#f8fafc;color:#0f172a;text-align:center}}
+.c{{background:#fff;padding:44px 40px;border-radius:18px;box-shadow:0 4px 24px rgba(0,0,0,.06);max-width:420px}}
+h1{{font-size:24px;margin:14px 0 8px}} p{{color:#64748b;margin:0 0 22px;line-height:1.6}}
+a{{display:inline-block;background:#0d9488;color:#fff;text-decoration:none;font-weight:700;
+padding:12px 26px;border-radius:10px}} code{{background:#f1f5f9;padding:2px 8px;border-radius:6px}}</style>
+</head><body><div class="c">
+<div style="font-size:52px">✅</div>
+<h1>ชำระเงินสำเร็จ</h1>
+<p>เลขอ้างอิง <code>{ref}</code><br>
+ระบบเปิดสิทธิ์ให้เรียบร้อยแล้ว<br>
+<span style="font-size:13px">Payment complete — your plan is now active.</span></p>
+<a href="/">เข้าใช้งาน / Launch app</a>
+</div></body></html>"""
+
+
+@app.get("/admin/payments")
+def admin_pay_page():
+    p = os.path.join(os.path.dirname(FRONTEND), "admin_payments.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    return JSONResponse({"error": "admin_payments.html not found"}, status_code=404)
