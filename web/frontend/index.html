@@ -3,7 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Graphic Design Solution — ภาพถ่าย เป็น เส้นตัด CNC</title>
+<title>VectorCNC — แปลงภาพเป็นเส้นตัด CNC / เลเซอร์ (SVG, DXF) | Graphic Design Solution</title>
+<meta name="description" content="อัปโหลดโลโก้หรือภาพ → ได้เส้นตัด CNC/เลเซอร์คมชัด ดาวน์โหลด SVG, DXF, .ai, STL พร้อมชุดชั้นตัดตามแบบป้าย และพรีวิว 3 มิติ">
+<link rel="canonical" href="https://vectorcnc.onrender.com/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#2563EB">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="VectorCNC">
+<meta property="og:url" content="https://vectorcnc.onrender.com/">
+<meta property="og:title" content="VectorCNC — แปลงภาพเป็นเส้นตัด CNC / เลเซอร์">
+<meta property="og:description" content="อัปโหลดโลโก้ → ได้ไฟล์ตัด SVG/DXF คมชัด + ชุดชั้นตัดตามแบบป้าย + พรีวิว 3 มิติ">
+<meta property="og:image" content="https://vectorcnc.onrender.com/static/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script>
+/* 🔒 URL ที่มีคีย์ภายใน (?k= / ?ak= / ?u=) ห้ามให้ Google เก็บเด็ดขาด */
+(function(){
+  try{
+    if(/[?&](k|ak|u)=/.test(location.search)){
+      var m=document.querySelector('meta[name="robots"]');
+      if(m)m.setAttribute('content','noindex,nofollow');
+    }
+  }catch(e){}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -193,19 +215,19 @@ select.numin{cursor:pointer}
 
   <div class="app">
     <div class="app-head"><span class="dots"><i></i><i></i><i></i></span>
-      <span class="app-title">app.vectorcnc.io · <span class="mono" id="fname">ยังไม่ได้เลือกไฟล์</span></span></div>
+      <span class="app-title">app.vectorcnc.io · <span class="mono" id="fname" data-i18n="app.nofile">ยังไม่ได้เลือกไฟล์</span></span></div>
     <div class="app-body">
       <div class="side">
-        <div class="drop" id="drop"><div class="ic">📤</div><b>ลากไฟล์มาวาง</b><span>รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
+        <div class="drop" id="drop"><div class="ic">📤</div><b data-i18n="drop.title">ลากไฟล์มาวาง</b><span data-i18n="drop.sub">รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
 
         <div class="grp">
           <div class="gt"  data-i18n="sec.material">วัสดุ / เครื่องตัด</div>
           <div class="chips" id="presetChips">
-            <button class="chip" data-preset="fiber_ss">Fiber · สแตนเลส</button>
-            <button class="chip" data-preset="fiber_zn">Fiber · ซิงค์</button>
-            <button class="chip" data-preset="co2_acr">CO2 · อะคริลิค</button>
-            <button class="chip on" data-preset="router">Router · ดอกกัด</button>
+            <button class="chip" data-preset="fiber_ss" data-i18n="mat.ss">Fiber · สแตนเลส</button>
+            <button class="chip" data-preset="fiber_zn" data-i18n="mat.zn">Fiber · ซิงค์</button>
+            <button class="chip" data-preset="co2_acr" data-i18n="mat.acr">CO2 · อะคริลิค</button>
+            <button class="chip on" data-preset="router" data-i18n="mat.rt">Router · ดอกกัด</button>
           </div>
           <div class="hint" id="presetHint">Router · ดอกกัด — kerf 3.0 มม. · ดอก 6 มม.</div>
         </div>
@@ -213,106 +235,110 @@ select.numin{cursor:pointer}
         <div class="set">
           <label  data-i18n="sec.mode">โหมดการแปลง</label>
           <div class="seg" id="modeSeg">
-            <button type="button" class="sbtn on" data-mode="auto">✨ อัตโนมัติ</button>
-            <button type="button" class="sbtn" data-mode="cutout">✂️ ตัดชิ้น</button>
-            <button type="button" class="sbtn" data-mode="lineart">✒️ เส้น</button>
+            <button type="button" class="sbtn on" data-mode="auto" data-i18n="mode.auto">✨ อัตโนมัติ</button>
+            <button type="button" class="sbtn" data-mode="cutout" data-i18n="mode.piece">✂️ ตัดชิ้น</button>
+            <button type="button" class="sbtn" data-mode="lineart" data-i18n="mode.line">✒️ เส้น</button>
           </div>
-          <div class="hint" id="modeHint">อัตโนมัติ = ระบบวิเคราะห์ภาพ แล้วเลือกเครื่องมือที่ดีที่สุดให้เอง (โลโก้/ภาพถ่าย/ตัวอักษร)</div>
+          <div class="hint" id="modeHint" data-i18n="hint.auto">อัตโนมัติ = ระบบวิเคราะห์ภาพ แล้วเลือกเครื่องมือที่ดีที่สุดให้เอง (โลโก้/ภาพถ่าย/ตัวอักษร)</div>
 
-          <label>จำนวนสี / เลเยอร์ <span class="v" id="vC">6</span></label>
+          <label><span data-i18n="lbl.colors">จำนวนสี / เลเยอร์</span> <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
 
           <label  data-i18n="lbl.sizefrom">กำหนดขนาดจาก</label>
-          <select class="numin" id="sizeBy" onchange="var m={width:'ค่าความกว้างรวม (มม.)',height:'ค่าความสูงรวม (มม.)',letter:'ค่าความสูงตัวอักษร (มม.)'};var e=document.getElementById('sizeLbl');if(e)e.textContent=m[this.value]||m.width;if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}"><option value="width">กว้างรวม (มม.)</option><option value="height">สูงรวม (มม.)</option><option value="letter">สูงตัวอักษร (มม.)</option></select>
-          <label id="sizeLbl" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
+          <select class="numin" id="sizeBy" onchange="try{paintSizeLbl();}catch(_){}if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}">
+            <option value="width"  data-i18n="opt.w">กว้างรวม (มม.)</option>
+            <option value="height" data-i18n="opt.h">สูงรวม (มม.)</option>
+            <option value="letter" data-i18n="opt.l">สูงตัวอักษร (มม.)</option>
+          </select>
+          <label id="sizeLbl" data-i18n="lbl.width" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
-          <div class="hint" id="sizeHint">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
+          <div class="hint" id="sizeHint" data-i18n="hint.size">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
 
           <label  data-i18n="lbl.signtype">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
           <select class="numin" id="mainSignType">
-            <option value="">— เส้นตัดแบน (ปกติ) —</option>
-            <option value="1">1 · ไฟออกหน้า มีคิ้ว</option>
-            <option value="2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
-            <option value="3">3 · ไฟออกรอบ</option>
-            <option value="4">4 · กล่องไฟ 1 หน้า</option>
-            <option value="5">5 · กล่องไฟ 2 หน้า</option>
-            <option value="6">6 · งานยกขอบ</option>
-            <option value="7">7 · งานยกขอบ มีไส้</option>
+            <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
+            <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
+            <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
+            <option value="3" data-i18n="st.3">3 · ไฟออกรอบ</option>
+            <option value="4" data-i18n="st.4">4 · กล่องไฟ 1 หน้า</option>
+            <option value="5" data-i18n="st.5">5 · กล่องไฟ 2 หน้า</option>
+            <option value="6" data-i18n="st.6">6 · งานยกขอบ</option>
+            <option value="7" data-i18n="st.7">7 · งานยกขอบ มีไส้</option>
           </select>
-          <div class="hint">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
-          <label style="margin-top:6px">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
+          <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
-            <button type="button" class="chip on" data-d="0">อัตโนมัติ</button>
+            <button type="button" class="chip on" data-d="0" data-i18n="chip.auto">อัตโนมัติ</button>
             <button type="button" class="chip" data-d="2.5">2.5</button>
             <button type="button" class="chip" data-d="5">5</button>
             <button type="button" class="chip" data-d="7.5">7.5</button>
             <button type="button" class="chip" data-d="10">10</button>
-            <input class="numin" id="rdCustom" type="number" placeholder="เอง" min="0.5" step="0.5" style="width:70px;padding:5px">
+            <input class="numin" id="rdCustom" type="number" data-i18n-ph="ph.own" placeholder="เอง" min="0.5" step="0.5" style="width:70px;padding:5px">
           </div>
-          <label style="margin-top:6px">ความหนาคิ้ว (ซม.)</label>
+          <label style="margin-top:6px" data-i18n="lbl.trimw">ความหนาคิ้ว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="twChips">
             <button type="button" class="chip" data-w="0.7">0.7</button>
             <button type="button" class="chip on" data-w="1">1</button>
             <button type="button" class="chip" data-w="1.5">1.5</button>
             <button type="button" class="chip" data-w="2">2</button>
-            <input class="numin" id="twCustom" type="number" placeholder="เอง" min="0.1" step="0.1" style="width:70px;padding:5px">
+            <input class="numin" id="twCustom" type="number" data-i18n-ph="ph.own" placeholder="เอง" min="0.1" step="0.1" style="width:70px;padding:5px">
           </div>
           <div style="display:flex;gap:5px;margin-top:5px" id="twDir">
-            <button type="button" class="chip on" data-d="out" style="flex:1">↗ คิ้วขยายออกนอก</button>
-            <button type="button" class="chip" data-d="in" style="flex:1">↙ คิ้วหดเข้าใน</button>
+            <button type="button" class="chip on" data-d="out" style="flex:1" data-i18n="trim.out">↗ คิ้วขยายออกนอก</button>
+            <button type="button" class="chip" data-d="in" style="flex:1" data-i18n="trim.in">↙ คิ้วหดเข้าใน</button>
           </div>
-          <div class="hint">คิ้วขยายออกนอก = มาตรฐานงานจริง (offset ออกจากตัวต้น) · เส้นตัดใช้มุมฉาก (ไม่มน) + ลดจุดโค้ง เพื่อเครื่องดัดไม่กรีดพับถี่</div>
+          <div class="hint" data-i18n="hint.trim">คิ้วขยายออกนอก = มาตรฐานงานจริง (offset ออกจากตัวต้น) · เส้นตัดใช้มุมฉาก (ไม่มน) + ลดจุดโค้ง เพื่อเครื่องดัดไม่กรีดพับถี่</div>
 
-          <label>Kerf ชดเชยลำ/ดอก <span class="v" id="vK">3.0 มม.</span></label>
+          <label><span data-i18n="lbl.kerf">Kerf ชดเชยลำ/ดอก</span> <span class="v" id="vK">3.0 มม.</span></label>
           <input type="range" id="kerf" min="0" max="10" step="0.05" value="3">
-          <label>ขนาดดอกกัด / ปัดมุม <span class="v" id="vT">6</span></label>
+          <label><span data-i18n="lbl.tool">ขนาดดอกกัด / ปัดมุม</span> <span class="v" id="vT">6</span></label>
           <input type="range" id="tool" min="0" max="16" step="0.5" value="6">
-          <label class="chk"><input type="checkbox" id="tabs"> ใส่ tabs (สะพานกันชิ้นหล่น)</label>
-          <label class="chk"><input type="checkbox" id="enhance"> ✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)</label>
+          <label class="chk"><input type="checkbox" id="tabs"> <span data-i18n="lbl.tabs">ใส่ tabs (สะพานกันชิ้นหล่น)</span></label>
+          <label class="chk"><input type="checkbox" id="enhance"> <span data-i18n="lbl.enhance">✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)</span></label>
         </div>
-        <button class="btn primary" id="go" disabled>⚡ แปลงเป็นเส้นตัด</button>
-        <button class="btn" id="goLayer" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
+        <button class="btn primary" id="go" data-i18n="btn.convert" disabled>⚡ แปลงเป็นเส้นตัด</button>
+        <button class="btn" id="goLayer" data-i18n="btn.layerset" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
       </div>
 
       <div class="stage" style="position:relative">
-        <div class="empty-stage" id="emptyStage"><div class="big">🖼️</div>อัปโหลดภาพเพื่อเริ่ม</div>
+        <div class="empty-stage" id="emptyStage"><div class="big">🖼️</div><span data-i18n="stage.hint">อัปโหลดภาพเพื่อเริ่ม</span></div>
         <div class="compare" id="cmp" style="display:none">
           <div class="layer" id="before"></div>
           <div class="layer" id="after"></div>
           <div class="divider" id="div" style="left:52%"><span class="knob">⟷</span></div>
-          <span class="tag b">ภาพถ่าย</span><span class="tag a">เส้นตัด</span>
+          <span class="tag b" data-i18n="tag.before">ภาพถ่าย</span><span class="tag a" data-i18n="tag.after">เส้นตัด</span>
         </div>
         <div id="layerStage" style="display:none;position:absolute;inset:0;background:#fff;overflow:auto;padding:14px 16px"></div>
       </div>
 
       <div class="out">
         <h4  data-i18n="res.title">ผลลัพธ์</h4>
-        <div id="layers"><div class="muted-note">ยังไม่มีผล</div></div>
-        <h4 style="margin-top:4px">ไฟล์ตัด</h4>
-        <div class="stat"><span>วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
-        <div class="stat"><span>เลเยอร์</span><b id="sLayers">–</b></div>
-        <div class="stat"><span>เส้นตัด (paths)</span><b id="sRings">–</b></div>
-        <div class="stat"><span>ขนาดจริง</span><b id="sSize">–</b></div>
+        <div id="layers"><div class="muted-note" data-i18n="res.none">ยังไม่มีผล</div></div>
+        <h4 style="margin-top:4px" data-i18n="res.cutfile">ไฟล์ตัด</h4>
+        <div class="stat"><span data-i18n="res.mat">วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
+        <div class="stat"><span data-i18n="res.layers">เลเยอร์</span><b id="sLayers">–</b></div>
+        <div class="stat"><span data-i18n="res.paths">เส้นตัด (paths)</span><b id="sRings">–</b></div>
+        <div class="stat"><span data-i18n="res.size">ขนาดจริง</span><b id="sSize">–</b></div>
         <div class="dl">
-          <button class="btn primary" id="dlSvg" disabled>⬇ ดาวน์โหลด SVG (มม.)</button>
-          <div class="row2"><button class="btn ghost" id="dlDxf" disabled>⬇ DXF</button><button class="btn ghost" id="copySvg" disabled>คัดลอก</button></div>
+          <button class="btn primary" id="dlSvg" data-i18n="dl.svg" disabled>⬇ ดาวน์โหลด SVG (มม.)</button>
+          <div class="row2"><button class="btn ghost" id="dlDxf" data-i18n="dl.dxf" disabled>⬇ DXF</button><button class="btn ghost" id="copySvg" data-i18n="dl.copy" disabled>คัดลอก</button></div>
           <div class="muted-note" style="padding:6px 0 0">DXF → CypCut/fiber · SVG → LightBurn · Fusion 360: Insert DXF</div>
           <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
-            <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px">🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)</div>
-            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที</div>
+            <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px" data-i18n="ai.h">🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px" data-i18n="ai.p">ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที</div>
             <div style="display:flex;gap:6px;margin-bottom:6px">
-              <select id="aiEng" class="numin" style="flex:1;padding:6px"><option value="auto">อัตโนมัติ</option><option value="mono">ลายเส้นคม (ขาว-ดำ)</option><option value="color">หลายสี</option></select>
-              <div style="width:92px"><input class="numin" id="aiNC" type="number" value="4" min="2" max="8" title="จำนวนสี (โหมดหลายสี)" style="padding:6px"></div>
+              <select id="aiEng" class="numin" style="flex:1;padding:6px"><option value="auto" data-i18n="chip.auto">อัตโนมัติ</option><option value="mono" data-i18n="ai.mono">ลายเส้นคม (ขาว-ดำ)</option><option value="color" data-i18n="ai.color">หลายสี</option></select>
+              <div style="width:92px"><input class="numin" id="aiNC" type="number" value="4" min="2" max="8" data-i18n-title="ai.nc" title="จำนวนสี (โหมดหลายสี)" style="padding:6px"></div>
             </div>
-            <button class="btn" id="aiDraft" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
+            <button class="btn" id="aiDraft" data-i18n="dl.ai" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
             <div id="aiOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
           </div>
           <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
-            <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:4px">🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D</div>
-            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย</div>
+            <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:4px" data-i18n="stl.h">🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px" data-i18n="stl.p">extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย</div>
             <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-end">
-              <div style="flex:1"><label style="font-size:11px;color:#5A6B8C">ความหนา มม.</label><input class="numin" id="stlThick" type="number" value="30" min="1" step="1" style="padding:6px"></div>
-              <button class="btn" id="dl3d" style="flex:2;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-weight:700;height:38px">🧊 ดาวน์โหลด STL</button>
+              <div style="flex:1"><label style="font-size:11px;color:#5A6B8C" data-i18n="stl.thick">ความหนา มม.</label><input class="numin" id="stlThick" type="number" value="30" min="1" step="1" style="padding:6px"></div>
+              <button class="btn" id="dl3d" data-i18n="dl.stl" style="flex:2;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-weight:700;height:38px">🧊 ดาวน์โหลด STL</button>
             </div>
             <div id="stlOut" style="font-size:11px;color:#8A99B5"></div>
           </div>
@@ -1143,7 +1169,7 @@ select.numin{cursor:pointer}
             <button class="chip on" data-rd="5" type="button">5</button>
             <button class="chip" data-rd="7.5" type="button">7.5</button>
             <button class="chip" data-rd="10" type="button">10</button>
-            <input class="numin" id="w3RdC" type="number" placeholder="เอง" step="0.5" min="0" style="width:58px;padding:4px 6px;font-size:12px">
+            <input class="numin" id="w3RdC" type="number" data-i18n-ph="ph.own" placeholder="เอง" step="0.5" min="0" style="width:58px;padding:4px 6px;font-size:12px">
           </div>
 
           <div style="font-size:11px;color:#5A6B8C;margin:9px 0 4px">วัสดุ / สีหน้า</div>
@@ -1315,7 +1341,7 @@ select.numin{cursor:pointer}
         <button class="chip on" data-rd="5" type="button">5</button>
         <button class="chip" data-rd="7.5" type="button">7.5</button>
         <button class="chip" data-rd="10" type="button">10</button>
-        <input class="numin" id="v3dRdC" type="number" placeholder="เอง" step="0.5" min="0" style="width:62px">
+        <input class="numin" id="v3dRdC" type="number" data-i18n-ph="ph.own" placeholder="เอง" step="0.5" min="0" style="width:62px">
       </div>
 
       <label style="font-size:12px;color:var(--muted);display:block;margin-top:12px">สีหน้า / สีขอบข้าง</label>
@@ -2165,6 +2191,30 @@ var I18N={
   'ik.tab.ex':'🧲 แตกไฟล์ PDF','ik.tab.pc':'✅ ตรวจว่าผลิตได้',
   'ik.tab.cc':'💡 AI Concept (ไม่มีโลโก้)','ik.tab.br':'📝 Sales Brief',
   'stats.open':'🔒 สถิติการเข้าใช้งาน (ผู้ดูแลระบบ)',
+  'hint.auto':'อัตโนมัติ = ระบบวิเคราะห์ภาพ แล้วเลือกเครื่องมือที่ดีที่สุดให้เอง (โลโก้/ภาพถ่าย/ตัวอักษร)',
+  'lbl.width':'ค่าความกว้างรวม (มม.)','lbl.height':'ค่าความสูงรวม (มม.)','lbl.letter':'ค่าความสูงตัวอักษร (มม.)',
+  'opt.w':'กว้างรวม (มม.)','opt.h':'สูงรวม (มม.)','opt.l':'สูงตัวอักษร (มม.)',
+  'hint.size':'⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน',
+  'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
+  'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
+  'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'1 · ไฟออกหน้า มีคิ้ว','st.2':'2 · ไฟออกหน้า ไม่มีคิ้ว',
+  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟ 1 หน้า','st.5':'5 · กล่องไฟ 2 หน้า',
+  'st.6':'6 · งานยกขอบ','st.7':'7 · งานยกขอบ มีไส้',
+  'hint.signtype':'เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ',
+  'app.nofile':'ยังไม่ได้เลือกไฟล์','stage.hint':'อัปโหลดภาพเพื่อเริ่ม',
+  'chip.auto':'อัตโนมัติ','ph.own':'เอง',
+  'trim.out':'↗ คิ้วขยายออกนอก','trim.in':'↙ คิ้วหดเข้าใน',
+  'hint.trim':'คิ้วขยายออกนอก = มาตรฐานงานจริง (offset ออกจากตัวต้น) · เส้นตัดใช้มุมฉาก (ไม่มน) + ลดจุดโค้ง เพื่อเครื่องดัดไม่กรีดพับถี่',
+  'tag.before':'ภาพถ่าย','tag.after':'เส้นตัด',
+  'ai.h':'🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)',
+  'ai.p':'ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที',
+  'ai.mono':'ลายเส้นคม (ขาว-ดำ)','ai.color':'หลายสี','ai.nc':'จำนวนสี (โหมดหลายสี)',
+  'stl.h':'🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D',
+  'stl.p':'extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย',
+  'stl.thick':'ความหนา มม.',
+  'lbl.tabs':'ใส่ tabs (สะพานกันชิ้นหล่น)',
+  'lbl.enhance':'✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)',
+  'res.mat':'วัสดุ/เครื่อง','res.layers':'เลเยอร์','res.paths':'เส้นตัด (paths)','res.size':'ขนาดจริง',
   'lang.btn':'🌐 EN'
  },
  en:{
@@ -2184,6 +2234,30 @@ var I18N={
   'ik.tab.ex':'🧲 Extract from PDF','ik.tab.pc':'✅ Producibility check',
   'ik.tab.cc':'💡 AI Concept (no logo yet)','ik.tab.br':'📝 Sales Brief',
   'stats.open':'🔒 Usage analytics (admin only)',
+  'hint.auto':'Auto = the system analyses the image and picks the best tracer for you (logo / photo / text).',
+  'lbl.width':'Overall width (mm)','lbl.height':'Overall height (mm)','lbl.letter':'Letter height (mm)',
+  'opt.w':'Overall width (mm)','opt.h':'Overall height (mm)','opt.l':'Letter height (mm)',
+  'hint.size':'⚠️ Set the size before generating the cut file (JPG/PNG has no real-world size like .ai) → we scale it to fit, keeping the aspect ratio.',
+  'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
+  'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
+  'st.0':'— Flat cut lines (normal) —','st.1':'1 · Front-lit, with trim','st.2':'2 · Front-lit, no trim',
+  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box, 1 side','st.5':'5 · Light box, 2 sides',
+  'st.6':'6 · Raised (return) letters','st.7':'7 · Raised letters with insert',
+  'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
+  'app.nofile':'No file selected','stage.hint':'Upload an image to start',
+  'chip.auto':'Auto','ph.own':'custom',
+  'trim.out':'↗ Trim expands outward','trim.in':'↙ Trim shrinks inward',
+  'hint.trim':'Outward trim = the real-world standard (offset away from the letter). Cut lines use square corners (no fillet) with fewer curve points so the bender doesn\'t score too many folds.',
+  'tag.before':'Photo','tag.after':'Cut lines',
+  'ai.h':'🎨 Draft for the designer (image → .ai)',
+  'ai.p':'Customer only sent an image → convert it to a vector .ai you can open in Illustrator right away.',
+  'ai.mono':'Sharp line art (B&W)','ai.color':'Multi-colour','ai.nc':'Number of colours (multi-colour mode)',
+  'stl.h':'🧊 3D model (STL) → Fusion 360 / 3D printer',
+  'stl.p':'Extrude the text/logo into a watertight 3D solid, ready for 3D software or printing.',
+  'stl.thick':'Thickness (mm)',
+  'lbl.tabs':'Add tabs (bridges so parts don\'t drop)',
+  'lbl.enhance':'✨ Enhance image before tracing (blurry / small / noisy)',
+  'res.mat':'Material / machine','res.layers':'Layers','res.paths':'Cut paths','res.size':'Real size',
   'lang.btn':'🌐 ไทย'
  }
 };
@@ -2204,6 +2278,26 @@ function applyLang(){
   var b=document.getElementById('btnLang'); if(b)b.textContent=D['lang.btn'];
   document.documentElement.lang=LANG;
   try{ document.body.classList.toggle('lang-en',LANG==='en'); }catch(e){}
+  try{ paintSizeLbl(); }catch(e){}
+  try{ paintPresetHint(); }catch(e){}
+}
+/* ป้ายกำกับช่องขนาด เปลี่ยนตาม dropdown -> ต้องรู้ภาษาด้วย */
+function paintSizeLbl(){
+  var s=document.getElementById('sizeBy'), e=document.getElementById('sizeLbl');
+  if(!s||!e)return;
+  var k={width:'lbl.width',height:'lbl.height',letter:'lbl.letter'}[s.value]||'lbl.width';
+  e.setAttribute('data-i18n',k); e.textContent=t(k);
+}
+/* hint ใต้ชิปวัสดุ (ประกอบจาก preset) */
+function paintPresetHint(){
+  try{
+    var p=(typeof PRESETS!=='undefined'&&typeof PRESET!=='undefined')?PRESETS[PRESET]:null;
+    if(!p)return;
+    var e=document.getElementById('presetHint'); if(!e)return;
+    var mm=t('u.mm');
+    e.textContent=p.name+' — kerf '+parseFloat(p.kerf).toFixed(2)+' '+mm+' · '+
+      (p.tool>0?(t('u.bit')+' '+p.tool+' '+mm):t('u.sharp'));
+  }catch(e){}
 }
 function setLang(L){
   LANG=(L==='en')?'en':'th';
@@ -2391,9 +2485,13 @@ window.setLang=setLang; window.t=t;
       (raw?v:(Number(v||0)).toLocaleString())+'</div><div class="s">'+s+'</div></div>';
   }
   function load(fresh){
-    fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30'+(fresh?'&fresh=1':''))
+    var k=adminKey();
+    fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30'+(fresh?'&fresh=1':'')+akq(),
+          {headers: k?{'X-Admin-Key':k}:{}})
     .then(function(r){return r.json();}).then(function(j){
       if(j&&j.ok)render(j);
+      else if(j&&j.error==='forbidden')
+        q('swCards').innerHTML='<div class="sw-c"><div class="k">🔒 สถิติ</div><div class="v">—</div><div class="s">'+(j.msg||'เฉพาะผู้ดูแลระบบ')+'</div></div>';
       else q('swCards').innerHTML='<div class="sw-c"><div class="k">สถิติ</div><div class="v">—</div><div class="s">ยังต่อ backend ไม่ได้</div></div>';
     }).catch(function(){
       q('swCards').innerHTML='<div class="sw-c"><div class="k">สถิติ</div><div class="v">—</div><div class="s">ยังต่อ backend ไม่ได้</div></div>';
@@ -2410,17 +2508,11 @@ window.setLang=setLang; window.t=t;
     a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(L.join('\n'));
     a.download='vectorcnc_stats.csv'; a.click();
   }
-  /* 🔒 สถิติ = เฉพาะผู้ดูแลระบบ (แอปจะเปิด public ให้ลูกค้าที่จ่าย subscription ใช้) */
-  function isAdmin(){
-    try{
-      if(typeof VC_ROLE!=='undefined' && String(VC_ROLE).toLowerCase()==='admin') return true;
-      var u=(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)?String(CURRENT_USER).toLowerCase():'';
-      if(ADMIN_USERS.indexOf(u)>=0) return true;
-      if(localStorage.getItem('vc_admin')==='1') return true;   // ปลดล็อกด้วยรหัสแล้ว
-    }catch(e){}
-    return false;
-  }
-  var ADMIN_USERS=['admin','panusphong','saaitech'];   // ⬅ เพิ่ม/ลบชื่อผู้ดูแลได้ตรงนี้
+  /* 🔒 สถิติ = ผู้ดูแลระบบเท่านั้น
+     ⚠️ ห้ามเชื่อ ?u=admin จาก URL — ใครก็พิมพ์เองได้
+     ถามจาก backend (/api/whoami) เท่านั้น · และ /api/stats ก็กัน 403 อีกชั้น */
+  function adminKey(){ try{ return localStorage.getItem('vc_admin_key')||''; }catch(e){ return ''; } }
+  function akq(){ var k=adminKey(); return k?('&ak='+encodeURIComponent(k)):''; }
   var _statsOn=false;
   function openStats(){
     if(_statsOn)return; _statsOn=true;
@@ -2433,14 +2525,24 @@ window.setLang=setLang; window.t=t;
   }
   function boot(){
     bindMenus();
-    if(isAdmin()){
-      q('statsGate').style.display='block';
-      q('statsOpen').onclick=openStats;
-    }else{
-      // ไม่ใช่แอดมิน -> ซ่อนทั้งปุ่มและวิดเจ็ต (แต่ยังเก็บสถิติเบื้องหลังตามปกติ)
-      q('statsGate').style.display='none';
-      q('statsWidget').style.display='none';
-    }
+    // ซ่อนไว้ก่อนเสมอ จนกว่า backend จะยืนยันว่าเป็นแอดมินจริง
+    if(q('statsGate'))q('statsGate').style.display='none';
+    if(q('statsWidget'))q('statsWidget').style.display='none';
+    var k=adminKey();
+    fetch((typeof API!=='undefined'?API:'')+'/api/whoami?_=1'+akq(),
+          {headers: k?{'X-Admin-Key':k}:{}})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j && j.is_admin){
+        if(q('statsGate')){ q('statsGate').style.display='block';
+          q('statsOpen').onclick=openStats; }
+      }else{
+        // ไม่ใช่แอดมิน -> ลบทิ้งจากหน้าเว็บเลย (เปิด DevTools ก็ไม่เจอ)
+        ['statsGate','statsWidget'].forEach(function(id){
+          var el=q(id); if(el&&el.parentNode)el.parentNode.removeChild(el);
+        });
+      }
+    }).catch(function(){});
     return;
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
@@ -2725,7 +2827,7 @@ $('tool').oninput=function(){$('vT').textContent=this.value;};
     $('kerf').value=p.kerf;$('vK').textContent=parseFloat(p.kerf).toFixed(2)+' มม.';
     $('tool').value=p.tool;$('vT').textContent=p.tool;
     MODE=p.mode;paintMode();
-    $('presetHint').textContent=p.name+' — kerf '+parseFloat(p.kerf).toFixed(2)+' มม. · '+(p.tool>0?('ดอก '+p.tool+' มม.'):'ตัดคม (ไม่ปัดมุม)');
+    try{ paintPresetHint(); }catch(_){ $('presetHint').textContent=p.name+' — kerf '+parseFloat(p.kerf).toFixed(2)+' มม.'; }
   };}
 })();
 
@@ -3794,6 +3896,7 @@ drop.ondrop=function(e){e.preventDefault();drop.classList.remove('over');if(e.da
 fi.onchange=function(){if(fi.files[0])pick(fi.files[0]);};
 function pick(f){
   fileObj=f;lastName=(f.name||'image').replace(/\.[^.]+$/,'');
+  $('fname').removeAttribute('data-i18n');   /* มีชื่อไฟล์จริงแล้ว อย่าให้ applyLang เขียนทับ */
   $('fname').textContent=f.name;
   var isVec=/\.(ai|pdf|eps|ps|svg)$/i.test(f.name||'');
   var isImg=/^image\//.test(f.type||'')||/\.(png|jpe?g|webp|bmp|tiff?|gif)$/i.test(f.name||'');
