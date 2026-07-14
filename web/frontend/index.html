@@ -2101,6 +2101,47 @@ function $(id){return document.getElementById(id);}
   },500);
 })();
 
+/* ===== 🔒 คนใน / คนนอก — ซ่อนเมนูที่มีต้นทุนบริษัท =====
+   คนนอก: ลบปุ่ม "จำลองผนัง + ประเมินราคา" และ "BOM Check Sheet" ออกจากหน้าเว็บเลย
+           (ลบทิ้งจาก DOM ไม่ใช่แค่ซ่อน -> เปิด DevTools ก็ไม่เจอ)
+   backend ก็กัน 403 อีกชั้น -> ต่อให้ยิง API ตรงก็ไม่ได้ข้อมูล                */
+var VC_INTERNAL = true;      // เริ่มต้นถือว่าคนใน จนกว่าจะรู้ผล (กันเมนูกระพริบ)
+var HIDE_MAP = { wall: ['btnWall'], checksheet: ['btnCsheet'], stats: ['statsGate','statsWidget'] };
+(function(){
+  function nuke(ids){
+    ids.forEach(function(id){
+      var el = document.getElementById(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+  }
+  function gate(){
+    var k = (function(){ try{ return localStorage.getItem('vc_internal_key')||''; }catch(e){ return ''; } })();
+    fetch((typeof API!=='undefined'?API:'')+'/api/whoami'+(k?('?k='+encodeURIComponent(k)):''),
+          {headers: k?{'X-Internal-Key':k}:{}})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      VC_INTERNAL = !!(j && j.internal);
+      window.VC_INTERNAL = VC_INTERNAL;
+      if (VC_INTERNAL) return;                       // คนใน -> เห็นครบ
+      (j.hidden||[]).forEach(function(f){ nuke(HIDE_MAP[f]||[]); });
+      // ลบ overlay + หัวข้อในคู่มือที่พูดถึงเมนูภายใน (คนนอกจะได้ไม่รู้ว่ามีอยู่)
+      nuke(['wallOverlay','csOverlay','v3dOverlay']);
+      try{
+        document.querySelectorAll('#manualOverlay tr, #manualOverlay .card, #manualOverlay li')
+        .forEach(function(el){
+          var x=el.textContent||'';
+          if(/จำลองผนัง|ประเมินราคา|BOM Check|ใบเสนอราคา/.test(x)){
+            if(el.parentNode)el.parentNode.removeChild(el);
+          }
+        });
+      }catch(e){}
+    })
+    .catch(function(){ /* ต่อ backend ไม่ได้ -> คงเมนูไว้ (ทีมภายในยังใช้ได้) */ });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',gate);
+  else gate();
+})();
+
 /* ===== 🌐 ระบบ 2 ภาษา (ไทย / English) =====
    วิธีเพิ่มคำแปล: ใส่ data-i18n="key" ที่ element  แล้วเติม key ลง I18N
    - data-i18n       -> แปลข้อความในปุ่ม/หัวข้อ
