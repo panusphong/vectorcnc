@@ -111,6 +111,12 @@
   .btn.p{background:var(--teal);color:#fff;border-color:var(--teal)}
   .btn.p:hover{background:#0f766e;color:#fff}
   .btn.lg{padding:13px 28px;font-size:15px}
+  /* 🌐 สวิตช์ภาษา */
+  .langsw{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .langsw button{font-family:inherit;font-size:13px;font-weight:700;padding:8px 14px;border:0;
+    background:#fff;color:#94a3b8;cursor:pointer;transition:.15s}
+  .langsw button:hover{color:var(--teal)}
+  .langsw button.on{background:var(--teal);color:#fff}
   /* 💳 ปุ่มแพ็กเกจที่ยังไม่เปิดรับชำระเงิน */
   .btn.soon{background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:pointer}
   .btn.soon:hover{background:#e2e8f0;color:#475569;border-color:#cbd5e1}
@@ -175,7 +181,10 @@
   <div class="logo"><i>▲</i> VectorCNC</div>
   <span class="sp"></span>
   <a href="#pricing" class="btn"><span class="th">ราคา</span><span class="en">Pricing</span></a>
-  <button class="btn" id="lang">🌐 EN</button>
+  <!-- 🌐 สวิตช์ภาษา: เห็นชัดว่าตอนนี้อยู่ภาษาไหน (ตัวที่ไฮไลต์ = ภาษาปัจจุบัน) -->
+  <div class="langsw" id="lang">
+    <button type="button" data-l="th">ไทย</button><button type="button" data-l="en">EN</button>
+  </div>
   <a href="/" class="btn p"><span class="th">เข้าใช้งาน</span><span class="en">Launch app</span></a>
 </div></nav>
 
@@ -268,13 +277,18 @@ function setLang(L){
   LANG = (L==='en') ? 'en' : 'th';
   localStorage.setItem('vc_lang', LANG);
   document.documentElement.lang = LANG;
-  document.getElementById('lang').textContent = (LANG==='th') ? '🌐 EN' : '🌐 ไทย';
+  /* ไฮไลต์ปุ่มภาษาที่ใช้อยู่ (ไม่กำกวมเหมือนปุ่มสลับอันเดียว) */
+  document.querySelectorAll('#lang button').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-l')===LANG);
+  });
   /* บอก crawler/แชร์ลิงก์ว่าหน้านี้ภาษาอะไร */
   var og = document.querySelector('meta[property="og:locale"]');
   if(og) og.setAttribute('content', LANG==='th' ? 'th_TH' : 'en_US');
   renderPlans();
 }
-document.getElementById('lang').onclick = function(){ setLang(LANG==='th'?'en':'th'); };
+document.querySelectorAll('#lang button').forEach(function(b){
+  b.onclick = function(){ setLang(b.getAttribute('data-l')); };
+});
 
 var PLANS = null;
 var HOT = 'pro';

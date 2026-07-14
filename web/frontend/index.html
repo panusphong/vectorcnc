@@ -206,7 +206,12 @@ select.numin{cursor:pointer}
     <button class="nav-btn" id="btnWall" data-i18n="nav.wall">📐 ขนาดป้าย + จำลองผนัง</button>
     <button class="nav-btn" id="btnIntake" data-i18n="nav.intake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
     <button class="nav-btn" id="btnManual" data-i18n="nav.manual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
-    <button class="nav-btn" id="btnLang" title="เปลี่ยนภาษา / Change language" style="font-weight:700;min-width:64px">🌐 EN</button>
+    <!-- 🌐 สวิตช์ภาษา: ตัวที่ไฮไลต์ = ภาษาที่ใช้อยู่ -->
+    <span id="btnLang" title="เปลี่ยนภาษา / Change language"
+          style="display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff;vertical-align:middle">
+      <button type="button" data-l="th" class="lgb" style="font-family:inherit;font-size:13px;font-weight:700;padding:8px 12px;border:0;background:#fff;color:var(--dim);cursor:pointer">ไทย</button>
+      <button type="button" data-l="en" class="lgb" style="font-family:inherit;font-size:13px;font-weight:700;padding:8px 12px;border:0;background:#fff;color:var(--dim);cursor:pointer">EN</button>
+    </span>
     <span class="tag-api">API: <span id="apiStatus" class="mono">กำลังเช็ก...</span></span>
   </div>
 </div></nav>
@@ -2275,7 +2280,12 @@ function applyLang(){
   document.querySelectorAll('[data-i18n-title]').forEach(function(el){
     var v=D[el.getAttribute('data-i18n-title')]; if(v!=null)el.title=v;
   });
-  var b=document.getElementById('btnLang'); if(b)b.textContent=D['lang.btn'];
+  /* ไฮไลต์ปุ่มภาษาที่ใช้อยู่ (แทนปุ่มสลับอันเดียวที่อ่านแล้วงงว่าอยู่ภาษาไหน) */
+  document.querySelectorAll('#btnLang .lgb').forEach(function(b){
+    var on=(b.getAttribute('data-l')===LANG);
+    b.style.background = on ? 'var(--brand)' : '#fff';
+    b.style.color      = on ? '#fff'        : 'var(--dim)';
+  });
   document.documentElement.lang=LANG;
   try{ document.body.classList.toggle('lang-en',LANG==='en'); }catch(e){}
   try{ paintSizeLbl(); }catch(e){}
@@ -2307,8 +2317,9 @@ function setLang(L){
 window.setLang=setLang; window.t=t;
 (function(){
   function wire(){
-    var b=document.getElementById('btnLang');
-    if(b)b.onclick=function(){ setLang(LANG==='th'?'en':'th'); };
+    document.querySelectorAll('#btnLang .lgb').forEach(function(b){
+      b.onclick=function(){ setLang(b.getAttribute('data-l')); };
+    });
     applyLang();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);
