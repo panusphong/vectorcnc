@@ -2146,7 +2146,25 @@ var HIDE_MAP = { wall: ['btnWall'], checksheet: ['btnCsheet'], stats: ['statsGat
     });
   }
   function gate(){
-    var k = (function(){ try{ return localStorage.getItem('vc_internal_key')||''; }catch(e){ return ''; } })();
+    /* 🔑 ทีมงานเข้าครั้งแรกด้วย  ?k=<INTERNAL_KEY>  แล้วระบบจำให้เลย
+       (ครั้งต่อไปเข้า vectorcnc.onrender.com เฉย ๆ ก็ยังเห็นเมนูภายในครบ)
+       ?ak=<ADMIN_KEY> ก็จำเหมือนกัน · หลังจำแล้วลบคีย์ออกจากช่อง URL ทันที
+       -> ลูกค้าที่ยืนดูอยู่ข้าง ๆ ไม่เห็นคีย์ และคีย์ไม่ติดไปกับลิงก์ที่แชร์ */
+    var k = '';
+    try{
+      var u  = new URLSearchParams(location.search);
+      var qk = u.get('k')  || '';
+      var qa = u.get('ak') || '';
+      if(qk) localStorage.setItem('vc_internal_key', qk);
+      if(qa) localStorage.setItem('vc_admin_key',   qa);
+      if(qk || qa){
+        u.delete('k'); u.delete('ak');
+        var q = u.toString();
+        history.replaceState({}, '', location.pathname + (q ? '?'+q : ''));
+      }
+      k = localStorage.getItem('vc_internal_key') || '';
+    }catch(e){ k = ''; }
+
     fetch((typeof API!=='undefined'?API:'')+'/api/whoami'+(k?('?k='+encodeURIComponent(k)):''),
           {headers: k?{'X-Internal-Key':k}:{}})
     .then(function(r){ return r.json(); })
