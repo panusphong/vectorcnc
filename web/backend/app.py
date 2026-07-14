@@ -2328,6 +2328,17 @@ def _is_internal(request: Request):
     return str(got) == str(key)
 
 
+@app.get("/api/whoami")
+def api_whoami(request: Request):
+    """บอก frontend ว่าเป็น 'คนใน' หรือ 'คนนอก' — ใช้ซ่อนเมนูที่มีต้นทุนบริษัท"""
+    from vectorcnc import billing as B
+    internal = _is_internal(request)
+    plan = "internal" if internal else "free"
+    return {"internal": internal, "plan": plan,
+            "features": B.PLANS[plan]["features"],
+            "hidden": [] if internal else B.INTERNAL_ONLY}
+
+
 @app.get("/api/plans")
 def api_plans():
     """ตารางแพ็กเกจสาธารณะ (ให้หน้า Landing/Pricing เรนเดอร์)"""
