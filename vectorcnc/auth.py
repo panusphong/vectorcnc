@@ -59,6 +59,36 @@ def sign(email: str, plan: str = "free", days: int = 30, role: str = "user") -> 
     return _b64e(raw) + "." + _b64e(sig)
 
 
+def sign_internal(email: str, role: str = "internal", hours: int = 12) -> str:
+    """ตั๋วเข้าใช้งานสำหรับพนักงาน — ออกโดย CRM Hub เท่านั้น
+
+    role = "internal" -> ทีมงาน (เห็นเมนูจำลองผนัง + BOM)
+    role = "admin"    -> พี่ + ทีมดูแลระบบ (เห็นสถิติ + หน้าอนุมัติสลิปด้วย)
+
+    อายุสั้น (12 ชม.) โดยตั้งใจ — พนักงานลาออก/ถูกถอดจาก CRM Hub
+    วันรุ่งขึ้นตั๋วหมดอายุเอง ไม่ต้องไปเปลี่ยนคีย์ทั้งบริษัท
+    """
+    r = role if role in ("internal", "admin") else "internal"
+    payload = {
+        "e": (email or "").strip().lower(),
+        "p": r,                      # plan = internal / admin
+        "r": r,
+        "x": int(time.time()) + int(hours) * 3600,
+    }
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    sig = hmac.new(_secret(), raw, hashlib.sha256).digest()
+    return _b64e(raw) + "." + _b64e(sig)
+
+
+def role_of(token: str) -> str:
+    """คืน 'admin' / 'internal' / '' (คนนอก)"""
+    p = verify(token)
+    if not p:
+        return ""
+    r = p.get("r", "")
+    return r if r in ("internal", "admin") else ""
+
+
 def verify(token: str):
     """คืน payload ถ้าโทเคนถูกต้องและยังไม่หมดอายุ · คืน None ถ้าไม่ผ่าน"""
     if not token or "." not in token:
