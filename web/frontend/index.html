@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VectorCNC — แปลงภาพเป็นเส้นตัด CNC / เลเซอร์ (SVG, DXF) | Graphic Design Solution</title>
 <meta name="description" content="อัปโหลดโลโก้หรือภาพ → ได้เส้นตัด CNC/เลเซอร์คมชัด ดาวน์โหลด SVG, DXF, .ai, STL พร้อมชุดชั้นตัดตามแบบป้าย และพรีวิว 3 มิติ">
-<link rel="canonical" href="https://vectorcnc.onrender.com/">
+<link rel="canonical" href="https://vectorcnc.onrender.com/app">
 <meta name="robots" content="index,follow">
 <meta name="theme-color" content="#2563EB">
 <meta property="og:type" content="website">
@@ -16,10 +16,10 @@
 <meta property="og:image" content="https://vectorcnc.onrender.com/static/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <script>
-/* 🔒 URL ที่มีคีย์ภายใน (?k= / ?ak= / ?u=) ห้ามให้ Google เก็บเด็ดขาด */
+/* 🔒 URL ที่มีตั๋ว/คีย์ภายใน (?t= / ?k= / ?ak= / ?u=) ห้ามให้ Google เก็บเด็ดขาด */
 (function(){
   try{
-    if(/[?&](k|ak|u)=/.test(location.search)){
+    if(/[?&](t|k|ak|u)=/.test(location.search)){
       var m=document.querySelector('meta[name="robots"]');
       if(m)m.setAttribute('content','noindex,nofollow');
     }
@@ -2136,42 +2136,67 @@ function $(id){return document.getElementById(id);}
    คนนอก: ลบปุ่ม "จำลองผนัง + ประเมินราคา" และ "BOM Check Sheet" ออกจากหน้าเว็บเลย
            (ลบทิ้งจาก DOM ไม่ใช่แค่ซ่อน -> เปิด DevTools ก็ไม่เจอ)
    backend ก็กัน 403 อีกชั้น -> ต่อให้ยิง API ตรงก็ไม่ได้ข้อมูล                */
-var VC_INTERNAL = true;      // เริ่มต้นถือว่าคนใน จนกว่าจะรู้ผล (กันเมนูกระพริบ)
+/* ⚠️ เดิมตั้ง VC_INTERNAL = true ไว้ก่อน "กันเมนูกระพริบ"
+      -> ผลคือคนนอกเห็นปุ่มแวบนึงจริง ๆ และถ้า backend ล่ม เมนูจะค้างอยู่ถาวร
+      ตอนนี้กลับด้าน: ถือว่าเป็นคนนอกไว้ก่อนเสมอ ต่อเมื่อ backend ยืนยันว่าคนในจริง ถึงค่อยโชว์ */
+var VC_INTERNAL = false;
 var HIDE_MAP = { wall: ['btnWall'], checksheet: ['btnCsheet'], stats: ['statsGate','statsWidget'] };
+var VC_GUARDED = ['btnWall','btnCsheet'];     // ปุ่มที่มีต้นทุนบริษัทอยู่ข้างใน
+
 (function(){
+  /* 🔒 ซ่อนทันทีตั้งแต่วินาทีแรก ก่อน /api/whoami จะตอบด้วยซ้ำ */
+  VC_GUARDED.forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
   function nuke(ids){
     ids.forEach(function(id){
       var el = document.getElementById(id);
       if (el && el.parentNode) el.parentNode.removeChild(el);
     });
   }
+  function reveal(){
+    VC_GUARDED.forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.style.display = '';
+    });
+  }
   function gate(){
-    /* 🔑 ทีมงานเข้าครั้งแรกด้วย  ?k=<INTERNAL_KEY>  แล้วระบบจำให้เลย
-       (ครั้งต่อไปเข้า vectorcnc.onrender.com เฉย ๆ ก็ยังเห็นเมนูภายในครบ)
-       ?ak=<ADMIN_KEY> ก็จำเหมือนกัน · หลังจำแล้วลบคีย์ออกจากช่อง URL ทันที
-       -> ลูกค้าที่ยืนดูอยู่ข้าง ๆ ไม่เห็นคีย์ และคีย์ไม่ติดไปกับลิงก์ที่แชร์ */
-    var k = '';
+    /* 🎫 ทางเข้าทีมงาน
+         ① ?t=<ตั๋ว SSO>  ← CRM Hub สร้างให้อัตโนมัติ (พนักงานไม่ต้องทำอะไรเลย)
+         ② ?k=<INTERNAL_KEY> / ?ak=<ADMIN_KEY>  ← สำรอง ใช้ตอน CRM Hub ล่ม
+       ทั้งคู่: จำใส่ localStorage แล้ว "ลบออกจากช่อง URL ทันที"
+       -> คนที่ยืนดูข้าง ๆ ไม่เห็น และไม่ติดไปกับลิงก์ที่แชร์/ประวัติเบราว์เซอร์ */
+    var k = '', t = '';
     try{
       var u  = new URLSearchParams(location.search);
+      var qt = u.get('t')  || '';
       var qk = u.get('k')  || '';
       var qa = u.get('ak') || '';
+      if(qt) localStorage.setItem('vc_token',        qt);
       if(qk) localStorage.setItem('vc_internal_key', qk);
-      if(qa) localStorage.setItem('vc_admin_key',   qa);
-      if(qk || qa){
-        u.delete('k'); u.delete('ak');
+      if(qa) localStorage.setItem('vc_admin_key',    qa);
+      if(qt || qk || qa){
+        u.delete('t'); u.delete('k'); u.delete('ak');
         var q = u.toString();
         history.replaceState({}, '', location.pathname + (q ? '?'+q : ''));
       }
+      t = localStorage.getItem('vc_token')        || '';
       k = localStorage.getItem('vc_internal_key') || '';
-    }catch(e){ k = ''; }
+    }catch(e){ k = ''; t = ''; }
 
-    fetch((typeof API!=='undefined'?API:'')+'/api/whoami'+(k?('?k='+encodeURIComponent(k)):''),
-          {headers: k?{'X-Internal-Key':k}:{}})
+    var H = {};
+    if(t) H['X-User-Token']   = t;
+    if(k) H['X-Internal-Key'] = k;
+
+    fetch((typeof API!=='undefined'?API:'')+'/api/whoami', {headers: H})
     .then(function(r){ return r.json(); })
     .then(function(j){
       VC_INTERNAL = !!(j && j.internal);
       window.VC_INTERNAL = VC_INTERNAL;
-      if (VC_INTERNAL) return;                       // คนใน -> เห็นครบ
+      if (VC_INTERNAL){ reveal(); return; }          // ✅ backend ยืนยันแล้วว่าคนใน -> โชว์
+      nuke(VC_GUARDED);                              // คนนอก -> ลบทิ้งจาก DOM เลย
       (j.hidden||[]).forEach(function(f){ nuke(HIDE_MAP[f]||[]); });
       // ลบ overlay + หัวข้อในคู่มือที่พูดถึงเมนูภายใน (คนนอกจะได้ไม่รู้ว่ามีอยู่)
       nuke(['wallOverlay','csOverlay','v3dOverlay']);
@@ -2185,7 +2210,13 @@ var HIDE_MAP = { wall: ['btnWall'], checksheet: ['btnCsheet'], stats: ['statsGat
         });
       }catch(e){}
     })
-    .catch(function(){ /* ต่อ backend ไม่ได้ -> คงเมนูไว้ (ทีมภายในยังใช้ได้) */ });
+    .catch(function(){
+      /* ⚠️ เดิม: ต่อ backend ไม่ได้ -> คงเมนูไว้  ← อันตราย
+         ถ้า /api/whoami ล่ม คนนอกจะเห็นเมนูค้างอยู่
+         ตอนนี้: ต่อไม่ได้ = ลบทิ้ง ปลอดภัยไว้ก่อน (ทีมงานรีเฟรชใหม่ก็กลับมา) */
+      nuke(VC_GUARDED);
+      nuke(['wallOverlay','csOverlay','v3dOverlay','statsGate','statsWidget']);
+    });
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',gate);
   else gate();
@@ -4734,12 +4765,21 @@ function wallSignAreaSqm(){ var s=wallSignReal(); var w,h; if(WMODE==='measure')
 // 🔒 ตารางราคา/ต้นทุนบริษัท -> ย้ายไป backend แล้ว (ห้ามเอากลับมาฝังที่นี่)
 //    ใครเปิด View Source ก็ไม่เห็นตัวเลขสักตัว · โหลดผ่าน /api/price-catalog เฉพาะคนใน
 var WCAT={}, WCAT_READY=false, WCAT_ERR='';
-function vcKey(){ try{ return localStorage.getItem('vc_internal_key')||_qp('k')||''; }catch(e){ return ''; } }
+function vcKey(){ try{ return localStorage.getItem('vc_internal_key')||''; }catch(e){ return ''; } }
+function vcTok(){ try{ return localStorage.getItem('vc_token')||''; }catch(e){ return ''; } }
+/* 🔐 หัวข้อ auth มาตรฐาน — ใช้ทุกที่ที่ยิง API ที่ต้องใช้สิทธิ์คนใน */
+function vcAuth(extra){
+  var H = extra || {};
+  var t = vcTok(), k = vcKey(), a = '';
+  try{ a = localStorage.getItem('vc_admin_key')||''; }catch(e){}
+  if(t) H['X-User-Token']   = t;
+  if(k) H['X-Internal-Key'] = k;
+  if(a) H['X-Admin-Key']    = a;
+  return H;
+}
 function loadPriceCatalog(cb){
   if(WCAT_READY){ if(cb)cb(true); return; }
-  var k=vcKey();
-  fetch((typeof API!=='undefined'?API:'')+'/api/price-catalog'+(k?('?k='+encodeURIComponent(k)):''),
-        {headers: k?{'X-Internal-Key':k}:{}})
+  fetch((typeof API!=='undefined'?API:'')+'/api/price-catalog', {headers: vcAuth()})
   .then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
   .then(function(o){
     if(o.s===403){ WCAT_ERR=(o.j&&o.j.msg)||'ไม่มีสิทธิ์ใช้เมนูประเมินราคา'; if(cb)cb(false); return; }
