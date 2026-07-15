@@ -1776,33 +1776,37 @@ async def nest_batch(request: Request):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
+# 🚧 SELL_MODE — สวิตช์เปิดหน้าขาย (ยังไม่เปิดขาย -> ปิดไว้ก่อน)
+#    0 (ค่าเริ่มต้น) = / คือตัวแอปเหมือนเดิม · /welcome ปิด 404
+#    1              = / คือหน้าขาย · ตัวแอปอยู่ที่ /app
+#    เปิดตอนพร้อมขายจริง: ตั้ง env  SELL_MODE=1  ใน Render
+def _sell_mode():
+    return str(os.environ.get("SELL_MODE", "0")).lower() in ("1", "true", "yes", "on")
+
+
 @app.get("/")
 def home(request: Request):
-    """หน้าแรก = หน้าขาย (landing)  ·  ตัวแอปย้ายไป /app
+    """หน้าแรก
 
-    ทำไมไม่ "ปิด / ไปเลย":
-      - คนที่กดมาจาก Google / โฆษณา / ลิงก์ที่แชร์กัน จะเจอหน้า error ทันที = เสียลูกค้าฟรี ๆ
-      - Google เก็บหน้าแรกไม่ได้ = SEO พัง
-      ทางที่ถูกคือ "ย้าย" ไม่ใช่ "ปิด"
-
-    ยกเว้น: ถ้าถือตั๋ว SSO จาก CRM Hub มา (?t=...) = พนักงาน -> ส่งเข้าแอปเลย
-            ไม่ต้องให้ทีมงานมานั่งดูหน้าขายของตัวเองทุกวัน
+    SELL_MODE=0 (ตอนนี้) -> ตัวแอปเลย เหมือนเดิมทุกอย่าง ทีมงานเข้า ?u= ได้ปกติ
+    SELL_MODE=1          -> หน้าขาย (ตัวแอปย้ายไป /app)
     """
-    if request.query_params.get("t"):
-        q = str(request.url.query)
-        return RedirectResponse("/app" + ("?" + q if q else ""), status_code=302)
+    if _sell_mode():
+        if request.query_params.get("t"):          # ถือตั๋ว SSO -> เข้าแอปตรง
+            q = str(request.url.query)
+            return RedirectResponse("/app" + ("?" + q if q else ""), status_code=302)
+        landing = os.path.join(os.path.dirname(FRONTEND), "landing.html")
+        if os.path.exists(landing):
+            return FileResponse(landing)
 
-    landing = os.path.join(os.path.dirname(FRONTEND), "landing.html")
-    if os.path.exists(landing):
-        return FileResponse(landing)
     if os.path.exists(FRONTEND):
-        return FileResponse(FRONTEND)          # ยังไม่ได้อัป landing.html -> กันหน้าขาว
+        return FileResponse(FRONTEND)
     return {"msg": "VectorCNC API running. POST /api/vectorize"}
 
 
 @app.get("/app")
 def app_page():
-    """ตัวแอปจริง — เปิดได้ทุกคน (Free ใช้ได้) แต่เมนูภายในถูกกันด้วยสิทธิ์อีกชั้น"""
+    """ตัวแอป (ใช้ได้ทั้งสองโหมด — ลิงก์ /app จะได้ไม่พังตอนสลับ SELL_MODE)"""
     if os.path.exists(FRONTEND):
         return FileResponse(FRONTEND)
     return JSONResponse({"error": "index.html not found"}, status_code=404)
@@ -2377,16 +2381,26 @@ def _internal_key():
 
 
 def _is_internal(request: Request):
-    """คนใน = มีตั๋ว SSO ที่ถูกต้อง หรือ มี INTERNAL_KEY ถูกต้อง · ไม่มีเลย = คนนอก"""
+    """คนใน = ตั๋ว SSO ถูกต้อง หรือ INTERNAL_KEY ถูกต้อง
+
+    🚧 ตอนยังไม่เปิดขาย (SELL_MODE=0): เว็บนี้ยังเป็นเครื่องมือใช้กันเองในทีม
+       -> ให้ผ่านทุกคน (ทีมงานเข้าผ่าน CRM Hub ด้วย ?u= ได้เหมือนเดิม เห็นเมนูครบ)
+       ยังไม่มีคนนอกเข้ามา เพราะยังไม่ประกาศขาย + robots.txt ปิด Google ไว้
+
+    🔒 พอเปิดขาย (SELL_MODE=1): กลับเป็น fail-closed ทันที
+       -> ไม่มีตั๋ว/ไม่มีคีย์ = คนนอก ไม่มีข้อยกเว้น
+    """
     if _role_of(request) in ("internal", "admin"):
         return True                      # ① ตั๋วจาก CRM Hub
 
-    key = _internal_key()                # ② คีย์รวม (สำรอง)
-    if not key:
-        return False                     # 🔒 ยังไม่ตั้งคีย์ -> ปิดไว้ก่อน
-    got = (request.headers.get("X-Internal-Key")
-           or request.query_params.get("k") or "")
-    return bool(got) and str(got) == str(key)
+    key = _internal_key()                # ② คีย์รวม
+    if key:
+        got = (request.headers.get("X-Internal-Key")
+               or request.query_params.get("k") or "")
+        if got and str(got) == str(key):
+            return True
+
+    return not _sell_mode()              # ③ ยังไม่เปิดขาย -> ทีมใช้กันเองได้ปกติ
 
 
 def _admin_key():
@@ -2394,8 +2408,9 @@ def _admin_key():
 
 
 def _is_admin(request: Request):
-    """แอดมิน = ตั๋ว SSO ที่ role=admin  หรือ  ADMIN_KEY ถูกต้อง
-       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้"""
+    """แอดมิน = ตั๋ว SSO role=admin  หรือ  ADMIN_KEY ถูกต้อง
+       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้
+       ⚠️ สถิติเป็นข้อมูลอ่อนไหว -> ปิดตายเสมอ ไม่ยกเว้นให้แม้ยังไม่เปิดขาย"""
     if _role_of(request) == "admin":
         return True
 
@@ -2469,6 +2484,10 @@ def api_plans():
 
 @app.get("/welcome")
 def welcome_page():
+    """หน้าขาย — ปิดไว้จนกว่าจะพร้อมขายจริง (ตั้ง SELL_MODE=1)"""
+    if not _sell_mode():
+        return JSONResponse({"error": "not_open",
+                             "msg": "ยังไม่เปิดขาย"}, status_code=404)
     p = os.path.join(os.path.dirname(FRONTEND), "landing.html")
     if os.path.exists(p):
         return FileResponse(p)
@@ -2486,6 +2505,11 @@ def robots_txt():
     """บอก Google ว่าเก็บอะไรได้ / ห้ามเก็บอะไร
        ⚠️ /api/* ห้าม index เด็ดขาด — มีตารางราคา/ข้อมูลภายในอยู่"""
     site = _site_url()
+
+    # 🚧 ยังไม่เปิดขาย -> ห้าม Google เก็บทั้งเว็บ (กันหน้าเครื่องมือภายในโผล่ในผลค้นหา)
+    if not _sell_mode():
+        return "User-agent: *\nDisallow: /\n"
+
     return (
         "User-agent: *\n"
         "Allow: /$\n"
@@ -2512,6 +2536,10 @@ def robots_txt():
 @app.get("/sitemap.xml")
 def sitemap_xml():
     site = _site_url()
+    if not _sell_mode():                      # 🚧 ยังไม่เปิดขาย -> sitemap ว่าง
+        return Response(content='<?xml version="1.0" encoding="UTF-8"?>\n'
+                                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>\n',
+                        media_type="application/xml")
     today = _dt.datetime.utcnow().strftime("%Y-%m-%d")
     pages = [
         (f"{site}/",        "1.0", "weekly"),   # หน้าแรก = หน้าขาย
@@ -3533,6 +3561,9 @@ async def admin_approve(request: Request):
 # ---------------------------------------------------------------- หน้าเว็บ
 @app.get("/pay")
 def pay_page():
+    if not _sell_mode():
+        return JSONResponse({"error": "not_open",
+                             "msg": "ยังไม่เปิดขาย"}, status_code=404)
     p = os.path.join(os.path.dirname(FRONTEND), "checkout.html")
     if os.path.exists(p):
         return FileResponse(p)
