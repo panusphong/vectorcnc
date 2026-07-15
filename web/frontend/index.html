@@ -85,6 +85,12 @@ input[type=range]{width:100%;accent-color:var(--brand);height:4px}
 .numin{width:100%;background:#fff;border:1px solid var(--line2);color:var(--ink);font-family:inherit;font-size:14px;padding:9px 11px;border-radius:9px;outline:none}
 .numin:focus{border-color:var(--brand)}
 .hint{font-size:11px;color:var(--dim);margin:6px 0 2px}
+/* 🔍 ปุ่มแถบซูม (หน้าจำลองผนัง) */
+.zb{font-family:inherit;font-size:15px;font-weight:700;line-height:1;width:26px;height:26px;
+    display:grid;place-items:center;border:1px solid var(--line2);background:#fff;color:var(--muted);
+    border-radius:7px;cursor:pointer;transition:.12s;padding:0}
+.zb:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+.zb:active{transform:scale(.94)}
 .chk{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);cursor:pointer;margin-top:8px}
 .chk input{accent-color:var(--brand);width:16px;height:16px}
 .stage{position:relative;background:var(--panel2);display:grid;place-items:center;padding:28px;overflow:hidden}
@@ -1319,8 +1325,24 @@ select.numin{cursor:pointer}
       </div>
       <div class="hint" id="wInfo" style="margin-top:10px"></div>
     </div>
-    <div style="padding:16px;background:#eef1f6;display:flex;align-items:center;justify-content:center;overflow:auto;height:100%">
-      <canvas id="wCanvas" style="max-width:100%;max-height:calc(90vh - 130px);box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:grab;background:#fff"></canvas>
+    <div id="wStage" style="padding:16px;background:#eef1f6;overflow:auto;height:100%;position:relative">
+
+      <!-- 🔍 แถบซูม — ลอยตามตอนเลื่อนดู -->
+      <div style="position:sticky;top:0;z-index:6;display:flex;justify-content:flex-end;pointer-events:none;height:0">
+        <div style="pointer-events:auto;display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.96);
+             border:1px solid #d6e0ee;border-radius:10px;padding:4px;box-shadow:0 2px 10px rgba(0,0,0,.10)">
+          <button type="button" class="zb" id="wzOut"  title="ซูมออก (Ctrl + ลูกกลิ้ง)">−</button>
+          <span id="wZoomLbl" style="min-width:62px;text-align:center;font-size:12px;font-weight:700;color:#5A6B8C">พอดีจอ</span>
+          <button type="button" class="zb" id="wzIn"   title="ซูมเข้า (Ctrl + ลูกกลิ้ง)">+</button>
+          <span style="width:1px;height:18px;background:#e6ecf5;margin:0 2px"></span>
+          <button type="button" class="zb" id="wzFit"  title="ย่อให้เห็นทั้งผนัง">⤢</button>
+          <button type="button" class="zb" id="wz100" title="ขนาดจริง 100%" style="width:auto;padding:0 8px">1:1</button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;min-height:calc(100% - 8px)">
+        <canvas id="wCanvas" style="max-width:100%;max-height:calc(90vh - 130px);box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:grab;background:#fff"></canvas>
+      </div>
     </div>
   </div>
 </div></div>
@@ -4316,6 +4338,81 @@ var WBOXCOLORS=['#e11d48','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2'];
 var shapes=[], _shpSel=-1;
 var wLogos=[], _lgSel=-1, _lgDrag=false, _lgMode='move', _lgCorner=-1, _lgOff={x:0,y:0}, _lgClose=null;
 (function(){var t=document.querySelectorAll('#wModeTabs .chip'); for(var i=0;i<t.length;i++){ t[i].onclick=function(){ for(var j=0;j<t.length;j++)t[j].classList.remove('on'); this.classList.add('on'); WMODE=this.getAttribute('data-wm'); measParts=null; measResult=null; if($('wMeasHint'))$('wMeasHint').style.display=(WMODE==='measure')?'block':'none'; if($('wDsgnHint'))$('wDsgnHint').style.display=(WMODE==='design')?'block':'none'; if(typeof renderBoxRows==='function')renderBoxRows(); wallDraw(); if(WMODE==='measure'&&typeof _wallBgFile!=='undefined'&&_wallBgFile){ wallAutoMeasure(); } }; }})();
+/* ══════════════════ 🔍 ซูมหน้าจำลองผนัง ══════════════════
+   ซูมด้วย CSS width/height เท่านั้น — ไม่แตะ cv.width (ความละเอียดจริง)
+   ตัวจับเมาส์ P(e) แปลงพิกัดด้วย cv.width/r.width อยู่แล้ว
+   -> ลาก/ย่อขยายโลโก้ยังตรงเป๊ะทุกระดับซูม                          */
+var WZOOM = 0;          // 0 = พอดีจอ (auto) · >0 = เท่าตัว เช่น 1 = 100%
+function wZoomApply(){
+  var cv=$('wCanvas'); if(!cv) return;
+  if(WZOOM<=0){                                   // พอดีจอ
+    cv.style.maxWidth='100%';
+    cv.style.maxHeight='calc(90vh - 130px)';
+    cv.style.width=''; cv.style.height='';
+  }else{
+    cv.style.maxWidth='none'; cv.style.maxHeight='none';
+    cv.style.width =(cv.width  * WZOOM)+'px';
+    cv.style.height=(cv.height * WZOOM)+'px';
+  }
+  var l=$('wZoomLbl');
+  if(l) l.textContent = (WZOOM<=0) ? 'พอดีจอ' : Math.round(WZOOM*100)+'%';
+}
+/* ระดับซูมปัจจุบันจริง ๆ (ตอนอยู่โหมดพอดีจอ ต้องวัดจากขนาดที่แสดงจริง) */
+function wZoomNow(){
+  var cv=$('wCanvas'); if(!cv||!cv.width) return 1;
+  if(WZOOM>0) return WZOOM;
+  var r=cv.getBoundingClientRect();
+  return (r.width/cv.width) || 1;
+}
+function wZoomSet(z, anchor){
+  var st=$('wStage'), cv=$('wCanvas');
+  z=Math.max(0.15, Math.min(6, z));
+
+  /* จำจุดที่เมาส์ชี้ไว้ -> ซูมแล้วให้จุดนั้นอยู่ที่เดิม (ไม่หลุดออกนอกจอ) */
+  var keep=null;
+  if(anchor && st && cv){
+    var r=cv.getBoundingClientRect(), sr=st.getBoundingClientRect();
+    keep={ fx:(anchor.clientX-r.left)/Math.max(1,r.width),
+           fy:(anchor.clientY-r.top )/Math.max(1,r.height),
+           mx:anchor.clientX-sr.left, my:anchor.clientY-sr.top };
+  }
+  WZOOM=z; wZoomApply();
+  if(keep && st && cv){
+    var r2=cv.getBoundingClientRect(), sr2=st.getBoundingClientRect();
+    st.scrollLeft += (r2.left - sr2.left) + keep.fx*r2.width  - keep.mx;
+    st.scrollTop  += (r2.top  - sr2.top ) + keep.fy*r2.height - keep.my;
+  }
+}
+(function(){
+  function on(id,fn){ var b=$(id); if(b) b.onclick=fn; }
+  on('wzIn',  function(){ wZoomSet(wZoomNow()*1.25); });
+  on('wzOut', function(){ wZoomSet(wZoomNow()/1.25); });
+  on('wz100', function(){ wZoomSet(1); });
+  on('wzFit', function(){ WZOOM=0; wZoomApply(); });
+
+  /* Ctrl + ลูกกลิ้ง = ซูม · ลูกกลิ้งเปล่า = เลื่อนดูตามปกติ */
+  var st=$('wStage');
+  if(st) st.addEventListener('wheel', function(e){
+    if(!e.ctrlKey) return;
+    e.preventDefault();
+    wZoomSet(wZoomNow() * (e.deltaY<0 ? 1.12 : 1/1.12), e);
+  }, {passive:false});
+
+  /* wallDraw ตั้ง cv.width ใหม่ทุกครั้ง -> ต้องทาสเกลกลับหลังวาดเสร็จ
+     ครอบทับแทนการแก้ในตัว wallDraw (โค้ดเดิมไม่โดนแตะสักบรรทัด)
+     ⚠️ ต้องรอ DOM พร้อมก่อน — ไม่งั้น hoisting อาจทับ wrapper ทิ้ง */
+  function hook(){
+    if(typeof wallDraw!=='function' || wallDraw._zoomWrapped) return;
+    var _wd=wallDraw;
+    var f=function(){ var r=_wd.apply(this,arguments); try{ wZoomApply(); }catch(e){} return r; };
+    f._zoomWrapped=1;
+    try{ wallDraw=f; }catch(e){}
+    window.wallDraw=f;
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',hook);
+  else hook();
+})();
+
 (function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,bi=-1,st=null;
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
