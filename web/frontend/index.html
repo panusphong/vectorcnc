@@ -2583,7 +2583,9 @@ window.setLang=setLang; window.t=t;
      ⚠️ ห้ามเชื่อ ?u=admin จาก URL — ใครก็พิมพ์เองได้
      ถามจาก backend (/api/whoami) เท่านั้น · และ /api/stats ก็กัน 403 อีกชั้น */
   function adminKey(){ try{ return localStorage.getItem('vc_admin_key')||''; }catch(e){ return ''; } }
-  function akq(){ var k=adminKey(); return k?('&ak='+encodeURIComponent(k)):''; }
+  /* ส่ง ?u= จาก URL ต่อไปให้ backend ด้วย — backend ยอมรับ ?u=admin เฉพาะตอนยังไม่เปิดขาย */
+  function uq(){ try{ var u=new URLSearchParams(location.search).get('u')||''; return u?('&u='+encodeURIComponent(u)):''; }catch(e){ return ''; } }
+  function akq(){ var k=adminKey(); return (k?('&ak='+encodeURIComponent(k)):'') + uq(); }
   var _statsOn=false;
   function openStats(){
     if(_statsOn)return; _statsOn=true;
