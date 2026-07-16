@@ -2408,18 +2408,29 @@ def _admin_key():
 
 
 def _is_admin(request: Request):
-    """แอดมิน = ตั๋ว SSO role=admin  หรือ  ADMIN_KEY ถูกต้อง
-       ⚠️ ห้ามเชื่อ ?u=admin จาก URL เด็ดขาด — ใครก็พิมพ์เองได้
-       ⚠️ สถิติเป็นข้อมูลอ่อนไหว -> ปิดตายเสมอ ไม่ยกเว้นให้แม้ยังไม่เปิดขาย"""
+    """แอดมิน = ตั๋ว SSO role=admin · ADMIN_KEY ถูกต้อง · หรือ ?u=admin (เฉพาะตอนยังไม่เปิดขาย)
+
+    ⚠️ ?u=admin ปลอมได้ (ใครก็พิมพ์เอง) — ยอมรับเฉพาะตอน SELL_MODE=0
+       ซึ่งเป็นช่วงที่ยังใช้กันในทีม เข้าผ่าน CRM Hub เท่านั้น
+       พอตั้ง SELL_MODE=1 -> ปิดเองอัตโนมัติ ต้องใช้ตั๋ว SSO หรือ ADMIN_KEY
+    """
     if _role_of(request) == "admin":
         return True
 
     key = _admin_key()
-    if not key:
-        return False                     # 🔒 ยังไม่ตั้งคีย์ -> ปิดไว้ก่อน
-    got = (request.headers.get("X-Admin-Key")
-           or request.query_params.get("ak") or "")
-    return bool(got) and str(got) == str(key)
+    if key:
+        got = (request.headers.get("X-Admin-Key")
+               or request.query_params.get("ak") or "")
+        if got and str(got) == str(key):
+            return True
+
+    # ยังไม่เปิดขาย -> เชื่อ ?u=admin จาก CRM Hub ได้
+    if not _sell_mode():
+        u = str(request.query_params.get("u", "")).strip().lower()
+        if u in ("admin", "administrator"):
+            return True
+
+    return False
 
 
 @app.get("/api/security-check")
