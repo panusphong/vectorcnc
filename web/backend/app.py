@@ -805,8 +805,19 @@ def _wrap_silhouette(full, bridge_mm):
         if g.is_empty:
             g = full
         # เอาเฉพาะขอบนอกของแต่ละก้อน (อุดรูใน -> กล่องเป็นทรงตัน)
-        polys = g.geoms if isinstance(g, MultiPolygon) else [g]
+        polys = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
         solid = unary_union([Polygon(p.exterior) for p in polys if p and not p.is_empty])
+
+        # ⚠️ กล่องไฟล้อมทรง = ตัวเดียวต่อเนื่อง
+        #    ทิ้ง "เศษเล็กที่ยังแยกก้อน" (เช่น ปลายตะเกียบ/ชามที่ห่างเกินระยะเชื่อม)
+        #    ไม่งั้นภาพ 3 มิติจะมีแผ่นเล็กลอยแยกออกมา
+        if isinstance(solid, MultiPolygon):
+            ps = [p for p in solid.geoms if p and not p.is_empty]
+            if ps:
+                big = max(a.area for a in ps)
+                keep = [p for p in ps if p.area >= big * 0.15]   # เก็บเฉพาะก้อนที่ใหญ่พอ (>=15% ของก้อนใหญ่สุด)
+                solid = keep[0] if len(keep) == 1 else unary_union(keep)
+
         solid = solid.simplify(max(0.4, r * 0.10))
         return solid if (solid and not solid.is_empty) else full
     except Exception:
