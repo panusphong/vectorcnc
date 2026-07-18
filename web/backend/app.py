@@ -573,7 +573,8 @@ def _ai_filled_svg(items, width_mm):
 
 @app.post("/api/draft-ai")
 async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
-                   width_mm: float = Form(600.0), engine: str = Form("auto")):
+                   width_mm: float = Form(600.0), engine: str = Form("auto"),
+                   white_base: int = Form(0), cut_contour: int = Form(1)):
     """ดราฟท์ภาพ (ถ่าย/AI/โหลดเน็ต) -> ไฟล์เวกเตอร์ .ai (PDF-based) ให้กราฟิคเปิดใน Illustrator ทำต่อ
        - เวกเตอร์คมชัดระดับโลโก้ · แยกสีเป็น path คนละชั้น · ขนาดจริงตามงาน"""
     tmp = tempfile.mkdtemp()
@@ -585,6 +586,25 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
         eng = str(engine or "auto").lower()
         nc = max(2, min(8, int(n_colors)))
         used = eng
+
+        # ═══ 🖨️ โหมดงานพิมพ์: ฝังภาพต้นฉบับ + เส้นไดคัท -> คุณภาพเท่าต้นฉบับ 100% ═══
+        #     (ภาพมี gradient/ไล่สี ที่ vectorize แล้วเพี้ยน — งานพิมพ์ไม่ต้อง vectorize)
+        if eng == "print":
+            if vector_import.is_vector_file(inp):
+                return JSONResponse({"error": "ไฟล์นี้เป็นเวกเตอร์อยู่แล้ว ใช้โหมดปกติได้เลย"},
+                                    status_code=400)
+            from vectorcnc import print_ai as PA
+            pdf_bytes, info = PA.build(
+                inp, width_mm=float(width_mm),
+                bleed_mm=2.0, cut=bool(int(cut_contour)), corner_r_mm=1.0,
+                upscale_to=2000,          # ภาพเล็ก -> ขยายก่อนฝัง กันพิมพ์ใหญ่แตก
+                white_base=bool(int(white_base)), white_choke_mm=0.3)
+            return {"ai_base64": base64.b64encode(pdf_bytes).decode(),
+                    "w_mm": info["w_mm"], "h_mm": info["h_mm"],
+                    "layers": len(info.get("layers", [])),
+                    "paths": info["cut_paths"],
+                    "used_engine": "print", "print_info": info,
+                    "svg_preview": ""}
         # ---- ไฟล์เวกเตอร์ (.ai/.pdf/.svg/.eps) : ใช้ path จริงเลย ไม่ต้อง trace ----
         if vector_import.is_vector_file(inp):
             pcs = vector_import.full_pieces_mm(inp, float(width_mm))
