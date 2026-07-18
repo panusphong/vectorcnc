@@ -348,6 +348,11 @@ select.numin{cursor:pointer}
             <div id="aiEngHint" style="font-size:11px;color:#0891b2;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:7px 9px;margin-bottom:6px"></div>
             <!-- 🖨️ ตัวเลือกเฉพาะงานพิมพ์ (UV) -->
             <div id="aiPrintOpts" style="display:none;margin-bottom:6px;font-size:12px">
+              <label class="cslab" data-i18n="ai.cutmode">รูปแบบเส้นตัด (เข้าเลเซอร์)</label>
+              <select class="numin" id="aiCutMode" style="padding:6px;margin-bottom:4px">
+                <option value="diecut" data-i18n="ai.cutmode.die">✂️ ไดคัทแนบตัวงาน (สติกเกอร์)</option>
+                <option value="contour" data-i18n="ai.cutmode.box">🏭 ทรงกล่องไฟล้อมทรง (เรียบมน)</option>
+              </select>
               <label class="chk" style="margin-top:2px"><input type="checkbox" id="aiCut" checked> <span data-i18n="ai.cut">เส้นไดคัท (CutContour) รอบงาน</span></label>
               <label class="chk" style="margin-top:5px"><input type="checkbox" id="aiWhite"> <span data-i18n="ai.white">🤍 พิมพ์รองขาว (White underbase — สำหรับ UV)</span></label>
               <div style="font-size:10.5px;color:#8A99B5;margin:3px 0 0 27px" data-i18n="ai.white.hint">รองขาว = พิมพ์หมึกขาวชั้นล่างก่อน สีจึงสด — จำเป็นตอนพิมพ์ลงวัสดุใส/สี/เมทัลลิก · แยกเป็นเลเยอร์ "White"</div>
@@ -2313,6 +2318,7 @@ var I18N={
   'ai.p':'ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที',
   'ai.mono':'ลายเส้นคม (ขาว-ดำ)','ai.color':'หลายสี (เวกเตอร์)','ai.print':'🖨️ งานพิมพ์ (เหมือนต้นฉบับ 100%)','ai.nc':'จำนวนสี (โหมดหลายสี)',
   'ai.cut':'เส้นไดคัท (CutContour) รอบงาน','ai.white':'🤍 พิมพ์รองขาว (White underbase — สำหรับ UV)',
+  'ai.cutmode':'รูปแบบเส้นตัด (เข้าเลเซอร์)','ai.cutmode.die':'✂️ ไดคัทแนบตัวงาน (สติกเกอร์)','ai.cutmode.box':'🏭 ทรงกล่องไฟล้อมทรง (เรียบมน)',
   'ai.white.hint':'รองขาว = พิมพ์หมึกขาวชั้นล่างก่อน สีจึงสด — จำเป็นตอนพิมพ์ลงวัสดุใส/สี/เมทัลลิก · แยกเป็นเลเยอร์ "White"',
   'stl.h':'🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D',
   'stl.p':'extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย',
@@ -2360,6 +2366,7 @@ var I18N={
   'ai.p':'Customer only sent an image → convert it to a vector .ai you can open in Illustrator right away.',
   'ai.mono':'Sharp line art (B&W)','ai.color':'Multi-colour (vector)','ai.print':'🖨️ Print job (100% like original)','ai.nc':'Number of colours (multi-colour mode)',
   'ai.cut':'Die-cut line (CutContour) around artwork','ai.white':'🤍 White underbase (for UV printing)',
+  'ai.cutmode':'Cut-line style (for laser)','ai.cutmode.die':'✂️ Die-cut hugging artwork (sticker)','ai.cutmode.box':'🏭 Contour light-box shape (smooth)',
   'ai.white.hint':'White underbase = white ink printed first so colours stay vivid — needed on clear / coloured / metallic media · separate "White" layer',
   'stl.h':'🧊 3D model (STL) → Fusion 360 / 3D printer',
   'stl.p':'Extrude the text/logo into a watertight 3D solid, ready for 3D software or printing.',
@@ -4025,6 +4032,7 @@ $('aiDraft').onclick=function(){
   if(eng==='print'){
     fd.append('white_base', ($('aiWhite')&&$('aiWhite').checked)?'1':'0');
     fd.append('cut_contour', ($('aiCut')&&$('aiCut').checked)?'1':'0');
+    fd.append('cut_mode', ($('aiCutMode')&&$('aiCutMode').value)||'diecut');
     btn.textContent='⏳ กำลังสร้างไฟล์งานพิมพ์...';
     $('aiOut').textContent='กำลังฝังภาพ + สร้างเส้นไดคัท...';
   }
