@@ -67,31 +67,63 @@ def _fill_contours(mask, choke_px, simplify_px):
     return out
 
 
-def _outer_contour(mask, bleed_px, simplify_px):
-    """คืน list ของ polygon (แต่ละอันเป็น list of (x,y)) = เส้นรอบนอกของตัวงาน
-       + เผื่อขอบ bleed + ลดจุดให้เส้นเนียน"""
+def _outer_contour(mask, bleed_px, simplify_px, smooth_px=0.0, tol_px=0.0):
+    """เส้นไดคัทสำหรับเครื่องตัดสติกเกอร์ — เรียบ + จุดน้อย (ใบมีดวิ่งเร็ว)
+
+    หัวใจ: ไดคัทงานพิมพ์ "ไม่ต้องตามทุกหยักของขอบดำ" — ต้องการเส้นล้อมรอบเรียบ ๆ
+      1) รวม+เผื่อขอบ (bleed) ออกนอกงาน
+      2) 'ปิดอ่าว' — buffer ออกแล้วหดกลับ (smooth) ทำให้ร่องหยักหายไป เหลือเส้นนุ่ม
+      3) simplify แบบระยะจริง (มม.) -> จุดลดจากหลักพันเหลือหลักสิบ
+    """
     import numpy as np
     import cv2
 
     m = (mask.astype(np.uint8)) * 255
-
-    # ปิดรูเล็ก + รวมชิ้นที่อยู่ติดกัน (กันเส้นไดคัทแตกเป็นเศษ)
     k = max(3, int(bleed_px) | 1)
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
-    if bleed_px > 0:                            # เผื่อขอบออกนอก
+    if bleed_px > 0:
         m = cv2.dilate(m, np.ones((int(bleed_px)*2+1,)*2, np.uint8))
 
     cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    area_min = (0.002 * m.shape[0] * m.shape[1])
+    raw = [c.reshape(-1, 2) for c in cnts if cv2.contourArea(c) >= area_min]
+    if not raw:
+        return []
+
+    # ── ใช้ shapely ทำให้เส้นเรียบ + จุดน้อย (ถ้าไม่มีก็ fallback approxPolyDP) ──
+    try:
+        from shapely.geometry import Polygon, MultiPolygon
+        from shapely.ops import unary_union
+        polys_sh = []
+        for c in raw:
+            if len(c) >= 3:
+                p = Polygon([(float(x), float(y)) for x, y in c])
+                if p.is_valid and p.area > 0:
+                    polys_sh.append(p)
+        g = unary_union(polys_sh)
+        s = float(smooth_px) if smooth_px > 0 else max(2.0, bleed_px * 0.9)
+        g = g.buffer(s, join_style=1).buffer(-s, join_style=1)   # ปิดอ่าว/ลบหยัก
+        tol = float(tol_px) if tol_px > 0 else max(1.5, simplify_px * 2.5)
+        g = g.simplify(tol, preserve_topology=True)              # ลดจุด (ระยะจริง)
+        parts = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
+        out = []
+        for p in parts:
+            if p.is_empty or p.area < area_min:
+                continue
+            out.append([(float(x), float(y)) for x, y in p.exterior.coords[:-1]])
+        if out:
+            out.sort(key=lambda q: -_poly_area(q))
+            return out
+    except Exception:
+        pass
+
+    # fallback: approxPolyDP หยาบ ๆ (จุดน้อย)
     polys = []
-    area_min = (0.002 * m.shape[0] * m.shape[1])   # ตัดเศษจิ๋ว < 0.2% ของภาพ
-    for c in cnts:
-        if cv2.contourArea(c) < area_min:
-            continue
-        eps = max(0.6, float(simplify_px))
-        ap = cv2.approxPolyDP(c, eps, True).reshape(-1, 2)
+    for c in raw:
+        eps = max(2.5, float(simplify_px) * 2.5)
+        ap = cv2.approxPolyDP(c.reshape(-1, 1, 2), eps, True).reshape(-1, 2)
         if len(ap) >= 3:
             polys.append([(float(x), float(y)) for x, y in ap])
-    # เรียงใหญ่ -> เล็ก
     polys.sort(key=lambda p: -_poly_area(p))
     return polys
 
@@ -179,13 +211,16 @@ def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
         except Exception:
             white_pt = []
 
-    # ---- เส้นไดคัท ----
+    # ---- เส้นไดคัท (เรียบ + จุดน้อย สำหรับพิมพ์ + ส่งเข้าเลเซอร์ตัด) ----
     cut_pt = []
+    px_per_mm = W0 / W_mm
     if cut and mask is not None:
         try:
-            bleed_px = max(0.0, bleed_mm) / W_mm * W0
+            bleed_px = max(0.0, bleed_mm) * px_per_mm
+            smooth_px = 2.0 * px_per_mm          # ปิดอ่าว/ลบหยัก ~2 มม.
+            tol_px = 0.5 * px_per_mm             # simplify ~0.5 มม. -> จุดน้อยมาก
             simp = max(1.0, W0 / 900.0)
-            for p in _outer_contour(mask, bleed_px, simp):
+            for p in _outer_contour(mask, bleed_px, simp, smooth_px=smooth_px, tol_px=tol_px):
                 cut_pt.append([(x*sx, y*sy) for (x, y) in p])
         except Exception:
             cut_pt = []
@@ -233,16 +268,61 @@ def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
     pdf_bytes = doc.tobytes()
     doc.close()
 
+    # ── เส้นไดคัทสำหรับ "เลเซอร์ตัดหลังพิมพ์" -> DXF + SVG (หน่วยมม. ขนาดจริง) ──
+    #    (พิกัดเป็น pt อยู่แล้ว แปลงกลับเป็น มม. = /MM)
+    cut_dxf_b64 = ""; cut_svg = ""
+    if cut_pt:
+        cut_mm = [[(x / MM, y / MM) for (x, y) in p] for p in cut_pt]
+        try:
+            cut_dxf_b64 = _cut_dxf(cut_mm)
+        except Exception:
+            cut_dxf_b64 = ""
+        try:
+            cut_svg = _cut_svg(cut_mm, W_mm, H_mm)
+        except Exception:
+            cut_svg = ""
+
     note = "ภาพฝังเต็มความละเอียด คุณภาพเท่าต้นฉบับ"
     if white_pt: note += " · มีเลเยอร์รองขาว (UV)"
-    if cut_pt:   note += " · มีเส้นไดคัท"
+    if cut_pt:   note += " · เส้นไดคัทเรียบ (พิมพ์ + เลเซอร์ตัด)"
 
     return pdf_bytes, {
         "w_mm": round(W_mm, 1), "h_mm": round(H_mm, 1),
         "img_px": [W0, H0],
         "cut_paths": len(cut_pt),
+        "cut_points": sum(len(p) for p in cut_pt),   # จำนวนจุดรวม (ยิ่งน้อย = เครื่องตัดเร็ว)
         "white_paths": len(white_pt),
         "layers": layers,
+        "cut_dxf_b64": cut_dxf_b64,                   # ↴ ส่งเข้าเลเซอร์ได้เลย
+        "cut_svg": cut_svg,
         "mode": "print-embed",
         "note": note,
     }
+
+
+def _cut_dxf(cut_mm):
+    """เส้นไดคัท -> DXF (LWPOLYLINE ปิด, เลเยอร์ CutContour) หน่วยมม. · base64"""
+    import ezdxf, io, base64
+    doc = ezdxf.new()
+    doc.header["$INSUNITS"] = 4                       # 4 = มิลลิเมตร
+    if "CutContour" not in doc.layers:
+        doc.layers.add("CutContour", color=6)        # ม่วงชมพู = เส้นตัด (มาตรฐาน)
+    msp = doc.modelspace()
+    for p in cut_mm:
+        if len(p) >= 3:
+            msp.add_lwpolyline(p, close=True, dxfattribs={"layer": "CutContour"})
+    s = io.StringIO(); doc.write(s)
+    return base64.b64encode(s.getvalue().encode("utf-8")).decode()
+
+
+def _cut_svg(cut_mm, w_mm, h_mm):
+    """เส้นไดคัท -> SVG (หน่วยมม.) เส้นบางสีชมพู ไม่มีพื้น = เปิด LightBurn/Illustrator ตัดได้เลย"""
+    d = ""
+    for p in cut_mm:
+        if len(p) < 3:
+            continue
+        d += "M %.2f %.2f " % p[0] + " ".join("L %.2f %.2f" % q for q in p[1:]) + " Z "
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" '
+            'viewBox="0 0 %.1f %.1f">'
+            '<path d="%s" fill="none" stroke="#ec008c" stroke-width="0.25"/></svg>'
+            % (w_mm, h_mm, w_mm, h_mm, d.strip()))
