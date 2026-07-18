@@ -766,7 +766,39 @@ SIGN_TYPES = {
           "layers": [{"name": "หน้าซิ้งค์", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "ไส้พลาสวูด", "off": -1.6, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
           "walls": [{"name": "ยกขอบ", "h": 2.5}]},
+    # 🆕 กล่องไฟล้อมตามทรง — ขอบนอกวิ่งตาม "เงารวม" ของทั้งแบบ (ไม่ใช่สี่เหลี่ยม/วงกลม)
+    #    wrap=True -> เชื่อมตัวอักษร/องค์ประกอบเป็นก้อนเดียวก่อน แล้วล้อมด้วยคิ้ว + ยกขอบ
+    "8": {"name": "กล่องไฟล้อมตามทรง 1 หน้า", "depth_cm": 5.0, "wrap": True, "wrap_bridge_cm": 3.0,
+          "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "หน้าพิมพ์/อะคริลิค", "off": -0.3, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้นตามทรง", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบตามทรง", "h": 5.0}]},
+    "9": {"name": "กล่องไฟล้อมตามทรง 2 หน้า", "depth_cm": 10.0, "wrap": True, "wrap_bridge_cm": 3.0,
+          "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "หน้าพิมพ์/อะคริลิค", "off": -0.3, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
+          "walls": [{"name": "ยกขอบตามทรง", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
 }
+
+
+def _wrap_silhouette(full, bridge_mm):
+    """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
+       - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
+       - เก็บเฉพาะขอบนอก (ไม่เอารูใน) = ทรงกล่องเรียบต่อเนื่อง
+       - simplify นิดหน่อย = ขอบเนียน เครื่องตัด/ดัดวิ่งนุ่ม"""
+    try:
+        from shapely.geometry import Polygon, MultiPolygon
+        from shapely.ops import unary_union
+        r = max(1.0, float(bridge_mm))
+        g = full.buffer(r, join_style=1).buffer(-r * 0.72, join_style=1)
+        if g.is_empty:
+            g = full
+        # เอาเฉพาะขอบนอกของแต่ละก้อน (อุดรูใน -> กล่องเป็นทรงตัน)
+        polys = g.geoms if isinstance(g, MultiPolygon) else [g]
+        solid = unary_union([Polygon(p.exterior) for p in polys if p and not p.is_empty])
+        solid = solid.simplify(max(0.4, r * 0.10))
+        return solid if (solid and not solid.is_empty) else full
+    except Exception:
+        return full
 
 
 _TYPE_EN = {
@@ -777,6 +809,8 @@ _TYPE_EN = {
     "กล่องไฟ 2 หน้า": "Light Box · Double-Face",
     "งานยกขอบ": "Fabricated Return (Metal)",
     "งานยกขอบ มีไส้": "Fabricated Return · with Core",
+    "กล่องไฟล้อมตามทรง 1 หน้า": "Contour Light Box · Single-Face",
+    "กล่องไฟล้อมตามทรง 2 หน้า": "Contour Light Box · Double-Face",
 }
 
 
@@ -787,7 +821,9 @@ def _en_type(th):
 def _en_layer(n):
     n = str(n)
     if "คิ้ว" in n:
-        return "Trim Face (Kim)"
+        return "Contour Trim (Kim)" if "ล้อมทรง" in n else "Trim Face (Kim)"
+    if "หน้าพิมพ์" in n:
+        return "Printed / Acrylic Face"
     if "พลาสวูด" in n:
         return "Plaswood Core"
     if "ไส้" in n and "อะคริลิค" in n:
@@ -1208,6 +1244,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 if _nm.startswith("ยกขอบ") and "ใน" not in _nm:
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
+        if rec.get("wrap"):
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -3051,8 +3090,11 @@ async def api_geom3d(file: UploadFile = File(...),
     try:
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
 
-        # ---- ชั้นโครงสร้างตามแบบป้าย 1-7 (ถ้าเลือก)
+        # ---- ชั้นโครงสร้างตามแบบป้าย 1-9 (ถ้าเลือก)
         rec = SIGN_TYPES.get(str(sign_type)) if sign_type else None
+        # 🆕 กล่องไฟล้อมตามทรง -> เชื่อมเป็นเงารวมก้อนเดียวก่อนสร้างโครง 3 มิติ
+        if rec and rec.get("wrap"):
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         layers_out = []
         outer = full
         if rec:
