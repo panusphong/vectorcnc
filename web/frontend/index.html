@@ -231,6 +231,8 @@ select.numin{cursor:pointer}
       <div class="side">
         <div class="drop" id="drop"><div class="ic">📤</div><b data-i18n="drop.title">ลากไฟล์มาวาง</b><span data-i18n="drop.sub">รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
+        <!-- 🔬 ตรวจความละเอียดภาพ เทียบกับขนาดป้ายจริง -->
+        <div id="resBox" style="display:none;margin-top:8px;border-radius:11px;padding:10px 12px;font-size:11.5px;line-height:1.55"></div>
 
         <div class="grp">
           <div class="gt"  data-i18n="sec.material">วัสดุ / เครื่องตัด</div>
@@ -3967,8 +3969,115 @@ drop.ondragover=function(e){e.preventDefault();drop.classList.add('over');};
 drop.ondragleave=function(){drop.classList.remove('over');};
 drop.ondrop=function(e){e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])pick(e.dataTransfer.files[0]);};
 fi.onchange=function(){if(fi.files[0])pick(fi.files[0]);};
+/* ═══════════════ 🔬 ตรวจความละเอียดภาพก่อนแปลง ═══════════════
+   หัวใจ: ไม่ใช่ "ภาพกี่ px" แต่คือ "1 pixel = กี่ มม. บนป้ายจริง"
+          ภาพ 2000px ทำป้าย 30 ซม. = คมมาก · ทำป้าย 3 เมตร = หยาบ
+
+   วัดเป็น "ขอบคลาดเคลื่อน ±กี่ มม." (= 1 ÷ px ต่อ มม.) — ภาษาที่ช่างเข้าใจทันที
+     ≤ 0.35 มม.   ดีเยี่ยม  — คมกว่าที่ตาเห็น
+     0.35–0.7 มม. ดี        — ใช้งานได้ทุกแบบ
+     0.7–1.5 มม.  พอใช้     — เส้นบาง/ตัวหนังสือเล็กอาจขาด
+     > 1.5 มม.    ต่ำ       — ขอบหยักเห็นชัด ต้องแก้มือเยอะ
+
+   ⚠️ ตั้งใจไม่ใช้เกณฑ์ DPI คงที่ เพราะป้าย 3 เมตรจะต้องการภาพ 7,500 px
+      ซึ่งลูกค้าแทบไม่มีทางส่งมาได้ — ป้ายใหญ่ยอมให้คลาดเคลื่อนมากกว่าได้จริง
+   + ขั้นต่ำสัมบูรณ์ 600–800 px ด้านอ้างอิง (ต่อให้ป้ายเล็กก็ต้องมีรายละเอียดพอ)  */
+var IMG_W=0, IMG_H=0, IMG_BLUR=-1;
+
+function _resInfo(){
+  if(!IMG_W) return null;
+  var by=($('sizeBy')&&$('sizeBy').value)||'width';
+  var mm=parseFloat($('realW')&&$('realW').value)||0;
+  var px=(by==='height')?IMG_H:IMG_W;          // letter -> เทียบไม่ได้ (ไม่รู้ตัวอักษรกินกี่ %)
+  var ppmm=(by==='letter'||mm<=0)?0:(px/mm);
+  return {by:by, mm:mm, px:px, ppmm:ppmm};
+}
+
+function checkRes(){
+  var box=$('resBox'); if(!box) return;
+  var r=_resInfo();
+  if(!r){ box.style.display='none'; return; }
+  box.style.display='block';
+
+  var lv, col, bg, bd, msg;
+  var mp=(IMG_W*IMG_H/1e6);
+
+  if(r.ppmm>0){
+    var tol=1/r.ppmm;                                        // ขอบคลาดเคลื่อน (มม./pixel)
+    var need=Math.max(1000, Math.round(r.mm*1.5/100)*100);   // px ที่ควรมี (เกณฑ์ "ดี" = 1.5 px/มม.)
+    var tolTxt='±'+(tol<0.1?tol.toFixed(2):tol.toFixed(1))+' มม.';
+
+    if(tol<=0.35 && r.px>=800){ lv='✅ ความละเอียดดีเยี่ยม'; col='#065f46'; bg='#ecfdf5'; bd='#a7f3d0';
+      msg='ขอบคมกว่าที่ตาเห็น ตัวอักษรบางอยู่ครบ'; }
+    else if(tol<=0.7 && r.px>=800){ lv='✅ ความละเอียดดี'; col='#065f46'; bg='#ecfdf5'; bd='#a7f3d0';
+      msg='ใช้งานได้ทุกแบบ'; }
+    else if(tol<=1.5 && r.px>=600){ lv='⚠️ ความละเอียดพอใช้'; col='#92400e'; bg='#fffbeb'; bd='#fde68a';
+      msg='เส้นบาง/ตัวหนังสือเล็กอาจขาดหาย · ควรใช้ภาพกว้าง <b>'+need.toLocaleString()+' px ขึ้นไป</b> '+
+          'หรือติ๊ก "✨ ปรับคุณภาพภาพก่อนแปลง"'; }
+    else { lv='❌ ความละเอียดต่ำเกินไป'; col='#991b1b'; bg='#fef2f2'; bd='#fecaca';
+      msg='ขอบจะหยักเห็นชัด ต้องแก้มือเยอะ · ป้าย '+Math.round(r.mm)+' มม. ควรใช้ภาพกว้าง <b>'+need.toLocaleString()+' px ขึ้นไป</b><br>'+
+          '💡 ขอไฟล์ต้นฉบับจากลูกค้า (.ai / .pdf / .eps / .svg) จะได้เส้นคมที่สุด'; }
+
+    box.innerHTML='<b style="color:'+col+'">'+lv+'</b>'+
+      '<div style="color:#5A6B8C;margin-top:3px">'+
+        IMG_W.toLocaleString()+' × '+IMG_H.toLocaleString()+' px'+(mp>=0.5?(' · '+mp.toFixed(1)+' MP'):'')+
+        '<br>ที่ป้าย '+Math.round(r.mm)+' มม. → ขอบคลาดเคลื่อน <b style="color:'+col+'">'+tolTxt+'</b>'+
+        ' <span style="color:#8A99B5">('+r.ppmm.toFixed(1)+' px/มม. · '+Math.round(r.ppmm*25.4)+' DPI)</span>'+
+      '</div>'+
+      '<div style="color:'+col+';margin-top:4px">'+msg+'</div>'+
+      (IMG_BLUR>=0 && IMG_BLUR<60
+        ? '<div style="color:#92400e;margin-top:4px">🌫 ภาพดูเบลอ/ซอฟต์ — ติ๊ก "✨ ปรับคุณภาพภาพก่อนแปลง" ช่วยได้</div>' : '');
+  }else{
+    // โหมด "สูงตัวอักษร" -> เทียบกับขนาดจริงไม่ได้ ใช้เกณฑ์ px ล้วน
+    var ok=(IMG_W>=1500), mid=(IMG_W>=800);
+    lv = ok?'✅ ความละเอียดดี':(mid?'⚠️ ความละเอียดพอใช้':'❌ ความละเอียดต่ำ');
+    col= ok?'#065f46':(mid?'#92400e':'#991b1b');
+    bg = ok?'#ecfdf5':(mid?'#fffbeb':'#fef2f2');
+    bd = ok?'#a7f3d0':(mid?'#fde68a':'#fecaca');
+    box.innerHTML='<b style="color:'+col+'">'+lv+'</b>'+
+      '<div style="color:#5A6B8C;margin-top:3px">'+IMG_W.toLocaleString()+' × '+IMG_H.toLocaleString()+' px'+
+      (mp>=0.5?(' · '+mp.toFixed(1)+' MP'):'')+'</div>'+
+      (ok?'':'<div style="color:'+col+';margin-top:4px">แนะนำภาพกว้าง <b>1,500 px ขึ้นไป</b></div>');
+  }
+  box.style.background=bg; box.style.border='1px solid '+bd;
+}
+
+/* วัดความเบลอ: Laplacian variance บนภาพย่อ (ค่าน้อย = เบลอ) */
+function _measureBlur(img){
+  try{
+    var W=220, H=Math.max(1,Math.round(img.height*W/img.width));
+    var c=document.createElement('canvas'); c.width=W; c.height=H;
+    var x=c.getContext('2d'); x.drawImage(img,0,0,W,H);
+    var d=x.getImageData(0,0,W,H).data, g=new Float32Array(W*H);
+    for(var i=0,p=0;i<d.length;i+=4,p++) g[p]=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    var s=0,s2=0,n=0;
+    for(var y=1;y<H-1;y++) for(var xx=1;xx<W-1;xx++){
+      var k=y*W+xx;
+      var L=-4*g[k]+g[k-1]+g[k+1]+g[k-W]+g[k+W];
+      s+=L; s2+=L*L; n++;
+    }
+    if(!n) return -1;
+    var m=s/n; return (s2/n - m*m);
+  }catch(e){ return -1; }
+}
+
+/* ขนาดป้ายเปลี่ยน -> ประเมินใหม่ทันที */
+(function(){
+  function bind(){
+    ['realW','sizeBy'].forEach(function(id){
+      var el=$(id); if(!el) return;
+      el.addEventListener('change', checkRes);
+      el.addEventListener('input',  checkRes);
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);
+  else bind();
+})();
+
 function pick(f){
   fileObj=f;lastName=(f.name||'image').replace(/\.[^.]+$/,'');
+  IMG_W=0; IMG_H=0; IMG_BLUR=-1;
+  if($('resBox'))$('resBox').style.display='none';
   $('fname').removeAttribute('data-i18n');   /* มีชื่อไฟล์จริงแล้ว อย่าให้ applyLang เขียนทับ */
   $('fname').textContent=f.name;
   var isVec=/\.(ai|pdf|eps|ps|svg)$/i.test(f.name||'');
@@ -3981,6 +4090,14 @@ function pick(f){
       $('thumbImg').src=rd.result;$('thumb').style.display='block';
       window._cutBefore=rd.result;   // เก็บภาพต้นฉบับ ไว้ให้เส้นตัด (svg_fit) วางทับในกรอบเดียวกัน
       $('before').innerHTML='<img src="'+rd.result+'" alt="">';
+      /* 🔬 วัดความละเอียดจริง + ความเบลอ แล้วประเมินเทียบขนาดป้าย */
+      var pm=new Image();
+      pm.onload=function(){
+        IMG_W=pm.naturalWidth||pm.width; IMG_H=pm.naturalHeight||pm.height;
+        IMG_BLUR=_measureBlur(pm);
+        checkRes();
+      };
+      pm.src=rd.result;
     };
     rd.readAsDataURL(f);
   } else {
@@ -3988,6 +4105,14 @@ function pick(f){
     var ext=((f.name||'').split('.').pop()||'ไฟล์').toUpperCase();
     $('thumb').style.display='none';
     $('before').innerHTML='<div style="display:grid;place-items:center;height:100%;color:#2563EB"><div style="text-align:center"><div style="font-size:34px">📐</div><b style="font-size:14px">ไฟล์เวกเตอร์ '+ext+'</b><div style="font-size:11px;color:#8A99B5;margin-top:3px">ดึงเส้นตรง คมสมบูรณ์</div></div></div>';
+    /* 🔬 เวกเตอร์ = ไม่มีเรื่องความละเอียด ขยายเท่าไหร่ก็คม */
+    var rb=$('resBox');
+    if(rb){
+      rb.style.display='block';
+      rb.style.background='#eff6ff'; rb.style.border='1px solid #bfdbfe';
+      rb.innerHTML='<b style="color:#1e40af">✅ ไฟล์เวกเตอร์ — คมที่สุด</b>'+
+        '<div style="color:#5A6B8C;margin-top:3px">ไม่มีข้อจำกัดความละเอียด ขยายเป็นป้ายกี่เมตรก็ยังคม</div>';
+    }
   }
   $('go').disabled=false;
 }
