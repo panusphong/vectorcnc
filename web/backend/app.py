@@ -791,13 +791,13 @@ SIGN_TYPES = {
     #    wrap=True -> เชื่อมตัวอักษร/องค์ประกอบเป็นก้อนเดียวก่อน แล้วล้อมด้วยคิ้ว + ยกขอบ
     # หน้า = อะคริลิคขาวขุ่น P433 (โปร่งแสง) ตัดเป็น "แผ่นเต็มตามทรง" ชิ้นเดียว
     #        แล้ว "จบด้วยงานพิมพ์ UV / ติดสติกเกอร์" เท่านั้น — ไม่ตัดเส้นตัวอักษรข้างใน
-    "8": {"name": "กล่องไฟล้อมตามทรง 1 หน้า", "depth_cm": 5.0, "wrap": True, "wrap_bridge_cm": 3.0,
+    "8": {"name": "กล่องไฟล้อมตามทรง 1 หน้า", "depth_cm": 5.0, "wrap": True, "wrap_bridge_cm": 4.5,
           "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                      {"name": "แผ่นพื้นตามทรง", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 5.0}]},
-    "9": {"name": "กล่องไฟล้อมตามทรง 2 หน้า", "depth_cm": 10.0, "wrap": True, "wrap_bridge_cm": 3.0,
+    "9": {"name": "กล่องไฟล้อมตามทรง 2 หน้า", "depth_cm": 10.0, "wrap": True, "wrap_bridge_cm": 4.5,
           "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
@@ -821,15 +821,14 @@ def _wrap_silhouette(full, bridge_mm):
         polys = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
         solid = unary_union([Polygon(p.exterior) for p in polys if p and not p.is_empty])
 
-        # ⚠️ กล่องไฟล้อมทรง = ตัวเดียวต่อเนื่อง
-        #    ทิ้ง "เศษเล็กที่ยังแยกก้อน" (เช่น ปลายตะเกียบ/ชามที่ห่างเกินระยะเชื่อม)
-        #    ไม่งั้นภาพ 3 มิติจะมีแผ่นเล็กลอยแยกออกมา
+        # ⚠️ กล่องไฟล้อมทรง = "ตัวเดียวต่อเนื่อง" เท่านั้น
+        #    ถ้ายังแยกเป็นหลายก้อน (เช่น ชาม/ตะเกียบที่ห่างเกินระยะเชื่อม)
+        #    -> เก็บเฉพาะก้อนใหญ่สุดก้อนเดียว (ไม่งั้นภาพ 3 มิติมีแผ่นลอยแยก)
+        #    ชิ้นที่อยู่ใกล้จะถูกเชื่อมเข้าตัวหลักแล้วจาก wrap_bridge (ปรับที่ SIGN_TYPES)
         if isinstance(solid, MultiPolygon):
             ps = [p for p in solid.geoms if p and not p.is_empty]
             if ps:
-                big = max(a.area for a in ps)
-                keep = [p for p in ps if p.area >= big * 0.15]   # เก็บเฉพาะก้อนที่ใหญ่พอ (>=15% ของก้อนใหญ่สุด)
-                solid = keep[0] if len(keep) == 1 else unary_union(keep)
+                solid = max(ps, key=lambda a: a.area)          # ก้อนใหญ่สุดก้อนเดียว
 
         solid = solid.simplify(max(0.4, r * 0.10))
         return solid if (solid and not solid.is_empty) else full
