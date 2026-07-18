@@ -340,11 +340,35 @@ select.numin{cursor:pointer}
             <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:4px" data-i18n="ai.h">🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)</div>
             <div style="font-size:11px;color:#8A99B5;margin-bottom:6px" data-i18n="ai.p">ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที</div>
             <div style="display:flex;gap:6px;margin-bottom:6px">
-              <select id="aiEng" class="numin" style="flex:1;padding:6px"><option value="auto" data-i18n="chip.auto">อัตโนมัติ</option><option value="mono" data-i18n="ai.mono">ลายเส้นคม (ขาว-ดำ)</option><option value="color" data-i18n="ai.color">หลายสี</option></select>
-              <div style="width:92px"><input class="numin" id="aiNC" type="number" value="4" min="2" max="8" data-i18n-title="ai.nc" title="จำนวนสี (โหมดหลายสี)" style="padding:6px"></div>
+              <select id="aiEng" class="numin" style="flex:1;padding:6px"><option value="print" data-i18n="ai.print">🖨️ งานพิมพ์ (เหมือนต้นฉบับ 100%)</option><option value="auto" data-i18n="chip.auto">อัตโนมัติ</option><option value="mono" data-i18n="ai.mono">ลายเส้นคม (ขาว-ดำ)</option><option value="color" data-i18n="ai.color">หลายสี (เวกเตอร์)</option></select>
+              <div style="width:92px" id="aiNCwrap"><input class="numin" id="aiNC" type="number" value="4" min="2" max="8" data-i18n-title="ai.nc" title="จำนวนสี (โหมดหลายสี)" style="padding:6px"></div>
+            </div>
+            <div id="aiEngHint" style="font-size:11px;color:#0891b2;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:7px 9px;margin-bottom:6px"></div>
+            <!-- 🖨️ ตัวเลือกเฉพาะงานพิมพ์ (UV) -->
+            <div id="aiPrintOpts" style="display:none;margin-bottom:6px;font-size:12px">
+              <label class="chk" style="margin-top:2px"><input type="checkbox" id="aiCut" checked> <span data-i18n="ai.cut">เส้นไดคัท (CutContour) รอบงาน</span></label>
+              <label class="chk" style="margin-top:5px"><input type="checkbox" id="aiWhite"> <span data-i18n="ai.white">🤍 พิมพ์รองขาว (White underbase — สำหรับ UV)</span></label>
+              <div style="font-size:10.5px;color:#8A99B5;margin:3px 0 0 27px" data-i18n="ai.white.hint">รองขาว = พิมพ์หมึกขาวชั้นล่างก่อน สีจึงสด — จำเป็นตอนพิมพ์ลงวัสดุใส/สี/เมทัลลิก · แยกเป็นเลเยอร์ "White"</div>
             </div>
             <button class="btn" id="aiDraft" data-i18n="dl.ai" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
             <div id="aiOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+            <script>
+            (function(){
+              var HINT={
+                print:'🖨️ ฝังภาพต้นฉบับเต็มความละเอียด + เส้นไดคัท "CutContour" รอบงาน → พิมพ์ออกมาเหมือนต้นฉบับ 100% (เหมาะกับภาพมีไล่สี/เงา) เปิดใน Illustrator ตัดสติกเกอร์ได้เลย',
+                auto:'ระบบวิเคราะห์ภาพแล้วเลือกเครื่องยนต์ให้เอง',
+                mono:'ลายเส้นขาว-ดำคมกริบ (โลโก้ตัวอักษร) — ไม่เก็บสี',
+                color:'แปลงเป็นเวกเตอร์หลายสี — สเกลได้ไม่แตก แต่ภาพไล่สีจะกลายเป็นแถบสีแบน'
+              };
+              function upd(){
+                var v=(document.getElementById('aiEng')||{}).value||'print';
+                var h=document.getElementById('aiEngHint'); if(h)h.textContent=HINT[v]||'';
+                var w=document.getElementById('aiNCwrap'); if(w)w.style.display=(v==='color')?'block':'none';
+                var po=document.getElementById('aiPrintOpts'); if(po)po.style.display=(v==='print')?'block':'none';
+              }
+              var s=document.getElementById('aiEng'); if(s){ s.addEventListener('change',upd); upd(); }
+            })();
+            </script>
           </div>
           <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
             <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:4px" data-i18n="stl.h">🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D</div>
@@ -2275,7 +2299,9 @@ var I18N={
   'tag.before':'ภาพถ่าย','tag.after':'เส้นตัด',
   'ai.h':'🎨 ดราฟท์ให้กราฟิค (ภาพ → .ai)',
   'ai.p':'ลูกค้าส่งภาพมาอย่างเดียว → แปลงเป็นเวกเตอร์ .ai เปิดใน Illustrator ทำต่อได้ทันที',
-  'ai.mono':'ลายเส้นคม (ขาว-ดำ)','ai.color':'หลายสี','ai.nc':'จำนวนสี (โหมดหลายสี)',
+  'ai.mono':'ลายเส้นคม (ขาว-ดำ)','ai.color':'หลายสี (เวกเตอร์)','ai.print':'🖨️ งานพิมพ์ (เหมือนต้นฉบับ 100%)','ai.nc':'จำนวนสี (โหมดหลายสี)',
+  'ai.cut':'เส้นไดคัท (CutContour) รอบงาน','ai.white':'🤍 พิมพ์รองขาว (White underbase — สำหรับ UV)',
+  'ai.white.hint':'รองขาว = พิมพ์หมึกขาวชั้นล่างก่อน สีจึงสด — จำเป็นตอนพิมพ์ลงวัสดุใส/สี/เมทัลลิก · แยกเป็นเลเยอร์ "White"',
   'stl.h':'🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D',
   'stl.p':'extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย',
   'stl.thick':'ความหนา มม.',
@@ -2318,7 +2344,9 @@ var I18N={
   'tag.before':'Photo','tag.after':'Cut lines',
   'ai.h':'🎨 Draft for the designer (image → .ai)',
   'ai.p':'Customer only sent an image → convert it to a vector .ai you can open in Illustrator right away.',
-  'ai.mono':'Sharp line art (B&W)','ai.color':'Multi-colour','ai.nc':'Number of colours (multi-colour mode)',
+  'ai.mono':'Sharp line art (B&W)','ai.color':'Multi-colour (vector)','ai.print':'🖨️ Print job (100% like original)','ai.nc':'Number of colours (multi-colour mode)',
+  'ai.cut':'Die-cut line (CutContour) around artwork','ai.white':'🤍 White underbase (for UV printing)',
+  'ai.white.hint':'White underbase = white ink printed first so colours stay vivid — needed on clear / coloured / metallic media · separate "White" layer',
   'stl.h':'🧊 3D model (STL) → Fusion 360 / 3D printer',
   'stl.p':'Extrude the text/logo into a watertight 3D solid, ready for 3D software or printing.',
   'stl.thick':'Thickness (mm)',
@@ -3924,17 +3952,29 @@ $('aiDraft').onclick=function(){
   if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับ');$('realW').focus();return;}
   var btn=$('aiDraft');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังดราฟท์เวกเตอร์...';
   $('aiOut').textContent='กำลังแปลงภาพเป็นเวกเตอร์ (อาจใช้เวลาสักครู่)...';
+  var eng=$('aiEng').value||'auto';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('width_mm',$('realW').value||'600');
-  fd.append('engine',$('aiEng').value||'auto');fd.append('n_colors',$('aiNC').value||'4');
+  fd.append('engine',eng);fd.append('n_colors',$('aiNC').value||'4');
+  if(eng==='print'){
+    fd.append('white_base', ($('aiWhite')&&$('aiWhite').checked)?'1':'0');
+    fd.append('cut_contour', ($('aiCut')&&$('aiCut').checked)?'1':'0');
+    btn.textContent='⏳ กำลังสร้างไฟล์งานพิมพ์...';
+    $('aiOut').textContent='กำลังฝังภาพ + สร้างเส้นไดคัท...';
+  }
   fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('aiOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
     var b=new Blob([u],{type:'application/postscript'});var a=document.createElement('a');
-    a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+'.ai';a.click();
-    var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
-    $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
+    a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+((j.used_engine==='print')?'_print':'')+'.ai';a.click();
+    if(j.used_engine==='print'){
+      var pi=j.print_info||{}; var ly=(pi.layers||[]).join(' → ');
+      $('aiOut').innerHTML='✅ ไฟล์งานพิมพ์ (เหมือนต้นฉบับ 100%) · '+j.w_mm+'×'+j.h_mm+' มม.<br>เลเยอร์: '+ly;
+    }else{
+      var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
+      $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
+    }
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
 
