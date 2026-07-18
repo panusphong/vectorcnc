@@ -838,17 +838,30 @@ def _wrap_silhouette(full, bridge_mm):
         b = full.bounds
         size = max(b[2] - b[0], b[3] - b[1], 1.0)
         r = max(float(bridge_mm), size * 0.06)      # bridge ปรับตามขนาดงาน (>=6% ของด้านยาว)
+        RND = 1                                      # join_style=1 = โค้งมน (กันเดือยแหลม)
 
         # 1) CLOSE — เชื่อมทุกส่วนของงาน (ตัว+ตะเกียบ+ชาม) ให้ติดกันเป็นก้อนเดียว
-        g = full.buffer(r, join_style=1).buffer(-r, join_style=1)
+        g = full.buffer(r, join_style=RND).buffer(-r, join_style=RND)
         solid = _outer(g) or full
 
         # 2) OPEN — กลืน "แขน/ก้านบาง" ที่ยื่นออกมา (เช่น ปลายตะเกียบ) ให้ envelope เรียบ
         o = size * 0.035
-        g2 = solid.buffer(-o, join_style=1).buffer(o * 1.15, join_style=1)
+        g2 = solid.buffer(-o, join_style=RND).buffer(o * 1.15, join_style=RND)
         solid = _outer(g2) or solid
 
+        # 3) SMOOTH รอบสุดท้าย — โค้งมนทั้งเข้า-ออก ลบรอยหยัก/เดือย/เส้นไขว้
+        #    (เว้าลึก ๆ ที่ทำให้คิ้ว offset แล้วเส้นทับกัน จะถูกลบ)
+        s = size * 0.02
+        solid = solid.buffer(s, join_style=RND).buffer(-s, join_style=RND)
+        solid = _outer(solid) or solid
+        solid = solid.buffer(-s * 0.5, join_style=RND).buffer(s * 0.5, join_style=RND)
+        solid = _outer(solid) or solid
+
+        # simplify พอประมาณ + ทำให้ valid (buffer(0) ซ่อมเส้นตัดกันเอง)
         solid = solid.simplify(max(0.5, size * 0.004))
+        if not solid.is_valid:
+            solid = solid.buffer(0)
+            solid = _outer(solid) or solid
         return solid if (solid and not solid.is_empty) else full
     except Exception:
         return full
