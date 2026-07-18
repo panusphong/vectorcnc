@@ -1143,6 +1143,156 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     return [((0, 0, 0), subs)]
 
 
+def trace_color_vtracer(image_path, n_colors=6, color_precision=8, layer_difference=16,
+                        filter_speckle=4, corner_threshold=60, path_precision=6,
+                        gradient_step=0, clip_to_silhouette=True):
+    """สีเนียนระดับ .ai — VTracer color+spline (แทน posterize เดิมที่ขอบหยาบ/สีน้อย)
+
+    ต่างจาก trace_color_smooth_bezier:
+      - ไล่สีเป็นแถบละเอียดหลายชั้น (layer_difference เล็ก) -> gradient เนียนขึ้นมาก
+      - ขอบสีเป็น spline โค้งจริง ไม่ใช่ marching-square หยัก
+      - เก็บเฉดสีได้มาก (color_precision 8) -> ใกล้ต้นฉบับ
+
+    คืน [((b,g,r),[subpaths])] เรียงจากชั้นล่าง->บน (ทับกันได้เหมือนต้นฉบับ)
+    """
+    import tempfile, re
+    import vtracer
+    from svgpathtools import parse_path
+    import cv2 as _cv
+
+    img = _cv.imread(image_path, _cv.IMREAD_UNCHANGED)
+    if img is None:
+        raise FileNotFoundError(image_path)
+    # วางบนพื้นขาวทึบถ้ามี alpha (กันขอบดำรอบวัตถุโปร่ง)
+    if img.ndim == 3 and img.shape[2] == 4:
+        a = img[:, :, 3:4].astype(np.float32) / 255.0
+        rgb = img[:, :, :3].astype(np.float32)
+        img = (rgb * a + 255.0 * (1 - a)).astype(np.uint8)
+    elif img.ndim == 2:
+        img = _cv.cvtColor(img, _cv.COLOR_GRAY2BGR)
+    # supersample ภาพเล็ก -> ขอบสีเนียน + ลด stair-step ของ JPEG
+    H, W = img.shape[:2]
+    _long = max(H, W)
+    if _long < 2000:
+        sc = 2000.0 / _long
+        img = _cv.resize(img, None, fx=sc, fy=sc, interpolation=_cv.INTER_CUBIC)
+    # ⚠️ กรองเบามือ — bilateral แรง ๆ ทำให้ "สีซีด" (เกลี่ยสีข้างเคียงเข้าหากัน)
+    #    ใช้แค่พอลบ noise JPEG ให้ VTracer จับสีสดตรงต้นฉบับ
+    img = _cv.bilateralFilter(img, 5, 18, 18)
+
+    tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, img)
+    outsvg = tempfile.mktemp(suffix='.svg')
+    vtracer.convert_image_to_svg_py(
+        tf, outsvg, colormode='color', mode='spline', hierarchical='stacked',
+        filter_speckle=int(filter_speckle),
+        color_precision=int(color_precision),
+        layer_difference=int(layer_difference),
+        corner_threshold=int(corner_threshold),
+        path_precision=int(path_precision))
+    svg = open(outsvg, encoding='utf-8').read()
+
+    # พื้นหลัง = สีเด่นที่ขอบภาพ
+    IH, IW = img.shape[:2]
+    border = np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]]).reshape(-1, 3)
+    bg = tuple(int(v) for v in np.median(border, axis=0))   # (b,g,r)
+
+    items = []
+    for pm in re.finditer(r'<path\b([^>]*?)/>', svg, re.S):
+        tag = pm.group(1)
+        dm = re.search(r'd="([^"]+)"', tag)
+        fm = re.search(r'fill="#([0-9a-fA-F]{6})"', tag)
+        if not dm or not fm:
+            continue
+        hexv = fm.group(1)
+        r_, g_, b_ = int(hexv[0:2], 16), int(hexv[2:4], 16), int(hexv[4:6], 16)
+        # ⚠️ อย่าข้ามสีขาว/สีใกล้พื้น เพราะ 'ขาวในตัวงาน' (หน้าไก่/ตา/ตัวอักษร) ก็ขาว
+        #    -> จะทิ้งเฉพาะ "แผ่นพื้นหลังจริง" (สีพื้น + กินพื้นที่เกือบเต็มจอ) ด้านล่าง
+        # ⚠️ color SVG มี transform=translate/scale ต่อ path -> ต้องแปลงพิกัด ไม่งั้นเลื่อนหลุด
+        tx = ty = 0.0; sx = sy = 1.0
+        tt = re.search(r'translate\(\s*([-\d.eE]+)[ ,]+([-\d.eE]+)', tag)
+        if tt:
+            tx = float(tt.group(1)); ty = float(tt.group(2))
+        scm = re.search(r'scale\(\s*([-\d.eE]+)(?:[ ,]+([-\d.eE]+))?', tag)
+        if scm:
+            sx = float(scm.group(1)); sy = float(scm.group(2)) if scm.group(2) else sx
+
+        def X(pt, sx=sx, sy=sy, tx=tx, ty=ty):
+            return (pt.real * sx + tx, pt.imag * sy + ty)
+
+        try:
+            path = parse_path(dm.group(1))
+        except Exception:
+            continue
+        subs = []
+        for sub in path.continuous_subpaths():
+            if len(sub) < 1:
+                continue
+            st = X(sub[0].start)
+            segs = []
+            for seg in sub:
+                cn = type(seg).__name__
+                if cn == 'Line':
+                    segs.append(('L', X(seg.end)))
+                elif cn == 'CubicBezier':
+                    segs.append(('C', X(seg.control1), X(seg.control2), X(seg.end)))
+                elif cn == 'QuadraticBezier':
+                    c1 = seg.start + (2.0 / 3.0) * (seg.control - seg.start)
+                    c2 = seg.end + (2.0 / 3.0) * (seg.control - seg.end)
+                    segs.append(('C', X(c1), X(c2), X(seg.end)))
+                elif cn == 'Arc':
+                    for t in (0.25, 0.5, 0.75, 1.0):
+                        segs.append(('L', X(seg.point(t))))
+            if segs:
+                subs.append({'start': st, 'segs': segs, 'closed': True})
+        if not subs:
+            continue
+
+        # ทิ้งเฉพาะ "แผ่นพื้นหลังจริง": สีใกล้พื้น + กินพื้นที่เกือบเต็มจอทั้งกว้างและสูง
+        xs = []; ys = []
+        for sp in subs:
+            xs.append(sp['start'][0]); ys.append(sp['start'][1])
+            for s in sp['segs']:
+                p = s[-1]; xs.append(p[0]); ys.append(p[1])
+        span_w = (max(xs) - min(xs)) / max(1.0, IW)
+        span_h = (max(ys) - min(ys)) / max(1.0, IH)
+        near_bg = (abs(b_ - bg[0]) + abs(g_ - bg[1]) + abs(r_ - bg[2])) < 40
+        if near_bg and span_w > 0.92 and span_h > 0.92:
+            continue                              # = แผ่นพื้นหลัง ข้ามไป (ขาวในตัวงานไม่โดน)
+
+        items.append(((b_, g_, r_), subs))        # เก็บลำดับ = ชั้นล่าง->บน ตาม vtracer
+    if not items:
+        raise ValueError('vtracer color ไม่พบรูปทรง')
+
+    # ── เงารวมของงาน (silhouette) สำหรับ clip — กันสี/เงา "หลุดออกนอกเส้น outline"
+    #    (รัศมีขอบนุ่ม anti-alias ที่ VTracer ไล่ตามออกมา จะถูกตัดทิ้งด้วย clipPath)
+    clip_subs = None
+    if clip_to_silhouette:
+        try:
+            gray_bg = (bg[0] + bg[1] + bg[2]) / 3.0
+            diff = np.abs(img.astype(np.int32) - np.array(bg, np.int32)).sum(axis=2)
+            m = (diff > 40).astype(np.uint8) * 255            # เกณฑ์แน่น = ตัวงานจริง ไม่เอา halo
+            k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (5, 5))
+            m = _cv.morphologyEx(m, _cv.MORPH_CLOSE, k)
+            m = _cv.erode(m, np.ones((3, 3), np.uint8))        # หดเข้านิด = ตัดขอบนุ่มออก
+            cnts, _h = _cv.findContours(m, _cv.RETR_EXTERNAL, _cv.CHAIN_APPROX_SIMPLE)
+            amin = 0.001 * m.shape[0] * m.shape[1]
+            clip_subs = []
+            for c in cnts:
+                if _cv.contourArea(c) < amin:
+                    continue
+                ap = _cv.approxPolyDP(c, 1.2, True).reshape(-1, 2)
+                if len(ap) >= 3:
+                    st = (float(ap[0][0]), float(ap[0][1]))
+                    segs = [('L', (float(x), float(y))) for x, y in ap[1:]]
+                    clip_subs.append({'start': st, 'segs': segs, 'closed': True})
+            if not clip_subs:
+                clip_subs = None
+        except Exception:
+            clip_subs = None
+
+    return items, clip_subs
+
+
 def trace_potrace(image_path, n_colors=6, alphamax=1.2, turdsize=2, opttolerance=0.2, regularize=True):
     """เครื่องยนต์ potrace — พูลเดียวกับ Inkscape 'Trace Bitmap' / แนวทาง Illustrator Image Trace:
     boundary -> optimal polygon -> corner analysis (alphamax) -> Bézier fit -> curve optimization (opttolerance)
