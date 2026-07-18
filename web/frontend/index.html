@@ -1457,6 +1457,14 @@ select.numin{cursor:pointer}
       <input class="numin" id="jbCust" placeholder="เช่น คุณสมชาย / บริษัท ...">
       <div style="font-size:12px;color:var(--muted);margin-top:8px">ผู้ทำ: <b id="jbUser" style="color:var(--ink)">—</b> · จะบันทึกภาพจำลอง + ขนาด/ราคา + ดีไซน์ (เปิดแก้ต่อได้)</div>
       <button class="btn primary" id="jbSaveBtn" style="width:100%;margin-top:12px">💾 บันทึกงาน</button>
+
+      <!-- 📄 ปิดงานเซลล์คนเดียว: ใบเสนอราคา + ซองงานโรงงาน -->
+      <div style="border-top:1px dashed var(--line);margin-top:14px;padding-top:12px">
+        <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:6px" data-i18n="jp.head">📄 ปิดงาน (เซลล์ทำเองได้)</div>
+        <button class="btn" id="btnQuote" style="width:100%;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-weight:700" data-i18n="jp.quote">🧾 ใบเสนอราคา + ยืนยันแบบ</button>
+        <button class="btn" id="btnPacket" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700" data-i18n="jp.packet">🏭 ซองงานเข้าโรงงาน (.zip)</button>
+        <div id="jpOut" style="font-size:11.5px;color:var(--muted);margin-top:7px"></div>
+      </div>
     </div>
 
     <div id="jbPanelFind" style="display:none">
@@ -2284,6 +2292,7 @@ var I18N={
   'ik.tab.ex':'🧲 แตกไฟล์ PDF','ik.tab.pc':'✅ ตรวจว่าผลิตได้',
   'ik.tab.cc':'💡 AI Concept (ไม่มีโลโก้)','ik.tab.br':'📝 Sales Brief',
   'stats.open':'🔒 สถิติการเข้าใช้งาน (ผู้ดูแลระบบ)',
+  'jp.head':'📄 ปิดงาน (เซลล์ทำเองได้)','jp.quote':'🧾 ใบเสนอราคา + ยืนยันแบบ','jp.packet':'🏭 ซองงานเข้าโรงงาน (.zip)',
   'hint.auto':'อัตโนมัติ = ระบบวิเคราะห์ภาพ แล้วเลือกเครื่องมือที่ดีที่สุดให้เอง (โลโก้/ภาพถ่าย/ตัวอักษร)',
   'lbl.width':'ค่าความกว้างรวม (มม.)','lbl.height':'ค่าความสูงรวม (มม.)','lbl.letter':'ค่าความสูงตัวอักษร (มม.)',
   'opt.w':'กว้างรวม (มม.)','opt.h':'สูงรวม (มม.)','opt.l':'สูงตัวอักษร (มม.)',
@@ -2330,6 +2339,7 @@ var I18N={
   'ik.tab.ex':'🧲 Extract from PDF','ik.tab.pc':'✅ Producibility check',
   'ik.tab.cc':'💡 AI Concept (no logo yet)','ik.tab.br':'📝 Sales Brief',
   'stats.open':'🔒 Usage analytics (admin only)',
+  'jp.head':'📄 Close the deal (sales can do it alone)','jp.quote':'🧾 Quotation + design approval','jp.packet':'🏭 Production packet (.zip)',
   'hint.auto':'Auto = the system analyses the image and picks the best tracer for you (logo / photo / text).',
   'lbl.width':'Overall width (mm)','lbl.height':'Overall height (mm)','lbl.letter':'Letter height (mm)',
   'opt.w':'Overall width (mm)','opt.h':'Overall height (mm)','opt.l':'Letter height (mm)',
@@ -2779,6 +2789,57 @@ window.setLang=setLang; window.t=t;
       .catch(function(){ btn.textContent='💾 บันทึกงาน'; btn.disabled=false; alert('ส่งข้อมูลแล้ว — ลองค้นหาเพื่อยืนยันค่ะ'); });
   }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  /* ═══ 📄 ปิดงาน: ใบเสนอราคา + ซองงานเข้าโรงงาน (ดึงข้อมูลที่กรอกแล้ว ไม่ต้องกรอกซ้ำ) ═══ */
+  function _jobData(){
+    var s={w:0,h:0}; try{ s=wallSignReal(); }catch(e){}
+    var img=''; try{ var ex=(typeof wallExportCanvas==='function'&&wallExportCanvas())||q('wCanvas'); img=ex.toDataURL('image/jpeg',0.85); }catch(e){}
+    var stName=''; try{ var el=q('wPType'); if(el&&el.value)stName=el.options[el.selectedIndex].text; }catch(e){}
+    return {
+      job_no:'', date:'', company:'Saai Tech', sales:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'',
+      customer:(q('jbCust')&&q('jbCust').value)||'',
+      sign_type_name:stName||(q('jbName')&&q('jbName').value)||'ป้าย',
+      w_cm:Math.round(s.w||0), h_cm:Math.round(s.h||0),
+      qty:1, mockup_b64:img,
+      total:(window._wLast?Math.round(_wLast.total):0)
+    };
+  }
+  function btnBusy(b,t){ b._o=b.textContent; b.disabled=true; b.textContent=t; }
+  function btnDone(b){ b.disabled=false; if(b._o)b.textContent=b._o; }
+
+  function makeQuote(){
+    var job=_jobData();
+    if(!job.total){ if(!confirm('ยังไม่มีราคา (ยังไม่ได้กดคิดราคา) — ทำใบเสนอราคาต่อไหม?'))return; }
+    var b=q('btnQuote'); btnBusy(b,'⏳ สร้าง...');
+    fetch((typeof API!=='undefined'?API:'')+'/api/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(job)})
+      .then(function(r){return r.json();}).then(function(j){ btnDone(b);
+        if(j.error){ q('jpOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>'; return; }
+        var bin=atob(j.html_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+        var blob=new Blob([u],{type:'text/html'}); var url=URL.createObjectURL(blob);
+        window.open(url,'_blank');                       // เปิดใบเสนอราคาให้พิมพ์/บันทึก PDF ทันที
+        q('jpOut').innerHTML='✅ เปิดใบเสนอราคา '+j.job_no+' แล้ว (กด 🖨️ ในหน้าใหม่เพื่อบันทึก PDF)';
+      }).catch(function(e){ btnDone(b); q('jpOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>'; });
+  }
+
+  function makePacket(){
+    var job=_jobData();
+    var files={ mockup_b64:job.mockup_b64 };
+    try{ if(window._lastDxfB64)files.dxf_b64=window._lastDxfB64; }catch(e){}
+    try{ if(window._lastAiB64)files.ai_b64=window._lastAiB64; }catch(e){}
+    try{ if(window._lastSpecSvg)files.spec_svg=window._lastSpecSvg; }catch(e){}
+    try{ if(window._lastBom)files.bom=window._lastBom; }catch(e){}
+    var b=q('btnPacket'); btnBusy(b,'⏳ รวมไฟล์...');
+    fetch((typeof API!=='undefined'?API:'')+'/api/job-packet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:job,files:files})})
+      .then(function(r){return r.json();}).then(function(j){ btnDone(b);
+        if(j.error){ q('jpOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>'; return; }
+        var bin=atob(j.zip_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+        var blob=new Blob([u],{type:'application/zip'}); var a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=j.filename; a.click();
+        q('jpOut').innerHTML='✅ ดาวน์โหลดซองงาน '+j.job_no+' · ในซอง: '+(j.manifest||[]).join(', ');
+      }).catch(function(e){ btnDone(b); q('jpOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>'; });
+  }
+  (function(){ var a=q('btnQuote'),b=q('btnPacket'); if(a)a.onclick=makeQuote; if(b)b.onclick=makePacket; })();
+
   function searchJobs(){
     var url=jobsUrl(); if(!url){ alert('ยังไม่ได้ตั้งลิงก์สคริปต์ Jobs'); return; }
     var p='action=search&user='+encodeURIComponent(q('jbSUser').value||'')+
@@ -3326,6 +3387,7 @@ function runLayer(){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('lsOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     LSDXF=j.dxf_base64||'';
+    try{ window._lastDxfB64=j.dxf_base64||''; window._lastSpecSvg=j.svg||''; }catch(e){}  /* เก็บให้ซองงานโรงงาน */
     var rows=(j.layers||[]).map(function(l){var oc=l.off_cm>0?('+'+l.off_cm):(l.off_cm<0?(''+l.off_cm):'เต็ม');
       var kb=(l.kind==='frame')?' <span style="background:#fef3c7;color:#b45309;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">เจาะโบ๋</span>':'';
       return '<tr><td style="padding:3px 6px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+l.color+';margin-right:5px"></span>'+l.name+kb+'</td><td style="padding:3px 6px;text-align:center;font-weight:700;color:#4f46e5">'+oc+(l.off_cm!=='เต็ม'&&typeof l.off_cm==='number'&&l.off_cm!==0?' ซม.':'')+'</td><td style="padding:3px 6px;text-align:right;color:#5A6B8C">'+l.w_mm+'×'+l.h_mm+' มม.</td></tr>';}).join('');
@@ -3969,6 +4031,7 @@ $('aiDraft').onclick=function(){
   fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('aiOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+    try{ window._lastAiB64=j.ai_base64||''; }catch(e){}   /* เก็บให้ซองงานโรงงาน */
     var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
     var b=new Blob([u],{type:'application/postscript'});var a=document.createElement('a');
     a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+((j.used_engine==='print')?'_print':'')+'.ai';a.click();
