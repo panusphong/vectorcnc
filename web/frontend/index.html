@@ -4727,14 +4727,16 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm){
   var armW=Math.max(3,Math.round(sw*0.014));
   var armLen=sy-top;
   g.save();
-  // แผ่นโครงหลังป้าย (เล็กกว่าป้าย → ถูกป้ายบังไว้ ไม่มีขอบยื่นรอบป้าย)
-  g.fillStyle='#1b1b1b'; g.fillRect(sx+3, sy+3, Math.max(1,sw-6), Math.max(1,sh-6));
+  // ⚠️ ไม่วาดแผ่นทึบหลังป้ายแล้ว — ป้ายนีออน/ตัวอักษรโปร่งจะเห็นเป็นสี่เหลี่ยมดำ
+  //    โครงยึดป้ายจริง = แขนเหล็ก + คานบน + คานล่างรับป้าย (โปร่ง เห็นผนังทะลุ)
   g.fillStyle=col; g.strokeStyle=col;
   if(armLen>3){
     var xs=[sx+sw*0.16, sx+sw*0.84-armW];
     if(signWcm>400) xs.splice(1,0, sx+sw/2-armW/2);   // ป้ายกว้าง > 4 ม. เพิ่มแขนกลาง
     xs.forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
     g.fillRect(sx+sw*0.10, top-armW*0.6, sw*0.80, Math.max(3,armW)); // คานบนเชื่อมแขน
+    // คานล่างรับใต้ป้าย (โครงจริงมีคานรับ ไม่ใช่แผ่นทึบ)
+    g.fillRect(sx+sw*0.10, sy+sh-Math.max(2,armW*0.5), sw*0.80, Math.max(3,armW*0.8));
     var hx=sx+sw/2;                          // handle ลากปรับความยาวแขน
     window._armHandle={x:hx-9,y:top-9,w:18,h:18};
     g.fillStyle='#2563eb'; g.fillRect(hx-6,top-6,12,12); g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(hx-6,top-6,12,12); g.fillStyle=col;
