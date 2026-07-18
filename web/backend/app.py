@@ -595,7 +595,8 @@ def _ai_filled_svg(items, width_mm, clip_subs=None):
 @app.post("/api/draft-ai")
 async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                    width_mm: float = Form(600.0), engine: str = Form("auto"),
-                   white_base: int = Form(0), cut_contour: int = Form(1)):
+                   white_base: int = Form(0), cut_contour: int = Form(1),
+                   cut_mode: str = Form("diecut")):
     """ดราฟท์ภาพ (ถ่าย/AI/โหลดเน็ต) -> ไฟล์เวกเตอร์ .ai (PDF-based) ให้กราฟิคเปิดใน Illustrator ทำต่อ
        - เวกเตอร์คมชัดระดับโลโก้ · แยกสีเป็น path คนละชั้น · ขนาดจริงตามงาน"""
     tmp = tempfile.mkdtemp()
@@ -615,11 +616,15 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                 return JSONResponse({"error": "ไฟล์นี้เป็นเวกเตอร์อยู่แล้ว ใช้โหมดปกติได้เลย"},
                                     status_code=400)
             from vectorcnc import print_ai as PA
+            _cm = str(cut_mode or "diecut").lower()
             pdf_bytes, info = PA.build(
                 inp, width_mm=float(width_mm),
-                bleed_mm=2.0, cut=bool(int(cut_contour)), corner_r_mm=1.0,
+                bleed_mm=(3.0 if _cm == "contour" else 2.0),
+                cut=bool(int(cut_contour)),
+                corner_r_mm=(0.0 if _cm == "contour" else 1.0),
                 upscale_to=2000,          # ภาพเล็ก -> ขยายก่อนฝัง กันพิมพ์ใหญ่แตก
-                white_base=bool(int(white_base)), white_choke_mm=0.3)
+                white_base=bool(int(white_base)), white_choke_mm=0.3,
+                cut_mode=_cm)
             return {"ai_base64": base64.b64encode(pdf_bytes).decode(),
                     "w_mm": info["w_mm"], "h_mm": info["h_mm"],
                     "layers": len(info.get("layers", [])),
