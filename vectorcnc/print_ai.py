@@ -46,22 +46,54 @@ def _subject_mask(im, bg_tol=18):
     return dist > bg_tol
 
 
-def _fill_contours(mask, choke_px, simplify_px):
+def _fill_contours(mask, choke_px, simplify_px, smooth_px=0.0, tol_px=0.0):
     """คืน polygon ทั้งหมด (นอก+รูใน) ของ mask สำหรับ 'เทสีทึบ' = รองขาว
-       choke_px > 0 = หดเข้าในนิดหน่อย กันสีขาวโผล่พ้นขอบงาน (มาตรฐาน UV)"""
+       choke_px > 0 = หดเข้าในนิดหน่อย กันสีขาวโผล่พ้นขอบงาน (มาตรฐาน UV)
+       + smooth/simplify = จุดน้อย เรียบ (รองขาวก็ไม่ต้องละเอียดตามหยัก)"""
     import numpy as np
     import cv2
     m = (mask.astype(np.uint8)) * 255
     if choke_px > 0:
         m = cv2.erode(m, np.ones((int(choke_px)*2+1,)*2, np.uint8))
-    # RETR_CCOMP -> เก็บทั้งขอบนอกและรูใน (โดนัทไม่ตัน)
+
+    # ── ทำให้เรียบ + จุดน้อยด้วย shapely (ตรงกับเส้นไดคัท) ──
+    try:
+        from shapely.geometry import Polygon, MultiPolygon
+        from shapely.ops import unary_union
+        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        amin = 0.0005 * m.shape[0] * m.shape[1]
+        ps = []
+        for c in cnts:
+            c = c.reshape(-1, 2)
+            if len(c) >= 3:
+                p = Polygon([(float(x), float(y)) for x, y in c])
+                if p.is_valid and p.area >= amin:
+                    ps.append(p)
+        if ps:
+            g = unary_union(ps)
+            s = float(smooth_px) if smooth_px > 0 else 2.0
+            g = g.buffer(s, join_style=1).buffer(-s, join_style=1)   # ลบหยัก
+            tol = float(tol_px) if tol_px > 0 else max(1.0, simplify_px * 2.0)
+            g = g.simplify(tol, preserve_topology=True)
+            parts = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
+            out = []
+            for p in parts:
+                if p.is_empty or p.area < amin:
+                    continue
+                out.append([(float(x), float(y)) for x, y in p.exterior.coords[:-1]])
+            if out:
+                return out
+    except Exception:
+        pass
+
+    # fallback: approxPolyDP หยาบ ๆ
     cnts, _ = cv2.findContours(m, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     out = []
     amin = 0.0005 * m.shape[0] * m.shape[1]
     for c in cnts:
         if cv2.contourArea(c) < amin:
             continue
-        ap = cv2.approxPolyDP(c, max(0.6, float(simplify_px)), True).reshape(-1, 2)
+        ap = cv2.approxPolyDP(c, max(2.0, float(simplify_px) * 2.0), True).reshape(-1, 2)
         if len(ap) >= 3:
             out.append([(float(x), float(y)) for x, y in ap])
     return out
@@ -200,13 +232,15 @@ def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
         except Exception:
             mask = None
 
-    # ---- รองขาว: polygon ทึบ (นอก+รูใน) หดเข้าในนิดหน่อย ----
+    # ---- รองขาว: polygon ทึบ (นอก+รูใน) หดเข้าในนิดหน่อย + เรียบ จุดน้อย ----
     white_pt = []
+    _ppmm = W0 / W_mm
     if white_base and mask is not None:
         try:
-            choke_px = max(0.0, white_choke_mm) / W_mm * W0
+            choke_px = max(0.0, white_choke_mm) * _ppmm
             simp = max(1.0, W0 / 900.0)
-            for p in _fill_contours(mask, choke_px, simp):
+            for p in _fill_contours(mask, choke_px, simp,
+                                    smooth_px=1.5*_ppmm, tol_px=0.5*_ppmm):
                 white_pt.append([(x*sx, y*sy) for (x, y) in p])
         except Exception:
             white_pt = []
