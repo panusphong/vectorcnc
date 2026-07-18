@@ -603,6 +603,8 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                     "w_mm": info["w_mm"], "h_mm": info["h_mm"],
                     "layers": len(info.get("layers", [])),
                     "paths": info["cut_paths"],
+                    "cut_dxf_base64": info.get("cut_dxf_b64", ""),   # ↴ เข้าเลเซอร์ตัด
+                    "cut_svg": info.get("cut_svg", ""),
                     "used_engine": "print", "print_info": info,
                     "svg_preview": ""}
         # ---- ไฟล์เวกเตอร์ (.ai/.pdf/.svg/.eps) : ใช้ path จริงเลย ไม่ต้อง trace ----
