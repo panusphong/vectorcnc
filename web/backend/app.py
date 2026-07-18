@@ -68,12 +68,22 @@ def health():
             return getattr(m, attr, "OLD")
         except Exception as e:
             return "import-error: " + str(e)[:60]
-    return {"ok": True, "service": "VectorCNC", "version": "7.3-analytics+wall3d",
-            "build": "2026-07-12-sharp-curves+wall-3d-sign+usage-analytics",
+    return {"ok": True, "service": "VectorCNC",
+            "version": "8.0-print+contourbox+quote",
+            "build": "2026-07-18-printUV-whitebase-diecut+contour-lightbox+quote-packet",
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
-            "concept": _v("concept", "CONCEPT_VERSION")}
+            "concept": _v("concept", "CONCEPT_VERSION"),
+            # ── โมดูลใหม่ (ใช้เช็คว่า deploy โค้ดล่าสุดหรือยัง) ──
+            "print_ai": _v("print_ai", "PRINT_AI_VERSION"),
+            "job_packet": _v("job_packet", "JOB_PACKET_VERSION"),
+            "billing": _v("billing", "BILLING_VERSION"),
+            "auth": "hmac" if _v("auth", "AUTH_VERSION") != "OLD" else "OLD",
+            "color_engine": "vtracer-cp8-clip" if hasattr(
+                __import__("vectorcnc.trace_engine", fromlist=["trace_engine"]),
+                "trace_color_vtracer") else "OLD-posterize",
+            "contour_box": "on" if "8" in SIGN_TYPES and SIGN_TYPES.get("8", {}).get("wrap") else "OLD"}
 
 
 @app.post("/api/vectorize")
