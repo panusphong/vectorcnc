@@ -813,24 +813,32 @@ def _wrap_silhouette(full, bridge_mm):
     try:
         from shapely.geometry import Polygon, MultiPolygon
         from shapely.ops import unary_union
-        r = max(1.0, float(bridge_mm))
-        g = full.buffer(r, join_style=1).buffer(-r * 0.72, join_style=1)
-        if g.is_empty:
-            g = full
-        # เอาเฉพาะขอบนอกของแต่ละก้อน (อุดรูใน -> กล่องเป็นทรงตัน)
-        polys = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
-        solid = unary_union([Polygon(p.exterior) for p in polys if p and not p.is_empty])
 
-        # ⚠️ กล่องไฟล้อมทรง = "ตัวเดียวต่อเนื่อง" เท่านั้น
-        #    ถ้ายังแยกเป็นหลายก้อน (เช่น ชาม/ตะเกียบที่ห่างเกินระยะเชื่อม)
-        #    -> เก็บเฉพาะก้อนใหญ่สุดก้อนเดียว (ไม่งั้นภาพ 3 มิติมีแผ่นลอยแยก)
-        #    ชิ้นที่อยู่ใกล้จะถูกเชื่อมเข้าตัวหลักแล้วจาก wrap_bridge (ปรับที่ SIGN_TYPES)
-        if isinstance(solid, MultiPolygon):
-            ps = [p for p in solid.geoms if p and not p.is_empty]
-            if ps:
-                solid = max(ps, key=lambda a: a.area)          # ก้อนใหญ่สุดก้อนเดียว
+        def _outer(geo):
+            """เก็บเฉพาะขอบนอก (อุดรูใน) + คืนก้อนใหญ่สุดก้อนเดียว"""
+            polys = list(geo.geoms) if isinstance(geo, MultiPolygon) else [geo]
+            polys = [p for p in polys if p and not p.is_empty]
+            if not polys:
+                return None
+            u = unary_union([Polygon(p.exterior) for p in polys])
+            if isinstance(u, MultiPolygon):
+                u = max(u.geoms, key=lambda a: a.area)
+            return u
 
-        solid = solid.simplify(max(0.4, r * 0.10))
+        b = full.bounds
+        size = max(b[2] - b[0], b[3] - b[1], 1.0)
+        r = max(float(bridge_mm), size * 0.06)      # bridge ปรับตามขนาดงาน (>=6% ของด้านยาว)
+
+        # 1) CLOSE — เชื่อมทุกส่วนของงาน (ตัว+ตะเกียบ+ชาม) ให้ติดกันเป็นก้อนเดียว
+        g = full.buffer(r, join_style=1).buffer(-r, join_style=1)
+        solid = _outer(g) or full
+
+        # 2) OPEN — กลืน "แขน/ก้านบาง" ที่ยื่นออกมา (เช่น ปลายตะเกียบ) ให้ envelope เรียบ
+        o = size * 0.035
+        g2 = solid.buffer(-o, join_style=1).buffer(o * 1.15, join_style=1)
+        solid = _outer(g2) or solid
+
+        solid = solid.simplify(max(0.5, size * 0.004))
         return solid if (solid and not solid.is_empty) else full
     except Exception:
         return full
