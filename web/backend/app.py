@@ -640,10 +640,18 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
         if used == "mono":
             items = trace_engine.trace_potrace(inp, n_colors=2)
         else:
+            # 🎨 สีเนียนขึ้น: VTracer color+spline (ไล่สีละเอียด ขอบโค้งจริง) -> fallback posterize เดิม
             try:
-                items = trace_engine.trace_color_smooth_bezier(inp, n_colors=nc)
+                # cp=7 ld=12: จุดสมดุล — ไล่สีเนียน (gradient ~50 แถบ) แต่ไฟล์ไม่บวม
+                items = trace_engine.trace_color_vtracer(
+                    inp, color_precision=7, layer_difference=12, filter_speckle=6)
             except Exception:
                 items = None
+            if not items:
+                try:
+                    items = trace_engine.trace_color_smooth_bezier(inp, n_colors=nc)
+                except Exception:
+                    items = None
             if not items:
                 items = trace_engine.trace_potrace(inp, n_colors=2); used = "mono"
         if not items:
@@ -768,14 +776,18 @@ SIGN_TYPES = {
           "walls": [{"name": "ยกขอบ", "h": 2.5}]},
     # 🆕 กล่องไฟล้อมตามทรง — ขอบนอกวิ่งตาม "เงารวม" ของทั้งแบบ (ไม่ใช่สี่เหลี่ยม/วงกลม)
     #    wrap=True -> เชื่อมตัวอักษร/องค์ประกอบเป็นก้อนเดียวก่อน แล้วล้อมด้วยคิ้ว + ยกขอบ
+    # หน้า = อะคริลิคขาวขุ่น P433 (โปร่งแสง) ตัดเป็น "แผ่นเต็มตามทรง" ชิ้นเดียว
+    #        แล้ว "จบด้วยงานพิมพ์ UV / ติดสติกเกอร์" เท่านั้น — ไม่ตัดเส้นตัวอักษรข้างใน
     "8": {"name": "กล่องไฟล้อมตามทรง 1 หน้า", "depth_cm": 5.0, "wrap": True, "wrap_bridge_cm": 3.0,
+          "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "หน้าพิมพ์/อะคริลิค", "off": -0.3, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                      {"name": "แผ่นพื้นตามทรง", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 5.0}]},
     "9": {"name": "กล่องไฟล้อมตามทรง 2 หน้า", "depth_cm": 10.0, "wrap": True, "wrap_bridge_cm": 3.0,
+          "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "หน้าพิมพ์/อะคริลิค", "off": -0.3, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
+                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
 }
 
@@ -818,12 +830,26 @@ def _en_type(th):
     return _TYPE_EN.get(str(th), str(th))
 
 
+def _dxf_layer(name):
+    """ชื่อเลเยอร์ให้ปลอดภัยกับ DXF — ห้ามมี < > / \\ " : ; ? * | = ` และช่องว่าง
+       (ezdxf/AutoCAD จะ error ถ้ามีอักขระต้องห้าม เช่น '/' ใน 'Printed / Acrylic Face')"""
+    s = str(name)
+    for ch in '<>/\\":;?*|=`':
+        s = s.replace(ch, "")
+    s = s.replace("·", "").replace(" ", "_")
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_") or "CUT"
+
+
 def _en_layer(n):
     n = str(n)
     if "คิ้ว" in n:
         return "Contour Trim (Kim)" if "ล้อมทรง" in n else "Trim Face (Kim)"
+    if "อะคริลิคขาว" in n and "พิมพ์" in n:
+        return "Acrylic P433 White Face (Print)"
     if "หน้าพิมพ์" in n:
-        return "Printed / Acrylic Face"
+        return "Printed Acrylic Face"
     if "พลาสวูด" in n:
         return "Plaswood Core"
     if "ไส้" in n and "อะคริลิค" in n:
@@ -1292,6 +1318,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              % (_en_layer(L["name"]), junk))
         if not out_layers:
             return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
+        # 🖨️ กล่องไฟล้อมตามทรง: หน้า = อะคริลิคขาว P433 ตัดเป็นแผ่นเต็มตามทรง แล้วจบด้วยงานพิมพ์
+        if rec.get("face_finish") == "print":
+            warns.append("หน้าอะคริลิคขาว P433 = ตัดเป็นแผ่นเต็มตามทรงชิ้นเดียว "
+                         "แล้วจบด้วยงานพิมพ์ UV / ติดสติกเกอร์ — ไม่ตัดเส้นตัวอักษรข้างใน")
         # bbox รวม (ชั้นที่ขยายสุด)
         allb = [full.buffer(max(0.0, float(L["off"])), join_style=1).bounds for L in rec["layers"]]
         MNX = min(b[0] for b in allb); MNY = min(b[1] for b in allb)
@@ -1336,7 +1366,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
 
             def _tf(p, _xs=xshift, _my=gmaxy):
                 return (p[0] + _xs, _my - p[1])
-            lyname = 'CUT_' + _en_layer(L["name"]).replace(" ", "_").replace("·", "").replace("(", "").replace(")", "")
+            lyname = _dxf_layer('CUT_' + _en_layer(L["name"]))
             if lyname not in doc.layers:
                 lay = doc.layers.add(lyname)
                 try: lay.rgb = L["rgb"]
@@ -3671,3 +3701,44 @@ def admin_pay_page():
     if os.path.exists(p):
         return FileResponse(p)
     return JSONResponse({"error": "admin_payments.html not found"}, status_code=404)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  📄 "กาว" ปิดงานเซลล์คนเดียว — ใบเสนอราคา + ซองงานเข้าโรงงาน
+# ══════════════════════════════════════════════════════════════════
+@app.post("/api/quote")
+async def api_quote(request: Request):
+    """ใบเสนอราคา + ยืนยันแบบ (HTML A4 พร้อมพิมพ์เป็น PDF) — ประกอบจากข้อมูลที่เซลล์กรอกแล้ว"""
+    try:
+        job = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    from vectorcnc import job_packet as JP
+    if not job.get("job_no"):
+        job["job_no"] = JP.gen_job_no()
+    html_str = JP.quote_html(job)
+    return {"ok": True, "job_no": job["job_no"],
+            "html_base64": base64.b64encode(html_str.encode("utf-8")).decode(),
+            "filename": "ใบเสนอราคา_" + JP._safe(job.get("customer", "")) + ".html"}
+
+
+@app.post("/api/job-packet")
+async def api_job_packet(request: Request):
+    """ซองงานเข้าโรงงาน (.zip) — รวมไฟล์ตัด/พิมพ์/BOM/สเปค/ใบปะหน้า ในชุดเดียว"""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+    from vectorcnc import job_packet as JP
+    job = body.get("job") or {}
+    files = body.get("files") or {}
+    if not job.get("job_no"):
+        job["job_no"] = JP.gen_job_no()
+    try:
+        zip_bytes, fname, manifest = JP.packet_zip(job, files)
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]},
+                            status_code=400)
+    return {"ok": True, "job_no": job["job_no"], "filename": fname,
+            "manifest": manifest,
+            "zip_base64": base64.b64encode(zip_bytes).decode()}
