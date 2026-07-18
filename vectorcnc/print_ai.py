@@ -21,7 +21,7 @@ import os
 import io
 import math
 
-PRINT_AI_VERSION = "2026-07-15-embed-raster+diecut"
+PRINT_AI_VERSION = "2026-07-19-smooth144+whitebase-fix+contour-wrap"
 
 MM = 72.0 / 25.4        # มม. -> จุด (PDF point)
 
