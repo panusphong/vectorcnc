@@ -506,9 +506,10 @@ async def nest_ep(
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
-def _ai_filled_svg(items, width_mm):
+def _ai_filled_svg(items, width_mm, clip_subs=None):
     """สร้าง SVG 'ระบายสีเต็ม' (artwork เวกเตอร์) จาก items=[(bgr, subs)] — หน่วย มม. ขนาดจริง
-       แต่ละสี = compound path (fill-rule evenodd -> รูตรงกลางโปร่ง) เรียงพื้นที่ใหญ่ไว้หลัง"""
+       แต่ละสี = compound path (fill-rule evenodd -> รูตรงกลางโปร่ง) เรียงพื้นที่ใหญ่ไว้หลัง
+       clip_subs = เงารวมของงาน -> ตัดสี/เงาที่ล้นออกนอกเส้น outline ทิ้ง"""
     # bbox รวมทุก sub (px)
     mnx = mny = 1e18; mxx = mxy = -1e18
     def _pts(sp):
@@ -558,7 +559,17 @@ def _ai_filled_svg(items, width_mm):
     order = sorted(range(len(items)), key=lambda i: -_area(items[i][1]))   # ใหญ่ก่อน (อยู่หลัง)
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{Wmm:.1f}mm" height="{Hmm:.1f}mm" '
            f'viewBox="0 0 {Wmm:.1f} {Hmm:.1f}">']
+
+    # 🎯 clipPath = เงารวมของงาน -> สีที่ล้นออกนอกขอบถูกตัดทิ้ง (เงาไม่หลุด outline)
+    clip_attr = ""
+    if clip_subs:
+        cd = ' '.join(_d(sp) for sp in clip_subs if sp.get('segs'))
+        if cd:
+            out.append(f'<defs><clipPath id="art_clip"><path d="{cd}"/></clipPath></defs>')
+            clip_attr = ' clip-path="url(#art_clip)"'
+
     total_subs = 0
+    out.append(f'<g{clip_attr}>')
     for oi, i in enumerate(order):
         bgr, subs = items[i]
         col = bgr if isinstance(bgr, str) else hexcolor(bgr)
@@ -567,7 +578,7 @@ def _ai_filled_svg(items, width_mm):
             continue
         total_subs += len(subs)
         out.append(f'<g id="สี{oi+1}_{col}"><path fill="{col}" fill-rule="evenodd" stroke="none" d="{dd}"/></g>')
-    out.append('</svg>')
+    out.append('</g></svg>')
     return '\n'.join(out), Wmm, Hmm, total_subs
 
 
@@ -638,15 +649,15 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                     nc = max(2, min(8, int(dec.get("n_colors", nc)) if int(dec.get("n_colors", nc)) >= 2 else nc))
             except Exception:
                 used = "color"
-        items = None
+        items = None; clip_subs = None
         if used == "mono":
             items = trace_engine.trace_potrace(inp, n_colors=2)
         else:
-            # 🎨 สีเนียนขึ้น: VTracer color+spline (ไล่สีละเอียด ขอบโค้งจริง) -> fallback posterize เดิม
+            # 🎨 สีสด+เนียน: VTracer color+spline (cp=8 สีตรงต้นฉบับ) + clip เง��ไม่ให้หลุด outline
             try:
-                # cp=7 ld=12: จุดสมดุล — ไล่สีเนียน (gradient ~50 แถบ) แต่ไฟล์ไม่บวม
-                items = trace_engine.trace_color_vtracer(
-                    inp, color_precision=7, layer_difference=12, filter_speckle=6)
+                items, clip_subs = trace_engine.trace_color_vtracer(
+                    inp, color_precision=8, layer_difference=16, filter_speckle=6,
+                    clip_to_silhouette=True)
             except Exception:
                 items = None
             if not items:
@@ -658,7 +669,7 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                 items = trace_engine.trace_potrace(inp, n_colors=2); used = "mono"
         if not items:
             return JSONResponse({"error": "แปลงภาพเป็นเวกเตอร์ไม่สำเร็จ"}, status_code=400)
-        svg, Wmm, Hmm, npaths = _ai_filled_svg(items, float(width_mm))
+        svg, Wmm, Hmm, npaths = _ai_filled_svg(items, float(width_mm), clip_subs=clip_subs)
         import cairosvg
         pdf_bytes = cairosvg.svg2pdf(bytestring=svg.encode("utf-8"))
         ai_b64 = base64.b64encode(pdf_bytes).decode()
