@@ -34,8 +34,14 @@ def _subject_mask(im, bg_tol=18):
     a = np.array(im)
     alpha = a[:, :, 3]
 
+    def _clear_border(m):
+        # ⚠️ บังคับให้ขอบภาพเป็น 'พื้นหลัง' เสมอ (เว้น 2px)
+        #    กัน findContours วิ่งตามขอบเฟรมเป็นเส้นตรง (บั๊กเส้นตัดเป็นสี่เหลี่ยม)
+        m[:2, :] = False; m[-2:, :] = False; m[:, :2] = False; m[:, -2:] = False
+        return m
+
     if alpha.min() < 250:                       # มี transparency จริง
-        return alpha > 20
+        return _clear_border(alpha > 20)
 
     # พื้นทึบ -> เดาสีพื้นจากมุมทั้ง 4 (ส่วนใหญ่คือขาว)
     rgb = a[:, :, :3].astype(int)
@@ -43,7 +49,7 @@ def _subject_mask(im, bg_tol=18):
     corners = np.array([rgb[0, 0], rgb[0, W-1], rgb[H-1, 0], rgb[H-1, W-1]])
     bg = np.median(corners, axis=0)
     dist = np.sqrt(((rgb - bg) ** 2).sum(axis=2))
-    return dist > bg_tol
+    return _clear_border(dist > bg_tol)
 
 
 def _fill_contours(mask, choke_px, simplify_px, smooth_px=0.0, tol_px=0.0):
@@ -160,6 +166,58 @@ def _outer_contour(mask, bleed_px, simplify_px, smooth_px=0.0, tol_px=0.0):
     return polys
 
 
+def _contour_wrap(mask, bleed_px, W, H):
+    """เส้นตัด 'ทรงกล่องไฟล้อมตามทรง' — envelope เรียบมน ก้อนเดียว คลุมทั้งงาน
+       (สำหรับเลเซอร์ตัดขอบอะคริลิคหน้ากล่องไฟ หลังพิมพ์ UV)
+       ต่างจากไดคัท: เชื่อมทุกส่วน + กลืนก้านบาง + โค้งมน = ขอบกล่องเรียบ ไม่แนบตัวงาน"""
+    import numpy as np
+    import cv2
+    m = (mask.astype(np.uint8)) * 255
+    cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return []
+    try:
+        from shapely.geometry import Polygon, MultiPolygon
+        from shapely.ops import unary_union
+        polys = []
+        for c in cnts:
+            c = c.reshape(-1, 2)
+            if len(c) >= 3:
+                p = Polygon([(float(x), float(y)) for x, y in c])
+                if p.is_valid and p.area > 4:
+                    polys.append(p)
+        if not polys:
+            return []
+        full = unary_union(polys)
+        size = max(W, H, 1.0)
+        r = max(bleed_px, size * 0.06)            # เชื่อมทุกส่วนเป็นก้อนเดียว
+        def outer(g):
+            ps = list(g.geoms) if isinstance(g, MultiPolygon) else [g]
+            ps = [q for q in ps if q and not q.is_empty]
+            if not ps:
+                return None
+            u = unary_union([Polygon(q.exterior) for q in ps])
+            if isinstance(u, MultiPolygon):
+                u = max(u.geoms, key=lambda a: a.area)
+            return u
+        g = outer(full.buffer(r, join_style=1).buffer(-r, join_style=1)) or full
+        o = size * 0.035
+        g = outer(g.buffer(-o, join_style=1).buffer(o * 1.15, join_style=1)) or g   # กลืนก้านบาง
+        s = size * 0.02
+        g = outer(g.buffer(s, join_style=1).buffer(-s, join_style=1)) or g          # โค้งมน
+        if bleed_px > 0:
+            g = g.buffer(bleed_px, join_style=1)                                     # เผื่อขอบ
+        g = g.simplify(max(0.6, size * 0.004))
+        if not g.is_valid:
+            g = g.buffer(0)
+            g = outer(g) or g
+        if g.is_empty:
+            return []
+        return [[(float(x), float(y)) for x, y in g.exterior.coords[:-1]]]
+    except Exception:
+        return []
+
+
 def _poly_area(p):
     a = 0.0
     n = len(p)
@@ -191,7 +249,7 @@ def _round_path_pts(pts, r_px):
 # ──────────────────────────────────────────────── ตัวสร้างไฟล์หลัก
 def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
           corner_r_mm=0.0, upscale_to=0,
-          white_base=False, white_choke_mm=0.3):
+          white_base=False, white_choke_mm=0.3, cut_mode="diecut"):
     """
     สร้าง .ai (PDF) งานพิมพ์
 
@@ -251,10 +309,16 @@ def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
     if cut and mask is not None:
         try:
             bleed_px = max(0.0, bleed_mm) * px_per_mm
-            smooth_px = 2.0 * px_per_mm          # ปิดอ่าว/ลบหยัก ~2 มม.
-            tol_px = 0.5 * px_per_mm             # simplify ~0.5 มม. -> จุดน้อยมาก
-            simp = max(1.0, W0 / 900.0)
-            for p in _outer_contour(mask, bleed_px, simp, smooth_px=smooth_px, tol_px=tol_px):
+            if str(cut_mode) == "contour":
+                # 🏭 ทรงกล่องไฟล้อมทรง — envelope เรียบมน ก้อนเดียว (เลเซอร์ตัดหน้าอะคริลิค)
+                paths = _contour_wrap(mask, bleed_px, W0, H0)
+            else:
+                # ✂️ ไดคัทแนบตัวงาน (สติกเกอร์)
+                smooth_px = 2.0 * px_per_mm
+                tol_px = 0.5 * px_per_mm
+                simp = max(1.0, W0 / 900.0)
+                paths = _outer_contour(mask, bleed_px, simp, smooth_px=smooth_px, tol_px=tol_px)
+            for p in paths:
                 cut_pt.append([(x*sx, y*sy) for (x, y) in p])
         except Exception:
             cut_pt = []
