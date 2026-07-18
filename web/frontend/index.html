@@ -2824,9 +2824,9 @@ window.setLang=setLang; window.t=t;
   function makePacket(){
     var job=_jobData();
     var files={ mockup_b64:job.mockup_b64 };
-    try{ if(window._lastDxfB64)files.dxf_b64=window._lastDxfB64; }catch(e){}
+    try{ if(window._lastCutDxf)files.dxf_b64=window._lastCutDxf; else if(window._lastDxfB64)files.dxf_b64=window._lastDxfB64; }catch(e){}
     try{ if(window._lastAiB64)files.ai_b64=window._lastAiB64; }catch(e){}
-    try{ if(window._lastSpecSvg)files.spec_svg=window._lastSpecSvg; }catch(e){}
+    try{ if(window._lastSpecSvg)files.spec_svg=window._lastSpecSvg; else if(window._lastCutSvg)files.spec_svg=window._lastCutSvg; }catch(e){}
     try{ if(window._lastBom)files.bom=window._lastBom; }catch(e){}
     var b=q('btnPacket'); btnBusy(b,'⏳ รวมไฟล์...');
     fetch((typeof API!=='undefined'?API:'')+'/api/job-packet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:job,files:files})})
@@ -4037,7 +4037,15 @@ $('aiDraft').onclick=function(){
     a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+((j.used_engine==='print')?'_print':'')+'.ai';a.click();
     if(j.used_engine==='print'){
       var pi=j.print_info||{}; var ly=(pi.layers||[]).join(' → ');
-      $('aiOut').innerHTML='✅ ไฟล์งานพิมพ์ (เหมือนต้นฉบับ 100%) · '+j.w_mm+'×'+j.h_mm+' มม.<br>เลเยอร์: '+ly;
+      try{ window._lastCutDxf=j.cut_dxf_base64||''; window._lastCutSvg=j.cut_svg||''; }catch(e){}
+      // ↴ ไฟล์ตัดสำหรับเลเซอร์ (เส้นไดคัทเรียบ จุดน้อย) — DXF + SVG
+      var nm=(lastName||'artwork');
+      if(j.cut_dxf_base64){ var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=nm+'_cut.dxf';da.click(); }
+      if(j.cut_svg){ var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([j.cut_svg],{type:'image/svg+xml'}));sa.download=nm+'_cut.svg';sa.click(); }
+      var pts=(pi.cut_points!=null)?(' · เส้นไดคัท '+pi.cut_points+' จุด (เครื่องตัดเร็ว)'):'';
+      $('aiOut').innerHTML='✅ ไฟล์งานพิมพ์ (เหมือนต้นฉบับ 100%) · '+j.w_mm+'×'+j.h_mm+' มม.<br>เลเยอร์: '+ly+pts+
+        '<br>📥 ดาวน์โหลด: <b>.ai</b> (พิมพ์) + <b>.dxf/.svg</b> (เลเซอร์ตัด)';
     }else{
       var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
       $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
