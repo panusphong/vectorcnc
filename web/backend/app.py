@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.14-geom3d-label-fix",
-            "build": "2026-07-20-fix-geom3d-rec-label-keyerror+jobsheet-frame+wall-frame+savejob",
+            "version": "9.15-geombox-width-fit",
+            "build": "2026-07-20-geometric-box-width-equals-input+geom3d-label-fix",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -908,6 +908,20 @@ def _geom_box(full, shape="rect", pad_mm=30.0):
         unit = _Pt(0, 0).buffer(1.0, resolution=96)
         return _aff.translate(_aff.scale(unit, xfact=a, yfact=bb, origin=(0, 0)), cx, cy)
     return _sbox(b[0] - pad_mm, b[1] - pad_mm, b[2] + pad_mm, b[3] + pad_mm)   # rect
+
+
+def _geom_box_fit(full, shape, pad_mm, target_w_mm):
+    """สร้างกล่องทรงเรขาคณิต แล้วสเกลให้ 'ความกว้างกล่อง' = ค่าที่ผู้ใช้กำหนด (ไม่ใช่ขนาด artwork)"""
+    g = _geom_box(full, shape, pad_mm)
+    try:
+        bb = g.bounds; cw = bb[2] - bb[0]
+        if cw > 1.0 and float(target_w_mm) > 1.0 and abs(cw - float(target_w_mm)) > 1.0:
+            from shapely import affinity as _aff
+            s = float(target_w_mm) / cw
+            g = _aff.scale(g, xfact=s, yfact=s, origin=(bb[0], bb[1]))
+    except Exception:
+        pass
+    return g
 
 
 def _wrap_silhouette(full, bridge_mm):
@@ -1918,7 +1932,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
         elif rec.get("box_shape"):
-            full = _geom_box(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0)
+            full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
         if _neon:
@@ -2273,7 +2287,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         elif rec.get("box_shape"):
-            full = _geom_box(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0)
+            full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
         b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
         # perspective 3D
         fo = None; bore = None
