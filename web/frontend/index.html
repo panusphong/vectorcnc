@@ -300,6 +300,24 @@ select.numin{cursor:pointer}
             <button class="btn" id="mfTextGo" style="width:100%;margin-top:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700">🅰️ สร้างป้ายจากข้อความนี้</button>
             <div class="hint" style="margin-top:3px">ตัวอักษรแยกชิ้น ยึดโครงแขวน · เจาะรูน็อต Ø3 / สายไฟ Ø5 ให้อัตโนมัติ · พร้อมภาพด้านหลัง</div>
           </div>
+          <!-- 🔩 ปรับโครงเหล็กแขวน (type 16) -->
+          <div id="frameAdjPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #fecdd3;border-radius:10px;background:#fff5f7">
+            <div style="font-size:12px;font-weight:700;color:#e11d48;margin-bottom:6px">🔩 ปรับโครงเหล็กแขวน (มองจากด้านหลัง)</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <label style="font-size:11px;color:#64748b;width:70px">จำนวนคาน</label>
+              <select class="numin" id="fBars" style="flex:1;padding:5px"><option value="1">1 คาน (แนวนอน)</option><option value="2">2 คาน (บน+ล่าง)</option></select>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ระดับคาน (ซม. · -1=อัตโนมัติ)</label><input class="numin" id="fLevel" type="number" value="-1" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ระยะห่าง 2 คาน (ซม.)</label><input class="numin" id="fGap" type="number" value="20" style="padding:5px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">เลื่อนโครงแนวนอน (ซม.)</label><input class="numin" id="fXshift" type="number" value="0" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">แขน standoff (ซม.)</label><input class="numin" id="fStand" type="number" value="5" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">เลื่อนรูสายไฟ (ซม.)</label><input class="numin" id="fWire" type="number" value="0" style="padding:5px;width:100%"></div>
+            </div>
+            <div class="hint">ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพด้านหลัง + ตำแหน่งรูเจาะ</div>
+          </div>
           <!-- 🌈 นีออนเฟล็กซ์: เลือกสี 12 สี -->
           <div id="neonPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #a5f3fc;border-radius:10px;background:#ecfeff">
             <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:6px">🌈 สีนีออนเฟล็กซ์ (เลือก 12 สี)</div>
@@ -2924,6 +2942,17 @@ window.setLang=setLang; window.t=t;
       .then(function(){ btn.textContent='💾 บันทึกงาน'; btn.disabled=false; alert('บันทึกงานแล้ว ✓\nดูได้ที่แท็บ "ค้นหางาน"'); try{if(typeof vcLogSim==='function')vcLogSim('บันทึกงาน: '+(q('jbName').value||''));}catch(e){} })
       .catch(function(){ btn.textContent='💾 บันทึกงาน'; btn.disabled=false; alert('ส่งข้อมูลแล้ว — ลองค้นหาเพื่อยืนยันค่ะ'); });
   }
+  // 💾 บันทึกงานออกแบบ (จากหน้าหลัก) -> เก็บที่ Jobs เดียวกับหน้าประเมินราคา
+  window.saveDesignJob=function(meta,cb){
+    var url=jobsUrl(); if(!url){ alert('ยังไม่ได้ตั้งลิงก์ Jobs — เปิดหน้า "จำลองผนัง" ตั้งลิงก์สคริปต์ก่อนค่ะ'); if(cb)cb(false); return; }
+    var payload={ action:'save', user:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'',
+      jobName:meta.jobName||'', customer:meta.customer||'', wCm:meta.wCm||0, hCm:meta.hCm||0,
+      price:0, image:meta.image||'', thumb:meta.thumb||meta.image||'',
+      design:JSON.stringify({source:'design', signType:meta.signType||'', signName:meta.signName||''}) };
+    fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
+      .then(function(){ alert('บันทึกงานออกแบบแล้ว ✓\nดูได้ที่แท็บ "ค้นหางาน"'); try{if(typeof vcLogSim==='function')vcLogSim('บันทึกงานออกแบบ: '+(meta.jobName||''));}catch(e){} if(cb)cb(true); })
+      .catch(function(){ alert('ส่งข้อมูลแล้ว — ลองค้นหาเพื่อยืนยันค่ะ'); if(cb)cb(true); });
+  };
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
   /* ═══ 📄 ปิดงาน: ใบเสนอราคา + ซองงานเข้าโรงงาน (ดึงข้อมูลที่กรอกแล้ว ไม่ต้องกรอกซ้ำ) ═══ */
@@ -4102,6 +4131,7 @@ var TRIMW=1, TRIMDIR='out';
     for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; } }
   function toggle(){ var v=sel.value;
     if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';
+    if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
   sel.addEventListener('change',toggle); toggle();
@@ -4153,6 +4183,9 @@ $('goLayer').onclick=function(){
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
+  fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
+  fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
+  fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
@@ -4174,6 +4207,8 @@ $('goLayer').onclick=function(){
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
         (j.ai_base64?'<button id="lsDlAi" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ .ai (โครงสร้าง+งานพิมพ์ แยกเลเยอร์)</button>':'')+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
+        '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
+        '<button id="lsSaveJob" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">💾 บันทึกงาน</button>'+
         ((j.mount_plate&&j.mount_plate.count)?('<button id="lsDlPlate" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔩 เพลทยึด '+j.mount_plate.count+' ชิ้น (DXF)</button>'):'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
@@ -4201,7 +4236,38 @@ $('goLayer').onclick=function(){
       (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
     if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
+    if($('lsJobSheet'))$('lsJobSheet').onclick=function(){
+      if(!fileObj){alert('ไม่พบภาพแบบ');return;}
+      var cust=prompt('ชื่อลูกค้า (สำหรับใบสั่งผลิต)','')||'';
+      var btn=$('lsJobSheet');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังสร้างใบสั่งผลิต...';
+      var w=window.open('','_blank'); if(w)w.document.write('<p style="font-family:sans-serif;padding:24px">⏳ กำลังสร้างใบสั่งผลิต...</p>');
+      var fd=new FormData();
+      fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
+      fd.append('customer',cust);fd.append('sales',(($('adminName')&&$('adminName').textContent)||'')||'');
+      fd.append('return_depth_cm',String(RDEPTH||0));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
+      fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
+      fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
+      fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
+      fetch((API||'')+'/api/job-sheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+        btn.disabled=false;btn.textContent=old;
+        if(j.error){if(w)w.close();alert('ผิดพลาด: '+j.error);return;}
+        if(w){w.document.open();w.document.write(j.html);w.document.close();}
+        try{vcLogSim&&vcLogSim('สร้างใบสั่งผลิต');}catch(_e){}
+      }).catch(function(e){btn.disabled=false;btn.textContent=old;if(w)w.close();alert('ต่อ backend ไม่ได้ '+e);});
+    };
     if($('lsDlAi')&&j.ai_base64)$('lsDlAi').onclick=function(){var bin=atob(j.ai_base64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='layerset_'+t+'.ai';a.click();};
+    if($('lsSaveJob'))$('lsSaveJob').onclick=function(){
+      if(typeof window.saveDesignJob!=='function'){alert('ระบบบันทึกงานยังไม่พร้อม');return;}
+      var nm=prompt('ชื่องาน (สำหรับบันทึก)',(lastName||'งานออกแบบ'))||''; if(!nm)return;
+      var cust=prompt('ชื่อลูกค้า','')||'';
+      var wcm=Math.round((j.w_mm||(+($('realW').value)||600))/10), hcm=0;
+      var doSave=function(img){ window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:hcm,image:img||'',signType:t,signName:(j.type_name||'')}); };
+      // ภาพหน้าตรง 3D เป็น thumbnail
+      if(window._lsFaceSvg){ try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(window._lsFaceSvg)));
+        var im=new Image(); im.onload=function(){ var c=document.createElement('canvas'); c.width=Math.min(700,im.naturalWidth||600); c.height=c.width*((im.naturalHeight||600)/(im.naturalWidth||600)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); doSave(c.toDataURL('image/jpeg',0.82)); };
+        im.onerror=function(){doSave('');}; im.src=url; }catch(e){doSave('');} }
+      else doSave('');
+    };
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
     if($('lsDlPlate')&&j.mount_plate)$('lsDlPlate').onclick=function(){
