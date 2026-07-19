@@ -2029,7 +2029,7 @@ async def step_repeat(file: UploadFile = File(...),
         print_pdf = IMP.build_print_pdf(pdf_art, plan, pos, SW, SH, rm, marks)
         cut_dxf = IMP.build_cut_dxf(plan, pos, SW, SH, rm, marks)
         cut_svg = IMP.build_cut_svg(plan, pos, SW, SH, rm, marks)
-        prev = IMP.preview_svg(plan, pos, SW, SH, rm, _art_data_uri(inp))
+        prev = IMP.preview_svg(plan, pos, SW, SH, rm, marks, _art_data_uri(inp))
         summ = IMP.summarize(plan["per"], int(qty))
         return {"per_sheet": plan["per"], "cols": plan["cols"], "rows": plan["rows"],
                 "rot": plan["rot"], "piece_w": round(pw, 1), "piece_h": round(ph, 1),
