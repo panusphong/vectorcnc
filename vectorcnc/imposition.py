@@ -77,8 +77,18 @@ def build_print_pdf(piece_pdf_bytes, plan, pos, sheet_w, sheet_h,
     src = fitz.open("pdf", piece_pdf_bytes)
     pw, ph = plan["pw"], plan["ph"]
     rot = 90 if plan.get("rot") else 0
+    aw0, ah0 = src[0].rect.width, src[0].rect.height          # ขนาดรูปงาน (pt)
+    aw, ah = (ah0, aw0) if rot else (aw0, ah0)                # สลับถ้าหมุน
     for (x, y) in pos:
-        rect = fitz.Rect(x * MM, y * MM, (x + pw) * MM, (y + ph) * MM)
+        cell = fitz.Rect(x * MM, y * MM, (x + pw) * MM, (y + ph) * MM)
+        # 🎯 วางรูปงาน "กึ่งกลางชิ้น" คงสัดส่วน (ไม่ยืด) ให้เห็น artwork ชัดเจน
+        if aw > 0 and ah > 0:
+            s = min(cell.width / aw, cell.height / ah)
+            dw, dh = aw * s, ah * s
+            cx, cy = (cell.x0 + cell.x1) / 2, (cell.y0 + cell.y1) / 2
+            rect = fitz.Rect(cx - dw / 2, cy - dh / 2, cx + dw / 2, cy + dh / 2)
+        else:
+            rect = cell
         try:
             page.show_pdf_page(rect, src, 0, rotate=rot)
         except Exception:

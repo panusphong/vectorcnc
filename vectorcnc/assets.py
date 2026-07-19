@@ -82,7 +82,7 @@ def _thumb(page, rect, max_px=260):
 
 
 # ---------------------------------------------------------------- main
-def list_assets(path, max_pages=6, min_mm=6.0):
+def list_assets(path, max_pages=6, min_mm=6.0, max_assets=60):
     """
     คืน dict:
       {"pages": n, "page_size_mm": [w,h], "assets": [...]}
@@ -116,10 +116,16 @@ def list_assets(path, max_pages=6, min_mm=6.0):
             "vector": True, "info": {},
         })
 
-        # ---- 2) ภาพฝังใน
+        # ---- 2) ภาพฝังใน (ไม่ซ้ำ xref + มีเพดานกันไฟล์ผลิตซ้ำหลายร้อยชิ้น)
+        _seen_xref = set()
         try:
             for im in page.get_images(full=True):
+                if len(out) >= max_assets:
+                    break
                 xref = im[0]
+                if xref in _seen_xref:
+                    continue
+                _seen_xref.add(xref)
                 try:
                     rs = page.get_image_rects(xref)
                 except Exception:
@@ -165,8 +171,13 @@ def list_assets(path, max_pages=6, min_mm=6.0):
                 continue
             rects.append((r.x0, r.y0, r.x1, r.y1))
         if rects:
+            # 🛡️ ไฟล์ผลิตซ้ำ (step&repeat) มีหลายร้อยชิ้น -> จำกัดจำนวนก่อนคลัสเตอร์ (กัน O(n²) + OOM)
+            if len(rects) > 300:
+                rects = sorted(rects, key=lambda r: -((r[2] - r[0]) * (r[3] - r[1])))[:300]
             gap = max(pr.width, pr.height) * 0.012   # ~1.2% ของหน้า
             for cb in _cluster(rects, gap):
+                if len(out) >= max_assets:
+                    break
                 x0, y0, x1, y1 = cb[0], cb[1], cb[2], cb[3]
                 wmm = (x1 - x0) * PT2MM
                 hmm = (y1 - y0) * PT2MM
@@ -189,6 +200,8 @@ def list_assets(path, max_pages=6, min_mm=6.0):
         except Exception:
             td = {"blocks": []}
         for blk in td.get("blocks", []):
+            if len(out) >= max_assets:
+                break
             if blk.get("type", 1) != 0:
                 continue
             bb = blk.get("bbox")
@@ -229,7 +242,8 @@ def list_assets(path, max_pages=6, min_mm=6.0):
     # เรียง: เวกเตอร์ก่อน (มีค่าที่สุด) แล้วภาพ แล้วข้อความ แล้วทั้งหน้า
     order = {"vector": 0, "image": 1, "text": 2, "page": 3}
     out.sort(key=lambda a: (order.get(a["kind"], 9), -(a["w_mm"] * a["h_mm"])))
-    return {"pages": npg, "page_size_mm": psize, "assets": out}
+    return {"pages": npg, "page_size_mm": psize, "assets": out,
+            "truncated": len(out) >= max_assets}
 
 
 # ---------------------------------------------------------------- crop
