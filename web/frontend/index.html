@@ -287,6 +287,18 @@ select.numin{cursor:pointer}
             <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
           </select>
           <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
+          <label style="margin-top:6px">🦾 แขนยึด (โครงเหล็กติดตั้ง)</label>
+          <div style="display:flex;gap:6px">
+            <select class="numin" id="mainArm" style="flex:1;padding:6px">
+              <option value="none">— ไม่มีแขน (แปะผนัง) —</option>
+              <option value="top2">แขนยื่นลงจากด้านบน 2 แขน</option>
+              <option value="side1">แขนยื่นจากด้านข้าง 1 แขน</option>
+              <option value="side2">แขนยื่นจากด้านข้าง 2 แขน</option>
+            </select>
+            <div style="width:96px"><input class="numin" id="mainArmLen" type="number" value="30" min="10" max="100" title="ความยาวแขน (ซม.)" style="padding:6px;width:100%"></div>
+          </div>
+          <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · ปรับความยาวแขนได้ (ซม.) — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
           <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
             <button type="button" class="chip on" data-d="0" data-i18n="chip.auto">อัตโนมัติ</button>
@@ -333,13 +345,16 @@ select.numin{cursor:pointer}
       </div>
 
       <div class="out">
-        <h4  data-i18n="res.title">ผลลัพธ์</h4>
-        <div id="layers"><div class="muted-note" data-i18n="res.none">ยังไม่มีผล</div></div>
-        <h4 style="margin-top:4px" data-i18n="res.cutfile">ไฟล์ตัด</h4>
-        <div class="stat"><span data-i18n="res.mat">วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
-        <div class="stat"><span data-i18n="res.layers">เลเยอร์</span><b id="sLayers">–</b></div>
-        <div class="stat"><span data-i18n="res.paths">เส้นตัด (paths)</span><b id="sRings">–</b></div>
-        <div class="stat"><span data-i18n="res.size">ขนาดจริง</span><b id="sSize">–</b></div>
+        <!-- 🙈 พาเนลสรุปผล (ไม่ได้ใช้) — ซ่อนไว้ · ปุ่มดาวน์โหลดยังทำงานปกติ -->
+        <div id="cutSummary" style="display:none">
+          <h4  data-i18n="res.title">ผลลัพธ์</h4>
+          <div id="layers"><div class="muted-note" data-i18n="res.none">ยังไม่มีผล</div></div>
+          <h4 style="margin-top:4px" data-i18n="res.cutfile">ไฟล์ตัด</h4>
+          <div class="stat"><span data-i18n="res.mat">วัสดุ/เครื่อง</span><b id="sMat">–</b></div>
+          <div class="stat"><span data-i18n="res.layers">เลเยอร์</span><b id="sLayers">–</b></div>
+          <div class="stat"><span data-i18n="res.paths">เส้นตัด (paths)</span><b id="sRings">–</b></div>
+          <div class="stat"><span data-i18n="res.size">ขนาดจริง</span><b id="sSize">–</b></div>
+        </div>
         <div class="dl">
           <button class="btn primary" id="dlSvg" data-i18n="dl.svg" disabled>⬇ ดาวน์โหลด SVG (มม.)</button>
           <div class="row2"><button class="btn ghost" id="dlDxf" data-i18n="dl.dxf" disabled>⬇ DXF</button><button class="btn ghost" id="copySvg" data-i18n="dl.copy" disabled>คัดลอก</button></div>
@@ -4006,6 +4021,7 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('real_height_mm','0');fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
@@ -4026,7 +4042,8 @@ $('goLayer').onclick=function(){
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
         '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
-        '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button></div>'+
+        '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
+        ((j.mount_plate&&j.mount_plate.count)?('<button id="lsDlPlate" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔩 เพลทยึด '+j.mount_plate.count+' ชิ้น (DXF)</button>'):'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
         '<span style="font-size:11px;color:#64748b">ไฟ:</span><div id="glowMode" style="display:inline-flex;gap:3px">'+
@@ -4053,6 +4070,12 @@ $('goLayer').onclick=function(){
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
+    if($('lsDlPlate')&&j.mount_plate)$('lsDlPlate').onclick=function(){
+      var mp=j.mount_plate;
+      if(mp.dxf_base64){var db=atob(mp.dxf_base64),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download='mount_plate_'+(j.mount||'arm')+'.dxf';da.click();}
+      if(mp.svg){var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([mp.svg],{type:'image/svg+xml'}));sa.download='mount_plate_'+(j.mount||'arm')+'.svg';sa.click();}
+    };
     if($('lsToWall'))$('lsToWall').onclick=function(){
       if(!fileObj){alert('ไม่พบภาพแบบ');return;}
       var rd=new FileReader();
