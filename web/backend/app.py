@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.17-lightbox-arm-to-wall",
-            "build": "2026-07-20-lightbox-top-arm-carried-to-wall-image+center-attach+geombox-fit",
+            "version": "9.19-center-spec-detail",
+            "build": "2026-07-20-full-spec-inline-in-result+jobsheet-material-led-wire-print-delivery",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1922,7 +1922,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     neon_line: str = Form("double"),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
-                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0)):
+                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
+                    led_pitch_cm: float = Form(6.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -2176,12 +2177,23 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
         ai_b64 = ""
         try:
-            _art_ai = _art if rec.get("face_finish") == "print" else ""
+            # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
+            _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
             ai_svg = _layerset_ai_svg(out_layers, art_href=_art_ai, art_bounds=full.bounds)
             import cairosvg as _cs
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
             ai_b64 = ""
+        # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ)
+        led_info = {}
+        try:
+            from vectorcnc import mount_frame as _MF3
+            _led = _MF3.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=12.0, volt=12.0)
+            led_info = {"total_m": _led["total_m"], "watts": _led["watts"], "amps": _led["amps"],
+                        "transformer_w": _led["transformer_w"], "pitch_cm": _led.get("pitch_cm", 6),
+                        "preview_svg": _led["preview_svg"]}
+        except Exception:
+            led_info = {}
 
         return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
@@ -2191,7 +2203,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
-                "svg_face": svg_face,
+                "svg_face": svg_face, "led": led_info,
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
     except Exception as e:
@@ -2220,23 +2232,40 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                       '<div class="cbody"><div class="imgwrap">%s</div><div style="margin-top:8px">%s</div></div></div>' % (back_svg, chips))
     led_card = ""
     if led:
+        _ltype = "LED Ribbon (เส้นยืด)" if meta.get("led_type") == "Ribbon" else "LED Module 3030"
         led_card = ('<div class="card"><div class="ct"><span class="no">3</span>การวางไฟ LED + คำนวณกำลังไฟ</div>'
                     '<div class="cbody"><div class="imgwrap dark">%s</div><div class="kpi">%s</div>'
                     '<table><tr><th>รายการ</th><th>สเปค</th></tr>'
-                    '<tr><td>รุ่นไฟ LED</td><td class="r">LED Module 3030 · 12V</td></tr>'
+                    '<tr><td>ชนิดไฟ LED</td><td class="r">%s · 12V · IP65</td></tr>'
                     '<tr><td>สีไฟ</td><td class="r">%s</td></tr>'
-                    '<tr><td>ระยะห่างแถว (pitch)</td><td class="r">%s ซม.</td></tr>'
-                    '<tr><td>สายไฟเมน</td><td class="r">VCT 2&#215;1.5 mm&#178;</td></tr>'
-                    '<tr><td>หม้อแปลง</td><td class="r">Switching 12V %d W</td></tr></table></div></div>'
-                    % (led.get("preview_svg", ""), kpis, meta.get("led_color", "Warm White 3000K"),
-                       led.get("pitch_cm", 6), led.get("transformer_w", 0)))
-    tmpl = open(_JOB_SHEET_TMPL, "r", encoding="utf-8").read() if False else _JOB_SHEET_CSS
+                    '<tr><td>ความยาวเส้นไฟรวม</td><td class="r">%.2f เมตร</td></tr>'
+                    '<tr><td>ระยะห่างแต่ละช่อง (pitch)</td><td class="r">%s ซม.</td></tr>'
+                    '<tr><td>ระยะวางจากขอบข้าง</td><td class="r">%s ซม.</td></tr>'
+                    '<tr><td>สายไฟเมน</td><td class="r">%s</td></tr>'
+                    '<tr><td>หม้อแปลง</td><td class="r">Switching 12V %d W (spare ~30%%)</td></tr></table></div></div>'
+                    % (led.get("preview_svg", ""), kpis, esc(_ltype), esc(meta.get("led_color", "Warm White 3000K")),
+                       led.get("total_m", 0), meta.get("led_pitch_cm", 6), meta.get("led_edge_cm", 3),
+                       esc(meta.get("wire", "VCT 2×1.5 mm²")), led.get("transformer_w", 0)))
+    # 🖨️ งานพิมพ์ (ถ้ามี) + 🗂️ nesting (ถ้ากดมาก่อน)
+    print_card = ""
+    if meta.get("print_spec"):
+        print_card = ('<div class="card full"><div class="ct"><span class="no">4</span>งานพิมพ์ (Artwork · หน้าอะคริลิคพิมพ์)</div>'
+                      '<div class="cbody"><div style="font-size:13px;color:#334155">พิมพ์บน: <b>%s</b> · จบด้วยพิมพ์ UV / ติดสติกเกอร์ · คุมสีตามไฟล์ต้นฉบับ</div></div></div>'
+                      % esc(meta.get("print_spec")))
+    nest_card = ""
+    if meta.get("nesting_b64"):
+        nest_card = ('<div class="card full"><div class="ct"><span class="no">5</span>ภาพจัดเรียงชั้นตัดวัตถุดิบ (Nesting)</div>'
+                     '<div class="cbody"><div class="imgwrap"><img src="data:image/png;base64,%s" style="max-width:100%%;max-height:360px"/></div></div></div>'
+                     % meta.get("nesting_b64"))
     html = _JOB_SHEET_CSS
     html = html.replace("__TITLE__", esc(type_name))
     for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
+                 "__DELIV__": esc(meta.get("delivery") or "— ยังไม่ระบุ —"),
                  "__CUST__": esc(meta.get("customer", "-")), "__TYPE__": esc(type_name), "__TYPEEN__": esc(type_name_en),
                  "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
-                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card, "__BOM__": bom}.items():
+                 "__MATERIAL__": esc(meta.get("material", "-")),
+                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card,
+                 "__PRINT__": print_card, "__NEST__": nest_card, "__BOM__": bom}.items():
         html = html.replace(k, str(v))
     return html
 
@@ -2270,18 +2299,21 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 9px
 <button class="pbtn" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>
 <div class="sheet">
   <div class="hd"><div><h1>ใบสั่งผลิตป้าย / แบบยืนยันลูกค้า</h1><div class="sub">Production Spec Sheet &amp; Customer Confirmation · __TYPEEN__</div></div>
-    <div class="meta"><span class="badge">DRAFT · รออนุมัติ</span><br>เลขที่งาน <b>__JOBNO__</b><br>วันที่ <b>__DATE__</b></div></div>
-  <div class="info">
+    <div class="meta"><span class="badge">DRAFT · รออนุมัติ</span><br>เลขที่งาน <b>__JOBNO__</b><br>วันที่ออกแบบ <b>__DATE__</b><br>กำหนดส่งมอบ <b>__DELIV__</b></div></div>
+  <div class="info" style="grid-template-columns:repeat(5,1fr)">
     <div class="c"><div class="k">ลูกค้า</div><div class="v">__CUST__</div></div>
     <div class="c"><div class="k">ประเภทป้าย</div><div class="v">__TYPE__</div></div>
     <div class="c"><div class="k">ขนาดรวม</div><div class="v">__SIZE__</div></div>
+    <div class="c"><div class="k">วัสดุหลัก</div><div class="v">__MATERIAL__</div></div>
     <div class="c"><div class="k">เซลล์ผู้ดูแล</div><div class="v">__SALES__</div></div></div>
   <div class="body">
-    <div class="card full"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+    <div class="card full"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
     __FRAME__
     __LED__
-    <div class="card full"><div class="ct"><span class="no">4</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
-    <div class="card full"><div class="ct"><span class="no">5</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody"><div class="site"><div style="font-size:30px">📷</div><div>แนบภาพหน้างาน + ทำเครื่องหมายจุดติดตั้ง</div></div></div></div>
+    __PRINT__
+    __NEST__
+    <div class="card full"><div class="ct"><span class="no">6</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
+    <div class="card full"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody"><div class="site"><div style="font-size:30px">📷</div><div>แนบภาพหน้างาน + ทำเครื่องหมายจุดติดตั้ง</div></div></div></div>
   </div>
   <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
   <div class="foot"><div class="sign"><div class="line"></div><div class="r">ผู้ออกแบบ / เซลล์</div></div><div class="sign"><div class="line"></div><div class="r">ผู้อนุมัติผลิต (โรงงาน)</div></div><div class="sign"><div class="line"></div><div class="r">ลูกค้าอนุมัติแบบ · วันที่</div></div></div>
@@ -2298,7 +2330,10 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     led_volt: float = Form(12.0), led_color: str = Form("Warm White 3000K"),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
-                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0)):
+                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
+                    material: str = Form(""), led_type: str = Form("module"),
+                    wire_type: str = Form("indoor"), print_spec: str = Form(""),
+                    delivery_date: str = Form(""), nesting_b64: str = Form("")):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
@@ -2349,19 +2384,36 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             led = MF.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=float(led_watt_per_m), volt=float(led_volt))
         except Exception:
             led = None
-        # BOM จากชั้นวัสดุ + LED + หม้อแปลง
+        # 🧱 วัสดุหลัก
+        _MATN = {"acrylic": "อะคริลิค", "plaswood": "พลาสวูด (Plaswood)", "zinc": "ซิ้งค์ (สังกะสี)",
+                 "stainless_silver": "สแตนเลสเงิน (เงา)", "stainless_gold": "สแตนเลสทอง (ไทเทเนียม)",
+                 "stainless_rose": "สแตนเลสโรสโกลด์"}
+        _matn = _MATN.get(str(material), str(material)) if material else "ตามสเปควัสดุ"
+        _ledtypen = "LED Module 3030" if str(led_type) == "module" else "LED Ribbon (เส้นยืด)"
+        _edge_cm = round(float(led_pitch_cm) / 2.0, 1)
+        _wiren = "VCT 2×1.5 mm² (Indoor)" if str(wire_type) == "indoor" else "สายกันน้ำ Outdoor 2×1.5 mm² (VCT-G/YY)"
+        # BOM จากชั้นวัสดุ + LED + หม้อแปลง + งานพิมพ์
         bom = []
         for L in rec["layers"]:
-            bom.append((_en_layer(L["name"]) if False else L["name"], "ตามสเปควัสดุ",
+            _isface = (L.get("kind") != "frame" and "แผ่นพื้น" not in L["name"])
+            _mm = _matn if _isface else "ตามสเปควัสดุ"
+            bom.append((L["name"], _mm,
                         ("%+.1f ซม." % (float(L["off"]) / 10.0)) if abs(float(L["off"])) > 1e-6 else "เต็มทรง", ""))
+        if rec.get("face_finish") == "print":
+            bom.append(("หน้าอะคริลิคพิมพ์", (print_spec or "อะคริลิคขาวขุ่น P433"), "3mm / 5mm", "พิมพ์ UV / ติดสติกเกอร์"))
         if led:
-            bom.append(("ไฟ LED", "LED Module 3030 12V IP65", "%.2f ม. · %.0f W" % (led["total_m"], led["watts"]), led_color))
+            bom.append(("ไฟ LED", "%s · 12V · IP65" % _ledtypen,
+                        "%.2f ม. · %.0f W · ช่อง %s ซม. · ห่างขอบ %s ซม." % (led["total_m"], led["watts"], led_pitch_cm, _edge_cm), led_color))
             bom.append(("หม้อแปลง", "Switching PSU", "12V %d W" % led["transformer_w"], "มี spare ~30%"))
-            bom.append(("สายไฟเมน", "VCT 2×1.5 mm²", "ทนกระแส ~15A", ""))
+            bom.append(("สายไฟเมน", _wiren, "ทนกระแส ~15A", str(wire_type)))
         if rec.get("mount_frame"):
-            bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff 5 ซม.", "เจาะรูน็อต/สายไฟ"))
+            bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff %s ซม." % frame_standoff_cm, "เจาะรูน็อต/สายไฟ"))
         meta = {"customer": customer or "-", "job_no": job_no or ("JOB-%s" % _dt.datetime.now().strftime("%Y%m%d-%H%M")),
-                "sales": sales or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color}
+                "sales": sales or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color,
+                "material": _matn, "led_type": ("Module" if str(led_type) == "module" else "Ribbon"),
+                "led_pitch_cm": led_pitch_cm, "led_edge_cm": _edge_cm, "wire": _wiren,
+                "print_spec": (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else "")),
+                "delivery": delivery_date, "nesting_b64": nesting_b64}
         html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
