@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.15-geombox-width-fit",
-            "build": "2026-07-20-geometric-box-width-equals-input+geom3d-label-fix",
+            "version": "9.17-lightbox-arm-to-wall",
+            "build": "2026-07-20-lightbox-top-arm-carried-to-wall-image+center-attach+geombox-fit",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1392,8 +1392,18 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         midY = (b[1] + b[3]) / 2.0
         specs = []
         if _mount == "top2":
-            for fx in (0.30, 0.70):
-                a = F((b[0] + W * fx, b[1])); specs.append((a, (a[0], a[1] - _aL)))
+            _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
+            _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center กล่อง
+            for fx in _fxs:
+                _ax = b[0] + W * fx; _ty = b[1]
+                try:                                            # แตะ 'ผิวบนสุด' ของกล่องจริง (กันแขนลอยเหนือวงกลม)
+                    from shapely.geometry import LineString as _LS
+                    _it = full.intersection(_LS([(_ax, b[1] - 10.0), (_ax, b[3] + 10.0)]))
+                    if _it is not None and not _it.is_empty:
+                        _ty = _it.bounds[1]
+                except Exception:
+                    _ty = b[1]
+                a = F((_ax, _ty)); specs.append((a, (a[0], a[1] - _aL)))
             _cy = min(w[1] for _a, w in specs)
             # ฝ้าเพดาน = แถบทึบบางแนวนอน (เพลทเรียบแนบด้านล่างฝ้า)
             arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
@@ -1613,11 +1623,21 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
              % (S * 0.022, S * 0.02)]
     if ftop > 0:                                       # 🔩 โครงเหล็กแขวน (หน้าตรง) — คานเพดาน + แขน 2 ข้าง (หลังป้าย)
         tw = max(8.0, S * 0.018); steel = "#8b93a0"; steelD = "#5b626d"; surf = "#cbd5e1"; plateC = "#c6ccd6"
-        cyb = pad * 0.5; stop = pad + ftop
+        cyb = pad * 0.5
+        _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
+        _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center
         parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (pad * 0.4, cyb - tw * 0.4, W + 2 * pad - pad * 0.8, tw * 0.8, surf, steelD, lw))
-        for fx in (0.30, 0.70):
-            ax = pad + fx * W
-            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw / 2, cyb, tw, stop - cyb + tw, steel, steelD, lw))
+        for fx in _fxs:
+            sx = b[0] + fx * W; _ty = b[1]
+            try:                                            # แขนแตะ 'ผิวบนสุด' ของกล่องจริง (ไม่ลอย)
+                from shapely.geometry import LineString as _LS
+                _it = full.intersection(_LS([(sx, b[1] - 10.0), (sx, b[3] + 10.0)]))
+                if _it is not None and not _it.is_empty:
+                    _ty = _it.bounds[1]
+            except Exception:
+                _ty = b[1]
+            ax = sx - b[0] + pad; armbot = (_ty - b[1]) + pad + ftop
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw / 2, cyb, tw, armbot - cyb + tw, steel, steelD, lw))
             parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw * 1.1, cyb - tw * 0.9, tw * 2.2, tw * 0.9, plateC, steelD, lw))
     parts.append('<g filter="url(#fsh)">')
     if art_href:                                       # หน้าพิมพ์: คิ้ว 1cm + พื้นขาว + artwork (ไม่ล้น)
@@ -2127,7 +2147,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _neon:
                 svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
-                _ftop = 22.0 if rec.get("mount_frame") else 0.0   # เฉพาะป้ายมีโครงแขวน -> ส่งโครงไปด้วย
+                # โครงหน้าตรงติดไปกับภาพวางผนัง: type16 มีโครงแขวน · กล่องไฟที่เลือกแขนบน (top2) ก็ติดแขนไปด้วย
+                if rec.get("mount_frame"):
+                    _ftop = 22.0
+                elif str(arm or "none").lower() == "top2":
+                    _ftop = max(15.0, float(arm_len_cm))
+                else:
+                    _ftop = 0.0
                 svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
                                            face_color=(face_color or None), art_href=_art, frame_top_cm=_ftop)
         except Exception:
