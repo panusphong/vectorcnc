@@ -359,6 +359,33 @@ select.numin{cursor:pointer}
             </div>
             <button class="btn" id="aiDraft" data-i18n="dl.ai" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
             <div id="aiOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+          </div>
+
+          <!-- 🏭 งานพิมพ์ผลิตซ้ำ (Step & Repeat) — วางชิ้นเดียวกันซ้ำเต็มแผ่น -->
+          <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
+            <div style="font-size:12px;font-weight:700;color:#0d9488;margin-bottom:4px">🏭 งานพิมพ์ผลิตซ้ำ (Step &amp; Repeat)</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">วางชิ้นเดียวกันซ้ำเต็มแผ่น (เช่น พวงกุญแจ) → ไฟล์พิมพ์ <b>.ai ทั้งแผ่น</b> + ไฟล์ตัดเลเซอร์ (ตรงตำแหน่ง + หมุด)</div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">ชิ้นกว้าง (มม.)</label><input class="numin" id="srPieceW" type="number" value="40" min="5" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">เว้นช่อง gap (มม.)</label><input class="numin" id="srGap" type="number" value="3" min="0" style="padding:6px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">แผ่นกว้าง (มม.)</label><input class="numin" id="srSheetW" type="number" value="600" min="50" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">แผ่นสูง (มม.)</label><input class="numin" id="srSheetH" type="number" value="1200" min="50" style="padding:6px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">ขอบแผ่น margin (มม.)</label><input class="numin" id="srMargin" type="number" value="8" min="0" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">จำนวนสั่ง (ชิ้น)</label><input class="numin" id="srQty" type="number" value="10000" min="0" style="padding:6px;width:100%"></div>
+            </div>
+            <label class="cslab">หมุดพิมพ์-ตัด (registration)</label>
+            <select class="numin" id="srReg" style="padding:6px;margin-bottom:4px;width:100%">
+              <option value="ccd">📷 หมุดกล้อง CCD (พิมพ์หมุด 4 มุม ให้กล้องอ่าน)</option>
+              <option value="origin">📐 วางตามพิกัด origin (จัดชนมุม 0,0)</option>
+            </select>
+            <label class="chk" style="margin-top:2px"><input type="checkbox" id="srWhite"> <span>🤍 พิมพ์รองขาว (White underbase — สำหรับ UV)</span></label>
+            <button class="btn" id="srGo" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border:none;font-weight:700">🏭 สร้างไฟล์ผลิตซ้ำ (.ai + ตัด)</button>
+            <div id="srOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+            <div id="srPrev" style="margin-top:6px"></div>
             <script>
             (function(){
               var HINT={
@@ -4059,6 +4086,42 @@ $('aiDraft').onclick=function(){
       $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
     }
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+};
+
+// ==================== 🏭 งานพิมพ์ผลิตซ้ำ (Step & Repeat) ====================
+$('srGo').onclick=function(){
+  if(!fileObj){alert('อัปโหลดภาพชิ้นงานก่อน');return;}
+  var btn=$('srGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังวางแผ่น...';
+  $('srOut').textContent='กำลังคำนวณการวาง + สร้างไฟล์...';
+  var fd=new FormData();
+  fd.append('file',fileObj);
+  fd.append('piece_w_mm',$('srPieceW').value||'40');
+  fd.append('sheet_w_mm',$('srSheetW').value||'600');
+  fd.append('sheet_h_mm',$('srSheetH').value||'1200');
+  fd.append('gap_mm',$('srGap').value||'3');
+  fd.append('margin_mm',$('srMargin').value||'8');
+  fd.append('reg_mode',$('srReg').value||'ccd');
+  fd.append('qty',$('srQty').value||'0');
+  fd.append('white_base',($('srWhite')&&$('srWhite').checked)?'1':'0');
+  fetch((API||'')+'/api/step-repeat',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    btn.disabled=false;btn.textContent=old;
+    if(j.error){$('srOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+    var nm=(lastName||'sheet');
+    // ไฟล์พิมพ์ .ai ทั้งแผ่น (พร้อมพิมพ์ UV)
+    var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download=nm+'_sheet_print.ai';a.click();
+    // ไฟล์ตัด DXF
+    if(j.cut_dxf_base64){var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+      var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=nm+'_sheet_cut.dxf';da.click();}
+    // ไฟล์ตัด SVG
+    if(j.cut_svg){var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([j.cut_svg],{type:'image/svg+xml'}));sa.download=nm+'_sheet_cut.svg';sa.click();}
+    var s=j.summary||{};
+    $('srOut').innerHTML='✅ '+j.cols+'×'+j.rows+' = <b>'+j.per_sheet+' ชิ้น/แผ่น</b>'+(j.rot?' (หมุน 90°)':'')+
+      ' · ชิ้น '+j.piece_w+'×'+j.piece_h+' มม.<br>ออเดอร์ '+($('srQty').value||0)+' ชิ้น → ใช้ <b>'+(s.sheets||0)+' แผ่น</b>'+
+      ' (แผ่นสุดท้าย '+(s.last_sheet||0)+' ชิ้น · ผลิตได้ '+(s.made||0)+' เกิน '+(s.over||0)+')'+
+      '<br>📥 <b>.ai</b> พิมพ์ทั้งแผ่น + <b>.dxf/.svg</b> เลเซอร์ตัด'+((j.reg_mode==='ccd')?' + หมุดกล้อง':' · ชนมุม 0,0');
+    if(j.preview_svg){$('srPrev').innerHTML='<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">'+j.preview_svg+'</div>';}
+  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('srOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
 
 // ---- STL 3D export (Fusion 360 / 3D printer) ----
