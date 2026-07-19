@@ -69,10 +69,12 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "8.4-steprepeat+geombox+design2wall+armmount",
-            "build": "2026-07-19-steprepeat+geobox+design2wall+arm-mount+plate10cm",
+            "version": "9.0-armadjust-telescopic+wireadjust+ledribbon",
+            "build": "2026-07-19-arm-adjustable-telescopic+wire-barlevel+led-ribbon+transformer",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
-            "arm_mount": "on",                               # แขนยึด none/top2/side1/side2 + เพลท 10cm
+            "arm_mount": "on",
+            "mount_frame": "on",  # โครงแขวน + เจาะรู
+            "led_ribbon": "on",   # วางเส้นไฟ LED + คำนวณหม้อแปลง                               # แขนยึด none/top2/side1/side2 + เพลท 10cm
             "design_to_wall": "on",                          # ออกแบบเสร็จ -> ส่งเข้าจำลองผนังทันที
             "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
             "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
@@ -1208,7 +1210,8 @@ def _art_data_uri(path, max_px=1400):
 
 
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
-               mount="none", arm_len_cm=30.0, plate_cm=10.0):
+               mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
+               arm_adjust="fixed", arm_travel_cm=0.0):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -1227,12 +1230,19 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     _aL = max(0.0, float(arm_len_cm)) * 10.0
     _plate = max(1.0, float(plate_cm)) * 10.0
     _armpad = _aL + _plate + fs * 2.2
+    _aside = "left" if str(arm_side).lower() == "left" else "right"
+    # 🖨️ กล่องไฟ 2 หน้า -> โชว์ "หน้า 2 (พิมพ์กลับด้าน/ฟลิป)" คู่กัน (เผื่อพื้นที่ขวา)
+    _is2face = bool(art_href) and ("2 หน้า" in str(rec.get("name", "")))
+    if _is2face:
+        padR += W * 0.66 + fs * 3.0
     if _mount == "top2":
         padT += _armpad
-    elif _mount == "side1":
-        padL += _armpad
-    elif _mount == "side2":
-        padL += _armpad; padR += _armpad
+    elif _mount in ("side1", "side2"):        # แขนยื่นแนวลึก ไปทางผนัง (ซ้าย/ขวา)
+        if _aside == "left":
+            padL += _armpad
+        else:
+            padR += _armpad
+        padT += _armpad * 0.7
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
 
@@ -1324,17 +1334,48 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _cy = min(w[1] for _a, w in specs) - _plate / 2.0
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
-        else:
-            side = [("L", F((b[0], midY)))]
-            if _mount == "side2":
-                side.append(("R", F((b[2], midY))))
-            for s_, a in side:
-                d = -_aL if s_ == "L" else _aL; specs.append((a, (a[0] + d, a[1])))
+        else:                                  # side1/side2 — แขนยื่นไปทางผนัง เลือกซ้าย/ขวาได้ (คู่ขนาน)
+            _ux = (-math.cos(ang)) if _aside == "left" else math.cos(ang)
+            _avx, _avy = _ux * _aL, -math.sin(ang) * _aL
+            _ex = b[0] if _aside == "left" else b[2]
+            if _mount == "side1":
+                atts = [Bk((_ex, midY))]
+            else:                              # side2 = แขนคู่ ขนานกัน (บน + ล่าง)
+                atts = [Bk((_ex, b[1] + H * 0.30)), Bk((_ex, b[1] + H * 0.70))]
+            for a in atts:
+                specs.append((a, (a[0] + _avx, a[1] + _avy)))
+        _adj = str(arm_adjust).lower() == "adjustable"
+
+        def _lerp(pp, qq, t):
+            return (pp[0] + (qq[0] - pp[0]) * t, pp[1] + (qq[1] - pp[1]) * t)
         for a, w in specs:
-            arm_parts.append(_tube(a, w, tw))
+            if _adj:
+                # แขนนอก (outer) + แขนใน (สอดอยู่ข้างใน เลื่อนเข้า-ออกได้)
+                arm_parts.append(_tube(a, _lerp(a, w, 0.60), tw))          # โครงนอก (กว้าง)
+                arm_parts.append(_tube(_lerp(a, w, 0.44), w, tw * 0.58))   # โครงใน (แคบ · เลื่อนได้)
+            else:
+                arm_parts.append(_tube(a, w, tw))
             arm_parts.append(_plate_at(w[0], w[1]))
-        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#475569">Mount arm ~%.0f cm &#183; Plate %.0f&#215;%.0f cm</text>'
-                         % (padL, padT + H + padB - fs * 0.8, fs * 0.82, _aL / 10.0, _plate / 10.0, _plate / 10.0))
+        _lab = ("Adjustable +/-%.0f cm (telescopic)" % float(arm_travel_cm)) if _adj else "Fixed"
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#475569">Mount arm ~%.0f cm &#183; Plate %.0f&#215;%.0f cm &#183; %s</text>'
+                         % (padL, padT + H + padB - fs * 0.8, fs * 0.82, _aL / 10.0, _plate / 10.0, _plate / 10.0, _lab))
+
+    # 🖨️ หน้า 2 (พิมพ์กลับด้าน/ฟลิป) — โชว์คู่กับหน้า 1 สำหรับกล่องไฟ 2 หน้า
+    if _is2face:
+        iw = W * 0.56; ih = H * 0.56
+        ix = padL + W + dvx + fs * 2.0
+        iy = padT + (H - ih) * 0.28
+        cxm = ix + iw / 2.0
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0d9488">&#8644;</text>'
+                         % (padL + W + dvx * 0.5, padT + H * 0.5, fs * 2.0))
+        arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#f8fafc" stroke="%s" stroke-width="%.2f"/>'
+                         % (ix, iy, iw, ih, iw * 0.03, edge, lw))
+        arm_parts.append('<g transform="translate(%.2f,0) scale(-1,1)"><image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="xMidYMid meet"/></g>'
+                         % (2 * ix + iw, art_href, art_href, ix, iy, iw, ih))
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a" text-anchor="middle">Face 2 &#183; &#3614;&#3636;&#3617;&#3614;&#3660;&#3585;&#3621;&#3633;&#3610;&#3604;&#3657;&#3634;&#3609; (flip)</text>'
+                         % (cxm, iy - fs * 0.6, fs * 0.95))
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#64748b" text-anchor="middle">&#3614;&#3636;&#3617;&#3614;&#3660; 2 &#3604;&#3657;&#3634;&#3609; &#183; &#3629;&#3632;&#3588;&#3619;&#3636;&#3621;&#3636;&#3585; / &#3612;&#3657;&#3634; 3P / &#3652;&#3623;&#3609;&#3636;&#3621;</text>'
+                         % (cxm, iy + ih + fs * 1.3, fs * 0.8))
 
     Wt = padL + W + dvx + padR; Ht = padT + H + padB
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
@@ -1506,7 +1547,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     return_depth_cm: float = Form(0.0), trim_width_cm: float = Form(1.0),
                     trim_dir: str = Form("out"), face_color: str = Form(""),
                     side_color: str = Form(""), n_colors: int = Form(6),
-                    arm: str = Form("none"), arm_len_cm: float = Form(30.0)):
+                    arm: str = Form("none"), arm_len_cm: float = Form(30.0),
+                    arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
+                    arm_travel_cm: float = Form(0.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -1601,10 +1644,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if rec.get("face_finish") == "print":       # กล่องไฟล้อมทรง = จบด้วยงานพิมพ์ -> โชว์รูปจริงบนหน้า
                 try: _art = _art_data_uri(inp)
                 except Exception: _art = ""
-            svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=bore_geom,
+            # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
+            _bore = None if rec.get("face_finish") == "print" else bore_geom
+            svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=_bore,
                                face_color=(face_color or None), side_color=(side_color or None),
                                art_href=_art, mount=str(arm or "none"), arm_len_cm=float(arm_len_cm),
-                               plate_cm=10.0)
+                               plate_cm=10.0, arm_side=str(arm_side or "right"),
+                               arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm))
         except Exception:
             svg3d = ""
         # 🔩 ไฟล์ตัดเพลทยึด 10cm (เจาะ 4 รู) — ส่งเข้าเลเซอร์/CNC ทำเพลทจริง
@@ -2203,6 +2249,64 @@ async def step_repeat(file: UploadFile = File(...),
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]},
                             status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/mount-frame")
+async def mount_frame_ep(file: UploadFile = File(...),
+                         real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
+                         bars: int = Form(1), bar_y_cm: float = Form(0.0), gap_cm: float = Form(20.0),
+                         frame_x_cm: float = Form(0.0), standoff_cm: float = Form(5.0),
+                         wire_offset_cm: float = Form(0.0), n_colors: int = Form(6)):
+    """โครงเหล็กแขวนตัวอักษรยกขอบ/ไฟออกหน้า — เจาะรูน็อต Ø3 (2 รู/ตัว/โครง ระดับโครง) + รูสายไฟ Ø5
+       (1 รู/ตัว กลางตัว 1cm เหนือโครง) ลงไฟล์ตัด laser + ภาพมองจากด้านหลัง · โครงปรับ ระดับ/ห่าง/ซ้ายขวา/ระยะหลัง"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import mount_frame as MF
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        r = MF.build(full, bars=int(bars),
+                     bar_y_cm=(None if float(bar_y_cm) <= 0 else float(bar_y_cm)),
+                     gap_cm=float(gap_cm), frame_x_cm=float(frame_x_cm),
+                     standoff_cm=float(standoff_cm), wire_offset_cm=float(wire_offset_cm))
+        if r.get("error"):
+            return JSONResponse({"error": r["error"]}, status_code=400)
+        return {"cut_dxf_base64": r["cut_dxf"], "cut_svg": r["cut_svg"], "back_svg": r["back_svg"],
+                "letters": r["letters"], "bolts": r["bolts"], "wires": r["wires"], "bars": r["bars"],
+                "w_mm": r["w_mm"], "h_mm": r["h_mm"],
+                "note": "ไฟล์ตัดมีรูน็อต Ø3 (ระดับโครง) + รูสายไฟ Ø5 (1cm เหนือโครง) ต่อทุกตัวอักษร"}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/api/led-layout")
+async def led_layout_ep(file: UploadFile = File(...),
+                        real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
+                        pitch_cm: float = Form(6.0), watt_per_m: float = Form(12.0),
+                        volt: float = Form(12.0), spare: float = Form(1.3), n_colors: int = Form(6)):
+    """วางเส้นไฟ LED Ribbon ในตัวงาน (ไฟออกหน้า/หลัง/กล่องไฟ) + คำนวณความยาว/กระแส/หม้อแปลง"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import mount_frame as MF
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        r = MF.led_layout(full, pitch_cm=float(pitch_cm), watt_per_m=float(watt_per_m),
+                          volt=float(volt), spare=float(spare))
+        return {"segments": r["segments"], "total_m": r["total_m"], "watts": r["watts"],
+                "amps": r["amps"], "transformer_w": r["transformer_w"], "pitch_cm": r["pitch_cm"],
+                "preview_svg": r["preview_svg"],
+                "note": "เผื่อหม้อแปลง %d%% · เลือกหม้อแปลงมาตรฐานที่ใหญ่พอ" % int((float(spare) - 1) * 100)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
