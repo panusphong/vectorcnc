@@ -86,6 +86,46 @@ def health():
             "contour_box": "on" if "8" in SIGN_TYPES and SIGN_TYPES.get("8", {}).get("wrap") else "OLD"}
 
 
+def _enhance_image(inp, tmp):
+    """✨ ปรับคุณภาพภาพ (auto·ปลอดภัย): ลด noise เก็บขอบ + ขยายรูปเล็ก + unsharp + พื้นขาวสะอาด
+       ใช้ร่วมกันทั้งตอน vectorize และตอนสร้างไฟล์ .ai · คืน path ไฟล์ใหม่ (ถ้าพลาด คืน inp เดิม)"""
+    try:
+        import cv2 as _cv, numpy as _np
+        im = _cv.imread(inp, _cv.IMREAD_COLOR)
+        if im is None:
+            return inp
+        lng = max(im.shape[:2])
+        # 1) ลด noise คุณภาพสูง เก็บขอบคม (adaptive ตามขนาดภาพ)
+        if lng < 2500:
+            im = _cv.fastNlMeansDenoisingColored(im, None, 6, 6, 7, 21)
+        else:
+            im = _cv.bilateralFilter(im, 7, 50, 50)
+        # 2) ขยายภาพเล็ก/กลาง -> เป้า ~2200px (stepped LANCZOS = คมกว่าการขยายทีเดียว)
+        target = 2200.0
+        if lng < 1800:
+            sc = min(target / lng, 4.0); cur = 1.0
+            while cur * 2 <= sc:
+                im = _cv.resize(im, None, fx=2, fy=2, interpolation=_cv.INTER_LANCZOS4); cur *= 2
+            if sc / cur > 1.02:
+                im = _cv.resize(im, None, fx=sc / cur, fy=sc / cur, interpolation=_cv.INTER_LANCZOS4)
+        # 3) unsharp mask -> ขอบคมชัด รายละเอียดเด้ง
+        _blur = _cv.GaussianBlur(im, (0, 0), 2.0)
+        im = _cv.addWeighted(im, 1.5, _blur, -0.5, 0)
+        # 4) bilateral รอบสอง -> เก็บขอบ ลด noise ที่ unsharp อาจเน้นขึ้น
+        im = _cv.bilateralFilter(im, 7, 55, 55)
+        # 5) พื้นหลังขาวสะอาด (คอนทราสต์เบา) เฉพาะภาพพื้นสว่าง
+        gray = _cv.cvtColor(im, _cv.COLOR_BGR2GRAY)
+        brd = _np.concatenate([gray[0], gray[-1], gray[:, 0], gray[:, -1]])
+        bgv = float(_np.median(brd))
+        if bgv >= 150:
+            lo, hi = float(_np.percentile(gray, 4)), max(bgv - 4, 60.0)
+            im = _np.clip((im.astype(_np.float32) - lo) * (255.0 / max(20.0, hi - lo)), 0, 255).astype(_np.uint8)
+        enh = os.path.join(tmp, "enhanced.png"); _cv.imwrite(enh, im)
+        return enh
+    except Exception:
+        return inp
+
+
 @app.post("/api/vectorize")
 async def vectorize(
     file: UploadFile = File(...),
@@ -121,25 +161,7 @@ async def vectorize(
     _isimg = str(inp).lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"))
     # ---- ✨ ปรับคุณภาพภาพก่อนแปลง (auto·ปลอดภัย): ขยายรูปเล็ก + ลด noise เก็บขอบ + คอนทราสต์เบา ----
     if _isimg and int(enhance):
-        try:
-            import cv2 as _cv, numpy as _np
-            im = _cv.imread(inp, _cv.IMREAD_COLOR)
-            if im is not None:
-                lng = max(im.shape[:2])
-                im = _cv.medianBlur(im, 3)                       # ลบ speckle/จุด noise (สำคัญกับรูปเบลอ/JPEG)
-                if lng < 1000:                                   # รูปเล็ก -> ขยายคมด้วย LANCZOS
-                    sc = 1500.0 / lng
-                    im = _cv.resize(im, None, fx=sc, fy=sc, interpolation=_cv.INTER_LANCZOS4)
-                im = _cv.bilateralFilter(im, 9, 75, 75)          # ลด noise เก็บขอบคม
-                gray = _cv.cvtColor(im, _cv.COLOR_BGR2GRAY)      # ปรับพื้นหลังให้ขาวสะอาด (คอนทราสต์เบา)
-                brd = _np.concatenate([gray[0], gray[-1], gray[:, 0], gray[:, -1]])
-                bgv = float(_np.median(brd))
-                if bgv >= 150:
-                    lo, hi = float(_np.percentile(gray, 4)), max(bgv - 4, 60.0)
-                    im = _np.clip((im.astype(_np.float32) - lo) * (255.0 / max(20.0, hi - lo)), 0, 255).astype(_np.uint8)
-                enh = os.path.join(tmp, "enhanced.png"); _cv.imwrite(enh, im); inp = enh
-        except Exception:
-            pass
+        inp = _enhance_image(inp, tmp)
     # ---- raster + "ตัดชิ้น" -> vtracer (เส้นตรง=line, โค้ง=spline, มุมคม) คุณภาพเวกเตอร์มืออาชีพ ----
     if _isimg and str(mode).lower() == "cutout":
         try:
