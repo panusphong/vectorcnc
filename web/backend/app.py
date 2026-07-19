@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.10-neon-single-double",
-            "build": "2026-07-19-neonflex-single-double-line+12colors+acrylic-backing+mount-wire-holes+cnc-groove",
+            "version": "9.14-geom3d-label-fix",
+            "build": "2026-07-20-fix-geom3d-rec-label-keyerror+jobsheet-frame+wall-frame+savejob",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1571,10 +1571,12 @@ def _layerset_cut_svg(out_layers, wall_strips):
             % (Wt, Ht, Wt, Ht, "".join(parts)))
 
 
-def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href=""):
-    """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย"""
+def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0):
+    """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย
+       frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง) เหนือป้าย (เฉพาะป้ายมีโครง)"""
     b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
     pad = S * 0.08
+    ftop = max(0.0, float(frame_top_cm)) * 10.0
     polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
 
     def d(poly):
@@ -1583,7 +1585,7 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href=""):
             pts = list(r.coords)
             if not pts:
                 continue
-            s += "M " + " L ".join("%.2f %.2f" % (x - b[0] + pad, y - b[1] + pad) for (x, y) in pts) + " Z "
+            s += "M " + " L ".join("%.2f %.2f" % (x - b[0] + pad, y - b[1] + pad + ftop) for (x, y) in pts) + " Z "
         return s
 
     def P(g):
@@ -1595,6 +1597,14 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href=""):
     parts = ['<defs><filter id="fsh" x="-30%%" y="-30%%" width="160%%" height="160%%">'
              '<feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.32"/></filter></defs>'
              % (S * 0.022, S * 0.02)]
+    if ftop > 0:                                       # 🔩 โครงเหล็กแขวน (หน้าตรง) — คานเพดาน + แขน 2 ข้าง (หลังป้าย)
+        tw = max(8.0, S * 0.018); steel = "#8b93a0"; steelD = "#5b626d"; surf = "#cbd5e1"; plateC = "#c6ccd6"
+        cyb = pad * 0.5; stop = pad + ftop
+        parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (pad * 0.4, cyb - tw * 0.4, W + 2 * pad - pad * 0.8, tw * 0.8, surf, steelD, lw))
+        for fx in (0.30, 0.70):
+            ax = pad + fx * W
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw / 2, cyb, tw, stop - cyb + tw, steel, steelD, lw))
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw * 1.1, cyb - tw * 0.9, tw * 2.2, tw * 0.9, plateC, steelD, lw))
     parts.append('<g filter="url(#fsh)">')
     if art_href:                                       # หน้าพิมพ์: คิ้ว 1cm + พื้นขาว + artwork (ไม่ล้น)
         _ik = full.buffer(-10.0); _ia = full.buffer(-14.0)
@@ -1623,7 +1633,7 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href=""):
             for pg in P(inner_bore):
                 parts.append('<path d="%s" fill="#eef1f5" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw * 0.8))
     parts.append('</g>')
-    Wt = W + 2 * pad; Ht = H + 2 * pad
+    Wt = W + 2 * pad; Ht = H + 2 * pad + ftop
     return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
             'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
 
@@ -1875,7 +1885,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
                     arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
-                    neon_line: str = Form("double")):
+                    neon_line: str = Form("double"),
+                    frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
+                    frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
+                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -2100,8 +2113,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _neon:
                 svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
+                _ftop = 22.0 if rec.get("mount_frame") else 0.0   # เฉพาะป้ายมีโครงแขวน -> ส่งโครงไปด้วย
                 svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
-                                           face_color=(face_color or None), art_href=_art)
+                                           face_color=(face_color or None), art_href=_art, frame_top_cm=_ftop)
         except Exception:
             svg_face = ""
         # 🔩 ป้ายอักษร + โครงแขวน -> ภาพด้านหลังมีโครงยึด (แยกเป็นอีกภาพ พร้อมจับระยะ)
@@ -2109,7 +2123,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         if rec.get("mount_frame"):
             try:
                 from vectorcnc import mount_frame as MF
-                _mf = MF.build(full, bars=1, standoff_cm=5.0)
+                _mf = MF.build(full, bars=max(1, int(frame_bars)),
+                               bar_y_cm=(None if float(frame_level_cm) < 0 else float(frame_level_cm)),
+                               gap_cm=float(frame_gap_cm), frame_x_cm=float(frame_x_cm),
+                               standoff_cm=float(frame_standoff_cm), wire_offset_cm=float(wire_offset_cm))
                 if not _mf.get("error"):
                     svg_back = _mf.get("back_svg", "")
                     frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0),
@@ -2137,6 +2154,177 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "svg_face": svg_face,
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info):
+    """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
+    def esc(t):
+        return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    led = led or {}
+    kpis = ""
+    if led:
+        for n, l in [("%.2f ม." % led.get("total_m", 0), "ความยาว"), ("%.0f W" % led.get("watts", 0), "กำลังไฟ"),
+                     ("%.1f A" % led.get("amps", 0), "กระแส"), ("%d W" % led.get("transformer_w", 0), "หม้อแปลง")]:
+            kpis += '<div class="b"><div class="n">%s</div><div class="l">%s</div></div>' % (n, l)
+    bom = "".join('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                  % (esc(a), esc(b), esc(c), esc(d)) for (a, b, c, d) in bom_rows)
+    frame_card = ""
+    if back_svg:
+        fi = frame_info or {}
+        chips = ('<span class="chip">ตัวอักษร %s ชิ้น</span><span class="chip"><span class="dot" style="background:#2563eb"></span>รูน็อต &#216;3 · %s รู</span>'
+                 '<span class="chip"><span class="dot" style="background:#e11d48"></span>รูสายไฟ &#216;5 · %s รู</span><span class="chip">โครงเหล็กกล่อง 1 นิ้ว · standoff 5 ซม.</span>'
+                 % (fi.get("letters", "-"), fi.get("bolts", "-"), fi.get("wires", "-")))
+        frame_card = ('<div class="card"><div class="ct"><span class="no">2</span>โครงเหล็กแขวนป้าย (มุมมองด้านหลัง)</div>'
+                      '<div class="cbody"><div class="imgwrap">%s</div><div style="margin-top:8px">%s</div></div></div>' % (back_svg, chips))
+    led_card = ""
+    if led:
+        led_card = ('<div class="card"><div class="ct"><span class="no">3</span>การวางไฟ LED + คำนวณกำลังไฟ</div>'
+                    '<div class="cbody"><div class="imgwrap dark">%s</div><div class="kpi">%s</div>'
+                    '<table><tr><th>รายการ</th><th>สเปค</th></tr>'
+                    '<tr><td>รุ่นไฟ LED</td><td class="r">LED Module 3030 · 12V</td></tr>'
+                    '<tr><td>สีไฟ</td><td class="r">%s</td></tr>'
+                    '<tr><td>ระยะห่างแถว (pitch)</td><td class="r">%s ซม.</td></tr>'
+                    '<tr><td>สายไฟเมน</td><td class="r">VCT 2&#215;1.5 mm&#178;</td></tr>'
+                    '<tr><td>หม้อแปลง</td><td class="r">Switching 12V %d W</td></tr></table></div></div>'
+                    % (led.get("preview_svg", ""), kpis, meta.get("led_color", "Warm White 3000K"),
+                       led.get("pitch_cm", 6), led.get("transformer_w", 0)))
+    tmpl = open(_JOB_SHEET_TMPL, "r", encoding="utf-8").read() if False else _JOB_SHEET_CSS
+    html = _JOB_SHEET_CSS
+    html = html.replace("__TITLE__", esc(type_name))
+    for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
+                 "__CUST__": esc(meta.get("customer", "-")), "__TYPE__": esc(type_name), "__TYPEEN__": esc(type_name_en),
+                 "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
+                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card, "__BOM__": bom}.items():
+        html = html.replace(k, str(v))
+    return html
+
+
+_JOB_SHEET_CSS = '''<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ใบสั่งผลิต · __TITLE__</title>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Prompt,sans-serif;background:#eef1f6;color:#1e293b;padding:18px;font-size:13px}
+.sheet{max-width:1180px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(30,41,59,.12)}
+.hd{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.hd h1{font-size:20px;font-weight:800}.hd .sub{font-size:12px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:12px;line-height:1.7}
+.badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:12px}
+.info{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e2e8f0}
+.info .c{background:#f8fafc;padding:11px 16px}.info .k{font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:14px;font-weight:700;color:#0f172a;margin-top:2px}
+.body{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff}.card.full{grid-column:1/-1}
+.ct{display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:700;font-size:13.5px;border-bottom:1px solid #eef2f7}
+.ct .no{width:22px;height:22px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.cbody{padding:12px 14px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:8px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:360px}.imgwrap.dark{background:#0f1522}
+table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 9px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:11px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:9px;text-align:center}.kpi .b .n{font-size:17px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:10px;color:#64748b}
+.chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11.5px;margin:2px 3px 2px 0}.dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+.site{border:2px dashed #cbd5e1;border-radius:10px;height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc}
+.foot{border-top:2px solid #e2e8f0;padding:16px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:32px 12px 6px}.sign .r{font-size:11px;color:#64748b}
+.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:9px 12px;font-size:11.5px;margin:0 24px 16px}
+.pbtn{position:fixed;top:14px;right:14px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+@media print{body{background:#fff;padding:0}.sheet{box-shadow:none}.pbtn{display:none}}
+</style></head><body>
+<button class="pbtn" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>
+<div class="sheet">
+  <div class="hd"><div><h1>ใบสั่งผลิตป้าย / แบบยืนยันลูกค้า</h1><div class="sub">Production Spec Sheet &amp; Customer Confirmation · __TYPEEN__</div></div>
+    <div class="meta"><span class="badge">DRAFT · รออนุมัติ</span><br>เลขที่งาน <b>__JOBNO__</b><br>วันที่ <b>__DATE__</b></div></div>
+  <div class="info">
+    <div class="c"><div class="k">ลูกค้า</div><div class="v">__CUST__</div></div>
+    <div class="c"><div class="k">ประเภทป้าย</div><div class="v">__TYPE__</div></div>
+    <div class="c"><div class="k">ขนาดรวม</div><div class="v">__SIZE__</div></div>
+    <div class="c"><div class="k">เซลล์ผู้ดูแล</div><div class="v">__SALES__</div></div></div>
+  <div class="body">
+    <div class="card full"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+    __FRAME__
+    __LED__
+    <div class="card full"><div class="ct"><span class="no">4</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
+    <div class="card full"><div class="ct"><span class="no">5</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody"><div class="site"><div style="font-size:30px">📷</div><div>แนบภาพหน้างาน + ทำเครื่องหมายจุดติดตั้ง</div></div></div></div>
+  </div>
+  <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
+  <div class="foot"><div class="sign"><div class="line"></div><div class="r">ผู้ออกแบบ / เซลล์</div></div><div class="sign"><div class="line"></div><div class="r">ผู้อนุมัติผลิต (โรงงาน)</div></div><div class="sign"><div class="line"></div><div class="r">ลูกค้าอนุมัติแบบ · วันที่</div></div></div>
+</div></body></html>'''
+
+
+@app.post("/api/job-sheet")
+async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
+                    real_width_mm: float = Form(600.0), customer: str = Form(""),
+                    job_no: str = Form(""), sales: str = Form(""),
+                    return_depth_cm: float = Form(0.0), n_colors: int = Form(6),
+                    arm: str = Form("none"), arm_len_cm: float = Form(30.0),
+                    led_pitch_cm: float = Form(6.0), led_watt_per_m: float = Form(12.0),
+                    led_volt: float = Form(12.0), led_color: str = Form("Warm White 3000K"),
+                    frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
+                    frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
+                    frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0)):
+    """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
+    import datetime as _dt
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        rec = SIGN_TYPES.get(str(sign_type))
+        if not rec:
+            return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
+        full = _letter_full_mm(inp, float(real_width_mm), 0.0, int(n_colors))
+        if rec.get("wrap"):
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+        elif rec.get("box_shape"):
+            full = _geom_box(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0)
+        b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
+        # perspective 3D
+        fo = None; bore = None
+        for L in rec["layers"]:
+            if L.get("kind") == "frame":
+                fo = _mbuf(full, float(L["off"]) + 10.0); bore = _mbuf(full, float(L["off"])); break
+        body3d = fo if (fo is not None and not fo.is_empty) else full
+        _art = _art_data_uri(inp) if rec.get("face_finish") == "print" else ""
+        _bore = None if rec.get("face_finish") == "print" else bore
+        try:
+            persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
+                               mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0)
+        except Exception:
+            persp = ""
+        # frame back (type ที่มีโครงแขวน)
+        back_svg = ""; frame_info = {}
+        if rec.get("mount_frame"):
+            try:
+                from vectorcnc import mount_frame as MF
+                _mf = MF.build(full, bars=max(1, int(frame_bars)),
+                               bar_y_cm=(None if float(frame_level_cm) < 0 else float(frame_level_cm)),
+                               gap_cm=float(frame_gap_cm), frame_x_cm=float(frame_x_cm),
+                               standoff_cm=float(frame_standoff_cm), wire_offset_cm=float(wire_offset_cm))
+                if not _mf.get("error"):
+                    back_svg = _mf.get("back_svg", "")
+                    frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0), "wires": _mf.get("wires", 0)}
+            except Exception:
+                back_svg = ""
+        # LED layout
+        led = None
+        try:
+            from vectorcnc import mount_frame as MF
+            led = MF.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=float(led_watt_per_m), volt=float(led_volt))
+        except Exception:
+            led = None
+        # BOM จากชั้นวัสดุ + LED + หม้อแปลง
+        bom = []
+        for L in rec["layers"]:
+            bom.append((_en_layer(L["name"]) if False else L["name"], "ตามสเปควัสดุ",
+                        ("%+.1f ซม." % (float(L["off"]) / 10.0)) if abs(float(L["off"])) > 1e-6 else "เต็มทรง", ""))
+        if led:
+            bom.append(("ไฟ LED", "LED Module 3030 12V IP65", "%.2f ม. · %.0f W" % (led["total_m"], led["watts"]), led_color))
+            bom.append(("หม้อแปลง", "Switching PSU", "12V %d W" % led["transformer_w"], "มี spare ~30%"))
+            bom.append(("สายไฟเมน", "VCT 2×1.5 mm²", "ทนกระแส ~15A", ""))
+        if rec.get("mount_frame"):
+            bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff 5 ซม.", "เจาะรูน็อต/สายไฟ"))
+        meta = {"customer": customer or "-", "job_no": job_no or ("JOB-%s" % _dt.datetime.now().strftime("%Y%m%d-%H%M")),
+                "sales": sales or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color}
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info)
+        return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
+                "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
@@ -3657,7 +3845,7 @@ async def api_brief(request: Request):
     ready = (len(miss) == 0)
 
     st = str(vals.get("sign_type", "") or "")
-    stn = SIGN_TYPES.get(st, {}).get("label", "")
+    stn = SIGN_TYPES.get(st, {}).get("name", "")
     lines = []
     lines.append("JOB BRIEF — %s" % (vals.get("customer") or "-"))
     lines.append("=" * 46)
@@ -4147,8 +4335,8 @@ async def api_geom3d(file: UploadFile = File(...),
                "points": _cnt(gs)}
         if rec:
             res["layers"] = layers_out
-            res["type_name"] = rec["label"]
-            res["type_en"] = _en_type(rec["label"])
+            res["type_name"] = rec["name"]
+            res["type_en"] = _en_type(rec["name"])
             res["depth_cm"] = rec.get("depth_cm", 5)
             res["has_trim"] = any(L.get("kind") == "frame" for L in layers_out)
         return res
