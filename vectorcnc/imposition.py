@@ -165,17 +165,20 @@ def build_cut_svg(plan, pos, sheet_w, sheet_h, reg_mode="ccd", marks=None):
 def preview_svg(plan, pos, sheet_w, sheet_h, reg_mode="ccd", marks=None, art_href=""):
     """พรีวิวทั้งแผ่น — กรอบชิ้น + รูปงาน (ถ้ามี) + หมุด · ไว้โชว์ใน UI"""
     W = 900.0; sc = W / sheet_w; H = sheet_h * sc
+    pw, ph = plan["pw"], plan["ph"]
+    rw, rh = pw * sc, ph * sc
     p = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
          'style="width:100%%;height:auto;display:block" viewBox="0 0 %.0f %.0f">' % (W, H)]
+    # ฝังรูปงาน "ครั้งเดียว" ใน <defs> แล้วอ้างอิงซ้ำด้วย <use> (กันไฟล์บวมเป็น GB)
+    if art_href:
+        p.append('<defs><image id="pcimg" href="%s" xlink:href="%s" width="%.2f" height="%.2f" '
+                 'preserveAspectRatio="xMidYMid meet"/></defs>' % (art_href, art_href, rw, rh))
     p.append('<rect x="0" y="0" width="%.1f" height="%.1f" fill="#fff" stroke="#334155" stroke-width="1.5"/>'
              % (W, H))
-    pw, ph = plan["pw"], plan["ph"]
     for (x, y) in pos:
-        rx, ry, rw, rh = x * sc, y * sc, pw * sc, ph * sc
+        rx, ry = x * sc, y * sc
         if art_href:
-            p.append('<image href="%s" xlink:href="%s" x="%.1f" y="%.1f" width="%.1f" height="%.1f" '
-                     'preserveAspectRatio="xMidYMid meet" opacity="0.95"/>'
-                     % (art_href, art_href, rx, ry, rw, rh))
+            p.append('<use href="#pcimg" xlink:href="#pcimg" x="%.1f" y="%.1f"/>' % (rx, ry))
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" '
                  'stroke="#ec008c" stroke-width="0.7"/>' % (rx, ry, rw, rh))
     if reg_mode == "ccd":
