@@ -298,7 +298,18 @@ select.numin{cursor:pointer}
             </select>
             <div style="width:96px"><input class="numin" id="mainArmLen" type="number" value="30" min="10" max="100" title="ความยาวแขน (ซม.)" style="padding:6px;width:100%"></div>
           </div>
-          <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · ปรับความยาวแขนได้ (ซม.) — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
+          <select class="numin" id="mainArmSide" style="padding:6px;margin-top:5px;width:100%">
+            <option value="right">↗ แขนอยู่ด้านขวา</option>
+            <option value="left">↖ แขนอยู่ด้านซ้าย</option>
+          </select>
+          <div style="display:flex;gap:6px;margin-top:5px">
+            <select class="numin" id="mainArmAdjust" style="flex:1;padding:6px">
+              <option value="fixed">แขนตายตัว (ปรับไม่ได้)</option>
+              <option value="adjustable">แขนปรับได้ (เลื่อนสอดในโครงนอก)</option>
+            </select>
+            <div style="width:92px"><input class="numin" id="mainArmTravel" type="number" value="10" min="0" title="ระยะเลื่อน ±ซม." style="padding:6px;width:100%"></div>
+          </div>
+          <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · เลือกซ้าย/ขวา · <b>ปรับได้</b> = โครงในเลื่อนขึ้น-ลง ±ซม. — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
           <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
             <button type="button" class="chip on" data-d="0" data-i18n="chip.auto">อัตโนมัติ</button>
@@ -407,6 +418,44 @@ select.numin{cursor:pointer}
             <button class="btn" id="srGo" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border:none;font-weight:700">🏭 สร้างไฟล์ผลิตซ้ำ (.ai + ตัด)</button>
             <div id="srOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
             <div id="srPrev" style="margin-top:6px"></div>
+          </div>
+
+          <!-- 🔩 โครงแขวนตัวอักษร + เจาะรูยึด/สายไฟ -->
+          <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
+            <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px">🔩 โครงแขวนตัวอักษร (เจาะรูยึด + สายไฟ)</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">ตัวอักษรยกขอบ/ไฟออกหน้า → เจาะ <b>รูน็อต Ø3</b> (ระดับโครง) + <b>รูสายไฟ Ø5</b> (1cm เหนือโครง) ต่อทุกตัว ลงไฟล์ตัด + ดูจากด้านหลัง</div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">จำนวนโครงขวาง</label><select class="numin" id="mfBars" style="padding:6px;width:100%"><option value="1">1 เส้น</option><option value="2">2 เส้น (บน-ล่าง)</option></select></div>
+              <div style="flex:1"><label class="cslab">ระยะห่างโครง (ซม.)</label><input class="numin" id="mfGap" type="number" value="20" min="5" style="padding:6px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">ระดับโครงจากล่าง (ซม.·0=อัตโนมัติ)</label><input class="numin" id="mfBarY" type="number" value="0" min="0" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">เลื่อนซ้าย-ขวา (ซม.)</label><input class="numin" id="mfX" type="number" value="0" style="padding:6px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">ระยะห่างจากหลังป้าย (ซม.)</label><input class="numin" id="mfStand" type="number" value="5" min="0" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">ขยับรูสายไฟ ขึ้น (ซม.·0=ระดับโครง)</label><input class="numin" id="mfWire" type="number" value="0" step="0.5" style="padding:6px;width:100%"></div>
+            </div>
+            <button class="btn" id="mfGo" style="width:100%;margin-top:4px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;font-weight:700">🔩 สร้างไฟล์ตัดเจาะรู + ภาพหลัง</button>
+            <div id="mfOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+            <div id="mfPrev" style="margin-top:6px"></div>
+          </div>
+
+          <!-- 💡 LED Ribbon — วางเส้นไฟ + คำนวณหม้อแปลง -->
+          <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
+            <div style="font-size:12px;font-weight:700;color:#d97706;margin-bottom:4px">💡 เส้นไฟ LED Ribbon + คำนวณหม้อแปลง</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px">ไฟออกหน้า/หลัง/กล่องไฟ → วางเส้นไฟในตัวงาน + คำนวณ <b>ความยาว · กระแส · หม้อแปลง</b> ที่ต้องใช้</div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">ระยะเว้นเส้นไฟ (ซม.)</label><input class="numin" id="ledPitch" type="number" value="6" min="2" step="0.5" style="padding:6px;width:100%"></div>
+              <div style="flex:1"><label class="cslab">วัตต์/เมตร (W/m)</label><input class="numin" id="ledWpm" type="number" value="12" min="1" step="0.5" style="padding:6px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <div style="flex:1"><label class="cslab">แรงดัน (V)</label><select class="numin" id="ledVolt" style="padding:6px;width:100%"><option value="12">12V</option><option value="24">24V</option></select></div>
+              <div style="flex:1"><label class="cslab">เผื่อหม้อแปลง (×)</label><input class="numin" id="ledSpare" type="number" value="1.3" min="1" step="0.1" style="padding:6px;width:100%"></div>
+            </div>
+            <button class="btn" id="ledGo" style="width:100%;margin-top:4px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-weight:700">💡 วางเส้นไฟ + คำนวณหม้อแปลง</button>
+            <div id="ledOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
+            <div id="ledPrev" style="margin-top:6px"></div>
             <script>
             (function(){
               var HINT={
@@ -1341,6 +1390,7 @@ select.numin{cursor:pointer}
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
+      <button class="btn" id="wDlAi" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;font-weight:700">⬇ บันทึกเป็น .ai (ขนาดจริง · พร้อมสั่งผลิต)</button>
       <button class="btn" id="wOpen3D" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🧊 ดูแบบ 3D · หมุนรอบตัว</button>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn" id="wSaveJob" style="flex:1;background:#0ea5e9;color:#fff;border:none;font-weight:700">💾 บันทึกงาน</button>
@@ -1576,12 +1626,16 @@ function $(id){return document.getElementById(id);}
     var cv=q('v3dCanvas'); if(!cv) return false;
     renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true,preserveDrawingBuffer:true});
     renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+    // 🎨 สีถูกต้อง + โทนแบบฟิล์ม = ดูสมจริงขึ้น (กันพังด้วย try/catch เผื่อเวอร์ชัน THREE ต่าง)
+    try{ renderer.outputEncoding=THREE.sRGBEncoding; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.12; }catch(_e){}
     scene=new THREE.Scene();
     camera=new THREE.PerspectiveCamera(32,1,0.01,100);
-    scene.add(new THREE.AmbientLight(0xffffff,0.72));
-    var d1=new THREE.DirectionalLight(0xffffff,0.95); d1.position.set(2.5,3.5,4.5); scene.add(d1);
-    var d2=new THREE.DirectionalLight(0xcfe0ff,0.40); d2.position.set(-3.5,1.0,-2.5); scene.add(d2);
-    var d3=new THREE.DirectionalLight(0xffffff,0.25); d3.position.set(0,-2.5,1.5); scene.add(d3);
+    // แสงสตูดิโอ: ฟ้า-พื้น (hemisphere) + key อุ่น + fill เย็น + rim หลัง = มีมิติ ไม่แบน
+    try{ scene.add(new THREE.HemisphereLight(0xf4f8ff,0x2b2f38,0.55)); }catch(_e){}
+    scene.add(new THREE.AmbientLight(0xffffff,0.40));
+    var d1=new THREE.DirectionalLight(0xfff3e2,1.10); d1.position.set(2.5,3.5,4.5); scene.add(d1);   // key อุ่น
+    var d2=new THREE.DirectionalLight(0xcfe0ff,0.48); d2.position.set(-3.5,1.0,-2.5); scene.add(d2);  // fill เย็น
+    var d3=new THREE.DirectionalLight(0xffffff,0.32); d3.position.set(-1.0,-2.0,-3.0); scene.add(d3);  // rim ด้านหลัง
     group=new THREE.Group(); scene.add(group);
     haloGrp=new THREE.Group(); scene.add(haloGrp);
     cv.style.touchAction='none';
@@ -1640,7 +1694,7 @@ function $(id){return document.getElementById(id);}
     sctx.putImageData(sim,0,0);
     return {front:fc, sil:sc, hasAlpha:hasAlpha, raw:c, W:W, H:H};
   }
-  function texFrom(canvas){ var t=new THREE.CanvasTexture(canvas); t.anisotropy=8; t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; t.needsUpdate=true; return t; }
+  function texFrom(canvas){ var t=new THREE.CanvasTexture(canvas); t.anisotropy=8; t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; try{t.encoding=THREE.sRGBEncoding;}catch(_e){} t.needsUpdate=true; return t; }
   function build(img){
     if(!initOnce()) return;
     clearGroups();
@@ -1652,8 +1706,8 @@ function $(id){return document.getElementById(id);}
     if(curStyle==='panel'){
       var g=new THREE.BoxGeometry(W,H,depth);
       var tex=texFrom(cans.raw||cans.front);
-      var side=new THREE.MeshStandardMaterial({color:0xcfd6df,roughness:0.35,metalness:0.35});
-      var front=new THREE.MeshStandardMaterial({map:tex,roughness:0.5,metalness:0.08});
+      var side=new THREE.MeshStandardMaterial({color:0xd4dae2,roughness:0.34,metalness:0.30});
+      var front=new THREE.MeshStandardMaterial({map:tex,roughness:0.44,metalness:0.06});
       var back=new THREE.MeshStandardMaterial({color:0xeef1f5,roughness:0.7,metalness:0.05});
       var mats=[side,side,side,side,front,back];
       group.add(new THREE.Mesh(g,mats));
@@ -4022,6 +4076,8 @@ $('goLayer').onclick=function(){
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('real_height_mm','0');fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
+  fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
+  fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
@@ -4080,19 +4136,23 @@ $('goLayer').onclick=function(){
       if(!fileObj){alert('ไม่พบภาพแบบ');return;}
       var rd=new FileReader();
       rd.onload=function(e){
-        var im=new Image();
-        im.onload=function(){
-          var mx=1400,scv=Math.min(1,mx/Math.max(im.width,im.height));
-          var cv=document.createElement('canvas');cv.width=Math.round(im.width*scv);cv.height=Math.round(im.height*scv);
-          cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
-          try{
-            localStorage.setItem('vc_wall_handoff',JSON.stringify({
-              img:cv.toDataURL('image/png'),name:(lastName||'design')+'_'+(j.type_name||t),
-              width_mm:(+$('realW').value||600),type_name:(j.type_name||''),ts:Date.now()}));
-          }catch(err){alert('ภาพใหญ่เกินไปสำหรับส่งต่อ — ลองลดขนาดภาพก่อน');return;}
-          location.href='/measure'+(location.search||'');   // คง ?u= ของ CRM Hub
+        // 🖼️ เปิด "จำลองป้ายบนผนัง (v70)" ในหน้าเดียวกัน + โหลดแบบเข้าไปเลย
+        var _open=function(){
+          try{ if($('wallOverlay'))$('wallOverlay').classList.add('show'); }catch(_e){}
+          try{ if(typeof wallInitSwatch==='function')wallInitSwatch(); }catch(_e){}
+          // โหมดออกแบบ (วาง logo)
+          try{ WMODE='design';
+            var tabs=document.querySelectorAll('#wModeTabs .chip');
+            for(var i=0;i<tabs.length;i++)tabs[i].classList.toggle('on',tabs[i].getAttribute('data-wm')==='design');
+            if($('wDsgnHint'))$('wDsgnHint').style.display='block'; if($('wMeasHint'))$('wMeasHint').style.display='none';
+          }catch(_e){}
+          if(typeof _wallLoad==='function'){ _wallLoad(e.target.result,(lastName||'design')+' (จากออกแบบ)'); }
+          else { var im=new Image(); im.onload=function(){ window.wallImg=im; try{wallDraw();}catch(_x){} }; im.src=e.target.result; }
+          try{ vcLogSim && vcLogSim('จำลองผนัง (จากออกแบบ)'); }catch(_e){}
         };
-        im.src=e.target.result;
+        // เช็คสิทธิ์เหมือนปุ่มเมนู (โหลดตารางราคา) แล้วเปิด
+        if(typeof loadPriceCatalog==='function'){ loadPriceCatalog(function(ok){ if(!ok){ alert('🔒 เมนูจำลองผนัง/ประเมินราคา เปิดเฉพาะทีมงานภายใน'); return; } _open(); }); }
+        else _open();
       };
       rd.readAsDataURL(fileObj);
     };
@@ -4176,6 +4236,47 @@ $('srGo').onclick=function(){
       '<br>📥 <b>.ai</b> พิมพ์ทั้งแผ่น + <b>.dxf/.svg</b> เลเซอร์ตัด'+((j.reg_mode==='ccd')?' + หมุดกล้อง':' · ชนมุม 0,0');
     if(j.preview_svg){$('srPrev').innerHTML='<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">'+j.preview_svg+'</div>';}
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('srOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+};
+
+// ==================== 🔩 โครงแขวนตัวอักษร + เจาะรูยึด/สายไฟ ====================
+if($('mfGo'))$('mfGo').onclick=function(){
+  if(!fileObj){alert('อัปโหลดภาพตัวอักษรก่อน');return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน');$('realW').focus();return;}
+  var btn=$('mfGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังคำนวณรูเจาะ...';
+  $('mfOut').textContent='กำลังแยกตัวอักษร + วางโครง + เจาะรู...';
+  var fd=new FormData();
+  fd.append('file',fileObj);fd.append('real_width_mm',$('realW').value||'600');
+  fd.append('bars',($('mfBars')&&$('mfBars').value)||'1');fd.append('gap_cm',($('mfGap')&&$('mfGap').value)||'20');
+  fd.append('bar_y_cm',($('mfBarY')&&$('mfBarY').value)||'0');fd.append('frame_x_cm',($('mfX')&&$('mfX').value)||'0');
+  fd.append('standoff_cm',($('mfStand')&&$('mfStand').value)||'5');fd.append('wire_offset_cm',($('mfWire')&&$('mfWire').value)||'0');
+  fetch((API||'')+'/api/mount-frame',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    btn.disabled=false;btn.textContent=old;
+    if(j.error){$('mfOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+    var nm=(lastName||'letters');
+    if(j.cut_dxf_base64){var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+      var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=nm+'_frame_cut.dxf';da.click();}
+    if(j.cut_svg){var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([j.cut_svg],{type:'image/svg+xml'}));sa.download=nm+'_frame_cut.svg';sa.click();}
+    $('mfOut').innerHTML='✅ '+j.letters+' ตัวอักษร · โครง '+j.bars+' เส้น · รูน็อต Ø3 <b>'+j.bolts+' รู</b> · รูสายไฟ Ø5 <b>'+j.wires+' รู</b><br>📥 ไฟล์ตัด DXF/SVG (เลเยอร์ CutContour / BoltHole / WireHole) — รูอยู่ในไฟล์ตัดตั้งแต่แรก';
+    if(j.back_svg){$('mfPrev').innerHTML='<div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:3px">มุมมองด้านหลัง (โครงยึด)</div><div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">'+j.back_svg+'</div>';}
+  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('mfOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+};
+
+// ==================== 💡 LED Ribbon + คำนวณหม้อแปลง ====================
+if($('ledGo'))$('ledGo').onclick=function(){
+  if(!fileObj){alert('อัปโหลดภาพก่อน');return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน');$('realW').focus();return;}
+  var btn=$('ledGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังวางเส้นไฟ...';
+  $('ledOut').textContent='กำลังวางเส้นไฟ + คำนวณกระแส/หม้อแปลง...';
+  var fd=new FormData();
+  fd.append('file',fileObj);fd.append('real_width_mm',$('realW').value||'600');
+  fd.append('pitch_cm',($('ledPitch')&&$('ledPitch').value)||'6');fd.append('watt_per_m',($('ledWpm')&&$('ledWpm').value)||'12');
+  fd.append('volt',($('ledVolt')&&$('ledVolt').value)||'12');fd.append('spare',($('ledSpare')&&$('ledSpare').value)||'1.3');
+  fetch((API||'')+'/api/led-layout',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    btn.disabled=false;btn.textContent=old;
+    if(j.error){$('ledOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+    $('ledOut').innerHTML='✅ เส้นไฟ '+j.segments+' เส้น · ความยาวรวม <b>'+j.total_m+' ม.</b> · <b>'+j.watts+' W</b> · '+j.amps+' A (@'+(($('ledVolt')&&$('ledVolt').value)||12)+'V)<br>🔌 หม้อแปลงแนะนำ: <b style="color:#d97706">'+j.transformer_w+' W</b>'+(j.note?(' · '+j.note):'');
+    if(j.preview_svg){$('ledPrev').innerHTML='<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">'+j.preview_svg+'</div>';}
+  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('ledOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
 
 // ---- STL 3D export (Fusion 360 / 3D printer) ----
@@ -5145,6 +5246,33 @@ function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   return out;
 }
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
+// ⬇ บันทึกเป็น .ai ขนาดจริง (พร้อมสั่งผลิต) — ส่งแบบ + ขนาดจริงจากผนัง เข้าเครื่องพิมพ์ .ai + เส้นตัด
+if($('wDlAi'))$('wDlAi').onclick=function(){
+  var s=(typeof wallSignReal==='function')?wallSignReal():null;
+  if(!s||!(s.Wm>0)){alert('ยังไม่มีป้าย/ยังไม่ได้กำหนดขนาดจริง');return;}
+  if(!window.wallImg){alert('ยังไม่มีภาพป้าย — โยนแบบเข้าจำลองผนังก่อน');return;}
+  var wmm=Math.round(s.Wm*1000);
+  var im=window.wallImg, c=document.createElement('canvas');
+  c.width=im.naturalWidth||im.width||600; c.height=im.naturalHeight||im.height||600;
+  try{ c.getContext('2d').drawImage(im,0,0); }catch(_e){}
+  var btn=$('wDlAi');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังสร้าง .ai...';
+  c.toBlob(function(blob){
+    if(!blob){btn.disabled=false;btn.textContent=old;alert('อ่านภาพป้ายไม่ได้');return;}
+    var fd=new FormData();
+    fd.append('file',new File([blob],'design.png',{type:'image/png'}));
+    fd.append('width_mm',String(wmm));fd.append('engine','print');
+    fd.append('white_base','0');fd.append('cut_contour','1');fd.append('cut_mode','diecut');
+    fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+      btn.disabled=false;btn.textContent=old;
+      if(j.error){alert('ผิดพลาด: '+j.error);return;}
+      var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+      var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='design_'+wmm+'mm.ai';a.click();
+      if(j.cut_dxf_base64){var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q2=0;q2<db.length;q2++)du[q2]=db.charCodeAt(q2);
+        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download='design_'+wmm+'mm_cut.dxf';da.click();}
+      try{ vcLogSim&&vcLogSim('บันทึก .ai (พร้อมผลิต)'); }catch(_e){}
+    }).catch(function(e){btn.disabled=false;btn.textContent=old;alert('ต่อ backend ไม่ได้ '+e);});
+  },'image/png');
+};
 var wallBgImg=null;
 if($('wBgDrop')){ $('wBgDrop').onclick=function(){$('wBgFile').click();}; $('wBgFile').onchange=function(){ if($('wBgFile').files[0])wallSetBg($('wBgFile').files[0]); };
   ['dragover','dragenter'].forEach(function(e){$('wBgDrop').addEventListener(e,function(ev){ev.preventDefault();$('wBgDrop').classList.add('over');});});
