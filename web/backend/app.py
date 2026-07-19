@@ -69,8 +69,9 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "8.2-print+contourbox+quote+3dart+gate+steprepeat",
-            "build": "2026-07-19-enhance+3dart+applock-gate+step-repeat",
+            "version": "8.3-steprepeat+geombox+extractguard+centerart",
+            "build": "2026-07-19-steprepeat+geobox-circle-rect-oval+extract-guard",
+            "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
             "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
             "step_repeat": "on",                             # งานพิมพ์ผลิตซ้ำ + ตัดเลเซอร์ตามหมุด
@@ -842,7 +843,60 @@ SIGN_TYPES = {
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
+    # 🆕 กล่องไฟทรงเรขาคณิต — หน้าเป็นรูปทรง กลม/สี่เหลี่ยม/วงรี (ไม่ล้อมทรงงาน) หน้าจบด้วยงานพิมพ์ UV
+    #    box_shape: circle | rect | oval · box_pad_cm = ระยะเผื่อรอบงานถึงขอบกล่อง
+    "10": {"name": "กล่องไฟทรงกลม 1 หน้า", "depth_cm": 5.0, "box_shape": "circle", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้วทรงกลม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
+    "11": {"name": "กล่องไฟทรงกลม 2 หน้า", "depth_cm": 10.0, "box_shape": "circle", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้วทรงกลม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+           "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
+    "12": {"name": "กล่องไฟสี่เหลี่ยม 1 หน้า", "depth_cm": 5.0, "box_shape": "rect", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
+    "13": {"name": "กล่องไฟสี่เหลี่ยม 2 หน้า", "depth_cm": 10.0, "box_shape": "rect", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+           "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
+    "14": {"name": "กล่องไฟวงรี 1 หน้า", "depth_cm": 5.0, "box_shape": "oval", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้ววงรี", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
+    "15": {"name": "กล่องไฟวงรี 2 หน้า", "depth_cm": 10.0, "box_shape": "oval", "box_pad_cm": 3.0,
+           "face_finish": "print", "face_material": "acrylic_P433",
+           "layers": [{"name": "คิ้ววงรี", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+           "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
 }
+
+
+def _geom_box(full, shape="rect", pad_mm=30.0):
+    """สร้าง 'กล่องไฟทรงเรขาคณิต' ครอบงาน — กลม/สี่เหลี่ยม/วงรี (แทนเงารวมของตัวงาน)"""
+    import math as _m
+    from shapely.geometry import box as _sbox, Point as _Pt
+    from shapely import affinity as _aff
+    b = full.bounds
+    cx = (b[0] + b[2]) / 2.0; cy = (b[1] + b[3]) / 2.0
+    w = b[2] - b[0]; h = b[3] - b[1]
+    if shape == "circle":
+        r = _m.hypot(w, h) / 2.0 + pad_mm
+        return _Pt(cx, cy).buffer(r, resolution=96)
+    if shape == "oval":
+        a = w / 2.0 + pad_mm; bb = h / 2.0 + pad_mm
+        unit = _Pt(0, 0).buffer(1.0, resolution=96)
+        return _aff.translate(_aff.scale(unit, xfact=a, yfact=bb, origin=(0, 0)), cx, cy)
+    return _sbox(b[0] - pad_mm, b[1] - pad_mm, b[2] + pad_mm, b[3] + pad_mm)   # rect
 
 
 def _wrap_silhouette(full, bridge_mm):
@@ -907,6 +961,12 @@ _TYPE_EN = {
     "งานยกขอบ มีไส้": "Fabricated Return · with Core",
     "กล่องไฟล้อมตามทรง 1 หน้า": "Contour Light Box · Single-Face",
     "กล่องไฟล้อมตามทรง 2 หน้า": "Contour Light Box · Double-Face",
+    "กล่องไฟทรงกลม 1 หน้า": "Round Light Box · Single-Face",
+    "กล่องไฟทรงกลม 2 หน้า": "Round Light Box · Double-Face",
+    "กล่องไฟสี่เหลี่ยม 1 หน้า": "Rectangle Light Box · Single-Face",
+    "กล่องไฟสี่เหลี่ยม 2 หน้า": "Rectangle Light Box · Double-Face",
+    "กล่องไฟวงรี 1 หน้า": "Oval Light Box · Single-Face",
+    "กล่องไฟวงรี 2 หน้า": "Oval Light Box · Double-Face",
 }
 
 
@@ -1385,6 +1445,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+        # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
+        elif rec.get("box_shape"):
+            full = _geom_box(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0)
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -2534,6 +2597,26 @@ async def extract_assets(file: UploadFile = File(...)):
             subprocess.run(["gs", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
                             "-sOutputFile=" + pdfp, inp], check=True, timeout=90)
             target = pdfp
+        # 🛡️ กันไฟล์ "แผ่นผลิตซ้ำ" (step&repeat หลายร้อยชิ้น) — ไม่ใช่ไฟล์ลูกค้าที่ควรแตกชิ้น
+        #    ถ้าปล่อยเข้า list_assets จะต้อง composite ภาพหลายร้อยครั้ง -> server ล่ม/timeout
+        try:
+            import fitz
+            _d = fitz.open(target); _p0 = _d[0]
+            try:
+                _n_inst = len(_p0.get_image_info())        # จำนวน "ครั้ง" ที่วางภาพบนหน้า
+            except Exception:
+                _n_inst = len(_p0.get_images(full=True))
+            _big = os.path.getsize(target) > 10 * 1024 * 1024
+            _d.close()
+            if _n_inst > 40 or (_big and _n_inst > 12):
+                import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+                return JSONResponse({
+                    "error": "ไฟล์นี้เป็น 'แผ่นจัดวางผลิตซ้ำ' (มีชิ้นงานหลายร้อยชิ้นบนแผ่นเดียว) "
+                             "— เครื่องมือแตกไฟล์ใช้กับ 'ไฟล์งานลูกค้าชิ้นเดียว' (เมนู/นามบัตร/โบรชัวร์)",
+                    "hint": "ถ้าต้องการผลิตซ้ำ ใช้เมนู '🏭 งานพิมพ์ผลิตซ้ำ (Step & Repeat)' โดยใส่ไฟล์ชิ้นเดียว"
+                }, status_code=400)
+        except Exception:
+            pass
         rep = _as.list_assets(target)
         tok = uuid.uuid4().hex[:16]
         _ASSET_STORE[tok] = target
