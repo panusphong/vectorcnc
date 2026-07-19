@@ -273,8 +273,7 @@ select.numin{cursor:pointer}
             <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
             <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
             <option value="3" data-i18n="st.3">3 · ไฟออกรอบ</option>
-            <option value="4" data-i18n="st.4">4 · กล่องไฟ 1 หน้า</option>
-            <option value="5" data-i18n="st.5">5 · กล่องไฟ 2 หน้า</option>
+            <option value="4" data-i18n="st.4">4 · กล่องไฟฉลุหน้า</option>
             <option value="6" data-i18n="st.6">6 · งานยกขอบ</option>
             <option value="7" data-i18n="st.7">7 · งานยกขอบ มีไส้</option>
             <option value="8" data-i18n="st.8">8 · กล่องไฟล้อมตามทรง 1 หน้า</option>
@@ -285,8 +284,33 @@ select.numin{cursor:pointer}
             <option value="13" data-i18n="st.13">13 · กล่องไฟสี่เหลี่ยม 2 หน้า</option>
             <option value="14" data-i18n="st.14">14 · กล่องไฟวงรี 1 หน้า</option>
             <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
+            <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
+            <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
           </select>
           <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <!-- 🅰️ พิมพ์ข้อความเป็นตัวป้าย (โชว์เมื่อเลือกอักษร+โครงแขวน) -->
+          <div id="mfTextPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
+            <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">🅰️ พิมพ์ข้อความ → สร้างเป็นตัวป้ายได้เลย (ไม่ต้องอัปโหลดภาพ)</div>
+            <input class="numin" id="mfTextVal" placeholder="พิมพ์ข้อความป้าย เช่น BARONS" style="width:100%;padding:7px">
+            <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+              <select class="numin" id="mfTextFont" style="flex:1;padding:6px"></select>
+              <div style="width:74px"><label style="font-size:10px;color:#64748b">สูง(ซม.)</label><input class="numin" id="mfTextH" type="number" value="20" min="3" style="padding:6px;width:100%"></div>
+              <input type="color" id="mfTextColor" value="#1f2937" title="สีตัวอักษร" style="width:36px;height:40px;border:none;background:none;padding:0;cursor:pointer">
+            </div>
+            <button class="btn" id="mfTextGo" style="width:100%;margin-top:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700">🅰️ สร้างป้ายจากข้อความนี้</button>
+            <div class="hint" style="margin-top:3px">ตัวอักษรแยกชิ้น ยึดโครงแขวน · เจาะรูน็อต Ø3 / สายไฟ Ø5 ให้อัตโนมัติ · พร้อมภาพด้านหลัง</div>
+          </div>
+          <!-- 🌈 นีออนเฟล็กซ์: เลือกสี 12 สี -->
+          <div id="neonPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #a5f3fc;border-radius:10px;background:#ecfeff">
+            <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:6px">🌈 สีนีออนเฟล็กซ์ (เลือก 12 สี)</div>
+            <div id="neonSwatches" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            <div style="font-size:11px;color:#64748b;margin:8px 0 3px">รูปแบบเส้นนีออน</div>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="chip neonLn on" data-ln="double" style="flex:1">เส้นคู่ (ตามขอบ)</button>
+              <button type="button" class="chip neonLn" data-ln="single" style="flex:1">เส้นเดี่ยว (แกนกลาง)</button>
+            </div>
+            <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm ล้อมทรง +3cm · เจาะรูยึด 4 มุม + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
+          </div>
           <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
           <label style="margin-top:6px">🦾 แขนยึด (โครงเหล็กติดตั้ง)</label>
           <div style="display:flex;gap:6px">
@@ -1026,8 +1050,7 @@ select.numin{cursor:pointer}
       <tr><td>1</td><td>ไฟออกหน้า มีคิ้ว</td><td>คิ้ว (เจาะโบ๋·เต็ม) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
       <tr><td>2</td><td>ไฟออกหน้า ไม่มีคิ้ว</td><td>หน้าอะคริลิค +0.1 · ไส้อะคริลิคใส −0.15 · แผ่นพื้น เต็ม</td><td>5 ซม.</td></tr>
       <tr><td>3</td><td>ไฟออกรอบ (halo)</td><td>หน้าอะคริลิค เต็ม · แผ่นพื้น +0.1</td><td>ใน 2 ซม. + อะคริลิค 7 ซม.</td></tr>
-      <tr><td>4</td><td>กล่องไฟ 1 หน้า</td><td>คิ้ว (เจาะโบ๋) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
-      <tr><td>5</td><td>กล่องไฟ 2 หน้า</td><td>คิ้ว (เจาะโบ๋) · อะคริลิค −0.25</td><td>นอก 10 ซม. + ใน 2 ซม.</td></tr>
+      <tr><td>4</td><td>กล่องไฟฉลุหน้า</td><td>คิ้ว · หน้าฉลุตัวอักษร −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
       <tr><td>6</td><td>งานยกขอบ</td><td>ซิ้งค์ เต็ม</td><td>2.5 ซม. + ขากลางยกลอย</td></tr>
       <tr><td>7</td><td>งานยกขอบ มีไส้</td><td>หน้าซิ้งค์ เต็ม · ไส้พลาสวูด −0.16</td><td>2.5 ซม.</td></tr>
     </table>
@@ -2408,7 +2431,7 @@ var I18N={
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
   'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'1 · ไฟออกหน้า มีคิ้ว','st.2':'2 · ไฟออกหน้า ไม่มีคิ้ว',
-  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟ 1 หน้า','st.5':'5 · กล่องไฟ 2 หน้า',
+  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์',
   'st.6':'6 · งานยกขอบ','st.7':'7 · งานยกขอบ มีไส้',
   'st.8':'8 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'9 · กล่องไฟล้อมตามทรง 2 หน้า',
   'st.10':'10 · กล่องไฟทรงกลม 1 หน้า','st.11':'11 · กล่องไฟทรงกลม 2 หน้า',
@@ -2459,7 +2482,7 @@ var I18N={
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
   'st.0':'— Flat cut lines (normal) —','st.1':'1 · Front-lit, with trim','st.2':'2 · Front-lit, no trim',
-  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box, 1 side','st.5':'5 · Light box, 2 sides',
+  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic',
   'st.6':'6 · Raised (return) letters','st.7':'7 · Raised letters with insert',
   'st.8':'8 · Contour light box · 1-face','st.9':'9 · Contour light box · 2-face',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
@@ -3306,7 +3329,7 @@ function mfRender(){
       (MFLS?
         ('<div style="margin-top:6px"><label style="font-size:10px;color:#5A6B8C">ประเภทป้าย (แตกชั้นวัสดุ)</label>'+
          '<select class="numin mfType" data-i="'+i+'" style="padding:5px">'+
-           ['1·ไฟออกหน้า มีคิ้ว','2·ไฟออกหน้า ไม่มีคิ้ว','3·ไฟออกรอบ','4·กล่องไฟ 1 หน้า','5·กล่องไฟ 2 หน้า','6·งานยกขอบ','7·งานยกขอบ มีไส้'].map(function(t,k){var v=''+(k+1);return '<option value="'+v+'"'+(m.type===v?' selected':'')+'>'+t+'</option>';}).join('')+
+           [['1','1·ไฟออกหน้า มีคิ้ว'],['2','2·ไฟออกหน้า ไม่มีคิ้ว'],['3','3·ไฟออกรอบ'],['4','4·กล่องไฟฉลุหน้า'],['6','6·งานยกขอบ'],['7','7·งานยกขอบ มีไส้']].map(function(p){var v=p[0];return '<option value="'+v+'"'+(m.type===v?' selected':'')+'>'+p[1]+'</option>';}).join('')+
          '</select></div>')
         :
         ('<div style="display:flex;gap:6px;margin-top:6px">'+
@@ -3404,10 +3427,8 @@ var LTYPES=[
    layers:[['หน้าอะคริลิค','+0.1','#2563EB'],['ไส้อะคริลิคใส','−0.15','#dc2626'],['แผ่นพื้น','เต็ม','#16a34a']]},
  {id:'3',name:'ไฟออกรอบ',depth:7,shape:'letter',rim:false,floating:true,insert:false,faces:1,base:true,
    layers:[['หน้าอะคริลิค','เต็ม','#2563EB'],['แผ่นพื้น','+0.1','#16a34a']]},
- {id:'4',name:'กล่องไฟ 1 หน้า',depth:5,shape:'round',rim:true,floating:false,insert:false,faces:1,base:true,
-   layers:[['คิ้ว','เต็ม','#2563EB'],['อะคริลิค','−0.25','#dc2626'],['แผ่นพื้น','+0.1','#16a34a']]},
- {id:'5',name:'กล่องไฟ 2 หน้า',depth:10,shape:'round',rim:true,floating:false,insert:false,faces:2,base:false,
-   layers:[['คิ้ว','เต็ม','#2563EB'],['อะคริลิค','−0.25','#dc2626']]},
+ {id:'4',name:'กล่องไฟฉลุหน้า',depth:5,shape:'round',rim:true,floating:false,insert:false,faces:1,base:true,
+   layers:[['คิ้ว','เต็ม','#2563EB'],['หน้าฉลุตัวอักษร','−0.25','#dc2626'],['แผ่นพื้น','+0.1','#16a34a']]},
  {id:'6',name:'งานยกขอบ',depth:2.5,shape:'letter',rim:false,floating:false,insert:false,faces:1,base:true,legs:true,metal:true,
    layers:[['ซิ้งค์','เต็ม','#2563EB']]},
  {id:'7',name:'งานยกขอบ มีไส้',depth:2.5,shape:'letter',rim:false,floating:false,insert:true,faces:1,base:true,metal:true,
@@ -4063,8 +4084,58 @@ var TRIMW=1, TRIMDIR='out';
   if($('twCustom'))$('twCustom').oninput=function(){if(+this.value>0){TRIMW=+this.value;for(var j=0;j<tw.length;j++)tw[j].classList.remove('on');}};
   var td=document.querySelectorAll('#twDir .chip');for(var m=0;m<td.length;m++){td[m].onclick=function(){for(var j=0;j<td.length;j++)td[j].classList.remove('on');this.classList.add('on');TRIMDIR=this.getAttribute('data-d');};}
 })();
+// 🅰️ พิมพ์ข้อความ -> สร้างตัวป้าย (เฉพาะประเภท 16 อักษร+โครงแขวน) เหมือนหน้าจำลองผนัง
+(function(){
+  var sel=$('mainSignType'); if(!sel)return;
+  function fillFonts(){ var fsel=$('mfTextFont'); if(!fsel||fsel._done)return; fsel._done=1;
+    var list=(typeof GFONTS!=='undefined'&&GFONTS.length)?GFONTS:['Prompt','Kanit','Sarabun','Mitr','Bebas Neue','Anton','Poppins','Montserrat'];
+    list.forEach(function(f){var o=document.createElement('option');o.value=f;o.textContent=f;fsel.appendChild(o);});
+    fsel.value='Prompt'; try{loadGFont('Prompt');}catch(_e){} }
+  function fillNeon(){ var box=$('neonSwatches'); if(!box||box._done)return; box._done=1;
+    var list=(typeof NEON!=='undefined'&&NEON.length)?NEON:['#00e5ff','#ff4dcf','#7CFC00','#ffd21e','#ff3b3b','#2979ff','#b14dff','#ffffff'];
+    list.forEach(function(col){ var bb=document.createElement('button'); bb.type='button'; bb.title=col;
+      bb.style.cssText='width:26px;height:26px;border-radius:6px;border:2px solid transparent;background:'+col+';cursor:pointer;box-shadow:0 0 6px '+col;
+      bb.onclick=function(){ window.NEON_SEL=col; for(var i=0;i<box.children.length;i++)box.children[i].style.borderColor='transparent'; bb.style.borderColor='#0f172a'; };
+      box.appendChild(bb); });
+    if(box.firstChild){ window.NEON_SEL=list[0]; box.firstChild.style.borderColor='#0f172a'; }
+    var ln=document.querySelectorAll('.neonLn'); window.NEON_LINE=window.NEON_LINE||'double';
+    for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; } }
+  function toggle(){ var v=sel.value;
+    if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';
+    if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
+    if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
+  sel.addEventListener('change',toggle); toggle();
+  if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
+  if($('mfTextGo'))$('mfTextGo').onclick=function(){
+    var txt=($('mfTextVal').value||'').trim(); if(!txt){alert('พิมพ์ข้อความก่อน');$('mfTextVal').focus();return;}
+    var font=$('mfTextFont').value||'Prompt', hcm=parseFloat($('mfTextH').value)||20, col=$('mfTextColor').value||'#1f2937';
+    var btn=$('mfTextGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังสร้าง...';
+    try{loadGFont(font);}catch(_e){}
+    var render=function(){
+      var PPC=12, px=Math.max(24,hcm*PPC);
+      var c=document.createElement('canvas'), g=c.getContext('2d');
+      g.font='700 '+px+'px "'+font+'", sans-serif';
+      var m=g.measureText(txt);
+      var asc=(m.actualBoundingBoxAscent||px*0.72), desc=(m.actualBoundingBoxDescent||px*0.24);
+      var lft=(m.actualBoundingBoxLeft||0), rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
+      var mrg=px*0.2, w=Math.ceil(lft+rgt+mrg*2), h=Math.ceil(asc+desc+mrg*2);
+      c.width=w; c.height=h; g=c.getContext('2d');
+      g.font='700 '+px+'px "'+font+'", sans-serif'; g.textBaseline='alphabetic'; g.fillStyle=col;
+      g.fillText(txt, mrg+lft, mrg+asc);
+      c.toBlob(function(bl){
+        if(!bl){btn.disabled=false;btn.textContent=old;alert('สร้างภาพข้อความไม่ได้');return;}
+        fileObj=new File([bl],'text_sign.png',{type:'image/png'});
+        if($('realW'))$('realW').value=Math.round((w/PPC)*10);
+        btn.disabled=false; btn.textContent=old;
+        try{ if($('goLayer'))$('goLayer').click(); }catch(_e){}
+      },'image/png');
+    };
+    if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(render).catch(render); }
+    else setTimeout(render,150);
+  };
+})();
 $('goLayer').onclick=function(){
-  if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
+  if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
   if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด (มม.) ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');return;}
@@ -4081,9 +4152,11 @@ $('goLayer').onclick=function(){
   fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
+  fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
+    try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
     if($('dlSvg')){$('dlSvg').disabled=false;$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (แยก layer)';}
     if($('dlDxf'))$('dlDxf').disabled=false;
     var disp3d=(j.svg_3d||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'');
@@ -4099,6 +4172,7 @@ $('goLayer').onclick=function(){
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
         '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
+        (j.ai_base64?'<button id="lsDlAi" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ .ai (โครงสร้าง+งานพิมพ์ แยกเลเยอร์)</button>':'')+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         ((j.mount_plate&&j.mount_plate.count)?('<button id="lsDlPlate" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔩 เพลทยึด '+j.mount_plate.count+' ชิ้น (DXF)</button>'):'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
@@ -4114,6 +4188,8 @@ $('goLayer').onclick=function(){
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
         '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
+      (j.svg_back?('<div style="font-size:13px;font-weight:700;color:#e11d48;margin:10px 0 5px">🔩 มุมมองด้านหลัง — โครงแขวน + รูเจาะยึด/สายไฟ'+(j.frame_info?(' · '+(j.frame_info.letters||0)+' ตัวอักษร · น็อต Ø3 '+(j.frame_info.bolts||0)+' รู · สายไฟ Ø5 '+(j.frame_info.wires||0)+' รู'):'')+'</div>'+
+        '<div style="border:1px solid #fecdd3;border-radius:12px;padding:14px;background:#fff5f7;text-align:center;margin-bottom:14px"><div style="max-width:600px;margin:0 auto">'+j.svg_back+'</div></div>'):'')+
       ((j.warns&&j.warns.length)?('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#92400e">'+
         '<b>⚠️ ทำความสะอาดไฟล์ตัดให้แล้ว</b><ul style="margin:4px 0 0 16px">'+
         j.warns.map(function(w){return '<li>'+w+'</li>';}).join('')+'</ul>'+
@@ -4125,6 +4201,7 @@ $('goLayer').onclick=function(){
       (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
     if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
+    if($('lsDlAi')&&j.ai_base64)$('lsDlAi').onclick=function(){var bin=atob(j.ai_base64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='layerset_'+t+'.ai';a.click();};
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
     if($('lsDlPlate')&&j.mount_plate)$('lsDlPlate').onclick=function(){
@@ -4134,9 +4211,15 @@ $('goLayer').onclick=function(){
       if(mp.svg){var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([mp.svg],{type:'image/svg+xml'}));sa.download='mount_plate_'+(j.mount||'arm')+'.svg';sa.click();}
     };
     if($('lsToWall'))$('lsToWall').onclick=function(){
-      if(!fileObj){alert('ไม่พบภาพแบบ');return;}
-      var rd=new FileReader();
-      rd.onload=function(e){
+      if(!fileObj&&!window._lsFaceSvg){alert('ไม่พบภาพแบบ');return;}
+      // 🖼️ ใช้ "ภาพหน้าตรง 3D" (มีคิ้ว/งานพิมพ์/เงา) วางบนผนัง — ถ้าไม่มีค่อย fallback ภาพต้นฉบับ
+      var _svgToPng=function(svg,cb){ try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));
+        var im=new Image(); im.onload=function(){ var sc=2; var c=document.createElement('canvas');
+          c.width=Math.max(1,(im.naturalWidth||600)*sc); c.height=Math.max(1,(im.naturalHeight||600)*sc);
+          c.getContext('2d').drawImage(im,0,0,c.width,c.height); cb(c.toDataURL('image/png')); };
+        im.onerror=function(){cb(null);}; im.src=url; }catch(_e){cb(null);} };
+      var _go=function(dataURL){
+        var e={target:{result:dataURL}};
         // 🖼️ เปิด "จำลองป้ายบนผนัง (v70)" ในหน้าเดียวกัน + โหลดแบบเข้าไปเลย
         var _open=function(){
           try{ if($('wallOverlay'))$('wallOverlay').classList.add('show'); }catch(_e){}
@@ -4155,7 +4238,12 @@ $('goLayer').onclick=function(){
         if(typeof loadPriceCatalog==='function'){ loadPriceCatalog(function(ok){ if(!ok){ alert('🔒 เมนูจำลองผนัง/ประเมินราคา เปิดเฉพาะทีมงานภายใน'); return; } _open(); }); }
         else _open();
       };
-      rd.readAsDataURL(fileObj);
+      // เลือกที่มาของภาพ: ภาพหน้าตรง 3D ก่อน -> ถ้าไม่มี fallback ภาพต้นฉบับ
+      if(window._lsFaceSvg){ _svgToPng(window._lsFaceSvg,function(png){
+        if(png){ _go(png); }
+        else if(fileObj){ var rd=new FileReader(); rd.onload=function(ev){_go(ev.target.result);}; rd.readAsDataURL(fileObj); }
+        else { alert('สร้างภาพหน้าตรงไม่ได้'); } }); }
+      else { var rd=new FileReader(); rd.onload=function(ev){_go(ev.target.result);}; rd.readAsDataURL(fileObj); }
     };
     wireGlow();
   }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
