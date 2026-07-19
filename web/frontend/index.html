@@ -1391,6 +1391,7 @@ select.numin{cursor:pointer}
         <button class="btn primary" id="wJpg" style="flex:1">⬇ JPG</button>
         <button class="btn primary" id="wPdf" style="flex:1">⬇ PDF</button></div>
       <button class="btn" id="wDlAi" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;font-weight:700">⬇ บันทึกเป็น .ai (ขนาดจริง · พร้อมสั่งผลิต)</button>
+      <button class="btn ghost" id="wDlCut" style="width:100%;margin-top:6px;display:none">⬇ สร้างไฟล์ตัดเลเซอร์ (DXF)</button>
       <button class="btn" id="wOpen3D" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🧊 ดูแบบ 3D · หมุนรอบตัว</button>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn" id="wSaveJob" style="flex:1;background:#0ea5e9;color:#fff;border:none;font-weight:700">💾 บันทึกงาน</button>
@@ -4186,15 +4187,20 @@ $('aiDraft').onclick=function(){
     a.href=URL.createObjectURL(b);a.download=(lastName||'artwork')+((j.used_engine==='print')?'_print':'')+'.ai';a.click();
     if(j.used_engine==='print'){
       var pi=j.print_info||{}; var ly=(pi.layers||[]).join(' → ');
-      try{ window._lastCutDxf=j.cut_dxf_base64||''; window._lastCutSvg=j.cut_svg||''; }catch(e){}
-      // ↴ ไฟล์ตัดสำหรับเลเซอร์ (เส้นไดคัทเรียบ จุดน้อย) — DXF + SVG
+      // เก็บไฟล์ตัดไว้ให้ "กดสร้างเอง" (ไม่ auto โหลด DXF/SVG ตอนสร้าง .ai)
       var nm=(lastName||'artwork');
-      if(j.cut_dxf_base64){ var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
-        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=nm+'_cut.dxf';da.click(); }
-      if(j.cut_svg){ var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([j.cut_svg],{type:'image/svg+xml'}));sa.download=nm+'_cut.svg';sa.click(); }
+      window._lastCutDxf=j.cut_dxf_base64||''; window._lastCutSvg=j.cut_svg||''; window._cutNm=nm;
       var pts=(pi.cut_points!=null)?(' · เส้นไดคัท '+pi.cut_points+' จุด (เครื่องตัดเร็ว)'):'';
+      var btns='';
+      if(window._lastCutDxf) btns+='<button class="btn ghost" id="aiDlDxf" style="margin:8px 8px 0 0">⬇ สร้างไฟล์ตัด DXF</button>';
+      if(window._lastCutSvg) btns+='<button class="btn ghost" id="aiDlSvg" style="margin:8px 0 0 0">⬇ สร้างไฟล์ตัด SVG</button>';
       $('aiOut').innerHTML='✅ ไฟล์งานพิมพ์ (เหมือนต้นฉบับ 100%) · '+j.w_mm+'×'+j.h_mm+' มม.<br>เลเยอร์: '+ly+pts+
-        '<br>📥 ดาวน์โหลด: <b>.ai</b> (พิมพ์) + <b>.dxf/.svg</b> (เลเซอร์ตัด)';
+        '<br>📥 ดาวน์โหลดแล้ว: <b>.ai</b> (พิมพ์) — ไฟล์ตัดเลเซอร์ กดสร้างเองด้านล่าง<br>'+btns;
+      if($('aiDlDxf'))$('aiDlDxf').onclick=function(){ if(!window._lastCutDxf){alert('ไม่มีเส้นตัด');return;}
+        var db=atob(window._lastCutDxf),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=(window._cutNm||'artwork')+'_cut.dxf';da.click(); };
+      if($('aiDlSvg'))$('aiDlSvg').onclick=function(){ if(!window._lastCutSvg){alert('ไม่มีเส้นตัด');return;}
+        var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([window._lastCutSvg],{type:'image/svg+xml'}));sa.download=(window._cutNm||'artwork')+'_cut.svg';sa.click(); };
     }else{
       var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
       $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
@@ -5267,11 +5273,20 @@ if($('wDlAi'))$('wDlAi').onclick=function(){
       if(j.error){alert('ผิดพลาด: '+j.error);return;}
       var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
       var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='design_'+wmm+'mm.ai';a.click();
-      if(j.cut_dxf_base64){var db=atob(j.cut_dxf_base64),du=new Uint8Array(db.length);for(var q2=0;q2<db.length;q2++)du[q2]=db.charCodeAt(q2);
-        var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download='design_'+wmm+'mm_cut.dxf';da.click();}
+      // ไม่ auto โหลด DXF — เก็บไว้ให้กดปุ่ม "สร้างไฟล์ตัด" เอง
+      window._wCutDxf=j.cut_dxf_base64||''; window._wCutSvg=j.cut_svg||''; window._wCutNm='design_'+wmm+'mm';
+      if($('wDlCut'))$('wDlCut').style.display=window._wCutDxf?'block':'none';
       try{ vcLogSim&&vcLogSim('บันทึก .ai (พร้อมผลิต)'); }catch(_e){}
     }).catch(function(e){btn.disabled=false;btn.textContent=old;alert('ต่อ backend ไม่ได้ '+e);});
   },'image/png');
+};
+// ⬇ กดสร้างไฟล์ตัดเลเซอร์เอง (DXF + SVG) — แยกจากการสร้าง .ai
+if($('wDlCut'))$('wDlCut').onclick=function(){
+  if(!window._wCutDxf&&!window._wCutSvg){alert('สร้าง .ai ก่อน แล้วจึงสร้างไฟล์ตัดได้');return;}
+  var nm=window._wCutNm||'design';
+  if(window._wCutDxf){var db=atob(window._wCutDxf),du=new Uint8Array(db.length);for(var q=0;q<db.length;q++)du[q]=db.charCodeAt(q);
+    var da=document.createElement('a');da.href=URL.createObjectURL(new Blob([du],{type:'application/dxf'}));da.download=nm+'_cut.dxf';da.click();}
+  if(window._wCutSvg){var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([window._wCutSvg],{type:'image/svg+xml'}));sa.download=nm+'_cut.svg';sa.click();}
 };
 var wallBgImg=null;
 if($('wBgDrop')){ $('wBgDrop').onclick=function(){$('wBgFile').click();}; $('wBgFile').onchange=function(){ if($('wBgFile').files[0])wallSetBg($('wBgFile').files[0]); };
