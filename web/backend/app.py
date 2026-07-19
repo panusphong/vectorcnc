@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.2-face2-noflip+flatplate",
-            "build": "2026-07-19-face2-same-artwork-no-mirror+flat-ceiling-plate+flat-wall-plate+ai-cut-ondemand",
+            "version": "9.10-neon-single-double",
+            "build": "2026-07-19-neonflex-single-double-line+12colors+acrylic-backing+mount-wire-holes+cnc-groove",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -816,15 +816,11 @@ SIGN_TYPES = {
           "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบใน", "h": 2.0}, {"name": "ยกขอบอะคริลิค", "h": 7.0}]},
-    "4": {"name": "กล่องไฟ 1 หน้า", "depth_cm": 5.0,
+    "4": {"name": "กล่องไฟฉลุหน้า", "depth_cm": 5.0,
           "layers": [{"name": "คิ้ว", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "อะคริลิค", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "หน้าฉลุตัวอักษร", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
-    "5": {"name": "กล่องไฟ 2 หน้า", "depth_cm": 10.0,
-          "layers": [{"name": "คิ้ว", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "อะคริลิค", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)}],
-          "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "ยกขอบใน", "h": 2.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
     "6": {"name": "งานยกขอบ", "depth_cm": 2.5,
           "layers": [{"name": "ซิ้งค์", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)}],
           "walls": [{"name": "ยกขอบ", "h": 2.5}, {"name": "ขากลางยกลอย", "h": 2.5}]},
@@ -882,6 +878,17 @@ SIGN_TYPES = {
            "layers": [{"name": "คิ้ววงรี", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
                       {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
            "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
+    # 🆕 อักษรยกขอบไฟออกหน้า + โครงแขวน — ตัวอักษรแยกชิ้น ยึดกับโครงแขวน (โชว์ภาพด้านหลังมีโครง)
+    "16": {"name": "อักษรยกขอบไฟออกหน้า + โครงแขวน", "depth_cm": 5.0, "mount_frame": True,
+           "layers": [{"name": "คิ้วหน้า", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิค", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
+                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
+    # 🆕 นีออนเฟล็กซ์ — เส้นไฟตามทรงงาน + แผ่นอะคริลิคใสรองหลัง 8mm ล้อมทรง (+3cm รอบตัว)
+    "17": {"name": "นีออนเฟล็กซ์", "depth_cm": 1.5, "neon": True, "neon_margin_cm": 3.0, "acrylic_mm": 8.0,
+           "layers": [{"name": "นีออนเฟล็กซ์ (เส้นไฟ)", "off": 0.0, "kind": "neon", "color": "#00e5ff", "rgb": (0, 229, 255)},
+                      {"name": "อะคริลิคใสรองหลัง 8mm", "off": 30.0, "kind": "solid", "color": "#93c5fd", "rgb": (147, 197, 253)}],
+           "walls": []},
 }
 
 
@@ -959,7 +966,9 @@ _TYPE_EN = {
     "ไฟออกหน้า มีคิ้ว": "Front-lit · with Trim (Kim)",
     "ไฟออกหน้า ไม่มีคิ้ว": "Front-lit · no Trim",
     "ไฟออกรอบ": "Halo / Back-lit",
-    "กล่องไฟ 1 หน้า": "Light Box · Single-Face",
+    "กล่องไฟฉลุหน้า": "Light Box · Cut-out Face",
+    "อักษรยกขอบไฟออกหน้า + โครงแขวน": "Front-lit Raised Letters + Hanging Frame",
+    "นีออนเฟล็กซ์": "Neon Flex + Clear Acrylic Backing",
     "กล่องไฟ 2 หน้า": "Light Box · Double-Face",
     "งานยกขอบ": "Fabricated Return (Metal)",
     "งานยกขอบ มีไส้": "Fabricated Return · with Core",
@@ -1234,7 +1243,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     # 🖨️ กล่องไฟ 2 หน้า -> โชว์ "หน้า 2 (พิมพ์กลับด้าน/ฟลิป)" คู่กัน (เผื่อพื้นที่ขวา)
     _is2face = bool(art_href) and ("2 หน้า" in str(rec.get("name", "")))
     if _is2face:
-        padR += W * 0.66 + fs * 3.0
+        padR += W * 0.78 + fs * 5.0
     if _mount == "top2":
         padT += _armpad
     elif _mount in ("side1", "side2"):        # แขนแนวนอน ซ้าย/ขวาของภาพ
@@ -1286,13 +1295,20 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), kimFill, edge, lw))
         for pg in _ikp:                                # หน้าใน (หลังคิ้ว) = พื้นขาว (ไม่มีพื้นเทา) -> เกิดขอบคิ้ว 1cm
             parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), edge, lw * 0.7))
-        if _iap:                                       # artwork ขยายเต็มถึงขอบคิ้ว (clip หน้าใน · พื้นขาวลามถึงคิ้ว)
+        if _iap:                                       # artwork วางในหน้า · ไม่ล้นออกนอกทรง
             _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in _iap)
             parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
-            _ab = _ia.bounds; _ix, _iy = F((_ab[0], _ab[1]))
+            _ab = _ia.bounds
+            _cx = (_ab[0] + _ab[2]) / 2.0; _cy = (_ab[1] + _ab[3]) / 2.0
+            _bw = _ab[2] - _ab[0]; _bh = _ab[3] - _ab[1]
+            _shp = rec.get("box_shape")
+            if _shp in ("circle", "oval"):             # วงกลม/วงรี -> วางในกรอบสี่เหลี่ยมที่อยู่ในวง (กันล้น)
+                _bw *= 0.68; _bh *= 0.68
+            _x0 = _cx - _bw / 2.0; _y0 = _cy - _bh / 2.0
+            _ix, _iy = F((_x0, _y0))
             parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
                          'preserveAspectRatio="xMidYMid meet" clip-path="url(#w3dArt)"/>'
-                         % (art_href, art_href, _ix, _iy, _ab[2] - _ab[0], _ab[3] - _ab[1]))
+                         % (art_href, art_href, _ix, _iy, _bw, _bh))
         for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), edge, lw))
     else:
@@ -1406,12 +1422,13 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
 
     # 🖨️ หน้า 2 (พิมพ์กลับด้าน/ฟลิป) — โชว์คู่กับหน้า 1 สำหรับกล่องไฟ 2 หน้า
     if _is2face:
-        iw = W * 0.56; ih = H * 0.56
-        ix = padL + W + dvx + fs * 2.0
-        iy = padT + (H - ih) * 0.28
+        iw = W * 0.72; ih = H * 0.72
+        _armgap = _armpad if (_mount in ("side1", "side2") and _aside == "right") else 0.0
+        ix = padL + W + dvx + _armgap + fs * 3.0     # เลื่อนขวาให้พ้นแขน (ถ้าแขนออกขวา)
+        iy = padT + (H - ih) * 0.5                    # กึ่งกลางแนวตั้ง
         cxm = ix + iw / 2.0
-        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0d9488">&#8644;</text>'
-                         % (padL + W + dvx * 0.5, padT + H * 0.5, fs * 2.0))
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0d9488" text-anchor="middle">&#8644;</text>'
+                         % ((padL + W + dvx + ix) / 2.0, padT + H * 0.5, fs * 1.8))
         arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" stroke="%s" stroke-width="%.2f"/>'
                          % (ix, iy, iw, ih, iw * 0.03, edge, lw))
         arm_parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="xMidYMid meet"/>'
@@ -1554,6 +1571,270 @@ def _layerset_cut_svg(out_layers, wall_strips):
             % (Wt, Ht, Wt, Ht, "".join(parts)))
 
 
+def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href=""):
+    """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย"""
+    b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
+    pad = S * 0.08
+    polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+
+    def d(poly):
+        s = ""
+        for r in [poly.exterior] + list(poly.interiors):
+            pts = list(r.coords)
+            if not pts:
+                continue
+            s += "M " + " L ".join("%.2f %.2f" % (x - b[0] + pad, y - b[1] + pad) for (x, y) in pts) + " Z "
+        return s
+
+    def P(g):
+        if g is None or g.is_empty:
+            return []
+        return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
+
+    edge = "#3f4753"; lw = max(0.8, S * 0.0022); faceFill = face_color or "#eef4ff"
+    parts = ['<defs><filter id="fsh" x="-30%%" y="-30%%" width="160%%" height="160%%">'
+             '<feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.32"/></filter></defs>'
+             % (S * 0.022, S * 0.02)]
+    parts.append('<g filter="url(#fsh)">')
+    if art_href:                                       # หน้าพิมพ์: คิ้ว 1cm + พื้นขาว + artwork (ไม่ล้น)
+        _ik = full.buffer(-10.0); _ia = full.buffer(-14.0)
+        for pg in polys:
+            parts.append('<path d="%s" fill="#a9b4c4" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw))
+        for pg in P(_ik):
+            parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd"/>' % d(pg))
+        iap = P(_ia)
+        if iap:
+            parts.append('<defs><clipPath id="fArt" clip-rule="evenodd">%s</clipPath></defs>'
+                         % "".join('<path d="%s"/>' % d(pg) for pg in iap))
+            ab = _ia.bounds; cx = (ab[0] + ab[2]) / 2.0; cy = (ab[1] + ab[3]) / 2.0
+            bw = ab[2] - ab[0]; bh = ab[3] - ab[1]
+            if rec.get("box_shape") in ("circle", "oval"):
+                bw *= 0.68; bh *= 0.68
+            x0 = cx - bw / 2.0 - b[0] + pad; y0 = cy - bh / 2.0 - b[1] + pad
+            parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                         'preserveAspectRatio="xMidYMid meet" clip-path="url(#fArt)"/>'
+                         % (art_href, art_href, x0, y0, bw, bh))
+        for pg in polys:
+            parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw))
+    else:                                              # หน้าตัน (ตัวอักษร/ไม่พิมพ์) + คิ้วเจาะโบ๋
+        for pg in polys:
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), faceFill, edge, lw))
+        if inner_bore is not None and not inner_bore.is_empty:
+            for pg in P(inner_bore):
+                parts.append('<path d="%s" fill="#eef1f5" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw * 0.8))
+    parts.append('</g>')
+    Wt = W + 2 * pad; Ht = H + 2 * pad
+    return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
+def _skeleton_subs(inp, full):
+    """หา 'เส้นแกนกลาง' (centerline) ของลายเส้นภาพ -> polylines (subs) สำหรับนีออนเส้นเดี่ยว
+       จัดตำแหน่ง/สเกลให้ตรงกับ full (กรอบเดียวกัน)"""
+    import numpy as np
+    from PIL import Image
+    from skimage.morphology import skeletonize
+    from shapely.geometry import LineString
+    im = Image.open(inp).convert("L")
+    W, H = im.size
+    scl = 1400.0 / max(W, H) if max(W, H) > 1400 else 1.0   # ลดขนาดกันช้า
+    if scl < 1.0:
+        im = im.resize((max(1, int(W * scl)), max(1, int(H * scl))), Image.LANCZOS); W, H = im.size
+    a = np.array(im); mask = a < 128
+    sk = skeletonize(mask)
+    fg = set(map(tuple, np.argwhere(sk)))
+    if not fg:
+        return []
+
+    def nbrs(r, c):
+        o = []
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                if (dr or dc) and (r + dr, c + dc) in fg:
+                    o.append((r + dr, c + dc))
+        return o
+    deg = {p: len(nbrs(*p)) for p in fg}
+    nodes = set(p for p in fg if deg[p] != 2)
+    visited = set(); raw = []
+    starts = list(nodes) if nodes else [next(iter(fg))]
+    for s in starts:
+        for n in nbrs(*s):
+            if (s, n) in visited:
+                continue
+            path = [s]; prev, cur = s, n; visited.add((s, n)); visited.add((n, s))
+            while True:
+                path.append(cur)
+                if cur in nodes and cur != s:
+                    break
+                nx = [q for q in nbrs(*cur) if q != prev]
+                if not nx:
+                    break
+                prev, cur = cur, nx[0]; visited.add((prev, cur)); visited.add((cur, prev))
+            if len(path) >= 2:
+                raw.append([(c, r) for (r, c) in path])   # (x=col, y=row)
+    # วงปิด (ตัวอักษร O, รูใน) ที่ไม่มีปลาย/แยก — เดินตามลูปที่ยังไม่เยี่ยม
+    for s in fg:
+        for n in nbrs(*s):
+            if (s, n) in visited:
+                continue
+            path = [s]; prev, cur = s, n; visited.add((s, n)); visited.add((n, s)); guard = 0
+            while cur != s and guard < len(fg) + 5:
+                guard += 1; path.append(cur)
+                nx = [q for q in nbrs(*cur) if q != prev]
+                if not nx:
+                    break
+                prev, cur = cur, nx[0]; visited.add((prev, cur)); visited.add((cur, prev))
+            path.append(s)
+            if len(path) >= 4:
+                raw.append([(c, r) for (r, c) in path])
+    if not raw:
+        return []
+    # จัดกรอบให้ตรงกับ full (map bbox -> bbox)
+    xs = [p[0] for pl in raw for p in pl]; ys = [p[1] for pl in raw for p in pl]
+    rxmin, rxmax, rymin, rymax = min(xs), max(xs), min(ys), max(ys)
+    rw = max(1e-6, rxmax - rxmin); rh = max(1e-6, rymax - rymin)
+    fb = full.bounds; fw = fb[2] - fb[0]; fh = fb[3] - fb[1]
+
+    def mp(p):
+        return (fb[0] + (p[0] - rxmin) / rw * fw, fb[1] + (p[1] - rymin) / rh * fh)
+    tol = max(fw, fh) * 0.004
+    subs = []
+    for pl in raw:
+        pts = [mp(p) for p in pl]
+        try:
+            cc = list(LineString(pts).simplify(tol).coords)
+        except Exception:
+            cc = pts
+        if len(cc) >= 2:
+            subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": False})
+    return subs
+
+
+def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
+    """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
+    b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
+
+    def d(poly):
+        s = ""
+        for r in [poly.exterior] + list(poly.interiors):
+            pts = list(r.coords)
+            if not pts:
+                continue
+            s += "M " + " L ".join("%.2f %.2f" % (x - b[0] + pad, y - b[1] + pad) for (x, y) in pts) + " Z "
+        return s
+
+    def P(g):
+        if g is None or g.is_empty:
+            return []
+        return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
+
+    tube = max(5.0, S * 0.014); glow = tube * 2.4
+    parts = ['<defs><filter id="ng" x="-45%%" y="-45%%" width="190%%" height="190%%"><feGaussianBlur stdDeviation="%.1f"/></filter>'
+             '<filter id="sh2" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.30"/></filter></defs>'
+             % (tube * 0.85, S * 0.02, S * 0.02)]
+    # แผ่นอะคริลิคใส (ล้อมทรง +3cm) — โปร่งแสง เห็นขอบ
+    parts.append('<g filter="url(#sh2)">')
+    for pg in P(acrylic):
+        parts.append('<path d="%s" fill="#cfe8ff" fill-opacity="0.32" stroke="#7bb8e8" stroke-width="%.2f" stroke-linejoin="round"/>' % (d(pg), max(1.0, S * 0.003)))
+    parts.append('</g>')
+
+    def _subsd(subs):
+        s = ""
+        for sp in subs:
+            st = sp["start"]; s += "M %.2f %.2f " % (st[0] - b[0] + pad, st[1] - b[1] + pad)
+            for seg in sp["segs"]:
+                if seg[0] == "L":
+                    q = seg[1]; s += "L %.2f %.2f " % (q[0] - b[0] + pad, q[1] - b[1] + pad)
+                else:
+                    c1, c2, e = seg[1], seg[2], seg[3]
+                    s += "C %.2f %.2f %.2f %.2f %.2f %.2f " % (c1[0]-b[0]+pad, c1[1]-b[1]+pad, c2[0]-b[0]+pad, c2[1]-b[1]+pad, e[0]-b[0]+pad, e[1]-b[1]+pad)
+        return s
+    nd = _subsd(neon_subs) if neon_subs else "".join(d(pg) for pg in P(neon_full))
+    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" filter="url(#ng)"><path stroke-width="%.2f" d="%s"/></g>' % (color, glow, nd))   # เรือง
+    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="%.2f" d="%s"/></g>' % (color, tube, nd))                                  # เส้นไฟ
+    parts.append('<g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><path stroke-width="%.2f" d="%s"/></g>' % (max(1.4, tube * 0.34), nd))     # แกนขาว
+    # 🔩 จุดเจาะยึดผนัง (4 มุม) + 🔌 จุดสายไฟออก (กึ่งกลางล่าง) — บนแผ่นอะคริลิค
+    ab = acrylic.bounds; cx = (ab[0] + ab[2]) / 2.0; ins = min(W, H) * 0.07 + 10.0
+    rr = max(3.0, S * 0.008); mlw = max(1.0, S * 0.0022)
+
+    def _SC(x, y):
+        return (x - b[0] + pad, y - b[1] + pad)
+    for (mx, my) in ((ab[0] + ins, ab[1] + ins), (ab[2] - ins, ab[1] + ins),
+                     (ab[0] + ins, ab[3] - ins), (ab[2] - ins, ab[3] - ins)):
+        sx, sy = _SC(mx, my)
+        parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#ffffff" stroke="#334155" stroke-width="%.2f"/>'
+                     '<path d="M %.1f %.1f L %.1f %.1f M %.1f %.1f L %.1f %.1f" stroke="#334155" stroke-width="%.2f"/>'
+                     % (sx, sy, rr, mlw, sx - rr, sy, sx + rr, sy, sx, sy - rr, sx, sy + rr, mlw * 0.7))
+    wx, wy = _SC(cx, ab[3] - ins)                       # รูสายไฟออก กึ่งกลางล่าง
+    parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fee2e2" stroke="#e11d48" stroke-width="%.2f"/>' % (wx, wy, rr * 1.3, mlw))
+    _fz = max(9.0, S * 0.022)                            # legend
+    _ly = H + 2 * pad - pad * 0.30
+    parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fff" stroke="#334155" stroke-width="%.2f"/>'
+                 '<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#334155">&#3619;&#3641;&#3648;&#3592;&#3634;&#3632;&#3618;&#3638;&#3604;&#3612;&#3609;&#3633;&#3591; &#216;6</text>'
+                 % (pad, _ly - _fz * 0.32, rr, mlw, pad + rr * 1.8, _ly, _fz))
+    parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fee2e2" stroke="#e11d48" stroke-width="%.2f"/>'
+                 '<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#334155">&#3619;&#3641;&#3626;&#3634;&#3618;&#3652;&#3615;&#3629;&#3629;&#3585; &#216;10</text>'
+                 % (pad + W * 0.42, _ly - _fz * 0.32, rr * 1.3, mlw, pad + W * 0.42 + rr * 2.2, _ly, _fz))
+    Wt = W + 2 * pad; Ht = H + 2 * pad
+    return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
+def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
+    """SVG สำหรับบันทึกเป็น .ai — แยกแต่ละชั้นโครงสร้างเป็น 'กลุ่ม/เลเยอร์' ชัดเจน (Illustrator เลือกแยกได้)
+       + พาเนล 'งานพิมพ์' (ภาพจริง) วางไว้เป็นเลเยอร์แรก · เรียงข้างกันไม่ทับ"""
+    from vectorcnc import nesting
+
+    def _bbox(subs):
+        mnx = mny = 1e18; mxx = mxy = -1e18
+        for sp in subs:
+            pts = [sp["start"]]
+            for s in sp["segs"]:
+                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+            for (x, y) in pts:
+                mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
+        return mnx, mny, mxx, mxy
+
+    metas = [(L, _bbox(L["subs"])) for L in out_layers]
+    Smax = max([1.0] + [max(b[2] - b[0], b[3] - b[1]) for _, b in metas])
+    gap = Smax * 0.14; fs = max(6.0, Smax * 0.03); lw = max(0.6, Smax * 0.0024)
+    topPad = fs * 2.4
+    maxH = max([b[3] - b[1] for _, b in metas] + [1.0])
+    parts = []; cursor = fs
+    # 🖨️ เลเยอร์งานพิมพ์ (ภาพจริง) — วางเป็นพาเนลแรก
+    if art_href and art_bounds is not None:
+        aw = art_bounds[2] - art_bounds[0]; ah = art_bounds[3] - art_bounds[1]
+        sc = maxH / ah if ah > 0 else 1.0
+        pw = aw * sc; ph = maxH
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#0d9488">PRINT ARTWORK</text>' % (cursor, topPad - fs * 0.6, fs * 0.9))
+        parts.append('<g id="PRINT" inkscape:groupmode="layer" inkscape:label="PRINT ARTWORK">'
+                     '<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="xMidYMid meet"/></g>'
+                     % (art_href, art_href, cursor, topPad, pw, ph))
+        cursor += pw + gap
+    # 🔩 แต่ละชั้นโครงสร้าง = คนละเลเยอร์ (เติมสีจาง + เส้นขอบสีชั้น)
+    for L, b in metas:
+        w = b[2] - b[0]; h = b[3] - b[1]; dx = cursor - b[0]; dy = topPad - b[1]
+
+        def T(p, _dx=dx, _dy=dy):
+            return (p[0] + _dx, p[1] + _dy)
+        lyname = _en_layer(L["name"])
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s">%s</text>' % (cursor, topPad - fs * 0.6, fs * 0.9, L["color"], lyname))
+        parts.append('<g id="CUT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="%s" fill-opacity="0.14" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">'
+                     % (_dxf_layer(lyname), lyname, L["color"], L["color"], lw))
+        for sp in L["subs"]:
+            nsp = {"start": T(sp["start"]),
+                   "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
+                   "closed": sp.get("closed", True)}
+            parts.append('<path d="%s"/>' % nesting._sp_d(nsp))
+        parts.append('</g>')
+        cursor += w + gap
+    Wt = cursor + fs; Ht = topPad + maxH + fs
+    return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
+            'width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">%s</svg>'
+            % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
 def _mount_plate_files(plate_cm=10.0, arm="side1"):
     """ไฟล์ตัด 'เพลทยึด' 10cm เจาะ 4 รู (ตามจำนวนแขน) -> DXF + SVG (มม.) เข้าเลเซอร์/CNC ทำเพลทจริง"""
     import ezdxf, io, base64
@@ -1593,7 +1874,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     side_color: str = Form(""), n_colors: int = Form(6),
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
                     arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
-                    arm_travel_cm: float = Form(0.0)):
+                    arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
+                    neon_line: str = Form("double")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -1624,6 +1906,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
         elif rec.get("box_shape"):
             full = _geom_box(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0)
+        # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
+        _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
+        if _neon:
+            try:
+                _acrylic = _wrap_silhouette(full, 45.0).buffer(float(rec.get("neon_margin_cm", 3.0)) * 10.0, join_style=1)
+            except Exception:
+                _acrylic = full.buffer(float(rec.get("neon_margin_cm", 3.0)) * 10.0, join_style=1)
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -1631,7 +1920,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         bore_geom = None; frame_outer = None
         out_layers = []
         warns = []
-        for L in rec["layers"]:
+        for L in ([] if _neon else rec["layers"]):
             off = float(L["off"]); kind = L.get("kind", "solid")
             base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
             if base is None or base.is_empty:
@@ -1667,6 +1956,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if junk:
                 warns.append("%s: ลบเศษที่แตกจากการหดเส้น %d ชิ้น (ลายเส้นบางเกินไป)"
                              % (_en_layer(L["name"]), junk))
+        _neon_subs = None
+        if _neon:                                   # 🌈 นีออน: เส้นไฟ (ตามลายเส้นภาพ) + แผ่นอะคริลิคใส (ล้อมทรง)
+            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลาง (skeleton)
+                try:
+                    _neon_subs = _skeleton_subs(inp, full)
+                except Exception:
+                    _neon_subs = None
+            _ns = _neon_subs if _neon_subs else _poly_to_subs(full, tol=0.05)
+            if _ns:
+                _nb = full.bounds
+                out_layers.append({"name": "นีออนเฟล็กซ์ (เส้นไฟ)", "off": 0.0, "kind": "neon",
+                                   "color": str(neon_color or "#00e5ff"), "rgb": (0, 229, 255),
+                                   "subs": _ns, "w_mm": round(_nb[2] - _nb[0], 1), "h_mm": round(_nb[3] - _nb[1], 1)})
+                # 🛠️ ร่องเซาะ CNC (ลึก ~4mm) = แนวเส้นนีออน — เข้า .ai เป็นเลเยอร์แยกสำหรับเครื่องเซาะ
+                out_layers.append({"name": "เซาะร่อง CNC (ลึก 4mm)", "off": 0.0, "kind": "groove",
+                                   "color": "#d946ef", "rgb": (217, 70, 239),
+                                   "subs": _ns, "w_mm": round(_nb[2] - _nb[0], 1), "h_mm": round(_nb[3] - _nb[1], 1)})
+            if _acrylic is not None and not _acrylic.is_empty:
+                _as = _poly_to_subs(_acrylic, tol=0.08)
+                if _as:
+                    _ab = _acrylic.bounds
+                    out_layers.append({"name": "อะคริลิคใสรองหลัง 8mm", "off": 30.0, "kind": "solid",
+                                       "color": "#93c5fd", "rgb": (147, 197, 253),
+                                       "subs": _as, "w_mm": round(_ab[2] - _ab[0], 1), "h_mm": round(_ab[3] - _ab[1], 1)})
         if not out_layers:
             return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
         # 🖨️ กล่องไฟล้อมตามทรง: หน้า = อะคริลิคขาว P433 ตัดเป็นแผ่นเต็มตามทรง แล้วจบด้วยงานพิมพ์
@@ -1690,11 +2003,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 except Exception: _art = ""
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
-            svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=_bore,
-                               face_color=(face_color or None), side_color=(side_color or None),
-                               art_href=_art, mount=str(arm or "none"), arm_len_cm=float(arm_len_cm),
-                               plate_cm=10.0, arm_side=str(arm_side or "right"),
-                               arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm))
+            if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
+                svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
+            else:
+                svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=_bore,
+                                   face_color=(face_color or None), side_color=(side_color or None),
+                                   art_href=_art, mount=str(arm or "none"), arm_len_cm=float(arm_len_cm),
+                                   plate_cm=10.0, arm_side=str(arm_side or "right"),
+                                   arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm))
         except Exception:
             svg3d = ""
         # 🔩 ไฟล์ตัดเพลทยึด 10cm (เจาะ 4 รู) — ส่งเข้าเลเซอร์/CNC ทำเพลทจริง
@@ -1778,6 +2094,37 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             dxf_b64 = base64.b64encode(fo.read()).decode()
         # SVG 'ไฟล์ตัดแยก layer' — เฉพาะแผ่นตัด (ไม่รวมแถบยกขอบยาวๆ ที่ทำให้ไฟล์กว้างเป็นสิบเมตร)
         svg_cut = _layerset_cut_svg(out_layers, [])
+        # 🖼️ ภาพหน้าตรง (3D เบา ๆ พื้นโปร่ง) — เอาไปวางบนผนังในหน้าจำลองผนัง
+        svg_face = ""
+        try:
+            if _neon:
+                svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
+            else:
+                svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
+                                           face_color=(face_color or None), art_href=_art)
+        except Exception:
+            svg_face = ""
+        # 🔩 ป้ายอักษร + โครงแขวน -> ภาพด้านหลังมีโครงยึด (แยกเป็นอีกภาพ พร้อมจับระยะ)
+        svg_back = ""; frame_info = {}
+        if rec.get("mount_frame"):
+            try:
+                from vectorcnc import mount_frame as MF
+                _mf = MF.build(full, bars=1, standoff_cm=5.0)
+                if not _mf.get("error"):
+                    svg_back = _mf.get("back_svg", "")
+                    frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0),
+                                  "wires": _mf.get("wires", 0), "bars": _mf.get("bars", 0)}
+            except Exception:
+                svg_back = ""
+        # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
+        ai_b64 = ""
+        try:
+            _art_ai = _art if rec.get("face_finish") == "print" else ""
+            ai_svg = _layerset_ai_svg(out_layers, art_href=_art_ai, art_bounds=full.bounds)
+            import cairosvg as _cs
+            ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
+        except Exception:
+            ai_b64 = ""
 
         return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
@@ -1786,6 +2133,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             "junk": L.get("junk", 0)} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
+                "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
+                "svg_face": svg_face,
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
     except Exception as e:
@@ -3271,7 +3620,7 @@ def api_price_catalog(request: Request):
 @app.get("/api/sign-types")
 def api_sign_types():
     """รายการแบบป้าย 1-7 (ไว้ให้หน้าจำลองผนังเลือก)"""
-    return {"types": [{"key": k, "label": v["label"], "label_en": _en_type(v["label"]),
+    return {"types": [{"key": k, "label": v["name"], "label_en": _en_type(v["name"]),
                        "depth_cm": v.get("depth_cm", 5),
                        "has_trim": any(L.get("kind") == "frame" for L in v["layers"])}
                       for k, v in SIGN_TYPES.items()]}
@@ -3284,7 +3633,7 @@ def brief_fields():
     return {
         "fields": [{"key": k, "label": l, "required": r, "type": t, "hint": h}
                    for k, l, r, t, h in BRIEF_FIELDS],
-        "sign_types": [{"key": k, "label": v["label"], "label_en": _en_type(v["label"])}
+        "sign_types": [{"key": k, "label": v["name"], "label_en": _en_type(v["name"])}
                        for k, v in SIGN_TYPES.items()],
         "materials": [{"key": k, "label": v["label"]}
                       for k, v in PR.MATERIAL_PRESETS.items()],
