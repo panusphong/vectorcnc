@@ -69,8 +69,10 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "8.0-print+contourbox+quote",
-            "build": "2026-07-18-printUV-whitebase-diecut+contour-lightbox+quote-packet",
+            "version": "8.1-print+contourbox+quote+mount3d+gate",
+            "build": "2026-07-19-enhance+mount3d-art+applock-gate",
+            "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
+            "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
@@ -1124,8 +1126,27 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
-def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None):
-    """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก"""
+def _art_data_uri(path, max_px=1400):
+    """crop รูปงานให้เหลือเฉพาะตัวงาน (ตัดพื้นขาว/โปร่ง) -> data URI (PNG) ไว้แปะบนหน้า 3 มิติ"""
+    from PIL import Image
+    import io as _io, base64 as _b64, numpy as _np
+    im = Image.open(path).convert("RGBA")
+    a = _np.asarray(im)
+    rgb = a[:, :, :3]; alpha = a[:, :, 3]
+    mask = ((rgb.min(axis=2) < 245) | (alpha < 250)) & (alpha > 12)   # ไม่ใช่ขาว/ไม่โปร่ง
+    ys, xs = _np.where(mask)
+    if len(xs) and len(ys):
+        im = im.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+    if max(im.size) > max_px:
+        sc = max_px / float(max(im.size))
+        im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))), Image.LANCZOS)
+    buf = _io.BytesIO(); im.save(buf, "PNG")
+    return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+
+
+def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href=""):
+    """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
+       art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)"""
     import math
 
     def _esc(t):
@@ -1170,6 +1191,15 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                              % (Af[0], Af[1], Bf[0], Bf[1], Bb[0], Bb[1], Ab[0], Ab[1], wallFill, edge, lw))
     for pg in polys:                                   # หน้า (คิ้ว/หน้า)
         parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
+    if art_href:                                       # 🖨️ แปะรูปพิมพ์จริงบนหน้า (clip ตามทรงหน้า) = เห็นภาพจริง
+        _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in polys)
+        parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
+        _ix, _iy = F((b[0], b[1]))
+        parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                     'preserveAspectRatio="xMidYMid slice" clip-path="url(#w3dArt)"/>'
+                     % (art_href, art_href, _ix, _iy, W, H))
+        for pg in polys:                               # วาดเส้นขอบหน้าทับอีกที (ให้ขอบคมชัดเหนือรูป)
+            parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), edge, lw))
     if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
         ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
         for pg in ip:
@@ -1190,7 +1220,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cF[0], cF[1], cB[0], cB[1], cd, lw))
     parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">Return ~%.1f cm</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
     Wt = padL + W + dvx + padR; Ht = padT + H + padB
-    svg = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
+    svg = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
     svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(_en_type(rec["name"]))))
     svg += parts; svg.append('</svg>')
     return "\n".join(svg)
@@ -1414,8 +1444,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg = _spec_sheet_svg(out_layers)
         try:
             body3d = frame_outer if (frame_outer is not None and not frame_outer.is_empty) else full
+            _art = ""
+            if rec.get("face_finish") == "print":       # กล่องไฟล้อมทรง = จบด้วยงานพิมพ์ -> โชว์รูปจริงบนหน้า
+                try: _art = _art_data_uri(inp)
+                except Exception: _art = ""
             svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=bore_geom,
-                               face_color=(face_color or None), side_color=(side_color or None))
+                               face_color=(face_color or None), side_color=(side_color or None),
+                               art_href=_art)
         except Exception:
             svg3d = ""
 
@@ -1954,6 +1989,74 @@ def _sell_mode():
     return str(os.environ.get("SELL_MODE", "0")).lower() in ("1", "true", "yes", "on")
 
 
+# 🔒 APP_LOCK — บล็อกคนนอกเข้าตัวแอปตรง ๆ (พิมพ์ URL เอง)
+#    0 (ค่าเริ่มต้น) = เปิดเหมือนเดิม (deploy ได้ไม่กระทบใคร)
+#    1              = ต้องมีตั๋ว SSO (?t=) / คีย์ (?k=,?ak=) / คุกกี้เข้าถึง เท่านั้น
+#                     ไม่มี = เจอหน้า "เฉพาะทีมงาน" (403) · ทีมเข้าผ่าน CRM Hub ได้ปกติ
+def _app_locked():
+    return str(os.environ.get("APP_LOCK", "0")).lower() in ("1", "true", "yes", "on")
+
+
+def _gate_ok(request: Request) -> bool:
+    """ผ่านประตูไหม = ถือตั๋ว SSO ถูกต้อง / คีย์ภายใน-แอดมิน / คุกกี้เข้าถึงที่เคยเข้าถูก"""
+    from vectorcnc import auth as A
+    if _role_of(request) in ("internal", "admin"):        # ① ตั๋ว SSO (?t= / header)
+        return True
+    q = request.query_params                              # ② คีย์ภายใน / แอดมิน
+    ik = _internal_key(); ak = _admin_key()
+    if ik and str(request.headers.get("X-Internal-Key") or q.get("k", "")) == str(ik):
+        return True
+    if ak and str(q.get("ak", "")) == str(ak):
+        return True
+    ck = request.cookies.get("vc_acc", "")               # ③ คุกกี้เข้าถึง (ตั้งหลังเข้าถูกครั้งแรก)
+    if ck and A.role_of(ck) in ("internal", "admin"):
+        return True
+    return False
+
+
+def _gate_page():
+    """หน้า 'เฉพาะทีมงาน' — โชว์เมื่อคนนอกพยายามเปิดตัวแอปตรง ๆ ตอน APP_LOCK=1"""
+    html = ("<!doctype html><html lang='th'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<meta name='robots' content='noindex,nofollow'>"
+            "<title>VectorCNC — เฉพาะทีมงาน</title><style>"
+            "*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;"
+            "justify-content:center;font-family:'Prompt',system-ui,Arial,sans-serif;"
+            "background:linear-gradient(135deg,#0f1729,#1e293b);color:#e2e8f0}"
+            ".card{max-width:440px;margin:24px;padding:40px 32px;text-align:center;"
+            "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);"
+            "border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)}"
+            ".lock{font-size:52px;margin-bottom:8px}h1{font-size:22px;margin:12px 0 8px}"
+            "p{color:#94a3b8;line-height:1.6;margin:8px 0;font-size:14px}"
+            "b{color:#e2e8f0}.small{font-size:12px;color:#64748b;margin-top:18px}</style></head>"
+            "<body><div class='card'><div class='lock'>🔒</div>"
+            "<h1>หน้านี้สำหรับทีมงานเท่านั้น</h1>"
+            "<p>กรุณาเปิด VectorCNC ผ่าน <b>CRM Hub</b> เพื่อเข้าใช้งาน</p>"
+            "<p class='small'>ถ้าเป็นทีมงานแต่เข้าไม่ได้ ให้กดเปิดจากปุ่มใน CRM Hub อีกครั้ง "
+            "(ตั๋วหมดอายุทุก 12 ชม.)</p></div></body></html>")
+    return HTMLResponse(html, status_code=403)
+
+
+def _serve_app(request: Request, path=None):
+    """ส่งตัวแอป + ตั้ง/ต่ออายุคุกกี้เข้าถึง เพื่อคลิกเมนู/รีเฟรชแล้วไม่หลุด"""
+    from vectorcnc import auth as A
+    resp = FileResponse(path or FRONTEND)
+    try:
+        tok = _token_of(request)
+        if tok and A.role_of(tok) in ("internal", "admin"):
+            resp.set_cookie("vc_acc", tok, max_age=12 * 3600,
+                            httponly=True, samesite="lax", secure=True)
+        elif _gate_ok(request):                          # เข้าด้วยคีย์ -> ออกคุกกี้เซ็นให้
+            try:
+                resp.set_cookie("vc_acc", A.sign_internal("team", "internal", 12),
+                                max_age=12 * 3600, httponly=True, samesite="lax", secure=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return resp
+
+
 @app.get("/")
 def home(request: Request):
     """หน้าแรก
@@ -1969,16 +2072,20 @@ def home(request: Request):
         if os.path.exists(landing):
             return FileResponse(landing)
 
+    if _app_locked() and not _gate_ok(request):    # 🔒 บล็อกคนนอกเข้าตรง ๆ
+        return _gate_page()
     if os.path.exists(FRONTEND):
-        return FileResponse(FRONTEND)
+        return _serve_app(request)
     return {"msg": "VectorCNC API running. POST /api/vectorize"}
 
 
 @app.get("/app")
-def app_page():
+def app_page(request: Request):
     """ตัวแอป (ใช้ได้ทั้งสองโหมด — ลิงก์ /app จะได้ไม่พังตอนสลับ SELL_MODE)"""
+    if _app_locked() and not _gate_ok(request):    # 🔒 บล็อกคนนอกเข้าตรง ๆ
+        return _gate_page()
     if os.path.exists(FRONTEND):
-        return FileResponse(FRONTEND)
+        return _serve_app(request)
     return JSONResponse({"error": "index.html not found"}, status_code=404)
 
 
@@ -1986,9 +2093,11 @@ def app_page():
 CHECKSHEET_PAGE = os.path.join(os.path.dirname(FRONTEND), "checksheet.html")
 
 @app.get("/checksheet")
-def checksheet_page():
+def checksheet_page(request: Request):
+    if _app_locked() and not _gate_ok(request):    # 🔒 บล็อกคนนอก
+        return _gate_page()
     if os.path.exists(CHECKSHEET_PAGE):
-        return FileResponse(CHECKSHEET_PAGE)
+        return _serve_app(request, CHECKSHEET_PAGE)
     return {"msg": "checksheet.html missing"}
 
 @app.post("/api/checksheet")
@@ -2044,9 +2153,11 @@ MEASURE_PAGE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 
 
 @app.get("/measure")
-def measure_page():
+def measure_page(request: Request):
+    if _app_locked() and not _gate_ok(request):    # 🔒 บล็อกคนนอก
+        return _gate_page()
     if os.path.exists(MEASURE_PAGE):
-        return FileResponse(MEASURE_PAGE)
+        return _serve_app(request, MEASURE_PAGE)
     return {"msg": "measure.html not found"}
 
 
