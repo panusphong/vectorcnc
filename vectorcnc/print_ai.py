@@ -393,7 +393,8 @@ def build(image_path, width_mm=300.0, bleed_mm=2.0, cut=True,
         "layers": layers,
         "cut_dxf_b64": cut_dxf_b64,                   # ↴ ส่งเข้าเลเซอร์ได้เลย
         "cut_svg": cut_svg,
-        "mode": "print-embed",
+        "cut_mm": ([[(x / MM, y / MM) for (x, y) in p] for p in cut_pt] if cut_pt else []),
+        "mode": "print-embed",                         #   polygon ดิบ (มม. · origin ซ้ายบน y ลง) → step&repeat
         "note": note,
     }
 
