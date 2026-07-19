@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.0-armadjust-telescopic+wireadjust+ledribbon",
-            "build": "2026-07-19-arm-adjustable-telescopic+wire-barlevel+led-ribbon+transformer",
+            "version": "9.2-face2-noflip+flatplate",
+            "build": "2026-07-19-face2-same-artwork-no-mirror+flat-ceiling-plate+flat-wall-plate+ai-cut-ondemand",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1237,12 +1237,11 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         padR += W * 0.66 + fs * 3.0
     if _mount == "top2":
         padT += _armpad
-    elif _mount in ("side1", "side2"):        # แขนยื่นแนวลึก ไปทางผนัง (ซ้าย/ขวา)
+    elif _mount in ("side1", "side2"):        # แขนแนวนอน ซ้าย/ขวาของภาพ
         if _aside == "left":
             padL += _armpad
         else:
             padR += _armpad
-        padT += _armpad * 0.7
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
 
@@ -1275,17 +1274,30 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 Af = F(A); Bf = F(Bp); Bb = Bk(Bp); Ab = Bk(A)
                 parts.append('<path class="w3d-side" d="M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
                              % (Af[0], Af[1], Bf[0], Bf[1], Bb[0], Bb[1], Ab[0], Ab[1], wallFill, edge, lw))
-    for pg in polys:                                   # หน้า (คิ้ว/หน้า)
-        parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
-    if art_href:                                       # 🖨️ แปะรูปพิมพ์จริงบนหน้า (clip ตามทรงหน้า) = เห็นภาพจริง
-        _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in polys)
-        parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
-        _ix, _iy = F((b[0], b[1]))
-        parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
-                     'preserveAspectRatio="xMidYMid slice" clip-path="url(#w3dArt)"/>'
-                     % (art_href, art_href, _ix, _iy, W, H))
-        for pg in polys:                               # วาดเส้นขอบหน้าทับอีกที (ให้ขอบคมชัดเหนือรูป)
+    if art_href:                                       # 🖨️ กล่องไฟหน้าพิมพ์: คิ้ว 1cm รอบตัว + artwork หดเข้า >1cm
+        _KIM = 10.0; _ARTIN = 14.0; kimFill = "#a9b4c4"
+        try:
+            _ik = full.buffer(-_KIM); _ia = full.buffer(-_ARTIN)
+        except Exception:
+            _ik = None; _ia = None
+        _ikp = ([] if _ik is None or _ik.is_empty else (list(_ik.geoms) if _ik.geom_type == "MultiPolygon" else [_ik]))
+        _iap = ([] if _ia is None or _ia.is_empty else (list(_ia.geoms) if _ia.geom_type == "MultiPolygon" else [_ia]))
+        for pg in polys:                               # คิ้ว = เต็มหน้า (สีคิ้ว) — จะเห็นขอบ 1cm รอบตัว
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), kimFill, edge, lw))
+        for pg in _ikp:                                # หน้าใน (หลังคิ้ว) = พื้นขาว (ไม่มีพื้นเทา) -> เกิดขอบคิ้ว 1cm
+            parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), edge, lw * 0.7))
+        if _iap:                                       # artwork ขยายเต็มถึงขอบคิ้ว (clip หน้าใน · พื้นขาวลามถึงคิ้ว)
+            _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in _iap)
+            parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
+            _ab = _ia.bounds; _ix, _iy = F((_ab[0], _ab[1]))
+            parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                         'preserveAspectRatio="xMidYMid meet" clip-path="url(#w3dArt)"/>'
+                         % (art_href, art_href, _ix, _iy, _ab[2] - _ab[0], _ab[3] - _ab[1]))
+        for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), edge, lw))
+    else:
+        for pg in polys:                               # หน้าปกติ (ไม่มีรูปพิมพ์)
+            parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
     if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
         ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
         for pg in ip:
@@ -1326,24 +1338,56 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 s += '<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fff" stroke="%s" stroke-width="%.2f"/>' % (cx+bx, cy+by, 4.5, bolt, lw*0.8)
             return s
 
+        def _plate_flat(cx, cy):
+            # เพลทเรียบ ติดแนบฝ้าเพดาน — มองด้านหน้าเห็นเป็นแถบแนวนอนบาง (ไม่ใช่แผ่นหันหน้า)
+            pw = _plate; ph = max(7.0, _plate * 0.20)
+            s = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2.5" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                 % (cx - pw / 2.0, cy - ph / 2.0, pw, ph, plateC, steelD, lw))
+            s += '<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cx - pw / 2.0, cy - ph / 2.0, cx + pw / 2.0, cy - ph / 2.0, "#eef2f7", lw * 0.6)
+            for bx in (-pw * 0.30, pw * 0.30):   # หัวน็อตยึดฝ้า (จุดเล็ก)
+                s += '<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#eef2f7" stroke="%s" stroke-width="%.2f"/>' % (cx + bx, cy, 3.0, bolt, lw * 0.7)
+            return s
+
+        def _plate_flat_v(cx, cy):
+            # เพลทเรียบ แนบผนัง (แขนยื่นจากผนังซ้าย/ขวา) — มองด้านหน้าเห็นเป็นแถบแนวตั้งบาง
+            ph = _plate; pw = max(7.0, _plate * 0.20)
+            s = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2.5" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                 % (cx - pw / 2.0, cy - ph / 2.0, pw, ph, plateC, steelD, lw))
+            _edge = (cx - pw / 2.0) if _aside == "right" else (cx + pw / 2.0)   # ขอบด้านที่แนบผนัง
+            s += '<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_edge, cy - ph / 2.0, _edge, cy + ph / 2.0, "#eef2f7", lw * 0.6)
+            for by in (-ph * 0.30, ph * 0.30):   # หัวน็อตยึดผนัง
+                s += '<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#eef2f7" stroke="%s" stroke-width="%.2f"/>' % (cx, cy + by, 3.0, bolt, lw * 0.7)
+            return s
+
         midY = (b[1] + b[3]) / 2.0
         specs = []
         if _mount == "top2":
             for fx in (0.30, 0.70):
                 a = F((b[0] + W * fx, b[1])); specs.append((a, (a[0], a[1] - _aL)))
-            _cy = min(w[1] for _a, w in specs) - _plate / 2.0
+            _cy = min(w[1] for _a, w in specs)
+            # ฝ้าเพดาน = แถบทึบบางแนวนอน (เพลทเรียบแนบด้านล่างฝ้า)
+            arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                             % (padL * 0.5, _cy - 5.0, (padL + W + dvx) - padL * 0.5, 5.0, "#e2e8f0", surf, lw * 0.8))
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
-        else:                                  # side1/side2 — แขนยื่นไปทางผนัง เลือกซ้าย/ขวาได้ (คู่ขนาน)
-            _ux = (-math.cos(ang)) if _aside == "left" else math.cos(ang)
-            _avx, _avy = _ux * _aL, -math.sin(ang) * _aL
+        else:                                  # side1/side2 — แขนแนวนอน "ทางซ้าย/ขวาของภาพ" (คู่ขนาน)
+            _avx = (-_aL) if _aside == "left" else _aL
             _ex = b[0] if _aside == "left" else b[2]
             if _mount == "side1":
-                atts = [Bk((_ex, midY))]
-            else:                              # side2 = แขนคู่ ขนานกัน (บน + ล่าง)
-                atts = [Bk((_ex, b[1] + H * 0.30)), Bk((_ex, b[1] + H * 0.70))]
+                atts = [F((_ex, midY))]
+            else:                              # side2 = แขนคู่ ขนานกัน (บน + ล่าง) ยื่นออกด้านข้าง
+                atts = [F((_ex, b[1] + H * 0.30)), F((_ex, b[1] + H * 0.70))]
             for a in atts:
-                specs.append((a, (a[0] + _avx, a[1] + _avy)))
+                specs.append((a, (a[0] + _avx, a[1])))
+            _wx = atts[0][0] + _avx                       # ตำแหน่งผนัง (ปลายแขน)
+            _wy0 = min(w[1] for _a, w in specs) - _plate * 0.8
+            _wy1 = max(w[1] for _a, w in specs) + _plate * 0.8
+            _wsx = _wx + (_plate * 0.10 if _aside == "right" else -_plate * 0.10)
+            # ผนัง = แถบทึบบางแนวตั้ง (เพลทแนบด้านในผนัง)
+            arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                             % (min(_wx, _wsx), _wy0, abs(_wsx - _wx), _wy1 - _wy0, "#e2e8f0", surf, lw * 0.8))
+            arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (_wx, _wy0, _wx, _wy1, surf, lw * 1.6))
         _adj = str(arm_adjust).lower() == "adjustable"
 
         def _lerp(pp, qq, t):
@@ -1355,7 +1399,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 arm_parts.append(_tube(_lerp(a, w, 0.44), w, tw * 0.58))   # โครงใน (แคบ · เลื่อนได้)
             else:
                 arm_parts.append(_tube(a, w, tw))
-            arm_parts.append(_plate_at(w[0], w[1]))
+            arm_parts.append(_plate_flat(w[0], w[1]) if _mount == "top2" else _plate_flat_v(w[0], w[1]))
         _lab = ("Adjustable +/-%.0f cm (telescopic)" % float(arm_travel_cm)) if _adj else "Fixed"
         arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#475569">Mount arm ~%.0f cm &#183; Plate %.0f&#215;%.0f cm &#183; %s</text>'
                          % (padL, padT + H + padB - fs * 0.8, fs * 0.82, _aL / 10.0, _plate / 10.0, _plate / 10.0, _lab))
@@ -1368,11 +1412,11 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         cxm = ix + iw / 2.0
         arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0d9488">&#8644;</text>'
                          % (padL + W + dvx * 0.5, padT + H * 0.5, fs * 2.0))
-        arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#f8fafc" stroke="%s" stroke-width="%.2f"/>'
+        arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" stroke="%s" stroke-width="%.2f"/>'
                          % (ix, iy, iw, ih, iw * 0.03, edge, lw))
-        arm_parts.append('<g transform="translate(%.2f,0) scale(-1,1)"><image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="xMidYMid meet"/></g>'
-                         % (2 * ix + iw, art_href, art_href, ix, iy, iw, ih))
-        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a" text-anchor="middle">Face 2 &#183; &#3614;&#3636;&#3617;&#3614;&#3660;&#3585;&#3621;&#3633;&#3610;&#3604;&#3657;&#3634;&#3609; (flip)</text>'
+        arm_parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="xMidYMid meet"/>'
+                         % (art_href, art_href, ix, iy, iw, ih))
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a" text-anchor="middle">Face 2 &#183; &#3627;&#3633;&#3609;&#3629;&#3637;&#3585;&#3604;&#3657;&#3634;&#3609; (&#3629;&#3656;&#3634;&#3609;&#3629;&#3629;&#3585;&#3611;&#3585;&#3605;&#3636;)</text>'
                          % (cxm, iy - fs * 0.6, fs * 0.95))
         arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#64748b" text-anchor="middle">&#3614;&#3636;&#3617;&#3614;&#3660; 2 &#3604;&#3657;&#3634;&#3609; &#183; &#3629;&#3632;&#3588;&#3619;&#3636;&#3621;&#3636;&#3585; / &#3612;&#3657;&#3634; 3P / &#3652;&#3623;&#3609;&#3636;&#3621;</text>'
                          % (cxm, iy + ih + fs * 1.3, fs * 0.8))
