@@ -69,9 +69,10 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "8.3-steprepeat+geombox+extractguard+centerart",
-            "build": "2026-07-19-steprepeat+geobox+extract-guard+design2wall",
+            "version": "8.4-steprepeat+geombox+design2wall+armmount",
+            "build": "2026-07-19-steprepeat+geobox+design2wall+arm-mount+plate10cm",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
+            "arm_mount": "on",                               # แขนยึด none/top2/side1/side2 + เพลท 10cm
             "design_to_wall": "on",                          # ออกแบบเสร็จ -> ส่งเข้าจำลองผนังทันที
             "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
             "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
@@ -1206,9 +1207,11 @@ def _art_data_uri(path, max_px=1400):
     return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
 
 
-def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href=""):
+def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
+               mount="none", arm_len_cm=30.0, plate_cm=10.0):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
-       art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)"""
+       art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
+       mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
     import math
 
     def _esc(t):
@@ -1219,6 +1222,17 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     ang = math.radians(30); dvx = D * math.cos(ang); dvy = -D * math.sin(ang)
     fs = max(6.0, S * 0.032); lw = max(0.6, S * 0.003); cd = "#dc2626"
     padL = fs * 4.2; padT = fs * 3.0 + abs(dvy); padR = fs * 2.5 + dvx + S * 0.16; padB = fs * 4.8
+    # 🦾 เผื่อพื้นที่สำหรับ "แขนยึด + เพลท" (ก่อนคำนวณ ox/oy)
+    _mount = str(mount or "none").lower()
+    _aL = max(0.0, float(arm_len_cm)) * 10.0
+    _plate = max(1.0, float(plate_cm)) * 10.0
+    _armpad = _aL + _plate + fs * 2.2
+    if _mount == "top2":
+        padT += _armpad
+    elif _mount == "side1":
+        padL += _armpad
+    elif _mount == "side2":
+        padL += _armpad; padR += _armpad
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
 
@@ -1281,9 +1295,51 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     cF = F((b[2], b[1])); cB = Bk((b[2], b[1]))          # ลึก/ยกขอบ (แนวเยื้อง)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cF[0], cF[1], cB[0], cB[1], cd, lw))
     parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">Return ~%.1f cm</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
+    # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
+    arm_parts = []
+    if _mount in ("top2", "side1", "side2"):
+        tw = 25.0
+        steel = "#8b93a0"; steelD = "#5b626d"; plateC = "#c6ccd6"; bolt = "#5b626d"; surf = "#cbd5e1"
+
+        def _tube(p1, p2, w):
+            vx, vy = p2[0] - p1[0], p2[1] - p1[1]; Ln = math.hypot(vx, vy) or 1.0
+            nx, ny = -vy / Ln, vx / Ln; hw = w / 2.0
+            return ('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f L %.1f %.1f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
+                    % (p1[0]+nx*hw, p1[1]+ny*hw, p2[0]+nx*hw, p2[1]+ny*hw,
+                       p2[0]-nx*hw, p2[1]-ny*hw, p1[0]-nx*hw, p1[1]-ny*hw, steel, steelD, lw))
+
+        def _plate_at(cx, cy):
+            hw = _plate / 2.0; ins = hw - 18.0
+            s = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                 % (cx-hw, cy-hw, _plate, _plate, _plate*0.06, plateC, steelD, lw))
+            for bx, by in ((-ins, -ins), (ins, -ins), (-ins, ins), (ins, ins)):
+                s += '<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fff" stroke="%s" stroke-width="%.2f"/>' % (cx+bx, cy+by, 4.5, bolt, lw*0.8)
+            return s
+
+        midY = (b[1] + b[3]) / 2.0
+        specs = []
+        if _mount == "top2":
+            for fx in (0.30, 0.70):
+                a = F((b[0] + W * fx, b[1])); specs.append((a, (a[0], a[1] - _aL)))
+            _cy = min(w[1] for _a, w in specs) - _plate / 2.0
+            arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
+        else:
+            side = [("L", F((b[0], midY)))]
+            if _mount == "side2":
+                side.append(("R", F((b[2], midY))))
+            for s_, a in side:
+                d = -_aL if s_ == "L" else _aL; specs.append((a, (a[0] + d, a[1])))
+        for a, w in specs:
+            arm_parts.append(_tube(a, w, tw))
+            arm_parts.append(_plate_at(w[0], w[1]))
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#475569">Mount arm ~%.0f cm &#183; Plate %.0f&#215;%.0f cm</text>'
+                         % (padL, padT + H + padB - fs * 0.8, fs * 0.82, _aL / 10.0, _plate / 10.0, _plate / 10.0))
+
     Wt = padL + W + dvx + padR; Ht = padT + H + padB
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
     svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(_en_type(rec["name"]))))
+    svg += arm_parts       # แขนอยู่หลังป้าย (วาดก่อน)
     svg += parts; svg.append('</svg>')
     return "\n".join(svg)
 
@@ -1413,12 +1469,44 @@ def _layerset_cut_svg(out_layers, wall_strips):
             % (Wt, Ht, Wt, Ht, "".join(parts)))
 
 
+def _mount_plate_files(plate_cm=10.0, arm="side1"):
+    """ไฟล์ตัด 'เพลทยึด' 10cm เจาะ 4 รู (ตามจำนวนแขน) -> DXF + SVG (มม.) เข้าเลเซอร์/CNC ทำเพลทจริง"""
+    import ezdxf, io, base64
+    P = float(plate_cm) * 10.0
+    n = 1 if str(arm) == "side1" else 2
+    hole_r = 5.0; ins = P / 2.0 - 18.0; gap = 30.0
+    doc = ezdxf.new(); doc.header["$INSUNITS"] = 4
+    for nm, col in (("Plate", 5), ("Holes", 1)):
+        if nm not in doc.layers:
+            doc.layers.add(nm, color=col)
+    msp = doc.modelspace()
+    for k in range(n):
+        ox = k * (P + gap)
+        msp.add_lwpolyline([(ox, 0), (ox + P, 0), (ox + P, P), (ox, P)], close=True, dxfattribs={"layer": "Plate"})
+        cx, cy = ox + P / 2, P / 2
+        for bx, by in ((-ins, -ins), (ins, -ins), (-ins, ins), (ins, ins)):
+            msp.add_circle((cx + bx, cy + by), hole_r, dxfattribs={"layer": "Holes"})
+    s = io.StringIO(); doc.write(s)
+    dxf = base64.b64encode(s.getvalue().encode("utf-8")).decode()
+    W = n * P + (n - 1) * gap
+    p = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">' % (W, P, W, P)]
+    for k in range(n):
+        ox = k * (P + gap)
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#ec008c" stroke-width="0.3"/>' % (ox, 0, P, P))
+        cx, cy = ox + P / 2, P / 2
+        for bx, by in ((-ins, -ins), (ins, -ins), (-ins, ins), (ins, ins)):
+            p.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="none" stroke="#ec008c" stroke-width="0.3"/>' % (cx + bx, cy + by, hole_r))
+    p.append('</svg>')
+    return {"dxf_base64": dxf, "svg": "".join(p), "count": n, "plate_cm": float(plate_cm)}
+
+
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
                     return_depth_cm: float = Form(0.0), trim_width_cm: float = Form(1.0),
                     trim_dir: str = Form("out"), face_color: str = Form(""),
-                    side_color: str = Form(""), n_colors: int = Form(6)):
+                    side_color: str = Form(""), n_colors: int = Form(6),
+                    arm: str = Form("none"), arm_len_cm: float = Form(30.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -1515,9 +1603,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 except Exception: _art = ""
             svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=bore_geom,
                                face_color=(face_color or None), side_color=(side_color or None),
-                               art_href=_art)
+                               art_href=_art, mount=str(arm or "none"), arm_len_cm=float(arm_len_cm),
+                               plate_cm=10.0)
         except Exception:
             svg3d = ""
+        # 🔩 ไฟล์ตัดเพลทยึด 10cm (เจาะ 4 รู) — ส่งเข้าเลเซอร์/CNC ทำเพลทจริง
+        mount_plate = {}
+        if str(arm or "none").lower() in ("top2", "side1", "side2"):
+            try:
+                mount_plate = _mount_plate_files(10.0, str(arm))
+            except Exception:
+                mount_plate = {}
 
         # DXF: แยกแต่ละชั้น 'วางห่างกัน' แนวนอน (ไม่ทับซ้อน) + คนละ layer/สี + ป้ายชื่อชั้น
         import ezdxf
@@ -1599,7 +1695,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"],
                             "junk": L.get("junk", 0)} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
-                "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64}
+                "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
+                "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
+                "mount_plate": mount_plate}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
@@ -3236,9 +3334,10 @@ def _push_sheet(row, blocking=False):
     if not hook:
         return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
 
-    payload = {"sid": row[2], "account": row[3], "ev": row[4], "page": row[5],
-               "menu": row[6], "refhost": row[8] or row[7], "device": row[9],
-               "browser": row[10], "dur": row[11]}
+    payload = {"api": "hit",                       # ⚠️ ต้องมี — ไม่งั้น Apps Script ตอบ "unknown api: undefined"
+               "sid": row[2], "account": row[3], "u": row[3], "ev": row[4], "page": row[5],
+               "menu": row[6], "refhost": row[8] or row[7], "ref": row[8] or row[7],
+               "device": row[9], "browser": row[10], "dur": row[11]}
 
     def _go():
         import urllib.request
