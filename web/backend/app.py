@@ -69,10 +69,11 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "8.1-print+contourbox+quote+mount3d+gate",
-            "build": "2026-07-19-enhance+mount3d-art+applock-gate",
+            "version": "8.2-print+contourbox+quote+3dart+gate+steprepeat",
+            "build": "2026-07-19-enhance+3dart+applock-gate+step-repeat",
             "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
             "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
+            "step_repeat": "on",                             # งานพิมพ์ผลิตซ้ำ + ตัดเลเซอร์ตามหมุด
             "engine": eng, "bezier": bez, "nesting": nst, "psd": _psd_ok(),
             "assets": _v("assets", "ASSETS_VERSION"),
             "producible": _v("producible", "PRODUCIBLE_VERSION"),
@@ -1979,6 +1980,70 @@ async def nest_batch(request: Request):
                 "sheets_svg": svgs, "dxf_base64": dxf_b64}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+
+@app.post("/api/step-repeat")
+async def step_repeat(file: UploadFile = File(...),
+                      piece_w_mm: float = Form(40.0),
+                      sheet_w_mm: float = Form(600.0),
+                      sheet_h_mm: float = Form(1200.0),
+                      gap_mm: float = Form(3.0),
+                      margin_mm: float = Form(8.0),
+                      reg_mode: str = Form("ccd"),
+                      qty: int = Form(0),
+                      white_base: int = Form(0),
+                      cut_mode: str = Form("diecut")):
+    """งานพิมพ์ผลิตซ้ำ (step-and-repeat) — วางชิ้นเดียวซ้ำเต็มแผ่น
+       -> ไฟล์พิมพ์ .ai (ทั้งแผ่น พร้อมพิมพ์ UV) + ไฟล์ตัดเลเซอร์ DXF/SVG (ตรงตำแหน่ง + หมุด)
+       reg_mode: ccd = ใส่หมุดกล้องอ่าน · origin = จัดชนมุม (0,0) ตัดตามพิกัด"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        from vectorcnc import print_ai as PA, imposition as IMP
+        pw_mm = float(piece_w_mm)
+        # ชิ้นเดียว: เส้นตัด (cut_mm) + ไฟล์พิมพ์ชิ้น (ไม่มีเส้นตัด — เส้นตัดไปอยู่ไฟล์เลเซอร์)
+        _pc, info = PA.build(inp, width_mm=pw_mm, cut=True,
+                             white_base=bool(int(white_base)), cut_mode=str(cut_mode))
+        cut = info.get("cut_mm") or []
+        if not cut:
+            return JSONResponse({"error": "หาเส้นตัดของชิ้นไม่ได้ (ภาพควรมีพื้นโปร่ง/ขอบชัด)"},
+                                status_code=400)
+        pdf_art, _ = PA.build(inp, width_mm=pw_mm, cut=False,
+                              white_base=bool(int(white_base)))
+        # normalize เส้นตัด -> origin 0,0 + ขนาด footprint จริงของชิ้น
+        xs = [x for p in cut for x, y in p]; ys = [y for p in cut for x, y in p]
+        mnx, mny = min(xs), min(ys)
+        cut = [[(x - mnx, y - mny) for x, y in p] for p in cut]
+        pw = max(x for p in cut for x, y in p); ph = max(y for p in cut for x, y in p)
+        SW, SH = float(sheet_w_mm), float(sheet_h_mm)
+        gap, mg = float(gap_mm), float(margin_mm)
+        plan = IMP.plan_grid(pw, ph, SW, SH, gap, mg); plan["cut"] = cut
+        if plan["per"] <= 0:
+            return JSONResponse({"error": "ชิ้นใหญ่กว่าแผ่น วางไม่ได้ — ลดขนาดชิ้น หรือเพิ่มขนาดแผ่น"},
+                                status_code=400)
+        pos = IMP.positions(plan, SW, SH, gap)
+        marks = IMP.reg_marks(SW, SH)
+        rm = str(reg_mode or "ccd").lower()
+        print_pdf = IMP.build_print_pdf(pdf_art, plan, pos, SW, SH, rm, marks)
+        cut_dxf = IMP.build_cut_dxf(plan, pos, SW, SH, rm, marks)
+        cut_svg = IMP.build_cut_svg(plan, pos, SW, SH, rm, marks)
+        prev = IMP.preview_svg(plan, pos, SW, SH, rm, _art_data_uri(inp))
+        summ = IMP.summarize(plan["per"], int(qty))
+        return {"per_sheet": plan["per"], "cols": plan["cols"], "rows": plan["rows"],
+                "rot": plan["rot"], "piece_w": round(pw, 1), "piece_h": round(ph, 1),
+                "sheet_w": SW, "sheet_h": SH, "reg_mode": rm, "summary": summ,
+                "ai_base64": base64.b64encode(print_pdf).decode(),   # ไฟล์พิมพ์ .ai ทั้งแผ่น
+                "cut_dxf_base64": cut_dxf, "cut_svg": cut_svg, "preview_svg": prev,
+                "note": "ไฟล์ .ai = พิมพ์ UV ทั้งแผ่น · DXF/SVG = เข้าเลเซอร์ตัด (ตรงตำแหน่ง"
+                        + (" + หมุดกล้อง)" if rm == "ccd" else " · จัดชนมุม 0,0)")}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]},
+                            status_code=400)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # 🚧 SELL_MODE — สวิตช์เปิดหน้าขาย (ยังไม่เปิดขาย -> ปิดไว้ก่อน)
