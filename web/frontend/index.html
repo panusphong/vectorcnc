@@ -4025,7 +4025,8 @@ $('goLayer').onclick=function(){
         '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
         '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
-        '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button></div>'+
+        '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
+        '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button></div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
         '<span style="font-size:11px;color:#64748b">ไฟ:</span><div id="glowMode" style="display:inline-flex;gap:3px">'+
@@ -4051,6 +4052,27 @@ $('goLayer').onclick=function(){
     if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
+    // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
+    if($('lsToWall'))$('lsToWall').onclick=function(){
+      if(!fileObj){alert('ไม่พบภาพแบบ');return;}
+      var rd=new FileReader();
+      rd.onload=function(e){
+        var im=new Image();
+        im.onload=function(){
+          var mx=1400,scv=Math.min(1,mx/Math.max(im.width,im.height));
+          var cv=document.createElement('canvas');cv.width=Math.round(im.width*scv);cv.height=Math.round(im.height*scv);
+          cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+          try{
+            localStorage.setItem('vc_wall_handoff',JSON.stringify({
+              img:cv.toDataURL('image/png'),name:(lastName||'design')+'_'+(j.type_name||t),
+              width_mm:(+$('realW').value||600),type_name:(j.type_name||''),ts:Date.now()}));
+          }catch(err){alert('ภาพใหญ่เกินไปสำหรับส่งต่อ — ลองลดขนาดภาพก่อน');return;}
+          location.href='/measure'+(location.search||'');   // คง ?u= ของ CRM Hub
+        };
+        im.src=e.target.result;
+      };
+      rd.readAsDataURL(fileObj);
+    };
     wireGlow();
   }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
