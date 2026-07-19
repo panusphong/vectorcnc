@@ -352,6 +352,33 @@ select.numin{cursor:pointer}
             <div style="width:92px"><input class="numin" id="mainArmTravel" type="number" value="10" min="0" title="ระยะเลื่อน ±ซม." style="padding:6px;width:100%"></div>
           </div>
           <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · เลือกซ้าย/ขวา · <b>ปรับได้</b> = โครงในเลื่อนขึ้น-ลง ±ซม. — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
+          <!-- 📋 รายละเอียดสั่งผลิต (ใช้ในใบสั่งผลิต) -->
+          <div style="margin-top:8px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc">
+            <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px">📋 รายละเอียดสั่งผลิต (ใบสั่งผลิต)</div>
+            <label style="font-size:10.5px;color:#64748b">วัสดุหลัก</label>
+            <select class="numin" id="pmMaterial" style="width:100%;padding:6px">
+              <option value="acrylic">อะคริลิค</option>
+              <option value="plaswood">พลาสวูด</option>
+              <option value="zinc">ซิ้งค์ (สังกะสี)</option>
+              <option value="stainless_silver">สแตนเลสเงิน (เงา)</option>
+              <option value="stainless_gold">สแตนเลสทอง (ไทเทเนียม)</option>
+              <option value="stainless_rose">สแตนเลสโรสโกลด์</option>
+            </select>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ชนิดไฟ LED</label>
+                <select class="numin" id="pmLedType" style="width:100%;padding:6px"><option value="module">โมดูล (Module)</option><option value="ribbon">ริบบอน (เส้นยืด)</option></select></div>
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">สายไฟ</label>
+                <select class="numin" id="pmWire" style="width:100%;padding:6px"><option value="indoor">Indoor</option><option value="outdoor">Outdoor (กันน้ำ)</option></select></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ระยะช่องไฟ (ซม.)</label><input class="numin" id="pmLedPitch" type="number" value="6" style="width:100%;padding:6px"></div>
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">สีไฟ</label><input class="numin" id="pmLedColor" type="text" value="Warm White 3000K" style="width:100%;padding:6px"></div>
+            </div>
+            <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">งานพิมพ์ (ถ้ามี)</label>
+            <input class="numin" id="pmPrint" type="text" placeholder="เช่น อะคริลิคโปร่งแสง 3mm P433" style="width:100%;padding:6px">
+            <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">วันที่ส่งมอบ</label>
+            <input class="numin" id="pmDelivery" type="date" style="width:100%;padding:6px">
+          </div>
           <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
             <button type="button" class="chip on" data-d="0" data-i18n="chip.auto">อัตโนมัติ</button>
@@ -2178,23 +2205,42 @@ function $(id){return document.getElementById(id);}
     function fp(){ pathOf(W3.G.polys); }
 
     g.save();
-    // เรืองแสง (ใช้เงาที่เงาของรูปนอกสุด)
+    // เรืองแสง (soft halo หลายชั้น = ฟุ้งนวลสมจริง)
     if(W3.fx==='front'||W3.fx==='back'){
-      g.shadowColor=L; g.shadowBlur=Math.max(10,cv.width*0.014);
-      fp(); g.fillStyle=(W3.fx==='front')?L:W3.face; g.fill('evenodd');
-      g.shadowBlur=Math.max(26,cv.width*0.035); fp(); g.fill('evenodd');
+      g.shadowColor=L;
+      var _hb=(W3.fx==='back');   // ออกหลัง = ฟุ้งกว้างกว่า (เรืองขอบผนัง)
+      var _passes=_hb?[0.02,0.045,0.075]:[0.012,0.03,0.055];
+      for(var _gp=0;_gp<_passes.length;_gp++){
+        g.shadowBlur=Math.max(10,cv.width*_passes[_gp]);
+        fp(); g.fillStyle=(W3.fx==='front')?L:W3.face; g.fill('evenodd');
+      }
     }
     g.shadowBlur=0;
 
     var LY=(W3.G.layers||[]);
-    if(LY.length && W3.type){
-      // ── ป้ายตามโครงสร้างจริง: วาดทีละชั้น หลัง -> หน้า
+    var _hasArt=(typeof FLAT!=='undefined' && FLAT && (FLAT.width||FLAT.naturalWidth));
+    if(_hasArt){
+      // ── คง 'ภาพงานจริง' (artwork/กล่องไฟสวย ๆ ที่โยนเข้ามา) ลงบนหน้า — หน้าเดียว ไม่แยก
+      // ฐานหน้าขาว (กันโปร่ง) แล้ว texture ภาพทับ · clip ตามทรงจริง
+      g.save(); fp(); g.clip('evenodd');
+      g.fillStyle=(W3.fx==='front')?FACE:'#ffffff'; fp(); g.fill('evenodd');
+      var _q0=T(0,0), _q1=T(W,H);
+      var _ix=Math.min(_q0[0],_q1[0]), _iy=Math.min(_q0[1],_q1[1]);
+      var _iw=Math.abs(_q1[0]-_q0[0]), _ih=Math.abs(_q1[1]-_q0[1]);
+      try{ g.drawImage(FLAT,_ix,_iy,_iw,_ih); }catch(_e){}
+      if(W3.fx==='front'){ g.globalCompositeOperation='lighter'; g.fillStyle='rgba(255,244,207,0.30)'; fp(); g.fill('evenodd'); g.globalCompositeOperation='source-over'; }
+      g.restore();
+      // ขอบคิ้ว/โลหะ (ถ้ามีชั้น frame) ทับบาง ๆ ให้ดูมีมิติ
+      for(var lf=0;lf<LY.length;lf++){ if(String(LY[lf].kind||'')==='frame'){ pathOf(LY[lf].polys); g.strokeStyle=W3.trim; g.lineWidth=Math.max(1.5,cv.width*0.004); g.stroke(); } }
+      fp(); g.strokeStyle=shade(FACE,0.5); g.lineWidth=Math.max(1,cv.width*0.001); g.stroke();
+    }else if(LY.length && W3.type){
+      // ── ป้ายตามโครงสร้างจริง: วาดทีละชั้น หลัง -> หน้า (เมื่อไม่มีภาพงาน)
       for(var li=0;li<LY.length;li++){
         var Ly=LY[li], nm=String(Ly.name||''), col;
-        if(nm.indexOf('คิ้ว')>=0)            col=W3.trim;                   // คิ้ว = โลหะ
-        else if(nm.indexOf('แผ่นพื้น')>=0)   col=shade(W3.face,0.45);       // แผ่นหลัง (มืด)
+        if(nm.indexOf('คิ้ว')>=0)            col=W3.trim;
+        else if(nm.indexOf('แผ่นพื้น')>=0)   col=shade(W3.face,0.45);
         else if(nm.indexOf('ไส้')>=0||nm.indexOf('แผงกลาง')>=0) col=shade(W3.face,0.7);
-        else col=FACE;                                                       // หน้า/อะคริลิค/ซิ้งค์
+        else col=FACE;
         pathOf(Ly.polys);
         g.fillStyle=col; g.fill('evenodd');
         g.strokeStyle=shade(col,0.55); g.lineWidth=Math.max(1,cv.width*0.0009); g.stroke();
@@ -4186,6 +4232,7 @@ $('goLayer').onclick=function(){
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
   fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
+  fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
@@ -4233,7 +4280,20 @@ $('goLayer').onclick=function(){
       '<div style="border:1px solid #D6E0EE;border-radius:12px;padding:14px;background:#fff;text-align:center;margin-bottom:8px">'+
         '<div style="max-width:560px;margin:0 auto">'+disp+'</div></div>'+
       '<div style="margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="background:#eef2ff;color:#312e81"><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:left">Layer (material)</th><th style="padding:5px 8px;border:1px solid #c7d2fe">Allowance</th><th style="padding:5px 8px;border:1px solid #c7d2fe;text-align:right">Size</th></tr>'+rows+'</table></div>'+
-      (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'');
+      (wp?('<div style="font-size:11.5px;color:#5A6B8C;margin:10px 0 3px">🔩 Return walls (cut as strip · length = perimeter '+j.perimeter_cm+' cm):</div><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+wp+'</table>'):'')+
+      // 📋 รายละเอียดสั่งผลิตครบ (โชว์กลางจอ เหมือนในใบสั่งผลิต)
+      '<div style="margin-top:16px;border-top:2px solid #e2e8f0;padding-top:12px"><div style="font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px">📋 รายละเอียดสั่งผลิต / แบบลูกค้าอนุมัติ</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+        '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;font-size:12.5px;line-height:1.9">'+
+          '<b style="color:#1e3a5f">🧱 วัสดุหลัก:</b> '+(($('pmMaterial')&&$('pmMaterial').options[$('pmMaterial').selectedIndex].text)||'-')+'<br>'+
+          '<b style="color:#1e3a5f">🖨️ งานพิมพ์:</b> '+(($('pmPrint')&&$('pmPrint').value)||'—')+'<br>'+
+          '<b style="color:#1e3a5f">🧵 สายไฟ:</b> '+(($('pmWire')&&$('pmWire').options[$('pmWire').selectedIndex].text)||'-')+'<br>'+
+          '<b style="color:#1e3a5f">📅 กำหนดส่งมอบ:</b> '+(($('pmDelivery')&&$('pmDelivery').value)||'—')+
+          (j.frame_info&&j.frame_info.letters?('<br><b style="color:#e11d48">🔩 โครงเหล็ก:</b> ตัวอักษร '+j.frame_info.letters+' · น็อต Ø3 '+j.frame_info.bolts+' · สายไฟ Ø5 '+j.frame_info.wires):'')+'</div>'+
+        '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px">'+
+          ((j.led&&j.led.preview_svg)?('<div style="font-weight:700;color:#1e3a5f;margin-bottom:6px;font-size:12.5px">💡 การวางไฟ LED + คำนวณ</div><div style="border-radius:8px;overflow:hidden">'+j.led.preview_svg+'</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:12px"><span>ยาว <b>'+j.led.total_m+'</b> ม.</span><span><b>'+j.led.watts+'</b> W</span><span><b>'+j.led.amps+'</b> A</span><span>หม้อแปลง <b>'+j.led.transformer_w+'</b> W</span><span>ช่อง <b>'+j.led.pitch_cm+'</b> ซม.</span></div>'):'<div style="font-size:12px;color:#94a3b8">— งานนี้ไม่มีไฟ LED —</div>')+'</div>'+
+      '</div>'+
+      '<div style="text-align:center;margin-top:12px;font-size:11.5px;color:#64748b">กด "🧾 ใบสั่งผลิต" ด้านบนเพื่อเปิดเอกสารเต็ม + บันทึก PDF ส่งลูกค้า</div></div>';
     if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
     if($('lsJobSheet'))$('lsJobSheet').onclick=function(){
@@ -4248,6 +4308,14 @@ $('goLayer').onclick=function(){
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
+      fd.append('material',($('pmMaterial')&&$('pmMaterial').value)||'');
+      fd.append('led_type',($('pmLedType')&&$('pmLedType').value)||'module');
+      fd.append('wire_type',($('pmWire')&&$('pmWire').value)||'indoor');
+      fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
+      fd.append('led_color',($('pmLedColor')&&$('pmLedColor').value)||'Warm White 3000K');
+      fd.append('print_spec',($('pmPrint')&&$('pmPrint').value)||'');
+      fd.append('delivery_date',($('pmDelivery')&&$('pmDelivery').value)||'');
+      try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
       fetch((API||'')+'/api/job-sheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
         btn.disabled=false;btn.textContent=old;
         if(j.error){if(w)w.close();alert('ผิดพลาด: '+j.error);return;}
