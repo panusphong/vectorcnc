@@ -70,8 +70,9 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "8.3-steprepeat+geombox+extractguard+centerart",
-            "build": "2026-07-19-steprepeat+geobox-circle-rect-oval+extract-guard",
+            "build": "2026-07-19-steprepeat+geobox+extract-guard+design2wall",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
+            "design_to_wall": "on",                          # ออกแบบเสร็จ -> ส่งเข้าจำลองผนังทันที
             "app_lock": "on" if _app_locked() else "off",   # 🔒 บล็อกคนนอก (ตั้ง APP_LOCK=1)
             "face_art_3d": "on",                             # รูปพิมพ์จริงบนหน้า 3D (กล่องไฟล้อมทรง)
             "step_repeat": "on",                             # งานพิมพ์ผลิตซ้ำ + ตัดเลเซอร์ตามหมุด
