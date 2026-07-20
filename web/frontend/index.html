@@ -63,6 +63,8 @@ h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;c
 .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#CBD6E6}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
 .app-title{font-size:13px;color:var(--dim)}
 .app-body{display:grid;grid-template-columns:300px 1fr 272px;min-height:calc(100vh - 246px)}
+.app-body.full-stage{grid-template-columns:300px 1fr}   /* โชว์ผลลัพธ์ 3มิติ -> ยุบคอลัมน์ขวา ให้เต็มพื้นที่ */
+.app-body.full-stage .out{display:none}
 @media(max-width:980px){.app-body{grid-template-columns:1fr;min-height:auto}}
 .side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
@@ -352,27 +354,40 @@ select.numin{cursor:pointer}
           </div>
           <!-- 💡 กล่องไฟอะคริลิค ไฟออกรอบ (type 18) -->
           <div id="boxLitPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #fde68a;border-radius:10px;background:#fffbeb">
-            <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:5px">💡 กล่องไฟ — พิมพ์ข้อความ + ปรับขนาด</div>
-            <div class="hint" style="margin:0 0 6px">พิมพ์ข้อความ/เมนูลงกล่องได้ที่แผง <b>“พิมพ์ข้อความ”</b> ด้านบน (หรืออัปโหลดโลโก้)</div>
+            <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:5px">💡 กล่องไฟ — ออกแบบหน้ากล่อง + ปรับขนาด</div>
             <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:3px">📐 ขนาดกล่อง (ซม.)</div>
             <div style="display:flex;gap:6px">
               <div style="flex:1"><label style="font-size:10px;color:#92700a">กว้าง</label><input class="numin" id="bxW" type="number" placeholder="กว้าง" min="5" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#92700a">สูง</label><input class="numin" id="bxH" type="number" placeholder="auto" min="5" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#92700a">ลึก</label><input class="numin" id="bxD" type="number" placeholder="ลึก" min="1" style="padding:5px;width:100%"></div>
             </div>
-            <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = ปรับอัตโนมัติตามสัดส่วน · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ (free-form) · <b>การติดตั้ง</b> เลือกที่แผง 🦾 แขนยึด</div>
+            <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
-              <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ประกอบหน้ากล่องเอง (โลโก้/ไอคอน + ข้อความ)</div>
+              <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (ข้อความ + โลโก้ ในตัวเดียว)</div>
+              <input class="numin" id="bxCompText" placeholder="ข้อความ (คั่นแต่ละช่องด้วย | )" style="padding:5px;width:100%;font-size:12px">
+              <div style="display:flex;gap:5px;margin-top:5px">
+                <select class="numin" id="bxFont" style="flex:1;padding:5px;font-size:11px"></select>
+                <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#92700a">สี<input type="color" id="bxTextColor" value="#1f2937" style="width:30px;height:28px;border:none;background:none;padding:0;cursor:pointer"></label>
+              </div>
+              <div style="font-size:10px;color:#92700a;margin:6px 0 2px">🖼️ โลโก้/ไอคอน (อัปโหลดกี่รูปก็ได้)</div>
               <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;width:100%">
               <div id="bxLogoPrev" style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0"></div>
-              <input class="numin" id="bxCompText" placeholder="ข้อความ (คั่นแต่ละช่องด้วย | )" style="padding:5px;width:100%;font-size:12px">
-              <select class="numin" id="bxLayout" style="padding:5px;width:100%;font-size:11px;margin-top:5px">
-                <option value="hrow">หลายช่องแนวนอน (ไอคอนบน + ข้อความล่าง · มีเส้นแบ่ง)</option>
+              <select class="numin" id="bxLayout" style="padding:5px;width:100%;font-size:11px">
+                <option value="hrow">หลายช่องแนวนอน (ไอคอนบน + ข้อความล่าง)</option>
                 <option value="iconLeft">โลโก้ซ้าย · ข้อความขวา</option>
-                <option value="iconTop">โลโก้บน · ข้อความล่าง (ช่องเดียว)</option>
+                <option value="iconTop">โลโก้บน · ข้อความล่าง</option>
               </select>
+              <div style="display:flex;gap:8px;margin-top:6px;font-size:10px;color:#92700a">
+                <div style="flex:1">🅰️ ขนาดอักษร <b><span id="bxTSv">100</span>%</b><input type="range" id="bxTS" min="40" max="220" value="100" style="width:100%"></div>
+                <div style="flex:1">↕ ตำแหน่งอักษร<input type="range" id="bxTY" min="-40" max="40" value="0" style="width:100%"></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:3px;font-size:10px;color:#92700a">
+                <div style="flex:1">🖼️ ขนาดโลโก้ <b><span id="bxLSv">100</span>%</b><input type="range" id="bxLS" min="40" max="220" value="100" style="width:100%"></div>
+                <div style="flex:1">↕ ตำแหน่งโลโก้<input type="range" id="bxLY" min="-40" max="40" value="0" style="width:100%"></div>
+              </div>
+              <canvas id="bxPreview" style="width:100%;border:1px solid #fde68a;border-radius:6px;background:#fff;margin-top:6px;display:none"></canvas>
               <button type="button" id="bxCompGo" class="btn" style="width:100%;margin-top:6px;background:#b45309;color:#fff;border:none;font-size:12px;font-weight:700">🖼️ สร้างหน้ากล่อง + ทำ 3 มิติ</button>
-              <div class="hint" style="margin:5px 0 0">อัปโหลดไอคอน (เช่น ชาย/หญิง) กี่รูปก็ได้ + พิมพ์ข้อความคั่นด้วย | เช่น <b>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</b> · สี/ฟอนต์ใช้จากแผง "พิมพ์ข้อความ"</div>
+              <div class="hint" style="margin:5px 0 0">เช่น <b>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</b> + อัปโหลดไอคอน · ปรับขนาด/ตำแหน่งอักษร&โลโก้ · ดูพรีวิวสด</div>
             </div>
           </div>
           <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
@@ -2347,12 +2362,12 @@ function $(id){return document.getElementById(id);}
       // ── คง 'ภาพงานจริง' (artwork/กล่องไฟสวย ๆ ที่โยนเข้ามา) ลงบนหน้า — หน้าเดียว ไม่แยก
       // ฐานหน้าขาว (กันโปร่ง) แล้ว texture ภาพทับ · clip ตามทรงจริง
       g.save(); fp(); g.clip('evenodd');
-      g.fillStyle=(W3.fx==='front')?FACE:'#ffffff'; fp(); g.fill('evenodd');
+      g.fillStyle='#ffffff'; fp(); g.fill('evenodd');   // 💡 ฐานหน้าขาวเสมอ กัน art จมหาย (แสงเพิ่มด้วยฮาโล+ทินต์บาง)
       var _q0=T(0,0), _q1=T(W,H);
       var _ix=Math.min(_q0[0],_q1[0]), _iy=Math.min(_q0[1],_q1[1]);
       var _iw=Math.abs(_q1[0]-_q0[0]), _ih=Math.abs(_q1[1]-_q0[1]);
       try{ g.drawImage(FLAT,_ix,_iy,_iw,_ih); }catch(_e){}
-      if(W3.fx==='front'){ g.globalCompositeOperation='lighter'; g.fillStyle='rgba(255,244,207,0.30)'; fp(); g.fill('evenodd'); g.globalCompositeOperation='source-over'; }
+      if(W3.fx==='front'){ g.globalCompositeOperation='lighter'; g.fillStyle='rgba(255,246,224,0.10)'; fp(); g.fill('evenodd'); g.globalCompositeOperation='source-over'; }
       g.restore();
       // ขอบคิ้ว/โลหะ (ถ้ามีชั้น frame) ทับบาง ๆ ให้ดูมีมิติ
       for(var lf=0;lf<LY.length;lf++){ if(String(LY[lf].kind||'')==='frame'){ pathOf(LY[lf].polys); g.strokeStyle=W3.trim; g.lineWidth=Math.max(1.5,cv.width*0.004); g.stroke(); } }
@@ -4305,13 +4320,13 @@ var TRIMW=1, TRIMDIR='out';
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   var _boxTypes=['8','9','10','11','12','13','14','15','18'];   // กล่องไฟทุกชนิด
-  function toggle(){ var v=sel.value; var _txt=(v==='16'||_boxTypes.indexOf(v)>=0);
-    if($('mfTextPanel'))$('mfTextPanel').style.display=_txt?'block':'none';
+  function toggle(){ var v=sel.value; var _isBox=_boxTypes.indexOf(v)>=0;
+    if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';   // แผงพิมพ์ข้อความเดิม = เฉพาะ type16 (กล่องไฟรวมไว้ในแผงกล่องแล้ว)
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
-    if($('boxLitPanel'))$('boxLitPanel').style.display=(_boxTypes.indexOf(v)>=0)?'block':'none';
-    if(_boxTypes.indexOf(v)>=0){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); }
-    if(_txt)fillFonts(); if(v==='17')fillNeon(); }
+    if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
+    if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
+    if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0)$('realW').value=Math.round(parseFloat(this.value)*10); };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
@@ -4345,51 +4360,64 @@ var TRIMW=1, TRIMDIR='out';
     else setTimeout(render,150);
   };
 })();
-// 🖼️ ประกอบหน้ากล่องไฟเอง: อัปโหลดโลโก้/ไอคอน + พิมพ์ข้อความ -> จัดวาง -> เป็น fileObj แล้วทำ 3 มิติ
+// 🖼️ ออกแบบหน้ากล่องไฟ (รวมข้อความ+โลโก้ในตัวเดียว) — ปรับขนาด/ตำแหน่งอักษร&โลโก้ + พรีวิวสด -> fileObj -> 3มิติ
 (function(){
   window._bxLogos=window._bxLogos||[];
-  function prev(){ var box=$('bxLogoPrev'); if(!box)return; box.innerHTML='';
+  (function fillFont(){ var fs=$('bxFont'); if(!fs||fs._done)return; fs._done=1;
+    var list=(typeof GFONTS!=='undefined'&&GFONTS.length)?GFONTS:['Prompt','Kanit','Sarabun','Mitr','Bebas Neue','Anton','Poppins','Montserrat'];
+    list.forEach(function(f){var o=document.createElement('option');o.value=f;o.textContent=f;fs.appendChild(o);}); fs.value='Prompt'; try{loadGFont('Prompt');}catch(_e){} })();
+  function prev(){ var box=$('bxLogoPrev'); if(box){ box.innerHTML='';
     window._bxLogos.forEach(function(im,idx){ var w=document.createElement('span'); w.style.cssText='position:relative;display:inline-block';
       var t=document.createElement('img'); t.src=im.src; t.style.cssText='width:38px;height:38px;object-fit:contain;border:1px solid #fde68a;border-radius:5px;background:#fff';
       var x=document.createElement('span'); x.textContent='×'; x.style.cssText='position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:12px;line-height:16px;text-align:center;cursor:pointer;font-weight:700';
-      x.onclick=function(){ window._bxLogos.splice(idx,1); prev(); }; w.appendChild(t); w.appendChild(x); box.appendChild(w); }); }
+      x.onclick=function(){ window._bxLogos.splice(idx,1); prev(); }; w.appendChild(t); w.appendChild(x); box.appendChild(w); }); } draw(); }
   if($('bxLogoFile'))$('bxLogoFile').onchange=function(){ var files=this.files||[], cnt=files.length, done=0; if(!cnt)return;
     for(var i=0;i<cnt;i++){ (function(f){ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){ window._bxLogos.push(im); if(++done>=cnt)prev(); }; im.onerror=function(){ if(++done>=cnt)prev(); }; im.src=r.result; }; r.readAsDataURL(f); })(files[i]); }
     this.value=''; };
-  function drawCell(g,x,y,w,h,logo,text,vert,font,col){
-    var pad=h*0.08;
-    if(vert){ var ih=h*0.52;
-      if(logo){ var iw=ih*(logo.width/logo.height); if(iw>w*0.82){ iw=w*0.82; ih=iw*(logo.height/logo.width); } g.drawImage(logo, x+(w-iw)/2, y+pad, iw, ih); }
-      if(text){ var fs=h*0.13; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle=col;
-        do{ g.font='700 '+fs+'px "'+font+'",sans-serif'; if(g.measureText(text).width<=w*0.92)break; fs-=1; }while(fs>8);
-        g.fillText(text, x+w/2, y+h*0.80); } }
-    else { var ih2=h*0.72, iw2=0;
-      if(logo){ iw2=ih2*(logo.width/logo.height); g.drawImage(logo, x+pad, y+(h-ih2)/2, iw2, ih2); }
-      if(text){ var tx=x+pad+iw2+(iw2?pad:0), tw2=w-(tx-x)-pad; var fs2=h*0.30; g.textAlign='left'; g.textBaseline='middle'; g.fillStyle=col;
+  function opt(){ return {ts:+(($('bxTS')&&$('bxTS').value)||100), ty:+(($('bxTY')&&$('bxTY').value)||0), ls:+(($('bxLS')&&$('bxLS').value)||100), ly:+(($('bxLY')&&$('bxLY').value)||0)}; }
+  function drawCell(g,x,y,w,h,logo,text,vert,font,col,o){
+    o=o||{}; var ts=(o.ts||100)/100, ls=(o.ls||100)/100, ty=(o.ty||0)/100*h, ly=(o.ly||0)/100*h; var pad=h*0.08;
+    if(vert){ var ih=h*0.50*ls;
+      if(logo){ var iw=ih*(logo.width/logo.height); if(iw>w*0.9){ iw=w*0.9; ih=iw*(logo.height/logo.width); } g.drawImage(logo, x+(w-iw)/2, y+pad+ly, iw, ih); }
+      if(text){ var fs=h*0.14*ts; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle=col;
+        do{ g.font='700 '+fs+'px "'+font+'",sans-serif'; if(g.measureText(text).width<=w*0.94)break; fs-=1; }while(fs>8);
+        g.fillText(text, x+w/2, y+h*0.80+ty); } }
+    else { var ih2=h*0.72*ls, iw2=0;
+      if(logo){ iw2=ih2*(logo.width/logo.height); g.drawImage(logo, x+pad, y+(h-ih2)/2+ly, iw2, ih2); }
+      if(text){ var tx=x+pad+iw2+(iw2?pad:0), tw2=w-(tx-x)-pad; var fs2=h*0.30*ts; g.textAlign='left'; g.textBaseline='middle'; g.fillStyle=col;
         do{ g.font='700 '+fs2+'px "'+font+'",sans-serif'; if(g.measureText(text).width<=tw2)break; fs2-=1; }while(fs2>8);
-        g.fillText(text, tx, y+h/2); } }
+        g.fillText(text, tx, y+h/2+ty); } }
   }
-  function compose(cb){
+  function render(c,S){
     var logos=window._bxLogos||[]; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
-    if(!logos.length && !txt){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
     var layout=($('bxLayout')&&$('bxLayout').value)||'hrow';
-    var font=($('mfTextFont')&&$('mfTextFont').value)||'Prompt'; var col=($('mfTextColor')&&$('mfTextColor').value)||'#1f2937';
-    var segs=txt?txt.split('|').map(function(s){return s.trim();}):[]; var S=3;
-    var c=document.createElement('canvas'), g;
-    if(layout==='hrow'){ var n=Math.max(logos.length, segs.length, 1); var cw=520*S, ch=470*S; c.width=cw*n; c.height=ch; g=c.getContext('2d');
-      for(var i=0;i<n;i++){ drawCell(g,i*cw,0,cw,ch,logos[i],segs[i]||'',true,font,col);
+    var font=($('bxFont')&&$('bxFont').value)||'Prompt'; var col=($('bxTextColor')&&$('bxTextColor').value)||'#1f2937';
+    var segs=txt?txt.split('|').map(function(s){return s.trim();}):[]; var o=opt(), g;
+    if(layout==='hrow'){ var n=Math.max(logos.length, segs.length, 1); var cw=520*S, ch=470*S; c.width=cw*n; c.height=ch; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height);
+      for(var i=0;i<n;i++){ drawCell(g,i*cw,0,cw,ch,logos[i],segs[i]||'',true,font,col,o);
         if(i>0){ g.strokeStyle=col; g.globalAlpha=0.5; g.lineWidth=Math.max(2,ch*0.006); g.beginPath(); g.moveTo(i*cw,ch*0.12); g.lineTo(i*cw,ch*0.88); g.stroke(); g.globalAlpha=1; } } }
-    else if(layout==='iconTop'){ c.width=560*S; c.height=540*S; g=c.getContext('2d'); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,true,font,col); }
-    else { c.width=940*S; c.height=300*S; g=c.getContext('2d'); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,false,font,col); }
-    c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/S/12*10); if(cb)cb(); },'image/png');
+    else if(layout==='iconTop'){ c.width=560*S; c.height=540*S; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,true,font,col,o); }
+    else { c.width=940*S; c.height=300*S; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,false,font,col,o); }
+    return c;
   }
-  if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('mfTextFont')&&$('mfTextFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
+  function draw(){ var pv=$('bxPreview'); if(!pv)return; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
+    if(!(window._bxLogos&&window._bxLogos.length)&&!txt){ pv.style.display='none'; return; } render(pv,1); pv.style.display='block'; }
+  window._bxDrawPrev=draw;
+  ['bxCompText','bxLayout','bxTextColor','bxTY','bxLY'].forEach(function(id){ var el=$(id); if(el){ el.oninput=draw; el.onchange=draw; } });
+  [['bxTS','bxTSv'],['bxLS','bxLSv']].forEach(function(p){ var el=$(p[0]); if(el)el.oninput=function(){ var lb=$(p[1]); if(lb)lb.textContent=this.value; draw(); }; });
+  if($('bxFont'))$('bxFont').onchange=function(){ var f=this.value; try{loadGFont(f);}catch(_e){} if(document.fonts&&document.fonts.load){document.fonts.load('700 40px "'+f+'"').then(draw).catch(draw);}else draw(); };
+  function compose(cb){ var logos=window._bxLogos||[]; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
+    if(!logos.length && !txt){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
+    var c=document.createElement('canvas'); render(c,3);
+    c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/3/12*10); if(cb)cb(); },'image/png'); }
+  if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('bxFont')&&$('bxFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
     var go=function(){ compose(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} }); };
     if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(go).catch(go); } else setTimeout(go,150); };
 })();
 // 🧹 เคลียร์ผลลัพธ์ (ตอนเปลี่ยนประเภทป้าย / กดปุ่มเคลียร์) — กันของเก่าค้าง
 window.clearDesignResult=function(){ try{
   LS_ACTIVE=false; window._lsFaceSvg=''; window._lastCutDxf=''; window._lastCutSvg='';
+  try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.remove('full-stage');}catch(_e){}
   var st=$('layerStage'); if(st){ st.style.display='none'; st.innerHTML=''; }
   if(fileObj&&$('cmp'))$('cmp').style.display=''; else if($('emptyStage'))$('emptyStage').style.display='';
   if($('dlSvg')){$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';}
@@ -4429,6 +4457,7 @@ $('goLayer').onclick=function(){
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
+    try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.add('full-stage');}catch(_e){}
     try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
     if($('dlSvg')){$('dlSvg').disabled=false;$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (แยก layer)';}
     if($('dlDxf'))$('dlDxf').disabled=false;
@@ -4488,7 +4517,7 @@ $('goLayer').onclick=function(){
           ((j.led&&j.led.preview_svg)?('<div style="font-weight:700;color:#1e3a5f;margin-bottom:6px;font-size:12.5px">💡 การวางไฟ LED + คำนวณ</div><div style="border-radius:8px;overflow:hidden">'+j.led.preview_svg+'</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:12px"><span>ยาว <b>'+j.led.total_m+'</b> ม.</span><span><b>'+j.led.watts+'</b> W</span><span><b>'+j.led.amps+'</b> A</span><span>หม้อแปลง <b>'+j.led.transformer_w+'</b> W</span><span>ช่อง <b>'+j.led.pitch_cm+'</b> ซม.</span></div>'):'<div style="font-size:12px;color:#94a3b8">— งานนี้ไม่มีไฟ LED —</div>')+'</div>'+
       '</div>'+
       '<div style="text-align:center;margin-top:12px;font-size:11.5px;color:#64748b">กด "🧾 ใบสั่งผลิต" ด้านบนเพื่อเปิดเอกสารเต็ม + บันทึก PDF ส่งลูกค้า</div></div>';
-    if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
+    if($('lsBack'))$('lsBack').onclick=function(){LS_ACTIVE=false;try{var _ab=document.querySelector('.app-body');if(_ab)_ab.classList.remove('full-stage');}catch(_e){}if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';st.style.display='none';if(fileObj&&$('cmp'))$('cmp').style.display='';else if($('emptyStage'))$('emptyStage').style.display='';};
     if($('lsDlMain'))$('lsDlMain').onclick=function(){if(LSDXF_MAIN)dlB(LSDXF_MAIN,'layerset_'+t+'.dxf');};
     if($('lsJobSheet'))$('lsJobSheet').onclick=function(){
       if(!fileObj){alert('ไม่พบภาพแบบ');return;}
@@ -4902,7 +4931,7 @@ $('go').onclick=function(){
   fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     $('go').disabled=false;paintMode();
     if(j.error){$('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
-    LS_ACTIVE=false;if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';if($('layerStage'))$('layerStage').style.display='none';
+    LS_ACTIVE=false;try{var _ab=document.querySelector('.app-body');if(_ab)_ab.classList.remove('full-stage');}catch(_e){}if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';if($('layerStage'))$('layerStage').style.display='none';
     lastSvg=j.svg_mm||j.svg;lastDxf=j.dxf_base64||'';
     // วางเส้นตัด (svg_fit=พิกัดภาพต้นฉบับ) ทับบนภาพต้นฉบับตัวเดียวกันในกรอบเดียว -> ตรงเป๊ะ กันเหลื่อม
     if(j.svg_fit && window._cutBefore){
