@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.20-wall-clean-face-fix",
-            "build": "2026-07-20-wall-face-no-baked-arms-correct-size-aspect+hi-res-print-ai",
+            "version": "9.21-letterframe-mount",
+            "build": "2026-07-20-channel-letter-frame-behind+arms-up+back-holes-aligned-to-bar",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1258,7 +1258,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     _is2face = bool(art_href) and ("2 หน้า" in str(rec.get("name", "")))
     if _is2face:
         padR += W * 0.78 + fs * 5.0
-    if _mount == "top2":
+    if _mount in ("top2", "letterframe"):
         padT += _armpad
     elif _mount in ("side1", "side2"):        # แขนแนวนอน ซ้าย/ขวาของภาพ
         if _aside == "left":
@@ -1349,7 +1349,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">Return ~%.1f cm</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
     # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
     arm_parts = []
-    if _mount in ("top2", "side1", "side2"):
+    if _mount in ("top2", "side1", "side2", "letterframe"):
         tw = 25.0
         steel = "#8b93a0"; steelD = "#5b626d"; plateC = "#c6ccd6"; bolt = "#5b626d"; surf = "#cbd5e1"
 
@@ -1391,7 +1391,22 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
 
         midY = (b[1] + b[3]) / 2.0
         specs = []
-        if _mount == "top2":
+        if _mount == "letterframe":
+            # 🔩 โครงยึดตัวอักษร (channel letter): เฟรมเหล็กแนวนอนหลังอักษร + แขนหลายขายื่นขึ้นบน
+            _blevel = b[1] + H * 0.58                      # ระดับคานเฟรม (ซ่อนหลังอักษร)
+            _nn = max(2, int(round(W / 700.0)))            # จำนวนขา ~ทุก 70 ซม.
+            _fb0 = F((b[0] - W * 0.02, _blevel)); _fb1 = F((b[2] + W * 0.02, _blevel))
+            arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                             % (_fb0[0], _fb0[1] - tw * 0.45, _fb1[0] - _fb0[0], tw * 0.9, steel, steelD, lw))
+            for k in range(_nn):
+                fx = (k + 0.5) / _nn
+                a = F((b[0] + W * fx, _blevel)); specs.append((a, (a[0], a[1] - _aL)))
+            _cy = min(w[1] for _a, w in specs)
+            arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                             % (padL * 0.5, _cy - 5.0, (padL + W + dvx) - padL * 0.5, 5.0, "#e2e8f0", surf, lw * 0.8))
+            arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
+        elif _mount == "top2":
             _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
             _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center กล่อง
             for fx in _fxs:
@@ -1439,7 +1454,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 arm_parts.append(_tube(_lerp(a, w, 0.44), w, tw * 0.58))   # โครงใน (แคบ · เลื่อนได้)
             else:
                 arm_parts.append(_tube(a, w, tw))
-            arm_parts.append(_plate_flat(w[0], w[1]) if _mount == "top2" else _plate_flat_v(w[0], w[1]))
+            arm_parts.append(_plate_flat(w[0], w[1]) if _mount in ("top2", "letterframe") else _plate_flat_v(w[0], w[1]))
         _lab = ("Adjustable +/-%.0f cm (telescopic)" % float(arm_travel_cm)) if _adj else "Fixed"
         arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#475569">Mount arm ~%.0f cm &#183; Plate %.0f&#215;%.0f cm &#183; %s</text>'
                          % (padL, padT + H + padB - fs * 0.8, fs * 0.82, _aL / 10.0, _plate / 10.0, _plate / 10.0, _lab))
@@ -2054,9 +2069,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
                 svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
+                # ป้ายอักษร + โครงแขวน -> ใช้ 'โครงยึดตัวอักษร' (เฟรมหลังอักษร + แขนขึ้น) ไม่ใช่แขนกล่องไฟ
+                _m3d = "letterframe" if rec.get("mount_frame") else str(arm or "none")
                 svg3d = _iso3d_svg(body3d, rec, perimeter, inner_bore=_bore,
                                    face_color=(face_color or None), side_color=(side_color or None),
-                                   art_href=_art, mount=str(arm or "none"), arm_len_cm=float(arm_len_cm),
+                                   art_href=_art, mount=_m3d, arm_len_cm=float(arm_len_cm),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm))
         except Exception:
