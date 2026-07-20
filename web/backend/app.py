@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.23-led-contour+holes-on-bar",
+            "version": "9.25-frame-midband+cutlayers-jobsheet",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1392,16 +1392,19 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         midY = (b[1] + b[3]) / 2.0
         specs = []
         if _mount == "letterframe":
-            # 🔩 โครงยึดตัวอักษร (channel letter): เฟรมกรอบสี่เหลี่ยมหลังอักษร + 2 แขน (ซ้าย-ขวา) ยื่นขึ้น
-            _fm = min(W, H) * 0.05                         # เฟรมหดเข้าจากขอบอักษรเล็กน้อย
-            fx0, fy0, fx1, fy1 = b[0] + _fm, b[1] + _fm, b[2] - _fm, b[3] - _fm
-            _FW = (fx1 - fx0) / 10.0; _FH = (fy1 - fy0) / 10.0   # ขนาดเฟรมนอก (ซม.)
+            # 🔩 โครงยึด = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางอักษร + ปิดหัวท้าย + 2 แขน (ซ้าย-ขวา) ยื่นขึ้น
+            _fmx = W * 0.03                                # เฟรมยื่นเลยขอบอักษรซ้าย-ขวาเล็กน้อย
+            fx0, fx1 = b[0] - _fmx, b[2] + _fmx
+            _cyc = (b[1] + b[3]) / 2.0                     # กลางแนวตั้งของอักษร
+            _fgap = H * 0.38                               # ระยะคานบน-ล่าง (สูงเฟรม)
+            fy0, fy1 = _cyc - _fgap / 2.0, _cyc + _fgap / 2.0   # คานบน / คานล่าง (mm)
+            _FW = (fx1 - fx0) / 10.0; _FH = (fy1 - fy0) / 10.0  # กว้างเฟรม / สูงเฟรม (ซม.)
             P00 = F((fx0, fy0)); P10 = F((fx1, fy0)); P11 = F((fx1, fy1)); P01 = F((fx0, fy1))
-            for pa, pb in ((P00, P10), (P01, P11), (P00, P01), (P10, P11)):   # 4 บาร์เฟรม (หลังอักษร)
+            for pa, pb in ((P00, P10), (P01, P11), (P00, P01), (P10, P11)):   # คานบน+ล่าง + ปิดหัวท้าย
                 arm_parts.append(_tube(pa, pb, tw * 0.75))
             _edge = max(0.0, float(arm_edge_cm)) * 10.0    # ระยะแขนจากขอบซ้าย/ขวา
             _axL = min(fx1 - 1.0, max(fx0, fx0 + _edge)); _axR = max(fx0 + 1.0, min(fx1, fx1 - _edge))
-            for _ax in (_axL, _axR):                        # 2 แขน ซ้าย-ขวา จากบาร์บนเฟรม
+            for _ax in (_axL, _axR):                        # 2 แขน ซ้าย-ขวา จากคานบนขึ้น
                 a = F((_ax, fy0)); specs.append((a, (a[0], a[1] - _aL)))
             _cy = min(w[1] for _a, w in specs)
             arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
@@ -1412,7 +1415,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _aLx = F((_axL, fy0))[0]
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_aLx - fs * 1.4, _cy, _aLx - fs * 1.4, P00[1], "#dc2626", lw))
             arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">แขน %.0f cm</text>' % (_aLx - fs * 1.9, (_cy + P00[1]) / 2, fs * 0.8, _aLx - fs * 1.9, (_cy + P00[1]) / 2, _aL / 10.0))
-            arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#2563eb" text-anchor="middle">โครงเฟรม (นอก) %.0f &#215; %.0f cm &#183; แขนห่างขอบ %.0f cm</text>' % ((P00[0] + P10[0]) / 2, P01[1] + fs * 1.4, fs * 0.82, _FW, _FH, float(arm_edge_cm)))
+            arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#2563eb" text-anchor="middle">คานคู่ยึดอักษร กว้าง %.0f &#215; สูง %.0f cm &#183; แขนห่างขอบ %.0f cm</text>' % ((P00[0] + P10[0]) / 2, P01[1] + fs * 1.4, fs * 0.82, _FW, _FH, float(arm_edge_cm)))
         elif _mount == "top2":
             _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
             _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center กล่อง
@@ -2231,7 +2234,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
-def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info):
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None):
     """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
     def esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -2278,6 +2281,16 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
         nest_card = ('<div class="card full"><div class="ct"><span class="no">5</span>ภาพจัดเรียงชั้นตัดวัตถุดิบ (Nesting)</div>'
                      '<div class="cbody"><div class="imgwrap"><img src="data:image/png;base64,%s" style="max-width:100%%;max-height:360px"/></div></div></div>'
                      % meta.get("nesting_b64"))
+    # 📐 Cut Layers — ชิ้นตัดแยกชั้น + allowance + ขนาดตัดต่อชิ้น (ครบทุกชั้นเหมือนหน้าออกแบบ)
+    cut_card = ""
+    if cut_rows:
+        crows = "".join(
+            '<tr><td><span class="dot" style="background:%s;border-radius:2px"></span>&nbsp;<b>%s</b> <span style="color:#94a3b8;font-size:11px">(%s)</span></td>'
+            '<td class="r" style="color:#4f46e5">%s</td><td class="r">%s</td><td>%s</td></tr>'
+            % (c[5], esc(c[0]), esc(c[1]), esc(c[2]), esc(c[3]), esc(c[4])) for c in cut_rows)
+        cut_card = ('<div class="card full"><div class="ct"><span class="no">C</span>ชิ้นตัดแยกชั้น (Cut Layers) · allowance + ขนาดตัดต่อชิ้น</div>'
+                    '<div class="cbody"><table><tr><th>Layer</th><th class="r">Allowance</th><th class="r">ขนาดตัด (W&#215;H)</th><th>วัสดุ</th></tr>%s</table>'
+                    '<div style="font-size:11px;color:#64748b;margin-top:6px">* allowance = ค่าเผื่อขอบต่อชั้น (+ ขยายออก / &#8722; หดเข้า) · ขนาดตัด = กรอบนอกของชิ้นนั้น สำหรับสั่งตัด/Nesting</div></div></div>' % crows)
     html = _JOB_SHEET_CSS
     html = html.replace("__TITLE__", esc(type_name))
     for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
@@ -2286,7 +2299,7 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                  "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
                  "__MATERIAL__": esc(meta.get("material", "-")),
                  "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card,
-                 "__PRINT__": print_card, "__NEST__": nest_card, "__BOM__": bom}.items():
+                 "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom}.items():
         html = html.replace(k, str(v))
     return html
 
@@ -2333,6 +2346,7 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 9px
     __LED__
     __PRINT__
     __NEST__
+    __CUT__
     <div class="card full"><div class="ct"><span class="no">6</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
     <div class="card full"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody"><div class="site"><div style="font-size:30px">📷</div><div>แนบภาพหน้างาน + ทำเครื่องหมายจุดติดตั้ง</div></div></div></div>
   </div>
@@ -2429,13 +2443,43 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             bom.append(("สายไฟเมน", _wiren, "ทนกระแส ~15A", str(wire_type)))
         if rec.get("mount_frame"):
             bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff %s ซม." % frame_standoff_cm, "เจาะรูน็อต/สายไฟ"))
+        # 📐 Cut layers — ชิ้นตัดแยกชั้น + allowance + ขนาดตัดต่อชิ้น (ให้ตรงกับพรีวิวหน้าออกแบบ)
+        cut_rows = []
+        _neon_js = bool(rec.get("neon"))
+        for L in ([] if _neon_js else rec["layers"]):
+            off = float(L["off"]); kind = L.get("kind", "solid")
+            try:
+                if kind == "frame":
+                    g = _mbuf(full, off + float(L.get("band", 10.0)))   # ขอบนอกคิ้ว
+                else:
+                    g = _mbuf(full, off)
+                if g is None or g.is_empty:
+                    g = full
+                cb = g.bounds
+                _cw = round((cb[2] - cb[0]) / 10.0, 1); _ch = round((cb[3] - cb[1]) / 10.0, 1)
+            except Exception:
+                _cw, _ch = Wcm, Hcm
+            _al = ("%+.2f ซม." % (off / 10.0)) if abs(off) > 1e-6 else "เต็มทรง"
+            _isface = (kind != "frame" and "แผ่นพื้น" not in L["name"])
+            _mmn = _matn if _isface else "ตามสเปควัสดุ"
+            cut_rows.append((_en_layer(L["name"]), L["name"], _al, "%.1f × %.1f ซม." % (_cw, _ch), _mmn, L.get("color", "#64748b")))
+        if _neon_js:                                            # 🌈 นีออน: เส้นไฟ + ร่องเซาะ CNC + อะคริลิคใสรองหลัง
+            nb = full.bounds; _nw = round((nb[2]-nb[0])/10.0, 1); _nh = round((nb[3]-nb[1])/10.0, 1)
+            cut_rows.append(("Neon Flex (line)", "นีออนเฟล็กซ์ (เส้นไฟ)", "แนวเส้น", "%.1f × %.1f ซม." % (_nw, _nh), "LED Neon Flex 12V", "#00e5ff"))
+            cut_rows.append(("CNC Groove 4mm", "เซาะร่อง CNC (ลึก 4mm)", "ลึก 4 mm", "%.1f × %.1f ซม." % (_nw, _nh), "ร่องเซาะเครื่อง CNC", "#d946ef"))
+            try:
+                _acj = _wrap_silhouette(full, 45.0).buffer(float(rec.get("neon_margin_cm", 3.0)) * 10.0, join_style=1)
+                ab = _acj.bounds; _aw = round((ab[2]-ab[0])/10.0, 1); _ah = round((ab[3]-ab[1])/10.0, 1)
+                cut_rows.append(("Clear Acrylic 8mm", "อะคริลิคใสรองหลัง 8mm", "+%.0f ซม." % float(rec.get("neon_margin_cm", 3.0)), "%.1f × %.1f ซม." % (_aw, _ah), "อะคริลิคใส 8 mm", "#93c5fd"))
+            except Exception:
+                pass
         meta = {"customer": customer or "-", "job_no": job_no or ("JOB-%s" % _dt.datetime.now().strftime("%Y%m%d-%H%M")),
                 "sales": sales or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color,
                 "material": _matn, "led_type": ("Module" if str(led_type) == "module" else "Ribbon"),
                 "led_pitch_cm": led_pitch_cm, "led_edge_cm": _edge_cm, "wire": _wiren,
                 "print_spec": (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else "")),
                 "delivery": delivery_date, "nesting_b64": nesting_b64}
-        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info)
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
