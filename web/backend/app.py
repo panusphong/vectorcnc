@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.21-letterframe-mount",
-            "build": "2026-07-20-channel-letter-frame-behind+arms-up+back-holes-aligned-to-bar",
+            "version": "9.22-letterframe-2arm-dims",
+            "build": "2026-07-20-rect-frame-4side+2arms-edge-cm+full-dims+holes-on-letters",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1234,7 +1234,7 @@ def _art_data_uri(path, max_px=1400):
 
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
-               arm_adjust="fixed", arm_travel_cm=0.0):
+               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -1392,20 +1392,27 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         midY = (b[1] + b[3]) / 2.0
         specs = []
         if _mount == "letterframe":
-            # 🔩 โครงยึดตัวอักษร (channel letter): เฟรมเหล็กแนวนอนหลังอักษร + แขนหลายขายื่นขึ้นบน
-            _blevel = b[1] + H * 0.58                      # ระดับคานเฟรม (ซ่อนหลังอักษร)
-            _nn = max(2, int(round(W / 700.0)))            # จำนวนขา ~ทุก 70 ซม.
-            _fb0 = F((b[0] - W * 0.02, _blevel)); _fb1 = F((b[2] + W * 0.02, _blevel))
-            arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
-                             % (_fb0[0], _fb0[1] - tw * 0.45, _fb1[0] - _fb0[0], tw * 0.9, steel, steelD, lw))
-            for k in range(_nn):
-                fx = (k + 0.5) / _nn
-                a = F((b[0] + W * fx, _blevel)); specs.append((a, (a[0], a[1] - _aL)))
+            # 🔩 โครงยึดตัวอักษร (channel letter): เฟรมกรอบสี่เหลี่ยมหลังอักษร + 2 แขน (ซ้าย-ขวา) ยื่นขึ้น
+            _fm = min(W, H) * 0.05                         # เฟรมหดเข้าจากขอบอักษรเล็กน้อย
+            fx0, fy0, fx1, fy1 = b[0] + _fm, b[1] + _fm, b[2] - _fm, b[3] - _fm
+            _FW = (fx1 - fx0) / 10.0; _FH = (fy1 - fy0) / 10.0   # ขนาดเฟรมนอก (ซม.)
+            P00 = F((fx0, fy0)); P10 = F((fx1, fy0)); P11 = F((fx1, fy1)); P01 = F((fx0, fy1))
+            for pa, pb in ((P00, P10), (P01, P11), (P00, P01), (P10, P11)):   # 4 บาร์เฟรม (หลังอักษร)
+                arm_parts.append(_tube(pa, pb, tw * 0.75))
+            _edge = max(0.0, float(arm_edge_cm)) * 10.0    # ระยะแขนจากขอบซ้าย/ขวา
+            _axL = min(fx1 - 1.0, max(fx0, fx0 + _edge)); _axR = max(fx0 + 1.0, min(fx1, fx1 - _edge))
+            for _ax in (_axL, _axR):                        # 2 แขน ซ้าย-ขวา จากบาร์บนเฟรม
+                a = F((_ax, fy0)); specs.append((a, (a[0], a[1] - _aL)))
             _cy = min(w[1] for _a, w in specs)
             arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy - 5.0, (padL + W + dvx) - padL * 0.5, 5.0, "#e2e8f0", surf, lw * 0.8))
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
+            # 📏 จับระยะ: ความสูงแขน (ซ้าย) + ขนาดเฟรมนอก + ระยะแขนจากขอบ
+            _aLx = F((_axL, fy0))[0]
+            arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_aLx - fs * 1.4, _cy, _aLx - fs * 1.4, P00[1], "#dc2626", lw))
+            arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">แขน %.0f cm</text>' % (_aLx - fs * 1.9, (_cy + P00[1]) / 2, fs * 0.8, _aLx - fs * 1.9, (_cy + P00[1]) / 2, _aL / 10.0))
+            arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#2563eb" text-anchor="middle">โครงเฟรม (นอก) %.0f &#215; %.0f cm &#183; แขนห่างขอบ %.0f cm</text>' % ((P00[0] + P10[0]) / 2, P01[1] + fs * 1.4, fs * 0.82, _FW, _FH, float(arm_edge_cm)))
         elif _mount == "top2":
             _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
             _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center กล่อง
@@ -1938,7 +1945,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
-                    led_pitch_cm: float = Form(6.0)):
+                    led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -2075,7 +2082,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    face_color=(face_color or None), side_color=(side_color or None),
                                    art_href=_art, mount=_m3d, arm_len_cm=float(arm_len_cm),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
-                                   arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm))
+                                   arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
+                                   arm_edge_cm=float(arm_edge_cm))
         except Exception:
             svg3d = ""
         # 🔩 ไฟล์ตัดเพลทยึด 10cm (เจาะ 4 รู) — ส่งเข้าเลเซอร์/CNC ทำเพลทจริง
@@ -2179,7 +2187,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _mf = MF.build(full, bars=max(1, int(frame_bars)),
                                bar_y_cm=(None if float(frame_level_cm) < 0 else float(frame_level_cm)),
                                gap_cm=float(frame_gap_cm), frame_x_cm=float(frame_x_cm),
-                               standoff_cm=float(frame_standoff_cm), wire_offset_cm=float(wire_offset_cm))
+                               standoff_cm=float(frame_standoff_cm), wire_offset_cm=float(wire_offset_cm),
+                               arm_len_cm=float(arm_len_cm), arm_edge_cm=float(arm_edge_cm))
                 if not _mf.get("error"):
                     svg_back = _mf.get("back_svg", "")
                     frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0),
