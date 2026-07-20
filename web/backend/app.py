@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.31-type18-glow-all-sides",
+            "version": "9.33-type3-edgelit-letters+type18-notrim",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -812,7 +812,7 @@ SIGN_TYPES = {
                      {"name": "ไส้อะคริลิคใส", "off": -1.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
                      {"name": "แผ่นพื้น", "off": 0.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
-    "3": {"name": "ไฟออกรอบ", "depth_cm": 7.0,
+    "3": {"name": "ตัวอักษรไฟออกรอบ", "depth_cm": 7.0, "edge_lit": True, "glow_color": "#eaf2ff",
           "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบใน", "h": 2.0}, {"name": "ยกขอบอะคริลิค", "h": 7.0}]},
@@ -893,9 +893,8 @@ SIGN_TYPES = {
     #     แขวนเพดาน/ติดผนัง (เลือก arm) · กว้าง(real_width) + ลึก(return_depth) ปรับได้ · พิมพ์ Text ลงกล่องได้
     "18": {"name": "กล่องไฟอะคริลิค ไฟออกรอบ", "depth_cm": 10.0, "box_shape": "rect", "box_pad_cm": 4.0,
            "face_finish": "print", "face_material": "acrylic_P433", "edge_lit": True, "glow_color": "#fff3c4",
-           "allow_text": True,
-           "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 6.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+           "allow_text": True, "no_trim": True,        # ไม่มีคิ้ว — อะคริลิคทั้งใบ ไฟออกทุกด้าน
+           "layers": [{"name": "หน้าอะคริลิคขาวพิมพ์ (เต็มหน้า)", "off": 0.0, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ (ลึกกล่อง)", "h": 10.0}]},
 }
@@ -988,10 +987,11 @@ def _wrap_silhouette(full, bridge_mm):
 _TYPE_EN = {
     "ไฟออกหน้า มีคิ้ว": "Front-lit · with Trim (Kim)",
     "ไฟออกหน้า ไม่มีคิ้ว": "Front-lit · no Trim",
-    "ไฟออกรอบ": "Halo / Back-lit",
+    "ตัวอักษรไฟออกรอบ": "Edge-lit Letters (light all around)",
     "กล่องไฟฉลุหน้า": "Light Box · Cut-out Face",
     "อักษรยกขอบไฟออกหน้า + โครงแขวน": "Front-lit Raised Letters + Hanging Frame",
     "นีออนเฟล็กซ์": "Neon Flex + Clear Acrylic Backing",
+    "กล่องไฟอะคริลิค ไฟออกรอบ": "Edge-lit Acrylic Light Box (glow all sides)",
     "กล่องไฟ 2 หน้า": "Light Box · Double-Face",
     "งานยกขอบ": "Fabricated Return (Metal)",
     "งานยกขอบ มีไส้": "Fabricated Return · with Core",
@@ -1318,9 +1318,13 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 parts.append('<path class="w3d-side" d="M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z" fill="%s" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>'
                              % (Af[0], Af[1], Bf[0], Bf[1], Bb[0], Bb[1], Ab[0], Ab[1], wallFill, edge, lw))
     if art_href:                                       # 🖨️ กล่องไฟหน้าพิมพ์: คิ้ว 1cm รอบตัว + artwork หดเข้า >1cm
-        _KIM = 10.0; _ARTIN = 14.0; kimFill = "#a9b4c4"
+        _notrim = bool(rec.get("no_trim") or _edgelit)  # ไม่มีคิ้ว -> หน้าพิมพ์เต็ม ไม่มีขอบคิ้วเทา
+        _KIM = 0.0 if _notrim else 10.0
+        _ARTIN = max(2.0, S * 0.004) if _notrim else 14.0   # ไม่มีคิ้ว = พิมพ์เกือบเต็มหน้า (ไม่เว้นกรอบขาว)
+        kimFill = "#fffdf5" if _notrim else "#a9b4c4"   # ไม่มีคิ้ว = หน้าอะคริลิคขาวเรืองแสงเต็มหน้า
         try:
-            _ik = full.buffer(-_KIM); _ia = full.buffer(-_ARTIN)
+            _ik = full.buffer(-_KIM) if _KIM > 0 else full
+            _ia = full.buffer(-_ARTIN)
         except Exception:
             _ik = None; _ia = None
         _ikp = ([] if _ik is None or _ik.is_empty else (list(_ik.geoms) if _ik.geom_type == "MultiPolygon" else [_ik]))
@@ -1353,12 +1357,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in ip:
             if pg.geom_type == "Polygon" and not pg.is_empty:
                 parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), boreFill, edge, lw * 0.8))
-    if _edgelit:                                       # 💡 ไฟออกรอบ: ขอบหน้าเรืองแสงคม (ไส้ในของแสง) — filter นิยามไว้ด้านบนแล้ว
-        _gc = rec.get("glow_color", "#fff3c4")
-        for pg in polys:                              # เรืองแสงเบลอรอบขอบหน้า
-            parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round" filter="url(#w3dGlow)" opacity="0.95"/>' % (faced(pg, F), _gc, max(6.0, S * 0.032)))
-        for pg in polys:                              # เส้นขอบสว่างคม
-            parts.append('<path d="%s" fill="none" stroke="#ffffff" stroke-width="%.2f" stroke-linejoin="round" opacity="0.92"/>' % (faced(pg, F), max(2.0, S * 0.010)))
+    if _edgelit:                                       # 💡 ไฟออกรอบ: เส้นขอบกล่องบางๆ (ไม่มีคิ้ว/ไม่มีกรอบในหน้า) — แสงฟุ้งอยู่ 'ด้านนอก' (ฮาโลหลังสุด)
+        for pg in polys:
+            parts.append('<path d="%s" fill="none" stroke="#e6c672" stroke-width="%.2f" stroke-linejoin="round" opacity="0.55"/>' % (faced(pg, F), max(1.0, S * 0.004)))
     aw = fs * 0.55
     xh = padL - fs * 1.7; y0 = padT; y1 = padT + H       # สูง (ซ้าย)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
