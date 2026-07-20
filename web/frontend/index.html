@@ -286,6 +286,7 @@ select.numin{cursor:pointer}
             <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
             <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
             <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
+            <option value="18" data-i18n="st.18">18 · กล่องไฟอะคริลิค ไฟออกรอบ</option>
           </select>
           <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
           <button class="btn ghost" id="mainClear" style="width:100%;margin-top:6px;font-size:13px">🧹 เคลียร์งาน (เริ่มใหม่)</button>
@@ -343,6 +344,12 @@ select.numin{cursor:pointer}
               <span style="font-size:11px;color:#64748b">ซม.</span>
             </div>
             <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm (ตามทรง/4เหลี่ยม) เผื่อขอบปรับได้ · เจาะรูยึด 4 จุด (อยู่ในแผ่นเสมอ) + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
+          </div>
+          <!-- 💡 กล่องไฟอะคริลิค ไฟออกรอบ (type 18) -->
+          <div id="boxLitPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #fde68a;border-radius:10px;background:#fffbeb">
+            <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:5px">💡 กล่องไฟอะคริลิค ไฟออกรอบ</div>
+            <div class="hint" style="margin:0">พิมพ์ข้อความ/เมนูลงกล่องได้ที่แผง <b>“พิมพ์ข้อความ”</b> ด้านบน (หรืออัปโหลดโลโก้) · หน้าอะคริลิคขาวพิมพ์ + ขอบเรืองแสงรอบ</div>
+            <div class="hint" style="margin:5px 0 0">📐 <b>กว้าง</b> = ช่อง “ขนาด” · <b>ลึกกล่อง</b> = ช่อง “ความลึกตัว” · <b>การติดตั้ง</b>: แขวนเพดาน → เลือก “แขนยื่นลงจากด้านบน 2 แขน” · ติดผนัง → “ไม่มีแขน” หรือ “แขนจากด้านข้าง” (ที่แผง 🦾 แขนยึด)</div>
           </div>
           <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
           <label style="margin-top:6px">🦾 แขนยึด (โครงเหล็กติดตั้ง)</label>
@@ -1160,6 +1167,7 @@ select.numin{cursor:pointer}
       <tr><td>7</td><td>งานยกขอบ มีไส้</td><td>หน้าซิ้งค์ เต็ม · ไส้พลาสวูด −0.16</td><td>2.5 ซม.</td></tr>
       <tr><td>16</td><td>อักษรยกขอบไฟออกหน้า + โครงแขวน</td><td>หน้า/คิ้ว/แผ่นพื้น + <b>โครงเหล็กคานคู่</b> (รูน็อต Ø3 / สายไฟ Ø5)</td><td>โครงแขวน 2 แขน · standoff 5 ซม.</td></tr>
       <tr><td>17</td><td>นีออนเฟล็กซ์</td><td>เส้นนีออน 12 สี · อะคริลิคใส 8 มม. (+3 ซม.) · ร่องเซาะ CNC 4 มม.</td><td>เจาะหมุดยึดผนัง + จุดสายไฟออก</td></tr>
+      <tr><td>18</td><td>กล่องไฟอะคริลิค ไฟออกรอบ</td><td>กล่องสี่เหลี่ยม · หน้าอะคริลิคขาวพิมพ์ (โลโก้/พิมพ์ Text ได้) · <b>ขอบเรืองแสงรอบ</b></td><td>เลือกแขวนเพดาน/ติดผนัง · กว้าง+ลึกปรับได้</td></tr>
     </table>
     <p><b>หลักค่าเผื่อ:</b> <b>ไซซ์เต็ม (0)</b> = เส้นออกแบบจริง (หน้า/คิ้ว/ซิ้งค์) · <b>+0.1</b> = ขยาย (แผ่นพื้น) · <b>−0.25</b> = หด (อะคริลิคตู้ไฟ) · <b>−0.15/−0.16</b> = หด (ไส้ใน) · <b>คิ้ว = เจาะโบ๋</b> (กรอบกลวงตามความกว้างคิ้ว) · <b>ยกขอบ</b> = ตัดเป็นแถบยาว=เส้นรอบรูป แล้วพับ</p>
 
@@ -2557,7 +2565,7 @@ var I18N={
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
   'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'1 · ไฟออกหน้า มีคิ้ว','st.2':'2 · ไฟออกหน้า ไม่มีคิ้ว',
-  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์',
+  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ',
   'st.6':'6 · งานยกขอบ','st.7':'7 · งานยกขอบ มีไส้',
   'st.8':'8 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'9 · กล่องไฟล้อมตามทรง 2 หน้า',
   'st.10':'10 · กล่องไฟทรงกลม 1 หน้า','st.11':'11 · กล่องไฟทรงกลม 2 หน้า',
@@ -2608,7 +2616,7 @@ var I18N={
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
   'st.0':'— Flat cut lines (normal) —','st.1':'1 · Front-lit, with trim','st.2':'2 · Front-lit, no trim',
-  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic',
+  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box',
   'st.6':'6 · Raised (return) letters','st.7':'7 · Raised letters with insert',
   'st.8':'8 · Contour light box · 1-face','st.9':'9 · Contour light box · 2-face',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
@@ -4243,10 +4251,11 @@ var TRIMW=1, TRIMDIR='out';
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   function toggle(){ var v=sel.value;
-    if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';
+    if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16'||v==='18')?'block':'none';
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
-    if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
+    if($('boxLitPanel'))$('boxLitPanel').style.display=(v==='18')?'block':'none';
+    if(v==='16'||v==='18')fillFonts(); if(v==='17')fillNeon(); }
   sel.addEventListener('change',function(){ toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
   if($('mfTextGo'))$('mfTextGo').onclick=function(){
