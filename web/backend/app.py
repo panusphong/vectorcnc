@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.25-frame-midband+cutlayers-jobsheet",
+            "version": "9.28-frame-within-letters+led-full-contour",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -885,7 +885,7 @@ SIGN_TYPES = {
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
     # 🆕 นีออนเฟล็กซ์ — เส้นไฟตามทรงงาน + แผ่นอะคริลิคใสรองหลัง 8mm ล้อมทรง (+3cm รอบตัว)
-    "17": {"name": "นีออนเฟล็กซ์", "depth_cm": 1.5, "neon": True, "neon_margin_cm": 3.0, "acrylic_mm": 8.0,
+    "17": {"name": "นีออนเฟล็กซ์", "depth_cm": 1.5, "neon": True, "neon_margin_cm": 5.0, "acrylic_mm": 8.0,
            "layers": [{"name": "นีออนเฟล็กซ์ (เส้นไฟ)", "off": 0.0, "kind": "neon", "color": "#00e5ff", "rgb": (0, 229, 255)},
                       {"name": "อะคริลิคใสรองหลัง 8mm", "off": 30.0, "kind": "solid", "color": "#93c5fd", "rgb": (147, 197, 253)}],
            "walls": []},
@@ -1393,8 +1393,8 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         specs = []
         if _mount == "letterframe":
             # 🔩 โครงยึด = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางอักษร + ปิดหัวท้าย + 2 แขน (ซ้าย-ขวา) ยื่นขึ้น
-            _fmx = W * 0.03                                # เฟรมยื่นเลยขอบอักษรซ้าย-ขวาเล็กน้อย
-            fx0, fx1 = b[0] - _fmx, b[2] + _fmx
+            # 📏 มาตรฐาน: ขอบโครงซ้าย-ขวา ไม่เกินขอบนอกตัวอักษร -> เฟรมกว้างเท่ากรอบอักษรพอดี
+            fx0, fx1 = b[0], b[2]
             _cyc = (b[1] + b[3]) / 2.0                     # กลางแนวตั้งของอักษร
             _fgap = H * 0.38                               # ระยะคานบน-ล่าง (สูงเฟรม)
             fy0, fy1 = _cyc - _fgap / 2.0, _cyc + _fgap / 2.0   # คานบน / คานล่าง (mm)
@@ -1825,16 +1825,43 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
     # 🔩 จุดเจาะยึดผนัง (4 มุม) + 🔌 จุดสายไฟออก (กึ่งกลางล่าง) — บนแผ่นอะคริลิค
     ab = acrylic.bounds; cx = (ab[0] + ab[2]) / 2.0; ins = min(W, H) * 0.07 + 10.0
     rr = max(3.0, S * 0.008); mlw = max(1.0, S * 0.0022)
+    # ✅ บังคับจุดหมุด/สายไฟให้อยู่ 'ในแผ่น' เสมอ (เผื่อขอบ = รัศมีรู + 6mm) — กันหลุดขอบแผ่น contour
+    from shapely.geometry import Point as _PT
+    try:
+        _safe = acrylic.buffer(-(rr + 6.0))
+        if _safe.is_empty:
+            _safe = acrylic
+    except Exception:
+        _safe = acrylic
+    try:
+        _ctd = _safe.representative_point()
+    except Exception:
+        _ctd = acrylic.centroid
+
+    def _snap_in(px, py):                                # ดึงเข้าหาใจกลางจนอยู่ในแผ่น
+        try:
+            if _safe.contains(_PT(px, py)):
+                return px, py
+            for _i in range(1, 25):
+                t = _i / 24.0
+                nx = px + (_ctd.x - px) * t; ny = py + (_ctd.y - py) * t
+                if _safe.contains(_PT(nx, ny)):
+                    return nx, ny
+            return _ctd.x, _ctd.y
+        except Exception:
+            return px, py
 
     def _SC(x, y):
         return (x - b[0] + pad, y - b[1] + pad)
     for (mx, my) in ((ab[0] + ins, ab[1] + ins), (ab[2] - ins, ab[1] + ins),
                      (ab[0] + ins, ab[3] - ins), (ab[2] - ins, ab[3] - ins)):
+        mx, my = _snap_in(mx, my)
         sx, sy = _SC(mx, my)
         parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#ffffff" stroke="#334155" stroke-width="%.2f"/>'
                      '<path d="M %.1f %.1f L %.1f %.1f M %.1f %.1f L %.1f %.1f" stroke="#334155" stroke-width="%.2f"/>'
                      % (sx, sy, rr, mlw, sx - rr, sy, sx + rr, sy, sx, sy - rr, sx, sy + rr, mlw * 0.7))
-    wx, wy = _SC(cx, ab[3] - ins)                       # รูสายไฟออก กึ่งกลางล่าง
+    _wxm, _wym = _snap_in(cx, ab[3] - ins)              # รูสายไฟออก กึ่งกลางล่าง (ในแผ่น)
+    wx, wy = _SC(_wxm, _wym)
     parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fee2e2" stroke="#e11d48" stroke-width="%.2f"/>' % (wx, wy, rr * 1.3, mlw))
     _fz = max(9.0, S * 0.022)                            # legend
     _ly = H + 2 * pad - pad * 0.30
@@ -1847,6 +1874,68 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
     Wt = W + 2 * pad; Ht = H + 2 * pad
     return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
             'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
+def _neon_led_info(neon_full, color="#00e5ff", neon_subs=None, watt_per_m=8.0, volt=12.0, spare=1.3, W=760.0):
+    """LED ของงานนีออนเฟล็กซ์ = 'เดินตามเส้นนีออน' (ตรงกับภาพ Perspective) + คำนวณกำลังไฟ/หม้อแปลง
+       double = เส้นตามขอบทรง · single = แกนกลาง (skeleton)"""
+    import math
+
+    def _P(g):
+        if g is None or g.is_empty:
+            return []
+        return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
+    # ความยาวเส้นไฟ (มม.)
+    if neon_subs:
+        length_mm = 0.0
+        for sp in neon_subs:
+            px, py = sp["start"]
+            for seg in sp["segs"]:
+                q = seg[1] if seg[0] == "L" else seg[3]
+                length_mm += math.hypot(q[0] - px, q[1] - py); px, py = q
+    else:
+        length_mm = sum(pg.length for pg in _P(neon_full))
+    total_m = length_mm / 1000.0
+    watts = total_m * float(watt_per_m)
+    amps = watts / max(1.0, float(volt))
+    transformer_w = int(math.ceil((watts * float(spare)) / 10.0) * 10)
+    # พรีวิว: พื้นเข้ม + เส้นไฟตามแนวนีออน (เหมือน Perspective)
+    b = neon_full.bounds; bw = b[2] - b[0]; bh = b[3] - b[1]; S = max(bw, bh, 1.0); pad = S * 0.07
+    sc = W / max(bw, 1.0); Wt = (bw + 2 * pad) * sc; Ht = (bh + 2 * pad) * sc
+
+    def _mp(x, y):
+        return ((x - b[0] + pad) * sc, (y - b[1] + pad) * sc)
+
+    def _dpoly(pg):
+        s = ""
+        for r in [pg.exterior] + list(pg.interiors):
+            pts = list(r.coords)
+            if pts:
+                s += "M " + " L ".join("%.2f %.2f" % _mp(x, y) for (x, y) in pts) + " Z "
+        return s
+
+    def _dsubs(subs):
+        s = ""
+        for sp in subs:
+            s += "M %.2f %.2f " % _mp(*sp["start"])
+            for seg in sp["segs"]:
+                q = seg[1] if seg[0] == "L" else seg[3]
+                s += "L %.2f %.2f " % _mp(*q)
+        return s
+    nd = _dsubs(neon_subs) if neon_subs else "".join(_dpoly(pg) for pg in _P(neon_full))
+    tw = max(2.0, S * 0.012 * sc)
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">' % (Wt, Ht, Wt, Ht)]
+    parts.append('<rect x="0" y="0" width="%.1f" height="%.1f" fill="#0f1522"/>' % (Wt, Ht))
+    parts.append('<defs><filter id="ngl" x="-40%%" y="-40%%" width="180%%" height="180%%"><feGaussianBlur stdDeviation="%.1f"/></filter></defs>' % (tw * 0.9))
+    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" filter="url(#ngl)"><path stroke-width="%.2f" d="%s"/></g>' % (color, tw * 2.3, nd))
+    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="%.2f" d="%s"/></g>' % (color, tw, nd))
+    parts.append('<g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"><path stroke-width="%.2f" d="%s"/></g>' % (max(1.0, tw * 0.32), nd))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#fbbf24">LED นีออน (เดินตามเส้น) · ยาว %.2f ม. · %.0f W · %.2f A (Ø12V) · หม้อแปลง %d W</text>'
+                 % (pad * sc, Ht - pad * sc * 0.4, max(9.0, S * 0.02 * sc), total_m, watts, amps, transformer_w))
+    parts.append('</svg>')
+    return {"total_m": round(total_m, 2), "watts": round(watts), "amps": round(amps, 2),
+            "transformer_w": transformer_w, "pitch_cm": 0, "preview_svg": "".join(parts),
+            "neon": True}
 
 
 def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
@@ -1944,7 +2033,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
                     arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
-                    neon_line: str = Form("double"),
+                    neon_line: str = Form("double"), neon_plate: str = Form("contour"),
+                    neon_margin_cm: float = Form(5.0),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
@@ -1982,10 +2072,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
         if _neon:
+            _nmg = max(0.0, float(neon_margin_cm)) * 10.0     # ระยะเผื่ออะคริลิครอบตัวงาน (มม.)
             try:
-                _acrylic = _wrap_silhouette(full, 45.0).buffer(float(rec.get("neon_margin_cm", 3.0)) * 10.0, join_style=1)
+                _acrylic = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
             except Exception:
-                _acrylic = full.buffer(float(rec.get("neon_margin_cm", 3.0)) * 10.0, join_style=1)
+                _acrylic = full.buffer(_nmg, join_style=1)
+            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):   # 🔲 ตัดเป็นแผ่น 4 เหลี่ยม (ครอบ bbox + เผื่อขอบ)
+                from shapely.geometry import box as _box
+                _ab = _acrylic.bounds
+                _acrylic = _box(_ab[0], _ab[1], _ab[2], _ab[3])
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -2208,11 +2303,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
             ai_b64 = ""
-        # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ)
+        # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ) — 🌈 นีออน: เดินไฟตามเส้นนีออน
         led_info = {}
         try:
-            from vectorcnc import mount_frame as _MF3
-            _led = _MF3.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=12.0, volt=12.0)
+            if _neon:
+                _led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
+                                      watt_per_m=8.0, volt=12.0)
+            else:
+                from vectorcnc import mount_frame as _MF3
+                _led = _MF3.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=12.0, volt=12.0)
             led_info = {"total_m": _led["total_m"], "watts": _led["watts"], "amps": _led["amps"],
                         "transformer_w": _led["transformer_w"], "pitch_cm": _led.get("pitch_cm", 6),
                         "preview_svg": _led["preview_svg"]}
@@ -2368,7 +2467,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
                     material: str = Form(""), led_type: str = Form("module"),
                     wire_type: str = Form("indoor"), print_spec: str = Form(""),
-                    delivery_date: str = Form(""), nesting_b64: str = Form("")):
+                    delivery_date: str = Form(""), nesting_b64: str = Form(""),
+                    neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
+                    neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
@@ -2393,11 +2494,32 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         body3d = fo if (fo is not None and not fo.is_empty) else full
         _art = _art_data_uri(inp) if rec.get("face_finish") == "print" else ""
         _bore = None if rec.get("face_finish") == "print" else bore
-        try:
-            persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
-                               mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0)
-        except Exception:
-            persp = ""
+        _nsub = None
+        if rec.get("neon"):
+            # 🌈 นีออน: ใช้ 'ภาพนีออนเรืองแสง' ตัวเดียวกับหน้าออกแบบ (ไม่ใช่ perspective เส้นเทา)
+            _nmg = max(0.0, float(neon_margin_cm)) * 10.0
+            try:
+                _acr = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
+            except Exception:
+                _acr = full.buffer(_nmg, join_style=1)
+            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):
+                from shapely.geometry import box as _box
+                _ab = _acr.bounds; _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+            if str(neon_line).lower() == "single":
+                try:
+                    _nsub = _skeleton_subs(inp, full)
+                except Exception:
+                    _nsub = None
+            try:
+                persp = _neon_sign_svg(full, _acr, color=str(neon_color or "#00e5ff"), neon_subs=_nsub)
+            except Exception:
+                persp = ""
+        else:
+            try:
+                persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
+                                   mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0)
+            except Exception:
+                persp = ""
         # frame back (type ที่มีโครงแขวน)
         back_svg = ""; frame_info = {}
         if rec.get("mount_frame"):
@@ -2412,11 +2534,15 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0), "wires": _mf.get("wires", 0)}
             except Exception:
                 back_svg = ""
-        # LED layout
+        # LED layout — 🌈 นีออน: เดินไฟตามเส้นนีออน (ตรงกับ Perspective) · อื่นๆ: วางตามขอบอักษร
         led = None
         try:
-            from vectorcnc import mount_frame as MF
-            led = MF.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=float(led_watt_per_m), volt=float(led_volt))
+            if rec.get("neon"):
+                led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_nsub,
+                                     watt_per_m=float(led_watt_per_m), volt=float(led_volt))
+            else:
+                from vectorcnc import mount_frame as MF
+                led = MF.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=float(led_watt_per_m), volt=float(led_volt))
         except Exception:
             led = None
         # 🧱 วัสดุหลัก
