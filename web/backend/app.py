@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.19-center-spec-detail",
-            "build": "2026-07-20-full-spec-inline-in-result+jobsheet-material-led-wire-print-delivery",
+            "version": "9.20-wall-clean-face-fix",
+            "build": "2026-07-20-wall-face-no-baked-arms-correct-size-aspect+hi-res-print-ai",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1599,7 +1599,7 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
     """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย
        frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง) เหนือป้าย (เฉพาะป้ายมีโครง)"""
     b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
-    pad = S * 0.08
+    pad = S * (0.012 if float(frame_top_cm) <= 0 else 0.08)   # วางผนัง = pad ~1% ให้ภาพ ≈ ตัวป้าย (ขนาด/สัดส่วนตรง)
     ftop = max(0.0, float(frame_top_cm)) * 10.0
     polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
 
@@ -2148,15 +2148,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _neon:
                 svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
-                # โครงหน้าตรงติดไปกับภาพวางผนัง: type16 มีโครงแขวน · กล่องไฟที่เลือกแขนบน (top2) ก็ติดแขนไปด้วย
-                if rec.get("mount_frame"):
-                    _ftop = 22.0
-                elif str(arm or "none").lower() == "top2":
-                    _ftop = max(15.0, float(arm_len_cm))
-                else:
-                    _ftop = 0.0
+                # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
+                # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
                 svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
-                                           face_color=(face_color or None), art_href=_art, frame_top_cm=_ftop)
+                                           face_color=(face_color or None), art_href=_art, frame_top_cm=0.0)
         except Exception:
             svg_face = ""
         # 🔩 ป้ายอักษร + โครงแขวน -> ภาพด้านหลังมีโครงยึด (แยกเป็นอีกภาพ พร้อมจับระยะ)
