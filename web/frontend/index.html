@@ -332,7 +332,17 @@ select.numin{cursor:pointer}
               <button type="button" class="chip neonLn on" data-ln="double" style="flex:1">เส้นคู่ (ตามขอบ)</button>
               <button type="button" class="chip neonLn" data-ln="single" style="flex:1">เส้นเดี่ยว (แกนกลาง)</button>
             </div>
-            <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm ล้อมทรง +3cm · เจาะรูยึด 4 มุม + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
+            <div style="font-size:11px;color:#64748b;margin:8px 0 3px">แผ่นอะคริลิครองหลัง</div>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="chip neonPl on" data-pl="contour" style="flex:1">ตามทรง (contour)</button>
+              <button type="button" class="chip neonPl" data-pl="rect" style="flex:1">แผ่น 4 เหลี่ยม</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+              <span style="font-size:11px;color:#64748b">เผื่อขอบรอบตัวงาน</span>
+              <input class="numin" id="neonMargin" type="number" value="5" min="1" max="20" step="0.5" style="width:70px;padding:5px" title="ระยะแผ่นอะคริลิคออกจากตัวงาน (ซม.)">
+              <span style="font-size:11px;color:#64748b">ซม.</span>
+            </div>
+            <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm (ตามทรง/4เหลี่ยม) เผื่อขอบปรับได้ · เจาะรูยึด 4 จุด (อยู่ในแผ่นเสมอ) + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
           </div>
           <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
           <label style="margin-top:6px">🦾 แขนยึด (โครงเหล็กติดตั้ง)</label>
@@ -3145,6 +3155,8 @@ window.setLang=setLang; window.t=t;
     jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=get&id='+encodeURIComponent(id),function(r){
       fin();
       if(r&&r.ok&&r.design){
+        // ✅ เปิดหน้า "จำลองผนัง" ก่อนเสมอ (กันเคสกดเปิดงานจากหน้าออกแบบ แล้วดีไซน์ลงหน้าที่ยังปิดอยู่ → เงียบ)
+        var wo=q('wallOverlay'); if(wo&&!wo.classList.contains('show')){ wo.classList.add('show'); try{wallInitSwatch();}catch(e){} }
         applyDesign(r.design);
         var ov=q('jobsOverlay'); if(ov)ov.classList.remove('show');
         // คำนวณ + วาดใหม่ให้เส้นจับขนาด/ราคา ขึ้นครบ แล้วโชว์สรุปงานที่เปิด
@@ -4227,7 +4239,9 @@ var TRIMW=1, TRIMDIR='out';
       box.appendChild(bb); });
     if(box.firstChild){ window.NEON_SEL=list[0]; box.firstChild.style.borderColor='#0f172a'; }
     var ln=document.querySelectorAll('.neonLn'); window.NEON_LINE=window.NEON_LINE||'double';
-    for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; } }
+    for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; }
+    var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
+    for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   function toggle(){ var v=sel.value;
     if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
@@ -4295,6 +4309,7 @@ $('goLayer').onclick=function(){
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
+  fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
   fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
