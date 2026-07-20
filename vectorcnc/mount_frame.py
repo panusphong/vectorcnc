@@ -41,25 +41,62 @@ def frame_bars(full, bars=1, bar_y_cm=None, gap_cm=20.0, bar_h_mm=15.0):
 def letter_holes(letters, bar_ys, bolt_d=3.0, wire_d=5.0, wire_offset_mm=0.0,
                  bar_h_mm=15.0, edge_inset_mm=15.0):
     """คำนวณรูต่อตัวอักษร · คืน dict {bolts:[(x,y,r)...], wires:[(x,y,r)...]}"""
-    top_bar = min(bar_ys)
+    from shapely.geometry import Point as _Pt
     bolt_r = bolt_d / 2.0; wire_r = wire_d / 2.0
     bolts = []; wires = []
+
+    def _inside(g, x, y):
+        try:
+            return g.contains(_Pt(x, y))
+        except Exception:
+            return True
+
+    def _snap_y(g, x, y):
+        """ดันจุดให้ 'อยู่ในเนื้ออักษร' จริง ๆ ที่ตำแหน่ง x (ไล่หา y ที่อยู่ในรูปทรง)"""
+        lb = g.bounds
+        if _inside(g, x, y):
+            return y
+        best = None; bestd = 1e18
+        yy = lb[1] + 3
+        while yy < lb[3]:
+            if _inside(g, x, yy):
+                d = abs(yy - y)
+                if d < bestd:
+                    bestd = d; best = yy
+            yy += max(3.0, (lb[3] - lb[1]) / 40.0)
+        return best if best is not None else (lb[1] + lb[3]) / 2.0
     for g in letters:
         lb = g.bounds; lx0, ly0, lx1, ly1 = lb
-        cx = (lx0 + lx1) / 2.0
-        # รูน็อต 2 รู/ตัว/โครง ที่ระดับโครง (ซ้าย-ขวา) — วางในเนื้อตัวอักษร (ไม่หลุดขอบ bbox)
+        cx = (lx0 + lx1) / 2.0; cy = (ly0 + ly1) / 2.0
         lw = lx1 - lx0
-        for by in bar_ys:
-            yy = min(max(by, ly0 + bolt_r + 2), ly1 - bolt_r - 2)   # ให้อยู่ในเนื้อตัวอักษร
-            if lw < bolt_d * 5:                                       # ตัวแคบ -> รูเดียวกลาง
-                bolts.append((cx, yy, bolt_r))
-            else:
-                bolts.append((cx - lw * 0.28, yy, bolt_r)); bolts.append((cx + lw * 0.28, yy, bolt_r))
-        # รูสายไฟ 1 รู กลางตัว · ระดับเดียวกับรูน็อต (โครงเส้นบน = หลบสายตา) · ขยับขึ้น/ลงได้เอง
-        wy = top_bar - float(wire_offset_mm)      # offset > 0 = ขยับขึ้น
-        wy = min(max(wy, ly0 + wire_r + 2), ly1 - wire_r - 2)
-        wires.append((cx, wy, wire_r))
+        # 🔩 รูน็อต = ที่ 'ระดับคานโครง' ที่พาดผ่านตัวอักษร (ระยะรูขึ้นกับตำแหน่งโครง)
+        hit = [by for by in bar_ys if (ly0 - lw * 0.15) <= by <= (ly1 + lw * 0.15)]
+        if not hit:                                           # ไม่มีคานพาด -> ใช้กึ่งกลางตัว
+            hit = [cy]
+        xs = [cx] if lw < bolt_d * 5 else [cx - lw * 0.26, cx + lw * 0.26]
+        for by in hit:
+            for xx in xs:
+                bolts.append((xx, _snap_y(g, xx, by), bolt_r))
+        # รูสายไฟ 1 รู กลางตัว · หลบเหนือคานบนสุดที่พาดผ่าน (ขยับได้ด้วย wire_offset)
+        _wref = (min(hit) - float(wire_offset_mm)) if hit else (cy - float(wire_offset_mm))
+        wires.append((cx, _snap_y(g, cx, _wref), wire_r))
     return {"bolts": bolts, "wires": wires}
+
+
+def row_bars(letters):
+    """ตรวจ 'แถว' ของตัวอักษร (คลัสเตอร์ตามแกน y) -> คืนระดับคานโครง 1 เส้น/แถว (กลางแถว)"""
+    if not letters:
+        return []
+    items = sorted(((g.bounds[1] + g.bounds[3]) / 2.0, (g.bounds[3] - g.bounds[1])) for g in letters)
+    hs = sorted(h for _, h in items)
+    mh = hs[len(hs) // 2] if hs else 100.0
+    rows = [[items[0][0]]]
+    for cy, _h in items[1:]:
+        if cy - rows[-1][-1] > mh * 0.7:
+            rows.append([cy])
+        else:
+            rows[-1].append(cy)
+    return [sum(r) / len(r) for r in rows]
 
 
 def _circles_dxf(letters, holes):
@@ -183,22 +220,44 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
     b = full.bounds; w_mm = b[2] - b[0]; h_mm = b[3] - b[1]
     pitch = max(20.0, float(pitch_cm) * 10.0)
     comps = split_letters(full, min_area_mm2=300.0)
-    segs = []; total_mm = 0.0
+    segs = []; total_mm = 0.0; sw_list = []
+    inset0 = max(5.0, pitch * 0.30)                 # เส้นแรกเว้นจากขอบข้าง
+
+    def _rings(pg):
+        return [pg.exterior] + list(pg.interiors)
+
+    def _plist(gg):
+        if gg is None or gg.is_empty:
+            return []
+        return list(gg.geoms) if gg.geom_type == "MultiPolygon" else [gg]
     for g in comps:
-        gb = g.bounds; y = gb[1] + pitch * 0.5
-        while y < gb[3]:
-            try:
-                inter = g.intersection(LineString([(gb[0] - 10, y), (gb[2] + 10, y)]))
-            except Exception:
-                inter = None
-            if inter is not None and not inter.is_empty:
-                parts = list(inter.geoms) if inter.geom_type == "MultiLineString" else [inter]
-                for ls in parts:
-                    if getattr(ls, "geom_type", "") == "LineString" and ls.length > 6:
-                        cs = list(ls.coords)
-                        segs.append((cs[0][0], cs[0][1], cs[-1][0], cs[-1][1]))
-                        total_mm += ls.length
-            y += pitch
+        try:
+            sw = 2.0 * g.area / max(g.length, 1.0)   # ความกว้างเส้นอักษรเฉลี่ย (มม.)
+        except Exception:
+            sw = 0.0
+        if sw > 0:
+            sw_list.append(sw)
+        # 🔦 วางไฟตามแนวขอบ (contour) ไล่รูปตัวอักษร — inset เข้าจากขอบ, เพิ่มแถวตามความกว้างเส้น
+        dd = inset0; made = 0
+        while made < 8:
+            gi = g.buffer(-dd)
+            plist = _plist(gi)
+            if not plist:
+                break
+            for pg in plist:
+                for ring in _rings(pg):
+                    cs = list(ring.coords)
+                    for i in range(len(cs) - 1):
+                        segs.append((cs[i][0], cs[i][1], cs[i + 1][0], cs[i + 1][1]))
+                    total_mm += ring.length
+            made += 1; dd += pitch
+        if made == 0:                                # เส้นบางมาก -> วิ่งตามขอบตัวอักษร (2 ขอบ)
+            for ring in _rings(g):
+                cs = list(ring.coords)
+                for i in range(len(cs) - 1):
+                    segs.append((cs[i][0], cs[i][1], cs[i + 1][0], cs[i + 1][1]))
+                total_mm += ring.length
+    stroke_w_cm = round((sum(sw_list) / len(sw_list)) / 10.0, 1) if sw_list else 0.0
     total_m = total_mm / 1000.0
     watts = total_m * float(watt_per_m)
     amps = (watts / float(volt)) if float(volt) > 0 else 0.0
@@ -225,12 +284,12 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
         p.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#ffcf4d" stroke-width="3.2" stroke-linecap="round" opacity="0.95"/>'
                  % (X(x0), Yv(y0), X(x1), Yv(y1)))
     ty = Hpx + pad + 34
-    p.append('<text x="%.0f" y="%.0f" font-family="Prompt,Arial" font-size="15" font-weight="800" fill="#ffcf4d">LED Ribbon &#183; ความยาวรวม %.2f ม. &#183; %.0f W &#183; %.1f A (@%.0fV) &#183; หม้อแปลง %d W</text>'
-             % (pad, ty, total_m, watts, amps, float(volt), ps))
+    p.append('<text x="%.0f" y="%.0f" font-family="Prompt,Arial" font-size="15" font-weight="800" fill="#ffcf4d">LED (วางตามขอบอักษร) &#183; ยาว %.2f ม. &#183; %.0f W &#183; %.1f A (@%.0fV) &#183; หม้อแปลง %d W &#183; เส้นอักษรกว้าง ~%.1f cm</text>'
+             % (pad, ty, total_m, watts, amps, float(volt), ps, stroke_w_cm))
     p.append("</svg>")
     return {"segments": len(segs), "total_m": round(total_m, 2), "watts": round(watts, 1),
             "amps": round(amps, 2), "transformer_w": ps, "pitch_cm": float(pitch_cm),
-            "preview_svg": "".join(p)}
+            "stroke_w_cm": stroke_w_cm, "preview_svg": "".join(p)}
 
 
 def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=5.0,
@@ -241,7 +300,10 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
     letters = split_letters(full)
     if not letters:
         return {"error": "แยกตัวอักษรไม่ได้ (ภาพควรเป็นตัวอักษร/โลโก้แยกชิ้น)"}
-    bars_y = frame_bars(full, bars=bars, bar_y_cm=bar_y_cm, gap_cm=gap_cm, bar_h_mm=bar_h_mm)
+    if bar_y_cm is None:                       # อัตโนมัติ -> คานตามแถวตัวอักษร (รูเจาะอยู่บนอักษรทุกตัว)
+        bars_y = row_bars(letters) or frame_bars(full, bars=bars, bar_y_cm=None, gap_cm=gap_cm, bar_h_mm=bar_h_mm)
+    else:
+        bars_y = frame_bars(full, bars=bars, bar_y_cm=bar_y_cm, gap_cm=gap_cm, bar_h_mm=bar_h_mm)
     holes = letter_holes(letters, bars_y, bolt_d=bolt_d, wire_d=wire_d,
                          wire_offset_mm=float(wire_offset_cm) * 10.0, bar_h_mm=bar_h_mm)
     return {
