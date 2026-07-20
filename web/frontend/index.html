@@ -317,7 +317,11 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10px;color:#64748b">แขน standoff (ซม.)</label><input class="numin" id="fStand" type="number" value="5" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#64748b">เลื่อนรูสายไฟ (ซม.)</label><input class="numin" id="fWire" type="number" value="0" style="padding:5px;width:100%"></div>
             </div>
-            <div class="hint">ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพด้านหลัง + ตำแหน่งรูเจาะ</div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ความยาวแขน (ซม.)</label><input class="numin" id="fArmLen" type="number" value="30" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ระยะแขนจากขอบซ้าย/ขวา (ซม.)</label><input class="numin" id="fArmEdge" type="number" value="25" style="padding:5px;width:100%"></div>
+            </div>
+            <div class="hint">2 แขน ซ้าย-ขวา · เฟรมกรอบสี่เหลี่ยมหลังอักษร · ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพหน้า/หลัง + รูเจาะ + จับระยะ</div>
           </div>
           <!-- 🌈 นีออนเฟล็กซ์: เลือกสี 12 สี -->
           <div id="neonPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #a5f3fc;border-radius:10px;background:#ecfeff">
@@ -4247,6 +4251,8 @@ $('goLayer').onclick=function(){
   fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
   fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
+  fd.append('arm_edge_cm',($('fArmEdge')&&$('fArmEdge').value)||'25');
+  if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
