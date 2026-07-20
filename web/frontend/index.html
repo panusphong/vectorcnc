@@ -5280,16 +5280,20 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm){
   //    โครงยึดป้ายจริง = แขนเหล็ก + คานบน + คานล่างรับป้าย (โปร่ง เห็นผนังทะลุ)
   g.fillStyle=col; g.strokeStyle=col;
   if(armLen>3){
-    var xs=[sx+sw*0.16, sx+sw*0.84-armW];
-    if(signWcm>400) xs.splice(1,0, sx+sw/2-armW/2);   // ป้ายกว้าง > 4 ม. เพิ่มแขนกลาง
-    xs.forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
-    g.fillRect(sx+sw*0.10, top-armW*0.6, sw*0.80, Math.max(3,armW)); // คานบนเชื่อมแขน
-    // คานล่างรับใต้ป้าย (โครงจริงมีคานรับ ไม่ใช่แผ่นทึบ)
-    g.fillRect(sx+sw*0.10, sy+sh-Math.max(2,armW*0.5), sw*0.80, Math.max(3,armW*0.8));
+    // 📏 เงื่อนไขเดียวกับหน้าหลัก: 2 แขน ซ้าย-ขวา · ห่างจากขอบ = armEdge ซม. · คาน/เฟรมไม่เกินขอบป้าย
+    var armEdgeCm=parseFloat(($('fArmEdge')&&$('fArmEdge').value))||25;
+    var edgePx=Math.max(armW*0.5, Math.min(sw*0.44, armEdgeCm*ppm));
+    var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;   // 2 แขน ที่ปลายซ้าย-ขวา (ไม่ใช่กลาง)
+    [axL,axR].forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
+    g.fillRect(sx, top-armW*0.6, sw, Math.max(3,armW));                        // คานบนเชื่อมแขน (เต็มกว้างป้าย ไม่เกินขอบ)
+    g.fillRect(sx, sy+sh-Math.max(2,armW*0.5), sw, Math.max(3,armW*0.8));      // คานล่างรับใต้ป้าย (เต็มกว้าง)
     var hx=sx+sw/2;                          // handle ลากปรับความยาวแขน
     window._armHandle={x:hx-9,y:top-9,w:18,h:18};
     g.fillStyle='#2563eb'; g.fillRect(hx-6,top-6,12,12); g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(hx-6,top-6,12,12); g.fillStyle=col;
-    if($('wLabels')&&$('wLabels').checked){ _wDimV(g, top, sy, xs[0]-16, (armLen/ppm).toFixed(1)+' cm', col); }
+    if($('wLabels')&&$('wLabels').checked){
+      _wDimV(g, top, sy, sx-16, (armLen/ppm).toFixed(1)+' cm', col);           // ความสูงแขน
+      _wDimH(g, sx, sx+sw, top-armW*2.4, (sw/ppm).toFixed(0)+' cm (เฟรม)', col); // กว้างเฟรม = กว้างป้าย
+    }
   } else { window._armHandle=null; }
   g.restore();
 }
