@@ -165,25 +165,25 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
             if len(c) >= 3:
                 dd = "M " + " L ".join("%.1f,%.1f" % (X(x), Yv(y)) for (x, y) in c) + " Z"
                 p.append('<path d="%s" fill="#e6ebf2" stroke="#94a3b8" stroke-width="1"/>' % dd)
-    # 🔩 เฟรมกรอบสี่เหลี่ยม (4 ด้าน) ล้อมตัวอักษร + คานขวาง + 2 แขนยื่นขึ้น + จับระยะครบทุกจุด
+    # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร + ปิดหัวท้ายซ้าย-ขวา + 2 แขนยื่นขึ้น
     fx = frame_x_mm; _m = 40.0
     frX0 = X(b[0] - _m + fx); frX1 = X(b[2] + _m + fx)
-    frY0 = Yv(b[1] - _m); frY1 = Yv(b[3] + _m)
     fxl = min(frX0, frX1); fxr = max(frX0, frX1); bw = fxr - fxl
     hh = bar_h_mm * sc
-    for (rx, ry, rw, rh) in ((fxl, frY0 - hh/2, bw, hh), (fxl, frY1 - hh/2, bw, hh),
-                             (fxl - hh/2, frY0, hh, frY1 - frY0), (fxr - hh/2, frY0, hh, frY1 - frY0)):
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (rx, ry, rw, rh))
-    for by in bar_ys:                                       # คานขวางตามระดับรูน็อต
-        yy = Yv(by)
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (fxl, yy - hh*0.4, bw, hh*0.8))
+    _rt = min(Yv(bar_ys[0]), Yv(bar_ys[1]))                 # คานบน (px)
+    _rb = max(Yv(bar_ys[0]), Yv(bar_ys[1]))                 # คานล่าง (px)
+    for yy in (_rt, _rb):                                   # คานบน + คานล่าง (แนวนอน) พาดกลางอักษร
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (fxl, yy - hh/2, bw, hh))
+    for xx in (fxl, fxr):                                   # ปิดหัวท้ายซ้าย-ขวา เชื่อมคานบน-ล่าง
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (xx - hh/2, _rt - hh/2, hh, (_rb - _rt) + hh))
     _epx = float(arm_edge_cm) * 10.0 * sc                   # ระยะแขนจากขอบ (px)
     _axL = fxl + _epx; _axR = fxr - _epx                    # 2 แขน ซ้าย-ขวา
-    _ay = frY0 - hh/2; _atop = 16.0                         # ปลายแขนบน (ใกล้ขอบบนภาพ)
-    for _ax in (_axL, _axR):
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*0.35, _atop, hh*0.7, _ay - _atop))
+    _atop = 16.0                                            # ปลายแขนบน (ใกล้ขอบบนภาพ)
+    for _ax in (_axL, _axR):                                # แขนยึดจากคานบนขึ้นเพดาน
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*0.35, _atop, hh*0.7, _rt - _atop))
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#c6ccd6" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*1.1, _atop - hh*0.5, hh*2.2, hh*0.6))
-    _FWcm = round((abs(b[2]-b[0]) + 2*_m)/10.0); _FHcm = round((abs(b[3]-b[1]) + 2*_m)/10.0)
+    _FWcm = round((abs(b[2]-b[0]) + 2*_m)/10.0)             # กว้างเฟรม
+    _FHcm = round(abs(bar_ys[1]-bar_ys[0])/10.0)           # สูงเฟรม = ระยะคานบน-ล่าง
     _RD = "#dc2626"; _BL = "#2563eb"
 
     def _dv(x, y0, y1, txt, col):    # เส้นจับระยะแนวตั้ง + ป้าย (หมุน)
@@ -193,12 +193,13 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
     def _dh(x0, x1, y, txt, col):    # เส้นจับระยะแนวนอน + ป้าย
         p.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.1"/>' % (x0, y, x1, y, col))
         p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="12" font-weight="700" fill="%s" text-anchor="middle">%s</text>' % ((x0+x1)/2, y-4, col, txt))
-    _dv(_axL - hh*1.5, _atop, _ay, "แขน %.0f cm" % arm_len_cm, _RD)          # ความสูงแขน
-    _dv(fxr + 22, frY0, frY1, "กรอบสูง %d cm" % _FHcm, _BL)                   # ความสูงเฟรมนอก
-    _dh(fxl, fxr, frY1 + 20, "กรอบกว้าง %d cm" % _FWcm, _RD)                  # ความกว้างเฟรมนอก
+    _dv(_axL - hh*1.5, _atop, _rt, "แขน %.0f cm" % arm_len_cm, _RD)          # ความสูงแขน (จากคานบนขึ้น)
+    _dv(fxr + 22, _rt, _rb, "เฟรมสูง %d cm" % _FHcm, _BL)                     # ระยะคานบน-ล่าง
+    _dh(fxl, fxr, _rb + 26, "เฟรมกว้าง %d cm" % _FWcm, _RD)                   # ความกว้างเฟรม
     _dh(fxl, _axL, _atop + hh*1.6, "%.0f cm" % arm_edge_cm, _BL)             # ขอบซ้าย -> แขนซ้าย
     _dh(_axR, fxr, _atop + hh*1.6, "%.0f cm" % arm_edge_cm, _BL)             # แขนขวา -> ขอบขวา
-    _dv(fxl - 18, frY0, Yv(b[1]), "ขอบบน %.0f cm" % ((Yv(b[1]) - frY0)/sc/10.0), _RD)   # กรอบบน -> ขอบบนตัวอักษร
+    _dv(fxl - 18, Yv(b[1]), _rt, "ขอบบน %.0f cm" % ((_rt - Yv(b[1]))/sc/10.0), _RD)     # ขอบบนอักษร -> คานบน
+    _dv(fxl - 36, _rb, Yv(b[3]), "ขอบล่าง %.0f cm" % ((Yv(b[3]) - _rb)/sc/10.0), _RD)   # คานล่าง -> ขอบล่างอักษร
     # รูน็อต (น้ำเงิน) + รูสายไฟ (แดง)
     for (x, y, r) in holes["bolts"]:
         p.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>' % (X(x), Yv(y), max(3, r*sc)))
@@ -300,10 +301,17 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
     letters = split_letters(full)
     if not letters:
         return {"error": "แยกตัวอักษรไม่ได้ (ภาพควรเป็นตัวอักษร/โลโก้แยกชิ้น)"}
-    if bar_y_cm is None:                       # อัตโนมัติ -> คานตามแถวตัวอักษร (รูเจาะอยู่บนอักษรทุกตัว)
-        bars_y = row_bars(letters) or frame_bars(full, bars=bars, bar_y_cm=None, gap_cm=gap_cm, bar_h_mm=bar_h_mm)
-    else:
-        bars_y = frame_bars(full, bars=bars, bar_y_cm=bar_y_cm, gap_cm=gap_cm, bar_h_mm=bar_h_mm)
+    # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร -> รูน็อตยึด 2 ระดับ
+    _H = b[3] - b[1]
+    _cyc = (b[1] + b[3]) / 2.0 if bar_y_cm is None else (b[3] - float(bar_y_cm) * 10.0)
+    _fgap = _H * 0.38
+    try:
+        if gap_cm and float(gap_cm) > 0:
+            _fgap = min(float(gap_cm) * 10.0, _H * 0.60)
+    except Exception:
+        pass
+    _fgap = max(30.0, _fgap)
+    bars_y = [_cyc - _fgap / 2.0, _cyc + _fgap / 2.0]
     holes = letter_holes(letters, bars_y, bolt_d=bolt_d, wire_d=wire_d,
                          wire_offset_mm=float(wire_offset_cm) * 10.0, bar_h_mm=bar_h_mm)
     return {
