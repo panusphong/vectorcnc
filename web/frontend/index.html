@@ -267,8 +267,12 @@ select.numin{cursor:pointer}
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
           <div class="hint" id="sizeHint" data-i18n="hint.size">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
 
-          <label  data-i18n="lbl.signtype">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
-          <select class="numin" id="mainSignType">
+          <div id="signTypeBox" style="margin-top:10px;padding:11px 12px 12px;border:2px solid #4f46e5;border-radius:12px;background:linear-gradient(135deg,#eef2ff,#faf5ff);box-shadow:0 3px 12px rgba(79,70,229,.18)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:17px;line-height:1">🏷️</span>
+            <label data-i18n="lbl.signtype" style="font-weight:800;color:#4338ca;font-size:13.5px;margin:0">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
+          </div>
+          <select class="numin" id="mainSignType" style="border:2px solid #4f46e5;font-weight:700;color:#312e81;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)">
             <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
             <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
             <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
@@ -288,7 +292,8 @@ select.numin{cursor:pointer}
             <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
             <option value="18" data-i18n="st.18">18 · กล่องไฟอะคริลิค ไฟออกรอบ</option>
           </select>
-          <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <div class="hint" data-i18n="hint.signtype" style="margin-bottom:0">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          </div>
           <button class="btn ghost" id="mainClear" style="width:100%;margin-top:6px;font-size:13px">🧹 เคลียร์งาน (เริ่มใหม่)</button>
           <!-- 🅰️ พิมพ์ข้อความเป็นตัวป้าย (โชว์เมื่อเลือกอักษร+โครงแขวน) -->
           <div id="mfTextPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
@@ -1556,6 +1561,19 @@ select.numin{cursor:pointer}
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px">นับตาม "จำนวนสี" ที่ใช้จริงทั้งป้าย — ใช้สีเดียวทั้งป้ายก็ใส่ 1 (ไม่คิดซ้ำต่อกรอบ)</div>
         <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="wPLight" disabled> ป้ายไฟ (+หม้อแปลง 1,000 · auto)</label>
         <label class="cslab" style="margin-top:8px">โครงยึดป้าย</label><select class="numin" id="wPFrame"><option value="none">ไม่มีโครง</option><option value="steel">โครงเหล็ก (1,800/ตร.ม.)</option><option value="stainless">โครงสแตนเลส (4,800/ตร.ม.)</option></select>
+        <!-- 🦾 แขนยึด / การติดตั้ง (เหมือนหน้าแรก) — ใช้กับกล่องไฟทุกชนิด -->
+        <label class="cslab" style="margin-top:8px">🦾 แขนยึด / การติดตั้ง</label>
+        <select class="numin" id="wArm">
+          <option value="none">— ไม่มีแขน (แปะผนัง) —</option>
+          <option value="top2">แขวนเพดาน 2 แขน (ยื่นลงจากบน)</option>
+          <option value="side1">แขนข้าง 1 แขน</option>
+          <option value="side2">แขนข้าง 2 แขน</option>
+        </select>
+        <div id="wArmRow" style="display:none;gap:6px;margin-top:5px">
+          <div style="flex:1"><label style="font-size:10px;color:var(--muted)">ยาวแขน (ซม.)</label><input class="numin" id="wArmLen" type="number" value="30" min="10" max="120" style="padding:5px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:var(--muted)">ห่างขอบ (ซม.)</label><input class="numin" id="wArmEdge" type="number" value="25" min="0" max="100" style="padding:5px;width:100%"></div>
+          <div style="flex:1" id="wArmSideWrap"><label style="font-size:10px;color:var(--muted)">ด้านแขน</label><select class="numin" id="wArmSide" style="padding:5px;width:100%"><option value="right">ขวา</option><option value="left">ซ้าย</option></select></div>
+        </div>
         <div id="wPResult" style="margin-top:10px;background:var(--grad);color:#fff;border-radius:10px;padding:10px;font-size:13px">เลือกประเภทป้าย → <b>0 บาท</b></div>
         <button class="btn" id="wPCopy" style="width:100%;margin-top:8px;background:var(--panel2);border:1px solid var(--line);color:var(--ink)">📋 คัดลอกใบเสนอราคา</button>
       </div>
@@ -1850,6 +1868,23 @@ function $(id){return document.getElementById(id);}
       var back=new THREE.MeshStandardMaterial({color:0xeef1f5,roughness:0.7,metalness:0.05});
       var mats=[side,side,side,side,front,back];
       group.add(new THREE.Mesh(g,mats));
+    } else if(!cans.hasAlpha){
+      // 🧊 ป้าย/กล่องทึบ เช่น 'กล่องไฟหน้าพิมพ์' — แผงเต็ม (หน้าขาว+ข้อความไม่หาย) + เรืองแสงนวลรอบกล่อง
+      var lit3=(curStyle==='light');
+      var g3=new THREE.BoxGeometry(W,H,depth);
+      var rtex3=texFrom(cans.raw||cans.front);
+      var f3=new THREE.MeshStandardMaterial({map:rtex3,roughness:0.42,metalness:0.05});
+      if(lit3){ f3.emissive=new THREE.Color(0xfff6e6); f3.emissiveMap=rtex3; f3.emissiveIntensity=0.6; }
+      var s3=new THREE.MeshStandardMaterial({color:lit3?0xf6edd6:0xd4dae2,roughness:0.4,metalness:0.08});
+      if(lit3){ s3.emissive=new THREE.Color(0xffe9b8); s3.emissiveIntensity=0.4; }
+      var b3=new THREE.MeshStandardMaterial({color:0xeef1f5,roughness:0.7,metalness:0.05});
+      group.add(new THREE.Mesh(g3,[s3,s3,s3,s3,f3,b3]));
+      if(lit3){                              // ฮาโลรูปสี่เหลี่ยมนวลๆ (ไฟออกรอบกล่อง) — ไม่ใช่สีเข้ม
+        var hm3=new THREE.MeshBasicMaterial({color:0xfff1d2,transparent:true,opacity:0.5,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+        var hp3=new THREE.Mesh(new THREE.PlaneGeometry(W*1.14,H*1.30),hm3); hp3.position.z=-depth/2-0.03; haloGrp.add(hp3);
+        var pl3=new THREE.PointLight(0xffe6b4,0.65,22); pl3.position.set(0,0,-1.5); scene.add(pl3);
+      }
+      resize(); return;
     } else {
       var ftex=texFrom(cans.front);
       var fmat=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,roughness:0.5,metalness:0.08,side:THREE.DoubleSide});
@@ -5273,35 +5308,55 @@ function wallSignReal(){
   return {w:w,h:h,Wm:Wm,Hm:Hm,r:r,mode:mode,ppm:WALL_TARGET/Math.max(Wm,Hm)};
 }
 function _wArrow(g,x,y,fx,fy){ var a=Math.atan2(y-fy,x-fx),L=7.5; g.beginPath(); g.moveTo(x,y); g.lineTo(x-L*Math.cos(a-0.42),y-L*Math.sin(a-0.42)); g.lineTo(x-L*Math.cos(a+0.42),y-L*Math.sin(a+0.42)); g.closePath(); g.fill(); }
-function _wDimH(g,x1,x2,y,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x1,y); g.lineTo(x2,y); g.stroke(); _wArrow(g,x1,y,x2,y); _wArrow(g,x2,y,x1,y); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect((x1+x2)/2-tw/2-4,y-20,tw+8,17); g.fillStyle=col; g.fillText(txt,(x1+x2)/2,y-5); g.textBaseline='alphabetic'; }
-function _wDimV(g,y1,y2,x,txt,col){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x,y1); g.lineTo(x,y2); g.stroke(); _wArrow(g,x,y1,x,y2); _wArrow(g,x,y2,x,y1); g.save(); g.translate(x,(y1+y2)/2); g.rotate(-Math.PI/2); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width; g.fillStyle='#fff'; g.fillRect(-tw/2-4,-20,tw+8,17); g.fillStyle=col; g.fillText(txt,0,-5); g.restore(); g.textBaseline='alphabetic'; }
+function _wDimH(g,x1,x2,y,txt,col,id){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x1,y); g.lineTo(x2,y); g.stroke(); _wArrow(g,x1,y,x2,y); _wArrow(g,x2,y,x1,y);
+  var off=(id&&window._wDimOff&&window._wDimOff[id])||{dx:0,dy:0}; var cx=(x1+x2)/2+off.dx, ly=y-5+off.dy;
+  g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width;
+  if(off.dx||off.dy){ g.strokeStyle='rgba(100,116,139,.45)'; g.lineWidth=1; g.beginPath(); g.moveTo((x1+x2)/2,y); g.lineTo(cx,ly-6); g.stroke(); }
+  g.fillStyle='#fff'; g.fillRect(cx-tw/2-4,ly-15,tw+8,17); g.fillStyle=col; g.fillText(txt,cx,ly); g.textBaseline='alphabetic';
+  if(id&&window._wDimHit) window._wDimHit.push({id:id,x:cx-tw/2-4,y:ly-15,w:tw+8,h:17}); }
+function _wDimV(g,y1,y2,x,txt,col,id){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=1.4; g.beginPath(); g.moveTo(x,y1); g.lineTo(x,y2); g.stroke(); _wArrow(g,x,y1,x,y2); _wArrow(g,x,y2,x,y1);
+  var off=(id&&window._wDimOff&&window._wDimOff[id])||{dx:0,dy:0}; var lx=x-5+off.dx, ly=(y1+y2)/2+off.dy;
+  if(off.dx||off.dy){ g.strokeStyle='rgba(100,116,139,.45)'; g.lineWidth=1; g.beginPath(); g.moveTo(x,(y1+y2)/2); g.lineTo(lx+6,ly); g.stroke(); }
+  g.save(); g.translate(lx,ly); g.rotate(-Math.PI/2); g.font='bold 15px sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; var tw=g.measureText(txt).width;
+  g.fillStyle='#fff'; g.fillRect(-tw/2-4,-20,tw+8,17); g.fillStyle=col; g.fillText(txt,0,-5); g.restore(); g.textBaseline='alphabetic';
+  if(id&&window._wDimHit) window._wDimHit.push({id:id,x:lx-20,y:ly-tw/2-2,w:24,h:tw+4}); }
 function _wFrameKind(){ var v=($('wPFrame')&&$('wPFrame').value)||'none'; return (v==='steel'||v==='stainless')?v:''; }
 var _armTopFy=0;   // ตำแหน่งบนสุดของแขนโครง (0 = ฝ้าเพดาน) — ลากปรับได้
-function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm){
-  var col='#141414';
+function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
+  var col='#141414'; mode=mode||'top2';
+  var armW=Math.max(3,Math.round(sw*0.014));
+  var armEdgeCm=parseFloat(($('wArmEdge')&&$('wArmEdge').value))||parseFloat(($('fArmEdge')&&$('fArmEdge').value))||25;
+  var armLenCm=parseFloat(($('wArmLen')&&$('wArmLen').value))||30;
+  g.save(); g.fillStyle=col; g.strokeStyle=col;
+  if(mode==='side1'||mode==='side2'){
+    // 🦾 แขนข้าง: ยื่นจากขอบข้างป้ายออกไปเสา/ผนัง (แนวนอน)
+    var side=($('wArmSide')&&$('wArmSide').value)||'right';
+    var aLen=Math.max(armW*2, armLenCm*ppm);
+    var ex=(side==='left')?sx:sx+sw, dir=(side==='left')?-1:1;
+    var wallX=ex+dir*aLen;
+    var ys=(mode==='side1')?[sy+sh/2]:[sy+sh*0.26, sy+sh*0.74];
+    ys.forEach(function(ay){ g.fillRect(Math.min(ex,wallX), ay-armW/2, aLen, armW); });        // แขนแนวนอน
+    g.fillRect((dir>0?wallX-armW*0.9:wallX), ys[0]-armW*1.2, armW*0.9, (ys[ys.length-1]-ys[0])+2.4*armW); // เพลท/เสาปลายแขน
+    window._armHandle=null;
+    if($('wLabels')&&$('wLabels').checked){ _wDimH(g, Math.min(ex,wallX), Math.max(ex,wallX), ys[0]-armW*2.2, armLenCm.toFixed(0)+' cm', col, 'arm'); }
+    g.restore(); return;
+  }
+  // 🦾 แขวนเพดาน 2 แขน (top2) — เงื่อนไขเดียวกับหน้าแรก · แขนไม่เกินขอบป้าย · คานหลบหลังป้าย
   var signTopFy=(sy-M)/wh;
   var topFy=Math.max(0, Math.min(_armTopFy, signTopFy-0.01));
-  var top=M+topFy*wh;                      // บนสุดของแขน (ลากได้)
-  var armW=Math.max(3,Math.round(sw*0.014));
-  var armLen=sy-top;
-  g.save();
-  // ⚠️ ไม่วาดแผ่นทึบหลังป้ายแล้ว — ป้ายนีออน/ตัวอักษรโปร่งจะเห็นเป็นสี่เหลี่ยมดำ
-  //    โครงยึดป้ายจริง = แขนเหล็ก + คานบน + คานล่างรับป้าย (โปร่ง เห็นผนังทะลุ)
-  g.fillStyle=col; g.strokeStyle=col;
+  var top=M+topFy*wh, armLen=sy-top;
   if(armLen>3){
-    // 📏 เงื่อนไขเดียวกับหน้าหลัก: 2 แขน ซ้าย-ขวา · ห่างจากขอบ = armEdge ซม. · คาน/เฟรมไม่เกินขอบป้าย
-    var armEdgeCm=parseFloat(($('fArmEdge')&&$('fArmEdge').value))||25;
     var edgePx=Math.max(armW*0.5, Math.min(sw*0.44, armEdgeCm*ppm));
-    var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;   // 2 แขน ที่ปลายซ้าย-ขวา (ไม่ใช่กลาง)
+    var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;
     [axL,axR].forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
-    g.fillRect(sx, top-armW*0.6, sw, Math.max(3,armW));                        // คานบนเชื่อมแขน (เต็มกว้างป้าย ไม่เกินขอบ)
-    g.fillRect(sx, sy+sh-Math.max(2,armW*0.5), sw, Math.max(3,armW*0.8));      // คานล่างรับใต้ป้าย (เต็มกว้าง)
-    var hx=sx+sw/2;                          // handle ลากปรับความยาวแขน
+    g.fillRect(sx, top-armW*0.6, sw, Math.max(3,armW));                        // คานบนเชื่อมแขน
+    g.fillRect(sx, sy+sh-Math.max(6,armW*1.6), sw, Math.max(3,armW*0.8));      // คานล่างหลบหลังป้าย
+    var hx=sx+sw/2;
     window._armHandle={x:hx-9,y:top-9,w:18,h:18};
     g.fillStyle='#2563eb'; g.fillRect(hx-6,top-6,12,12); g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(hx-6,top-6,12,12); g.fillStyle=col;
     if($('wLabels')&&$('wLabels').checked){
-      _wDimV(g, top, sy, sx-16, (armLen/ppm).toFixed(1)+' cm', col);           // ความสูงแขน
-      _wDimH(g, sx, sx+sw, top-armW*2.4, (sw/ppm).toFixed(0)+' cm (เฟรม)', col); // กว้างเฟรม = กว้างป้าย
+      _wDimV(g, top, sy, sx-16, (armLen/ppm).toFixed(1)+' cm', col, 'arm');
+      _wDimH(g, sx, sx+sw, top-armW*2.4, (sw/ppm).toFixed(0)+' cm (เฟรม)', col, 'fw');
     }
   } else { window._armHandle=null; }
   g.restore();
@@ -5349,6 +5404,7 @@ function _wPriceBanner(g,M,ww,wh){
 }
 function wallDraw(){
   var cv=$('wCanvas'); if(!cv) return; var g=cv.getContext('2d');
+  window._wDimOff=window._wDimOff||{}; window._wDimHit=[];   // 🏷️ ตัวเลขระยะลากได้: เก็บ hitbox ใหม่ทุกครั้งที่วาด
   var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
   var ww=Math.round(s.Wm*ppm), wh=Math.round(s.Hm*ppm);
   cv.width=ww+2*M; cv.height=wh+2*M;
@@ -5396,7 +5452,7 @@ function wallDraw(){
   wallPos.fx=(cx-M)/ww; wallPos.fy=(cy-M)/wh;
   var sx=cx-sw/2, sy=cy-sh/2;
   var mLcm=(sx-M)/ppm, mRcm=((M+ww)-(sx+sw))/ppm, mTcm=(sy-M)/ppm, mBcm=((M+wh)-(sy+sh))/ppm;
-  try{ if(_wFrameKind())_wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w); }catch(_e){}
+  try{ var _armMode=($('wArm')&&$('wArm').value)||(_wFrameKind()?'top2':'none'); if(_armMode!=='none')_wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armMode); }catch(_e){}
   if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
   else { }
   if($('wLabels').checked){
@@ -5406,15 +5462,15 @@ function wallDraw(){
     var dc='#e11d48';
     var below=(sy+sh+40)<=(M+wh); var wy=below?(sy+sh+26):(sy-26);
     g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx,sy+(below?sh:0)); g.lineTo(sx,wy); g.moveTo(sx+sw,sy+(below?sh:0)); g.lineTo(sx+sw,wy); g.stroke();
-    _wDimH(g,sx,sx+sw,wy,s.w.toFixed(1)+' cm',dc);
+    _wDimH(g,sx,sx+sw,wy,s.w.toFixed(1)+' cm',dc,'w');
     var right=(sx+sw+40)<=(M+ww); var hx=right?(sx+sw+26):(sx-26);
     g.strokeStyle='rgba(225,29,72,.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(sx+(right?sw:0),sy); g.lineTo(hx,sy); g.moveTo(sx+(right?sw:0),sy+sh); g.lineTo(hx,sy+sh); g.stroke();
-    _wDimV(g,sy,sy+sh,hx,s.h.toFixed(1)+' cm',dc);
+    _wDimV(g,sy,sy+sh,hx,s.h.toFixed(1)+' cm',dc,'h');
     var amb='#f59e0b';
-    if(sx-M>16) _wDimH(g,M,sx,cy,mLcm.toFixed(1)+' cm',amb);
-    if((M+ww)-(sx+sw)>16) _wDimH(g,sx+sw,M+ww,cy,mRcm.toFixed(1)+' cm',amb);
-    if(sy-M>16) _wDimV(g,M,sy,cx,mTcm.toFixed(1)+' cm',amb);
-    if((M+wh)-(sy+sh)>16) _wDimV(g,sy+sh,M+wh,cx,mBcm.toFixed(1)+' cm',amb);
+    if(sx-M>16) _wDimH(g,M,sx,cy,mLcm.toFixed(1)+' cm',amb,'mL');
+    if((M+ww)-(sx+sw)>16) _wDimH(g,sx+sw,M+ww,cy,mRcm.toFixed(1)+' cm',amb,'mR');
+    if(sy-M>16) _wDimV(g,M,sy,cx,mTcm.toFixed(1)+' cm',amb,'mT');
+    if((M+wh)-(sy+sh)>16) _wDimV(g,sy+sh,M+wh,cx,mBcm.toFixed(1)+' cm',amb,'mB');
   }
   if(WMODE==='design' && $('wDsgnSplit') && $('wDsgnSplit').checked){ _wDrawSplit(g,M,ww,wh); }
   drawTextBoxes(g,M,ww,wh,ppm);
@@ -5557,13 +5613,20 @@ function _wallPickPieces(pieces, f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  cv.addEventListener('mousedown',function(e){ if(typeof _lgHitDrag==='function'&&_lgHitDrag(pos(e)))return; if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return; if(WMODE!=='design'||window._wBoxAct)return; var _p=pos(e);
+  cv.addEventListener('mousedown',function(e){ if(typeof _lgHitDrag==='function'&&_lgHitDrag(pos(e)))return; if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e)))return;
+    var _pd=pos(e);
+    if(window._wDimHit){ for(var _i=window._wDimHit.length-1;_i>=0;_i--){ var _hb=window._wDimHit[_i];
+      if(_pd.x>=_hb.x&&_pd.x<=_hb.x+_hb.w&&_pd.y>=_hb.y&&_pd.y<=_hb.y+_hb.h){ var _o=window._wDimOff[_hb.id]||{dx:0,dy:0};
+        window._wDimDrag={id:_hb.id,sx:_pd.x,sy:_pd.y,ox:_o.dx,oy:_o.dy}; cv.style.cursor='move'; e.preventDefault(); return; } } }
+    if(WMODE!=='design'||window._wBoxAct)return; var _p=_pd;
     if(window._armHandle && _p.x>=window._armHandle.x && _p.x<=window._armHandle.x+window._armHandle.w && _p.y>=window._armHandle.y && _p.y<=window._armHandle.y+window._armHandle.h){ window._armDrag=true; cv.style.cursor='ns-resize'; return; }
     if(inSign(_p)){wallDrag=true;cv.style.cursor='grabbing';} });
   window.addEventListener('mousemove',function(e){
+    if(window._wDimDrag){ var pm=pos(e); window._wDimOff[window._wDimDrag.id]={dx:window._wDimDrag.ox+(pm.x-window._wDimDrag.sx),dy:window._wDimDrag.oy+(pm.y-window._wDimDrag.sy)}; wallDraw(); return; }
     if(window._armDrag){ var pa=pos(e),sa=wallSignReal(),wha=sa.Hm*sa.ppm; _armTopFy=Math.max(0,(pa.y-WALL_M)/wha); wallDraw(); return; }
     if(WMODE!=='design'||window._wBoxAct||!wallDrag)return; var p=pos(e),s=wallSignReal(),M=WALL_M,ppm=s.ppm; if(!wLockX)wallPos.fx=(p.x-M)/(s.Wm*ppm); if(!wLockY)wallPos.fy=(p.y-M)/(s.Hm*ppm); wallDraw(); });
-  window.addEventListener('mouseup',function(){ if(window._armDrag){window._armDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
+  window.addEventListener('mouseup',function(){ if(window._wDimDrag){window._wDimDrag=null; if($('wCanvas'))$('wCanvas').style.cursor='grab';} if(window._armDrag){window._armDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} if(wallDrag){wallDrag=false; if($('wCanvas'))$('wCanvas').style.cursor='grab';} });
+  cv.addEventListener('dblclick',function(e){ if(!window._wDimHit)return; var p=pos(e); for(var i=window._wDimHit.length-1;i>=0;i--){ var hb=window._wDimHit[i]; if(p.x>=hb.x&&p.x<=hb.x+hb.w&&p.y>=hb.y&&p.y<=hb.y+hb.h){ if(window._wDimOff)delete window._wDimOff[hb.id]; wallDraw(); e.preventDefault(); return; } } });   // ดับเบิลคลิกตัวเลข = คืนตำแหน่งเดิม
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   var pv=_shpSel,pt=_txtSel,pl=_lgSel; _shpSel=-1; _txtSel=-1; _lgSel=-1;   // ซ่อนจุดจับตอน export
@@ -5797,6 +5860,10 @@ function wallPrice(){ if(!$('wPResult'))return;
   try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){}
 }
 ['wPColorN','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallDraw; el.onchange=wallDraw; } });
+// 🦾 แขนยึดในหน้าจำลองผนัง — โชว์/ซ่อนช่องตั้งค่า + วาดใหม่
+function _wArmToggle(){ var v=($('wArm')&&$('wArm').value)||'none'; if($('wArmRow'))$('wArmRow').style.display=(v==='none')?'none':'flex'; if($('wArmSideWrap'))$('wArmSideWrap').style.display=(v==='side1'||v==='side2')?'block':'none'; }
+['wArm','wArmLen','wArmEdge','wArmSide'].forEach(function(id){ var el=$(id); if(el){ el.oninput=function(){_wArmToggle();wallDraw();}; el.onchange=function(){_wArmToggle();wallDraw();}; } });
+try{_wArmToggle();}catch(_e){}
 if($('wPType')){ $('wPType').onchange=wallDraw; $('wPType').oninput=wallDraw; }
 function renderBoxRows(){ var c=$('wPBoxRows'); if(!c)return; c.innerHTML='';
   measBoxes.forEach(function(b,i){ var row=document.createElement('div'); row.style.cssText='display:flex;gap:5px;align-items:center;margin-bottom:5px';
