@@ -4399,6 +4399,8 @@ $('goLayer').onclick=function(){
       fd.append('led_color',($('pmLedColor')&&$('pmLedColor').value)||'Warm White 3000K');
       fd.append('print_spec',($('pmPrint')&&$('pmPrint').value)||'');
       fd.append('delivery_date',($('pmDelivery')&&$('pmDelivery').value)||'');
+      fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
+      fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
       try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
       fetch((API||'')+'/api/job-sheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
         btn.disabled=false;btn.textContent=old;
