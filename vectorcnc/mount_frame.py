@@ -167,8 +167,10 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
                 p.append('<path d="%s" fill="#e6ebf2" stroke="#94a3b8" stroke-width="1"/>' % dd)
     # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร + ปิดหัวท้ายซ้าย-ขวา + 2 แขนยื่นขึ้น
     # 📏 มาตรฐาน: 'ขอบโครงซ้าย-ขวา ต้องไม่เกินขอบนอกของตัวอักษร' -> เฟรมกว้างเท่ากรอบอักษรพอดี (ไม่ยื่นออก)
-    fx = frame_x_mm; _m = 0.0
-    frX0 = X(b[0] + fx); frX1 = X(b[2] + fx)
+    fx = frame_x_mm
+    # หดขอบเฟรมเข้าข้างละ _fin กันคานตั้งเกินขอบนอกอักษร (โดยเฉพาะตัวโค้ง C/O ที่ปลาย)
+    _fin = (b[2] - b[0]) * 0.02 + bar_h_mm
+    frX0 = X(b[0] + _fin + fx); frX1 = X(b[2] - _fin + fx)
     fxl = min(frX0, frX1); fxr = max(frX0, frX1); bw = fxr - fxl
     hh = bar_h_mm * sc
     _rt = min(Yv(bar_ys[0]), Yv(bar_ys[1]))                 # คานบน (px)
@@ -184,7 +186,7 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
     for _ax in (_axL, _axR):                                # แขนยึดจากคานบนขึ้นเพดาน
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*0.35, _atop, hh*0.7, _rt - _atop))
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#c6ccd6" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*1.1, _atop - hh*0.5, hh*2.2, hh*0.6))
-    _FWcm = round(abs(b[2]-b[0])/10.0)                      # กว้างเฟรม = กว้างกรอบอักษร (ไม่เกินขอบ)
+    _FWcm = round((abs(b[2]-b[0]) - 2*_fin)/10.0)          # กว้างเฟรม (หดเข้ากันเกินขอบอักษร)
     _FHcm = round(abs(bar_ys[1]-bar_ys[0])/10.0)           # สูงเฟรม = ระยะคานบน-ล่าง
     _RD = "#dc2626"; _BL = "#2563eb"
 
