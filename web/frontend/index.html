@@ -63,8 +63,6 @@ h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;c
 .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#CBD6E6}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
 .app-title{font-size:13px;color:var(--dim)}
 .app-body{display:grid;grid-template-columns:300px 1fr 272px;min-height:calc(100vh - 246px)}
-.app-body.full-stage{grid-template-columns:300px 1fr}   /* โชว์ผลลัพธ์ 3มิติ -> ยุบคอลัมน์ขวา ให้เต็มพื้นที่ */
-.app-body.full-stage .out{display:none}
 @media(max-width:980px){.app-body{grid-template-columns:1fr;min-height:auto}}
 .side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
@@ -372,6 +370,11 @@ select.numin{cursor:pointer}
               <div style="font-size:10px;color:#92700a;margin:6px 0 2px">🖼️ โลโก้/ไอคอน (อัปโหลดกี่รูปก็ได้)</div>
               <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;width:100%">
               <div id="bxLogoPrev" style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0"></div>
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+                <label style="display:flex;align-items:center;gap:4px;font-size:10.5px;color:#92700a"><input type="checkbox" id="bxLogoTint"> เปลี่ยนสีโลโก้</label>
+                <input type="color" id="bxLogoColor" value="#1f2937" style="width:30px;height:26px;border:none;background:none;padding:0;cursor:pointer">
+                <span style="font-size:9.5px;color:#a8894a">(ไอคอนสีเดียว)</span>
+              </div>
               <select class="numin" id="bxLayout" style="padding:5px;width:100%;font-size:11px">
                 <option value="hrow">หลายช่องแนวนอน (ไอคอนบน + ข้อความล่าง)</option>
                 <option value="iconLeft">โลโก้ซ้าย · ข้อความขวา</option>
@@ -4384,21 +4387,26 @@ var TRIMW=1, TRIMDIR='out';
     window._bxSig=sig(); }
   function sync(){ if(window._bxSig!==sig()) layout(); }
   function aspect(){ var w=parseFloat(($('bxW')&&$('bxW').value))||0, h=parseFloat(($('bxH')&&$('bxH').value))||0; if(w>0&&h>0)return Math.max(0.45,Math.min(8,w/h)); return 3.0; }
-  function render(c,S){
-    var asp=aspect(); var PW=Math.round(540*S), PH=Math.max(Math.round(120*S),Math.round(PW/asp));
+  function tinted(im,color){ if(im._tc===color && im._tcv)return im._tcv;   // ทับสีไอคอน (คงรูปทรงตาม alpha)
+    var t=document.createElement('canvas'); t.width=im.width||im.naturalWidth||64; t.height=im.height||im.naturalHeight||64; var tg=t.getContext('2d');
+    tg.drawImage(im,0,0,t.width,t.height); tg.globalCompositeOperation='source-in'; tg.fillStyle=color; tg.fillRect(0,0,t.width,t.height); im._tc=color; im._tcv=t; return t; }
+  function render(c,S,edit){
+    var asp=aspect(); var PW=Math.round(560*S), PH=Math.max(Math.round(150*S),Math.round(PW/asp));
     c.width=PW; c.height=PH; var g=c.getContext('2d'); g.clearRect(0,0,PW,PH);
     var lg=window._bxLogos||[], sg=segList();
     var font=($('bxFont')&&$('bxFont').value)||'Prompt', col=($('bxTextColor')&&$('bxTextColor').value)||'#1f2937';
     var gts=(+(($('bxTS')&&$('bxTS').value)||100))/100, gls=(+(($('bxLS')&&$('bxLS').value)||100))/100;
+    var tintOn=$('bxLogoTint')&&$('bxLogoTint').checked, tintCol=($('bxLogoColor')&&$('bxLogoColor').value)||'#1f2937';
     var fs=PH*0.16*gts;                       // ✅ ตัวอักษรขนาดเท่ากันทุกช่อง (คงที่ ไม่ย่อตามความยาว)
     (window._bxItems||[]).forEach(function(it){
-      if(it.kind==='logo'){ var im=lg[it.ref]; if(!im)return; var ih=PH*0.46*gls; var iw=ih*(im.width/im.height); g.drawImage(im, it.cx*PW-iw/2, it.cy*PH-ih/2, iw, ih); it._w=iw; it._h=ih; }
+      if(it.kind==='logo'){ var im=lg[it.ref]; if(!im)return; var ih=PH*0.46*gls; var iw=ih*(im.width/im.height); g.drawImage(tintOn?tinted(im,tintCol):im, it.cx*PW-iw/2, it.cy*PH-ih/2, iw, ih); it._w=iw; it._h=ih; }
       else { var tx=sg[it.ref]; if(tx==null)return; g.font='700 '+fs+'px "'+font+'",sans-serif'; g.fillStyle=col; g.textAlign='center'; g.textBaseline='middle'; g.fillText(tx, it.cx*PW, it.cy*PH); it._w=g.measureText(tx).width; it._h=fs; }
+      if(edit && it._w){ g.save(); g.strokeStyle=(window._bxDragIt===it)?'#b45309':'rgba(180,83,9,0.35)'; g.setLineDash([6,4]); g.lineWidth=Math.max(1.2,PW*0.0025); g.strokeRect(it.cx*PW-it._w/2-8, it.cy*PH-it._h/2-8, it._w+16, it._h+16); g.restore(); }
     });
     return c;
   }
   function draw(){ var pv=$('bxPreview'); if(!pv)return; sync(); var lg=window._bxLogos||[], sg=segList();
-    if(!lg.length && !sg.length){ pv.style.display='none'; return; } render(pv,1); pv.style.display='block'; }
+    if(!lg.length && !sg.length){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; }
   window._bxDrawPrev=draw;
   // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง
   (function(){ var pv=$('bxPreview'); if(!pv)return;
@@ -4413,12 +4421,14 @@ var TRIMW=1, TRIMDIR='out';
   if($('bxCompText'))$('bxCompText').oninput=draw;
   if($('bxLayout'))$('bxLayout').onchange=function(){ layout(); draw(); };
   if($('bxTextColor'))$('bxTextColor').oninput=draw;
+  if($('bxLogoColor'))$('bxLogoColor').oninput=draw;
+  if($('bxLogoTint'))$('bxLogoTint').onchange=draw;
   if($('bxCenter'))$('bxCenter').onclick=function(){ layout(); draw(); };
   [['bxTS','bxTSv'],['bxLS','bxLSv']].forEach(function(p){ var el=$(p[0]); if(el)el.oninput=function(){ var lb=$(p[1]); if(lb)lb.textContent=this.value; draw(); }; });
   if($('bxFont'))$('bxFont').onchange=function(){ var f=this.value; try{loadGFont(f);}catch(_e){} if(document.fonts&&document.fonts.load){document.fonts.load('700 40px "'+f+'"').then(draw).catch(draw);}else draw(); };
   function compose(cb){ var lg=window._bxLogos||[], sg=segList();
     if(!lg.length && !sg.length){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
-    sync(); var c=document.createElement('canvas'); render(c,3);
+    sync(); var c=document.createElement('canvas'); render(c,3,false);
     c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/3/12*10); if(cb)cb(); },'image/png'); }
   if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('bxFont')&&$('bxFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
     var go=function(){ compose(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} }); };
@@ -5932,6 +5942,8 @@ function wallPrice(){ if(!$('wPResult'))return;
   if($('wPColorFee'))$('wPColorFee').textContent=colorTotal.toLocaleString()+' บาท';
   var colorSpecial=false;      // ไม่คิดรวมในราคาต่อกรอบอีกแล้ว
   var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
+  var _armSel=($('wArm')&&$('wArm').value)||'none';           // 🦾 เลือกแขน = คิดราคาเท่าโครงเหล็ก (ถ้ายังไม่ได้เลือกโครง)
+  if(frameKey==='none' && _armSel!=='none') frameKey='steel';
   if($('wPSplitWrap'))$('wPSplitWrap').style.display=splitOn?'block':'none';
   if($('wPSingleWrap'))$('wPSingleWrap').style.display=splitOn?'none':'block';
   var lines=[], total=0, anyLight=false;
