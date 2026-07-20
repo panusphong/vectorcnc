@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.29-frame-inset-no-overflow+wall-frame-match",
+            "version": "9.31-type18-glow-all-sides",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -889,6 +889,15 @@ SIGN_TYPES = {
            "layers": [{"name": "นีออนเฟล็กซ์ (เส้นไฟ)", "off": 0.0, "kind": "neon", "color": "#00e5ff", "rgb": (0, 229, 255)},
                       {"name": "อะคริลิคใสรองหลัง 8mm", "off": 30.0, "kind": "solid", "color": "#93c5fd", "rgb": (147, 197, 253)}],
            "walls": []},
+    # 🆕 กล่องไฟอะคริลิค ไฟออกรอบ — กล่องสี่เหลี่ยม หน้าอะคริลิคขาวพิมพ์ (โลโก้+ข้อความ) ขอบเรืองแสงรอบ
+    #     แขวนเพดาน/ติดผนัง (เลือก arm) · กว้าง(real_width) + ลึก(return_depth) ปรับได้ · พิมพ์ Text ลงกล่องได้
+    "18": {"name": "กล่องไฟอะคริลิค ไฟออกรอบ", "depth_cm": 10.0, "box_shape": "rect", "box_pad_cm": 4.0,
+           "face_finish": "print", "face_material": "acrylic_P433", "edge_lit": True, "glow_color": "#fff3c4",
+           "allow_text": True,
+           "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 6.0, "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ (ลึกกล่อง)", "h": 10.0}]},
 }
 
 
@@ -1267,6 +1276,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             padR += _armpad
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
+    _edgelit = bool(rec.get("edge_lit"))
+    if _edgelit:                                       # 💡 ไฟออกรอบ = อะคริลิคทั้งใบ ไฟส่องออกทุกด้าน -> ผนังข้างเรืองแสง
+        wallFill = "#fbe6b8"; edge = "#e6c672"
 
     def F(p):
         return (p[0] + ox, p[1] + oy)
@@ -1284,6 +1296,14 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             d += " " + ringd(list(h.coords), tf)
         return d
     parts = []
+    if _edgelit:                                       # 💡 แสงฟุ้งรอบทั้งกล่อง (ไฟออกทุกด้าน) — วาดไว้ 'หลังสุด'
+        _gc = rec.get("glow_color", "#fff3c4")
+        parts.append('<defs><filter id="w3dHalo" x="-60%%" y="-60%%" width="220%%" height="220%%"><feGaussianBlur stdDeviation="%.1f"/></filter>'
+                     '<filter id="w3dGlow" x="-45%%" y="-45%%" width="190%%" height="190%%"><feGaussianBlur stdDeviation="%.1f"/></filter></defs>'
+                     % (max(6.0, S * 0.05), max(3.0, S * 0.022)))
+        for pg in polys:                               # ฮาโลรอบกล่อง (หน้า+ลึก) ให้แสงเรืองออกทุกด้าน
+            parts.append('<path d="%s" fill="%s" filter="url(#w3dHalo)" opacity="0.55"/>' % (faced(pg, F), _gc))
+            parts.append('<path d="%s" fill="%s" filter="url(#w3dHalo)" opacity="0.40"/>' % (faced(pg, Bk), _gc))
     for pg in polys:                                   # ผนังข้าง (ขอบที่เห็น)
         cen = pg.centroid; cx, cy = cen.x, cen.y
         ring = list(pg.exterior.coords)
@@ -1333,6 +1353,12 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in ip:
             if pg.geom_type == "Polygon" and not pg.is_empty:
                 parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), boreFill, edge, lw * 0.8))
+    if _edgelit:                                       # 💡 ไฟออกรอบ: ขอบหน้าเรืองแสงคม (ไส้ในของแสง) — filter นิยามไว้ด้านบนแล้ว
+        _gc = rec.get("glow_color", "#fff3c4")
+        for pg in polys:                              # เรืองแสงเบลอรอบขอบหน้า
+            parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round" filter="url(#w3dGlow)" opacity="0.95"/>' % (faced(pg, F), _gc, max(6.0, S * 0.032)))
+        for pg in polys:                              # เส้นขอบสว่างคม
+            parts.append('<path d="%s" fill="none" stroke="#ffffff" stroke-width="%.2f" stroke-linejoin="round" opacity="0.92"/>' % (faced(pg, F), max(2.0, S * 0.010)))
     aw = fs * 0.55
     xh = padL - fs * 1.7; y0 = padT; y1 = padT + H       # สูง (ซ้าย)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
