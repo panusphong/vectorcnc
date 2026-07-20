@@ -272,7 +272,7 @@ select.numin{cursor:pointer}
             <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
             <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
             <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
-            <option value="3" data-i18n="st.3">3 · ไฟออกรอบ</option>
+            <option value="3" data-i18n="st.3">3 · ตัวอักษรไฟออกรอบ</option>
             <option value="4" data-i18n="st.4">4 · กล่องไฟฉลุหน้า</option>
             <option value="6" data-i18n="st.6">6 · งานยกขอบ</option>
             <option value="7" data-i18n="st.7">7 · งานยกขอบ มีไส้</option>
@@ -1161,7 +1161,7 @@ select.numin{cursor:pointer}
       <tr><th>#</th><th>รูปแบบ</th><th>ชั้นตัด (ค่าเผื่อ)</th><th>ยกขอบ (ผนัง·พับ)</th></tr>
       <tr><td>1</td><td>ไฟออกหน้า มีคิ้ว</td><td>คิ้ว (เจาะโบ๋·เต็ม) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
       <tr><td>2</td><td>ไฟออกหน้า ไม่มีคิ้ว</td><td>หน้าอะคริลิค +0.1 · ไส้อะคริลิคใส −0.15 · แผ่นพื้น เต็ม</td><td>5 ซม.</td></tr>
-      <tr><td>3</td><td>ไฟออกรอบ (halo)</td><td>หน้าอะคริลิค เต็ม · แผ่นพื้น +0.1</td><td>ใน 2 ซม. + อะคริลิค 7 ซม.</td></tr>
+      <tr><td>3</td><td>ตัวอักษรไฟออกรอบ</td><td>หน้าอะคริลิค เต็ม · แผ่นพื้น +0.1 · <b>ข้างอะคริลิค แสงออกรอบตัวอักษร</b></td><td>ใน 2 ซม. + อะคริลิค 7 ซม.</td></tr>
       <tr><td>4</td><td>กล่องไฟฉลุหน้า</td><td>คิ้ว · หน้าฉลุตัวอักษร −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
       <tr><td>6</td><td>งานยกขอบ</td><td>ซิ้งค์ เต็ม</td><td>2.5 ซม. + ขากลางยกลอย</td></tr>
       <tr><td>7</td><td>งานยกขอบ มีไส้</td><td>หน้าซิ้งค์ เต็ม · ไส้พลาสวูด −0.16</td><td>2.5 ซม.</td></tr>
@@ -2565,7 +2565,7 @@ var I18N={
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
   'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'1 · ไฟออกหน้า มีคิ้ว','st.2':'2 · ไฟออกหน้า ไม่มีคิ้ว',
-  'st.3':'3 · ไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ',
+  'st.3':'3 · ตัวอักษรไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ',
   'st.6':'6 · งานยกขอบ','st.7':'7 · งานยกขอบ มีไส้',
   'st.8':'8 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'9 · กล่องไฟล้อมตามทรง 2 หน้า',
   'st.10':'10 · กล่องไฟทรงกลม 1 หน้า','st.11':'11 · กล่องไฟทรงกลม 2 หน้า',
@@ -2616,7 +2616,7 @@ var I18N={
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
   'st.0':'— Flat cut lines (normal) —','st.1':'1 · Front-lit, with trim','st.2':'2 · Front-lit, no trim',
-  'st.3':'3 · Halo / edge-lit','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box',
+  'st.3':'3 · Edge-lit Letters (light all around)','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box',
   'st.6':'6 · Raised (return) letters','st.7':'7 · Raised letters with insert',
   'st.8':'8 · Contour light box · 1-face','st.9':'9 · Contour light box · 2-face',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
