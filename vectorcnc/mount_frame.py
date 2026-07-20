@@ -166,23 +166,25 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
                 dd = "M " + " L ".join("%.1f,%.1f" % (X(x), Yv(y)) for (x, y) in c) + " Z"
                 p.append('<path d="%s" fill="#e6ebf2" stroke="#94a3b8" stroke-width="1"/>' % dd)
     # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร + ปิดหัวท้ายซ้าย-ขวา + 2 แขนยื่นขึ้น
-    fx = frame_x_mm; _m = 40.0
-    frX0 = X(b[0] - _m + fx); frX1 = X(b[2] + _m + fx)
+    # 📏 มาตรฐาน: 'ขอบโครงซ้าย-ขวา ต้องไม่เกินขอบนอกของตัวอักษร' -> เฟรมกว้างเท่ากรอบอักษรพอดี (ไม่ยื่นออก)
+    fx = frame_x_mm; _m = 0.0
+    frX0 = X(b[0] + fx); frX1 = X(b[2] + fx)
     fxl = min(frX0, frX1); fxr = max(frX0, frX1); bw = fxr - fxl
     hh = bar_h_mm * sc
     _rt = min(Yv(bar_ys[0]), Yv(bar_ys[1]))                 # คานบน (px)
     _rb = max(Yv(bar_ys[0]), Yv(bar_ys[1]))                 # คานล่าง (px)
     for yy in (_rt, _rb):                                   # คานบน + คานล่าง (แนวนอน) พาดกลางอักษร
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (fxl, yy - hh/2, bw, hh))
-    for xx in (fxl, fxr):                                   # ปิดหัวท้ายซ้าย-ขวา เชื่อมคานบน-ล่าง
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (xx - hh/2, _rt - hh/2, hh, (_rb - _rt) + hh))
+    for _ci, xx in enumerate((fxl, fxr)):                   # ปิดหัวท้ายซ้าย-ขวา (อยู่ในขอบอักษร ไม่ยื่นออก)
+        _cx = xx if _ci == 0 else (xx - hh)
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_cx, _rt - hh/2, hh, (_rb - _rt) + hh))
     _epx = float(arm_edge_cm) * 10.0 * sc                   # ระยะแขนจากขอบ (px)
-    _axL = fxl + _epx; _axR = fxr - _epx                    # 2 แขน ซ้าย-ขวา
+    _axL = min(fxr - hh, fxl + _epx); _axR = max(fxl + hh, fxr - _epx)   # 2 แขน ซ้าย-ขวา (คุมให้อยู่ในเฟรม)
     _atop = 16.0                                            # ปลายแขนบน (ใกล้ขอบบนภาพ)
     for _ax in (_axL, _axR):                                # แขนยึดจากคานบนขึ้นเพดาน
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*0.35, _atop, hh*0.7, _rt - _atop))
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#c6ccd6" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*1.1, _atop - hh*0.5, hh*2.2, hh*0.6))
-    _FWcm = round((abs(b[2]-b[0]) + 2*_m)/10.0)             # กว้างเฟรม
+    _FWcm = round(abs(b[2]-b[0])/10.0)                      # กว้างเฟรม = กว้างกรอบอักษร (ไม่เกินขอบ)
     _FHcm = round(abs(bar_ys[1]-bar_ys[0])/10.0)           # สูงเฟรม = ระยะคานบน-ล่าง
     _RD = "#dc2626"; _BL = "#2563eb"
 
@@ -222,7 +224,6 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
     pitch = max(20.0, float(pitch_cm) * 10.0)
     comps = split_letters(full, min_area_mm2=300.0)
     segs = []; total_mm = 0.0; sw_list = []
-    inset0 = max(5.0, pitch * 0.30)                 # เส้นแรกเว้นจากขอบข้าง
 
     def _rings(pg):
         return [pg.exterior] + list(pg.interiors)
@@ -231,6 +232,12 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
         if gg is None or gg.is_empty:
             return []
         return list(gg.geoms) if gg.geom_type == "MultiPolygon" else [gg]
+
+    def _emit(ring):
+        cs = list(ring.coords)
+        for i in range(len(cs) - 1):
+            segs.append((cs[i][0], cs[i][1], cs[i + 1][0], cs[i + 1][1]))
+        return ring.length
     for g in comps:
         try:
             sw = 2.0 * g.area / max(g.length, 1.0)   # ความกว้างเส้นอักษรเฉลี่ย (มม.)
@@ -238,26 +245,24 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
             sw = 0.0
         if sw > 0:
             sw_list.append(sw)
-        # 🔦 วางไฟตามแนวขอบ (contour) ไล่รูปตัวอักษร — inset เข้าจากขอบ, เพิ่มแถวตามความกว้างเส้น
-        dd = inset0; made = 0
-        while made < 8:
+        # 🔦 วางไฟตามแนวขอบ (contour) ไล่รูปตัวอักษร 'ครบทุกส่วน'
+        #    เส้นแรกชิดขอบ (inset เล็ก) -> วิ่งตามขอบทั้งหมด · แล้วไล่เข้าในตามความกว้างเส้น
+        inset0 = min(9.0, max(4.0, sw * 0.22)) if sw > 0 else 6.0
+        line_gap = max(12.0, min(pitch, (sw * 0.45) if sw > 0 else pitch))
+        made = 0; total_len = 0.0; dd = inset0
+        while made < 10:
             gi = g.buffer(-dd)
             plist = _plist(gi)
             if not plist:
                 break
             for pg in plist:
                 for ring in _rings(pg):
-                    cs = list(ring.coords)
-                    for i in range(len(cs) - 1):
-                        segs.append((cs[i][0], cs[i][1], cs[i + 1][0], cs[i + 1][1]))
-                    total_mm += ring.length
-            made += 1; dd += pitch
-        if made == 0:                                # เส้นบางมาก -> วิ่งตามขอบตัวอักษร (2 ขอบ)
+                    total_len += _emit(ring)
+            made += 1; dd += line_gap
+        if made == 0:                                # เส้นบางมาก -> วิ่งตามขอบตัวอักษรจริง (2 ขอบ)
             for ring in _rings(g):
-                cs = list(ring.coords)
-                for i in range(len(cs) - 1):
-                    segs.append((cs[i][0], cs[i][1], cs[i + 1][0], cs[i + 1][1]))
-                total_mm += ring.length
+                total_len += _emit(ring)
+        total_mm += total_len
     stroke_w_cm = round((sum(sw_list) / len(sw_list)) / 10.0, 1) if sw_list else 0.0
     total_m = total_mm / 1000.0
     watts = total_m * float(watt_per_m)
