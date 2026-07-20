@@ -288,6 +288,7 @@ select.numin{cursor:pointer}
             <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
           </select>
           <div class="hint" data-i18n="hint.signtype">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <button class="btn ghost" id="mainClear" style="width:100%;margin-top:6px;font-size:13px">🧹 เคลียร์งาน (เริ่มใหม่)</button>
           <!-- 🅰️ พิมพ์ข้อความเป็นตัวป้าย (โชว์เมื่อเลือกอักษร+โครงแขวน) -->
           <div id="mfTextPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
             <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">🅰️ พิมพ์ข้อความ → สร้างเป็นตัวป้ายได้เลย (ไม่ต้องอัปโหลดภาพ)</div>
@@ -4180,7 +4181,7 @@ var TRIMW=1, TRIMDIR='out';
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
-  sel.addEventListener('change',toggle); toggle();
+  sel.addEventListener('change',function(){ toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
   if($('mfTextGo'))$('mfTextGo').onclick=function(){
     var txt=($('mfTextVal').value||'').trim(); if(!txt){alert('พิมพ์ข้อความก่อน');$('mfTextVal').focus();return;}
@@ -4210,6 +4211,19 @@ var TRIMW=1, TRIMDIR='out';
     else setTimeout(render,150);
   };
 })();
+// 🧹 เคลียร์ผลลัพธ์ (ตอนเปลี่ยนประเภทป้าย / กดปุ่มเคลียร์) — กันของเก่าค้าง
+window.clearDesignResult=function(){ try{
+  LS_ACTIVE=false; window._lsFaceSvg=''; window._lastCutDxf=''; window._lastCutSvg='';
+  var st=$('layerStage'); if(st){ st.style.display='none'; st.innerHTML=''; }
+  if(fileObj&&$('cmp'))$('cmp').style.display=''; else if($('emptyStage'))$('emptyStage').style.display='';
+  if($('dlSvg')){$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';}
+}catch(_e){} };
+window.clearDesignAll=function(){ try{
+  window.clearDesignResult(); fileObj=null; lastName='';
+  if($('cmp'))$('cmp').style.display='none'; if($('emptyStage'))$('emptyStage').style.display='';
+  if($('aiOut'))$('aiOut').textContent=''; if($('srOut'))$('srOut').textContent='';
+}catch(_e){} };
+if($('mainClear'))$('mainClear').onclick=function(){ if(confirm('เคลียร์งานปัจจุบันทั้งหมด?'))window.clearDesignAll(); };
 $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
