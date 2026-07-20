@@ -47,15 +47,14 @@ def letter_holes(letters, bar_ys, bolt_d=3.0, wire_d=5.0, wire_offset_mm=0.0,
     for g in letters:
         lb = g.bounds; lx0, ly0, lx1, ly1 = lb
         cx = (lx0 + lx1) / 2.0
-        # รูน็อต 2 รู/ตัว/โครง ที่ระดับโครง (ซ้าย-ขวา) — เว้นขอบตัวอักษร
+        # รูน็อต 2 รู/ตัว/โครง ที่ระดับโครง (ซ้าย-ขวา) — วางในเนื้อตัวอักษร (ไม่หลุดขอบ bbox)
+        lw = lx1 - lx0
         for by in bar_ys:
             yy = min(max(by, ly0 + bolt_r + 2), ly1 - bolt_r - 2)   # ให้อยู่ในเนื้อตัวอักษร
-            xl = lx0 + edge_inset_mm
-            xr = lx1 - edge_inset_mm
-            if xr - xl < bolt_d * 2:                                  # ตัวแคบ -> รูเดียวกลาง
+            if lw < bolt_d * 5:                                       # ตัวแคบ -> รูเดียวกลาง
                 bolts.append((cx, yy, bolt_r))
             else:
-                bolts.append((xl, yy, bolt_r)); bolts.append((xr, yy, bolt_r))
+                bolts.append((cx - lw * 0.28, yy, bolt_r)); bolts.append((cx + lw * 0.28, yy, bolt_r))
         # รูสายไฟ 1 รู กลางตัว · ระดับเดียวกับรูน็อต (โครงเส้นบน = หลบสายตา) · ขยับขึ้น/ลงได้เอง
         wy = top_bar - float(wire_offset_mm)      # offset > 0 = ขยับขึ้น
         wy = min(max(wy, ly0 + wire_r + 2), ly1 - wire_r - 2)
@@ -109,11 +108,11 @@ def _circles_svg(letters, holes, w_mm, h_mm):
 
 
 def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
-                  bar_h_mm=15.0, W=900.0):
-    """ภาพ 'มองจากด้านหลังป้าย' — ตัวอักษรกลับซ้าย-ขวา (mirror) + โครงเหล็กขวาง + รูเจาะ + ระยะ"""
+                  bar_h_mm=15.0, W=900.0, arm_len_cm=30.0, arm_edge_cm=20.0):
+    """ภาพ 'มองจากด้านหลังป้าย' — ตัวอักษรกลับซ้าย-ขวา (mirror) + เฟรมกรอบสี่เหลี่ยม + 2 แขน + รูเจาะ + จับระยะครบ"""
     b = full.bounds; w_mm = b[2] - b[0]; h_mm = b[3] - b[1]
     sc = W / max(w_mm, 1.0); Hpx = h_mm * sc
-    pad = 46
+    pad = 90                                       # เผื่อพื้นที่แขน (บน) + เส้นจับระยะ (รอบ)
     def X(x):                      # mirror ซ้าย-ขวา (มองจากหลัง)
         return (w_mm - (x - b[0])) * sc + pad
     def Yv(y):
@@ -129,13 +128,40 @@ def back_view_svg(full, letters, bar_ys, holes, frame_x_mm=0.0, standoff_cm=5.0,
             if len(c) >= 3:
                 dd = "M " + " L ".join("%.1f,%.1f" % (X(x), Yv(y)) for (x, y) in c) + " Z"
                 p.append('<path d="%s" fill="#e6ebf2" stroke="#94a3b8" stroke-width="1"/>' % dd)
-    # โครงเหล็กขวาง (steel) — ขยับซ้าย-ขวาด้วย frame_x
-    fx = frame_x_mm
-    x0 = X(b[0] - 40 + fx); x1 = X(b[2] + 40 + fx)
-    for by in bar_ys:
-        yy = Yv(by); hh = bar_h_mm * sc
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>'
-                 % (min(x0, x1), yy - hh/2, abs(x1 - x0), hh))
+    # 🔩 เฟรมกรอบสี่เหลี่ยม (4 ด้าน) ล้อมตัวอักษร + คานขวาง + 2 แขนยื่นขึ้น + จับระยะครบทุกจุด
+    fx = frame_x_mm; _m = 40.0
+    frX0 = X(b[0] - _m + fx); frX1 = X(b[2] + _m + fx)
+    frY0 = Yv(b[1] - _m); frY1 = Yv(b[3] + _m)
+    fxl = min(frX0, frX1); fxr = max(frX0, frX1); bw = fxr - fxl
+    hh = bar_h_mm * sc
+    for (rx, ry, rw, rh) in ((fxl, frY0 - hh/2, bw, hh), (fxl, frY1 - hh/2, bw, hh),
+                             (fxl - hh/2, frY0, hh, frY1 - frY0), (fxr - hh/2, frY0, hh, frY1 - frY0)):
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (rx, ry, rw, rh))
+    for by in bar_ys:                                       # คานขวางตามระดับรูน็อต
+        yy = Yv(by)
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (fxl, yy - hh*0.4, bw, hh*0.8))
+    _epx = float(arm_edge_cm) * 10.0 * sc                   # ระยะแขนจากขอบ (px)
+    _axL = fxl + _epx; _axR = fxr - _epx                    # 2 แขน ซ้าย-ขวา
+    _ay = frY0 - hh/2; _atop = 16.0                         # ปลายแขนบน (ใกล้ขอบบนภาพ)
+    for _ax in (_axL, _axR):
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#8b93a0" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*0.35, _atop, hh*0.7, _ay - _atop))
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#c6ccd6" stroke="#5b626d" stroke-width="1"/>' % (_ax - hh*1.1, _atop - hh*0.5, hh*2.2, hh*0.6))
+    _FWcm = round((abs(b[2]-b[0]) + 2*_m)/10.0); _FHcm = round((abs(b[3]-b[1]) + 2*_m)/10.0)
+    _RD = "#dc2626"; _BL = "#2563eb"
+
+    def _dv(x, y0, y1, txt, col):    # เส้นจับระยะแนวตั้ง + ป้าย (หมุน)
+        p.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.1"/>' % (x, y0, x, y1, col))
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="12" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">%s</text>' % (x-4, (y0+y1)/2, col, x-4, (y0+y1)/2, txt))
+
+    def _dh(x0, x1, y, txt, col):    # เส้นจับระยะแนวนอน + ป้าย
+        p.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.1"/>' % (x0, y, x1, y, col))
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="12" font-weight="700" fill="%s" text-anchor="middle">%s</text>' % ((x0+x1)/2, y-4, col, txt))
+    _dv(_axL - hh*1.5, _atop, _ay, "แขน %.0f cm" % arm_len_cm, _RD)          # ความสูงแขน
+    _dv(fxr + 22, frY0, frY1, "กรอบสูง %d cm" % _FHcm, _BL)                   # ความสูงเฟรมนอก
+    _dh(fxl, fxr, frY1 + 20, "กรอบกว้าง %d cm" % _FWcm, _RD)                  # ความกว้างเฟรมนอก
+    _dh(fxl, _axL, _atop + hh*1.6, "%.0f cm" % arm_edge_cm, _BL)             # ขอบซ้าย -> แขนซ้าย
+    _dh(_axR, fxr, _atop + hh*1.6, "%.0f cm" % arm_edge_cm, _BL)             # แขนขวา -> ขอบขวา
+    _dv(fxl - 18, frY0, Yv(b[1]), "ขอบบน %.0f cm" % ((Yv(b[1]) - frY0)/sc/10.0), _RD)   # กรอบบน -> ขอบบนตัวอักษร
     # รูน็อต (น้ำเงิน) + รูสายไฟ (แดง)
     for (x, y, r) in holes["bolts"]:
         p.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>' % (X(x), Yv(y), max(3, r*sc)))
@@ -208,7 +234,8 @@ def led_layout(full, pitch_cm=6.0, watt_per_m=12.0, volt=12.0, spare=1.3, W=900.
 
 
 def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=5.0,
-          bolt_d=3.0, wire_d=5.0, wire_offset_cm=0.0, bar_h_mm=15.0):
+          bolt_d=3.0, wire_d=5.0, wire_offset_cm=0.0, bar_h_mm=15.0,
+          arm_len_cm=30.0, arm_edge_cm=20.0):
     """ประกอบครบ: คืน dict {cut_dxf, cut_svg, back_svg, letters, bolts, wires}"""
     b = full.bounds; w_mm = b[2] - b[0]; h_mm = b[3] - b[1]
     letters = split_letters(full)
@@ -222,7 +249,7 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
         "cut_svg": _circles_svg(letters, holes, w_mm, h_mm),
         "back_svg": back_view_svg(full, letters, bars_y, holes,
                                   frame_x_mm=float(frame_x_cm) * 10.0, standoff_cm=standoff_cm,
-                                  bar_h_mm=bar_h_mm),
+                                  bar_h_mm=bar_h_mm, arm_len_cm=float(arm_len_cm), arm_edge_cm=float(arm_edge_cm)),
         "letters": len(letters), "bolts": len(holes["bolts"]), "wires": len(holes["wires"]),
         "bars": len(bars_y), "w_mm": round(w_mm, 1), "h_mm": round(h_mm, 1),
     }
