@@ -69,8 +69,8 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.22-letterframe-2arm-dims",
-            "build": "2026-07-20-rect-frame-4side+2arms-edge-cm+full-dims+holes-on-letters",
+            "version": "9.23-led-contour+holes-on-bar",
+            "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
