@@ -361,7 +361,13 @@ select.numin{cursor:pointer}
             </div>
             <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
-              <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (ข้อความ + โลโก้ ในตัวเดียว)</div>
+              <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
+              <div style="font-size:10px;color:#92700a;margin:0 0 2px">🌄 ภาพพื้นหลัง (import) — วางข้อความ/โลโก้ทับได้</div>
+              <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
+                <input type="file" id="bxBgFile" accept="image/*" style="font-size:10.5px;flex:1;min-width:0">
+                <button type="button" id="bxBgUse" class="btn ghost" style="font-size:10px;padding:4px 7px;white-space:nowrap">ใช้ภาพที่อัปโหลด</button>
+                <span id="bxBgClr" style="display:none;color:#ef4444;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap">✕ ล้าง</span>
+              </div>
               <input class="numin" id="bxCompText" placeholder="ข้อความ (คั่นแต่ละช่องด้วย | )" style="padding:5px;width:100%;font-size:12px">
               <div style="display:flex;gap:5px;margin-top:5px">
                 <select class="numin" id="bxFont" style="flex:1;padding:5px;font-size:11px"></select>
@@ -2281,6 +2287,8 @@ function $(id){return document.getElementById(id);}
   function build(){
     if(!W3.G)return null;
     var W=W3.G.w_mm, H=W3.G.h_mm;
+    // ✅ เก็บภาพงานจริง (art) ให้ชัวร์: ระหว่าง build() ตัว wallImg ยังเป็นรูปจริงเสมอ (apply จะเซ็ต canvas ทีหลัง)
+    try{ if((!FLAT || (FLAT.tagName==='CANVAS')) && typeof wallImg!=='undefined' && wallImg && wallImg.tagName==='IMG'){ FLAT=wallImg; window._wallFlatImg=FLAT; } }catch(_ef){}
     var PX=1400/Math.max(W,H);
     var cv=document.createElement('canvas');
     cv.width=Math.max(2,Math.round(W*PX)); cv.height=Math.max(2,Math.round(H*PX));
@@ -4393,6 +4401,8 @@ var TRIMW=1, TRIMDIR='out';
   function render(c,S,edit){
     var asp=aspect(); var PW=Math.round(560*S), PH=Math.max(Math.round(150*S),Math.round(PW/asp));
     c.width=PW; c.height=PH; var g=c.getContext('2d'); g.clearRect(0,0,PW,PH);
+    if(window._bxBg){ var bg=window._bxBg, bw=(bg.width||bg.naturalWidth||1), bh=(bg.height||bg.naturalHeight||1), br=bw/bh, cr=PW/PH, dw, dh;   // 🌄 พื้นหลัง (cover เต็มหน้า)
+      if(br>cr){ dh=PH; dw=dh*br; } else { dw=PW; dh=dw/br; } g.drawImage(bg,(PW-dw)/2,(PH-dh)/2,dw,dh); }
     var lg=window._bxLogos||[], sg=segList();
     var font=($('bxFont')&&$('bxFont').value)||'Prompt', col=($('bxTextColor')&&$('bxTextColor').value)||'#1f2937';
     var gts=(+(($('bxTS')&&$('bxTS').value)||100))/100, gls=(+(($('bxLS')&&$('bxLS').value)||100))/100;
@@ -4406,8 +4416,13 @@ var TRIMW=1, TRIMDIR='out';
     return c;
   }
   function draw(){ var pv=$('bxPreview'); if(!pv)return; sync(); var lg=window._bxLogos||[], sg=segList();
-    if(!lg.length && !sg.length){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; }
+    if(!lg.length && !sg.length && !window._bxBg){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; }
   window._bxDrawPrev=draw;
+  // 🌄 ภาพพื้นหลัง (import) — วางข้อความ/โลโก้ทับ
+  function loadBg(src){ var im=new Image(); im.onload=function(){ window._bxBg=im; if($('bxBgClr'))$('bxBgClr').style.display='inline'; draw(); }; im.src=src; }
+  if($('bxBgFile'))$('bxBgFile').onchange=function(){ var f=this.files&&this.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(f); this.value=''; };
+  if($('bxBgUse'))$('bxBgUse').onclick=function(){ if(typeof fileObj!=='undefined'&&fileObj&&fileObj.type&&fileObj.type.indexOf('image')>=0){ var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(fileObj); } else { alert('ยังไม่มีภาพที่อัปโหลด — ลากภาพเข้าหน้าหลักก่อน แล้วกดปุ่มนี้'); } };
+  if($('bxBgClr'))$('bxBgClr').onclick=function(){ window._bxBg=null; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); };
   // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง
   (function(){ var pv=$('bxPreview'); if(!pv)return;
     function P(e){ var r=pv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*pv.width/Math.max(1,r.width), y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*pv.height/Math.max(1,r.height)}; }
@@ -4427,7 +4442,7 @@ var TRIMW=1, TRIMDIR='out';
   [['bxTS','bxTSv'],['bxLS','bxLSv']].forEach(function(p){ var el=$(p[0]); if(el)el.oninput=function(){ var lb=$(p[1]); if(lb)lb.textContent=this.value; draw(); }; });
   if($('bxFont'))$('bxFont').onchange=function(){ var f=this.value; try{loadGFont(f);}catch(_e){} if(document.fonts&&document.fonts.load){document.fonts.load('700 40px "'+f+'"').then(draw).catch(draw);}else draw(); };
   function compose(cb){ var lg=window._bxLogos||[], sg=segList();
-    if(!lg.length && !sg.length){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
+    if(!lg.length && !sg.length && !window._bxBg){ alert('ใส่ภาพพื้นหลัง / โลโก้ / ข้อความ อย่างน้อย 1 อย่างก่อนค่ะ'); return; }
     sync(); var c=document.createElement('canvas'); render(c,3,false);
     c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/3/12*10); if(cb)cb(); },'image/png'); }
   if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('bxFont')&&$('bxFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
