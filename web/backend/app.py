@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.28-frame-within-letters+led-full-contour",
+            "version": "9.29-frame-inset-no-overflow+wall-frame-match",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1393,8 +1393,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         specs = []
         if _mount == "letterframe":
             # 🔩 โครงยึด = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางอักษร + ปิดหัวท้าย + 2 แขน (ซ้าย-ขวา) ยื่นขึ้น
-            # 📏 มาตรฐาน: ขอบโครงซ้าย-ขวา ไม่เกินขอบนอกตัวอักษร -> เฟรมกว้างเท่ากรอบอักษรพอดี
-            fx0, fx1 = b[0], b[2]
+            # 📏 มาตรฐาน: ขอบโครงซ้าย-ขวา ไม่เกินขอบนอกตัวอักษร -> หดเข้าข้างละ _fin (กันตัวโค้ง C/O ที่ปลายเกิน)
+            _fin = (b[2] - b[0]) * 0.02 + min(W, H) * 0.03
+            fx0, fx1 = b[0] + _fin, b[2] - _fin
             _cyc = (b[1] + b[3]) / 2.0                     # กลางแนวตั้งของอักษร
             _fgap = H * 0.38                               # ระยะคานบน-ล่าง (สูงเฟรม)
             fy0, fy1 = _cyc - _fgap / 2.0, _cyc + _fgap / 2.0   # คานบน / คานล่าง (mm)
