@@ -3174,6 +3174,7 @@ window.setLang=setLang; window.t=t;
     setTab(which==='find'?'find':'save');
     ov.classList.add('show');
   }
+  try{ window.openJobsDlg=openJobs; }catch(e){}   /* ให้หน้าออกแบบเรียกค้นหางานได้ */
   function wire(){
     if(q('jbApiUrl')){ q('jbApiUrl').value=jobsUrl(); }
     if(q('jbApiSave')) q('jbApiSave').onclick=function(){ try{localStorage.setItem(JBKEY,(q('jbApiUrl').value||'').trim());}catch(e){} alert('บันทึกลิงก์แล้ว ✓'); };
@@ -4276,6 +4277,7 @@ $('goLayer').onclick=function(){
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
         '<button id="lsSaveJob" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">💾 บันทึกงาน</button>'+
+        '<button id="lsFindJob" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔎 ค้นหางาน</button>'+
         ((j.mount_plate&&j.mount_plate.count)?('<button id="lsDlPlate" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔩 เพลทยึด '+j.mount_plate.count+' ชิ้น (DXF)</button>'):'')+'</div>'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
@@ -4344,6 +4346,7 @@ $('goLayer').onclick=function(){
       }).catch(function(e){btn.disabled=false;btn.textContent=old;if(w)w.close();alert('ต่อ backend ไม่ได้ '+e);});
     };
     if($('lsDlAi')&&j.ai_base64)$('lsDlAi').onclick=function(){var bin=atob(j.ai_base64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='layerset_'+t+'.ai';a.click();};
+    if($('lsFindJob'))$('lsFindJob').onclick=function(){ if(typeof window.openJobsDlg==='function')window.openJobsDlg('find'); else alert('เปิดหน้าจำลองผนังเพื่อค้นหางาน'); };
     if($('lsSaveJob'))$('lsSaveJob').onclick=function(){
       if(typeof window.saveDesignJob!=='function'){alert('ระบบบันทึกงานยังไม่พร้อม');return;}
       var nm=prompt('ชื่องาน (สำหรับบันทึก)',(lastName||'งานออกแบบ'))||''; if(!nm)return;
