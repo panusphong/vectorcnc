@@ -378,16 +378,16 @@ select.numin{cursor:pointer}
                 <option value="iconTop">โลโก้บน · ข้อความล่าง</option>
               </select>
               <div style="display:flex;gap:8px;margin-top:6px;font-size:10px;color:#92700a">
-                <div style="flex:1">🅰️ ขนาดอักษร <b><span id="bxTSv">100</span>%</b><input type="range" id="bxTS" min="40" max="220" value="100" style="width:100%"></div>
-                <div style="flex:1">↕ ตำแหน่งอักษร<input type="range" id="bxTY" min="-40" max="40" value="0" style="width:100%"></div>
+                <div style="flex:1">🅰️ ขนาดอักษร <b><span id="bxTSv">100</span>%</b><input type="range" id="bxTS" min="40" max="240" value="100" style="width:100%"></div>
+                <div style="flex:1">🖼️ ขนาดโลโก้ <b><span id="bxLSv">100</span>%</b><input type="range" id="bxLS" min="40" max="240" value="100" style="width:100%"></div>
               </div>
-              <div style="display:flex;gap:8px;margin-top:3px;font-size:10px;color:#92700a">
-                <div style="flex:1">🖼️ ขนาดโลโก้ <b><span id="bxLSv">100</span>%</b><input type="range" id="bxLS" min="40" max="220" value="100" style="width:100%"></div>
-                <div style="flex:1">↕ ตำแหน่งโลโก้<input type="range" id="bxLY" min="-40" max="40" value="0" style="width:100%"></div>
+              <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+                <button type="button" id="bxCenter" class="btn ghost" style="flex:0 0 auto;font-size:11px;padding:5px 10px">🎯 จัดกึ่งกลาง</button>
+                <span style="font-size:10px;color:#92700a">👆 ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่งเองได้</span>
               </div>
-              <canvas id="bxPreview" style="width:100%;border:1px solid #fde68a;border-radius:6px;background:#fff;margin-top:6px;display:none"></canvas>
+              <canvas id="bxPreview" style="width:100%;border:1px dashed #f59e0b;border-radius:6px;background:#fff;margin-top:6px;display:none;touch-action:none;cursor:move"></canvas>
               <button type="button" id="bxCompGo" class="btn" style="width:100%;margin-top:6px;background:#b45309;color:#fff;border:none;font-size:12px;font-weight:700">🖼️ สร้างหน้ากล่อง + ทำ 3 มิติ</button>
-              <div class="hint" style="margin:5px 0 0">เช่น <b>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</b> + อัปโหลดไอคอน · ปรับขนาด/ตำแหน่งอักษร&โลโก้ · ดูพรีวิวสด</div>
+              <div class="hint" style="margin:5px 0 0">เช่น <b>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</b> + อัปโหลดไอคอน · <b>ลากบนพรีวิวเพื่อย้าย</b> · สไลเดอร์ปรับขนาด (อักษรเท่ากันทุกช่อง)</div>
             </div>
           </div>
           <!-- 🦾 แขนยึดกล่องไฟ (โครงเหล็กติดตั้ง) -->
@@ -4374,41 +4374,51 @@ var TRIMW=1, TRIMDIR='out';
   if($('bxLogoFile'))$('bxLogoFile').onchange=function(){ var files=this.files||[], cnt=files.length, done=0; if(!cnt)return;
     for(var i=0;i<cnt;i++){ (function(f){ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){ window._bxLogos.push(im); if(++done>=cnt)prev(); }; im.onerror=function(){ if(++done>=cnt)prev(); }; im.src=r.result; }; r.readAsDataURL(f); })(files[i]); }
     this.value=''; };
-  function opt(){ return {ts:+(($('bxTS')&&$('bxTS').value)||100), ty:+(($('bxTY')&&$('bxTY').value)||0), ls:+(($('bxLS')&&$('bxLS').value)||100), ly:+(($('bxLY')&&$('bxLY').value)||0)}; }
-  function drawCell(g,x,y,w,h,logo,text,vert,font,col,o){
-    o=o||{}; var ts=(o.ts||100)/100, ls=(o.ls||100)/100, ty=(o.ty||0)/100*h, ly=(o.ly||0)/100*h; var pad=h*0.08;
-    if(vert){ var ih=h*0.50*ls;
-      if(logo){ var iw=ih*(logo.width/logo.height); if(iw>w*0.9){ iw=w*0.9; ih=iw*(logo.height/logo.width); } g.drawImage(logo, x+(w-iw)/2, y+pad+ly, iw, ih); }
-      if(text){ var fs=h*0.14*ts; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle=col;
-        do{ g.font='700 '+fs+'px "'+font+'",sans-serif'; if(g.measureText(text).width<=w*0.94)break; fs-=1; }while(fs>8);
-        g.fillText(text, x+w/2, y+h*0.80+ty); } }
-    else { var ih2=h*0.72*ls, iw2=0;
-      if(logo){ iw2=ih2*(logo.width/logo.height); g.drawImage(logo, x+pad, y+(h-ih2)/2+ly, iw2, ih2); }
-      if(text){ var tx=x+pad+iw2+(iw2?pad:0), tw2=w-(tx-x)-pad; var fs2=h*0.30*ts; g.textAlign='left'; g.textBaseline='middle'; g.fillStyle=col;
-        do{ g.font='700 '+fs2+'px "'+font+'",sans-serif'; if(g.measureText(text).width<=tw2)break; fs2-=1; }while(fs2>8);
-        g.fillText(text, tx, y+h/2+ty); } }
-  }
+  function segList(){ var t=($('bxCompText')&&$('bxCompText').value||'').trim(); return t?t.split('|').map(function(s){return s.trim();}):[]; }
+  function sig(){ var lg=window._bxLogos||[], sg=segList(); return lg.length+'x'+sg.length+'|'+sg.join('~')+'|'+(($('bxLayout')&&$('bxLayout').value)||''); }
+  function layout(){ var lg=window._bxLogos||[], sg=segList(); var n=Math.max(lg.length,sg.length); window._bxItems=[];
+    var mode=($('bxLayout')&&$('bxLayout').value)||'hrow', cols=Math.max(1,n);
+    for(var i=0;i<n;i++){ var cx=(i+0.5)/cols;
+      if(mode==='iconLeft'){ if(lg[i])window._bxItems.push({kind:'logo',ref:i,cx:(i+0.28)/cols,cy:0.5}); if(sg[i]!=null&&sg[i]!=='')window._bxItems.push({kind:'text',ref:i,cx:(i+0.66)/cols,cy:0.5}); }
+      else { if(lg[i])window._bxItems.push({kind:'logo',ref:i,cx:cx,cy:0.40}); if(sg[i]!=null&&sg[i]!=='')window._bxItems.push({kind:'text',ref:i,cx:cx,cy:0.76}); } }
+    window._bxSig=sig(); }
+  function sync(){ if(window._bxSig!==sig()) layout(); }
+  function aspect(){ var w=parseFloat(($('bxW')&&$('bxW').value))||0, h=parseFloat(($('bxH')&&$('bxH').value))||0; if(w>0&&h>0)return Math.max(0.45,Math.min(8,w/h)); return 3.0; }
   function render(c,S){
-    var logos=window._bxLogos||[]; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
-    var layout=($('bxLayout')&&$('bxLayout').value)||'hrow';
-    var font=($('bxFont')&&$('bxFont').value)||'Prompt'; var col=($('bxTextColor')&&$('bxTextColor').value)||'#1f2937';
-    var segs=txt?txt.split('|').map(function(s){return s.trim();}):[]; var o=opt(), g;
-    if(layout==='hrow'){ var n=Math.max(logos.length, segs.length, 1); var cw=520*S, ch=470*S; c.width=cw*n; c.height=ch; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height);
-      for(var i=0;i<n;i++){ drawCell(g,i*cw,0,cw,ch,logos[i],segs[i]||'',true,font,col,o);
-        if(i>0){ g.strokeStyle=col; g.globalAlpha=0.5; g.lineWidth=Math.max(2,ch*0.006); g.beginPath(); g.moveTo(i*cw,ch*0.12); g.lineTo(i*cw,ch*0.88); g.stroke(); g.globalAlpha=1; } } }
-    else if(layout==='iconTop'){ c.width=560*S; c.height=540*S; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,true,font,col,o); }
-    else { c.width=940*S; c.height=300*S; g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); drawCell(g,0,0,c.width,c.height,logos[0],segs[0]||txt,false,font,col,o); }
+    var asp=aspect(); var PW=Math.round(540*S), PH=Math.max(Math.round(120*S),Math.round(PW/asp));
+    c.width=PW; c.height=PH; var g=c.getContext('2d'); g.clearRect(0,0,PW,PH);
+    var lg=window._bxLogos||[], sg=segList();
+    var font=($('bxFont')&&$('bxFont').value)||'Prompt', col=($('bxTextColor')&&$('bxTextColor').value)||'#1f2937';
+    var gts=(+(($('bxTS')&&$('bxTS').value)||100))/100, gls=(+(($('bxLS')&&$('bxLS').value)||100))/100;
+    var fs=PH*0.16*gts;                       // ✅ ตัวอักษรขนาดเท่ากันทุกช่อง (คงที่ ไม่ย่อตามความยาว)
+    (window._bxItems||[]).forEach(function(it){
+      if(it.kind==='logo'){ var im=lg[it.ref]; if(!im)return; var ih=PH*0.46*gls; var iw=ih*(im.width/im.height); g.drawImage(im, it.cx*PW-iw/2, it.cy*PH-ih/2, iw, ih); it._w=iw; it._h=ih; }
+      else { var tx=sg[it.ref]; if(tx==null)return; g.font='700 '+fs+'px "'+font+'",sans-serif'; g.fillStyle=col; g.textAlign='center'; g.textBaseline='middle'; g.fillText(tx, it.cx*PW, it.cy*PH); it._w=g.measureText(tx).width; it._h=fs; }
+    });
     return c;
   }
-  function draw(){ var pv=$('bxPreview'); if(!pv)return; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
-    if(!(window._bxLogos&&window._bxLogos.length)&&!txt){ pv.style.display='none'; return; } render(pv,1); pv.style.display='block'; }
+  function draw(){ var pv=$('bxPreview'); if(!pv)return; sync(); var lg=window._bxLogos||[], sg=segList();
+    if(!lg.length && !sg.length){ pv.style.display='none'; return; } render(pv,1); pv.style.display='block'; }
   window._bxDrawPrev=draw;
-  ['bxCompText','bxLayout','bxTextColor','bxTY','bxLY'].forEach(function(id){ var el=$(id); if(el){ el.oninput=draw; el.onchange=draw; } });
+  // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง
+  (function(){ var pv=$('bxPreview'); if(!pv)return;
+    function P(e){ var r=pv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*pv.width/Math.max(1,r.width), y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*pv.height/Math.max(1,r.height)}; }
+    function hit(p){ var it=window._bxItems||[]; for(var i=it.length-1;i>=0;i--){ var o=it[i]; var hw=((o._w||40)/2)+10, hh=((o._h||40)/2)+10; if(Math.abs(p.x-o.cx*pv.width)<=hw && Math.abs(p.y-o.cy*pv.height)<=hh) return o; } return null; }
+    var down=function(e){ var o=hit(P(e)); if(o){ window._bxDragIt=o; if(e.preventDefault)e.preventDefault(); } };
+    var move=function(e){ if(!window._bxDragIt)return; var p=P(e); window._bxDragIt.cx=Math.max(0,Math.min(1,p.x/pv.width)); window._bxDragIt.cy=Math.max(0,Math.min(1,p.y/pv.height)); draw(); if(e.preventDefault)e.preventDefault(); };
+    var up=function(){ window._bxDragIt=null; };
+    pv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+    pv.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
+  })();
+  if($('bxCompText'))$('bxCompText').oninput=draw;
+  if($('bxLayout'))$('bxLayout').onchange=function(){ layout(); draw(); };
+  if($('bxTextColor'))$('bxTextColor').oninput=draw;
+  if($('bxCenter'))$('bxCenter').onclick=function(){ layout(); draw(); };
   [['bxTS','bxTSv'],['bxLS','bxLSv']].forEach(function(p){ var el=$(p[0]); if(el)el.oninput=function(){ var lb=$(p[1]); if(lb)lb.textContent=this.value; draw(); }; });
   if($('bxFont'))$('bxFont').onchange=function(){ var f=this.value; try{loadGFont(f);}catch(_e){} if(document.fonts&&document.fonts.load){document.fonts.load('700 40px "'+f+'"').then(draw).catch(draw);}else draw(); };
-  function compose(cb){ var logos=window._bxLogos||[]; var txt=($('bxCompText')&&$('bxCompText').value||'').trim();
-    if(!logos.length && !txt){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
-    var c=document.createElement('canvas'); render(c,3);
+  function compose(cb){ var lg=window._bxLogos||[], sg=segList();
+    if(!lg.length && !sg.length){ alert('อัปโหลดโลโก้ หรือ พิมพ์ข้อความก่อนค่ะ'); return; }
+    sync(); var c=document.createElement('canvas'); render(c,3);
     c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/3/12*10); if(cb)cb(); },'image/png'); }
   if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('bxFont')&&$('bxFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
     var go=function(){ compose(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} }); };
