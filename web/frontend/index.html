@@ -6555,10 +6555,22 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       var dTop=document.createElement('div'); dTop.id='designPane';
       dTop.style.cssText='min-height:64vh;max-height:80vh;padding:16px;overflow:auto;background:var(--panel2);display:grid;place-items:center;position:relative';
       Array.prototype.slice.call(stage.children).forEach(function(c){ if(c!==wStage) dTop.appendChild(c); });
-      // ขวา = เตรียมไฟล์ผลิต (ดาวน์โหลด/.ai = .out เดิม กลับไปอยู่ขวาเหมือนเดิม)
+
+      // ✂️ แยกเมนู: ซ้าย = ออกแบบล้วน (อัปโหลด/ประเภทป้าย/พิมพ์ข้อความ-โลโก้) · ขวา = เตรียมไฟล์ผลิต
+      var stb=H('signTypeBox');
+      // (ก) ดึงพาเนล 'ออกแบบ' (พิมพ์ข้อความ/ประกอบกล่อง/นีออน/ปรับโครง) ให้อยู่ซ้าย ใต้ประเภทป้าย
+      var extra=document.createElement('div'); extra.id='designExtras';
+      ['mfTextPanel','frameAdjPanel','neonPanel','boxLitPanel'].forEach(function(id){ var p=H(id); if(p)extra.appendChild(p); });
+      if(stb&&stb.parentNode)stb.parentNode.insertBefore(extra, stb.nextSibling);
+      // (ข) ขวา = เตรียมไฟล์ผลิต: วัสดุ/เครื่องตัด(.grp) → โหมด/ขนาด/kerf(.set) → ปุ่มแปลง(go/goLayer) → ดาวน์โหลด(.out)
       var dRight=document.createElement('div'); dRight.id='designMenuR';
       dRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:80vh';
-      Array.prototype.slice.call(out.children).forEach(function(c){ dRight.appendChild(c); });
+      Array.prototype.slice.call(out.children).forEach(function(c){ dRight.appendChild(c); });      // ดาวน์โหลด/.ai อยู่ล่างสุด
+      var setEl=side.querySelector('.set'), grpEl=side.querySelector('.grp');
+      [H('goLayer'), H('go'), setEl, grpEl].forEach(function(el){ if(el)dRight.insertBefore(el, dRight.firstChild); }); // ดันขึ้นบน: grp, set, go, goLayer
+      var dRhead=document.createElement('div'); dRhead.style.cssText='font-weight:800;color:#7c3aed;font-size:12px;margin-bottom:8px';
+      dRhead.innerHTML='🏭 เตรียมไฟล์งานผลิต (วัสดุ · โหมดตัด · ขนาด · แปลง · ดาวน์โหลด)';
+      dRight.insertBefore(dRhead, dRight.firstChild);
       // ซ้าย = เมนูออกแบบ (side)
       side.style.borderRight='1px solid var(--line)'; side.style.maxHeight='80vh'; side.style.overflow='auto';
 
