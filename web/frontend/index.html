@@ -64,7 +64,24 @@ h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;c
 .app-title{font-size:13px;color:var(--dim)}
 .app-body{display:grid;grid-template-columns:300px 1fr 272px;min-height:calc(100vh - 246px)}
 @media(max-width:980px){.app-body{grid-template-columns:1fr;min-height:auto}}
-.side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+/* 📱 มือถือ/แท็บเล็ต: หน้าเดียวเลื่อนแนวตั้ง — ยุบ 3 คอลัมน์ของแต่ละโซนเป็นเรียงบนลงล่าง */
+@media(max-width:900px){
+  #topPanel,#bottomPanel{grid-template-columns:1fr !important}
+  .app-body .side,#designMenuR,#wallMenuL,#wallMenuR{max-height:none !important;overflow:visible !important;border-right:none !important;border-left:none !important;border-bottom:1px solid var(--line);padding:14px !important}
+  #designPane{min-height:44vh !important;max-height:66vh !important}
+  #wStage{min-height:48vh !important;max-height:70vh !important}
+  .app-head{display:none}
+  .wrap{padding:0 !important}
+}
+@media(max-width:640px){
+  nav .nav-in{flex-wrap:wrap;height:auto !important;padding:8px 10px;gap:8px}
+  .nav-right{flex-wrap:wrap;gap:6px;width:100%;justify-content:flex-start}
+  .nav-btn{font-size:12px;padding:6px 9px}
+  .brand{font-size:15px}
+  #prodMenu{position:static !important;box-shadow:none !important;border:none !important;padding:0 !important;min-width:0 !important}
+  .numin,input,select,button{font-size:15px}   /* กันซูมออโต้บน iOS + จิ้มง่าย */
+  input[type=range]{height:26px}
+}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
 .drop:hover,.drop.over{border-color:var(--brand);background:rgba(37,99,235,.05)}
 .drop .ic{font-size:26px;margin-bottom:6px}.drop b{display:block;font-size:14px;margin-bottom:3px}.drop span{font-size:12px;color:var(--dim)}
@@ -6660,7 +6677,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       var wRight=document.createElement('div'); wRight.id='wallMenuR';
       wRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:82vh';
       wk.slice(mid).forEach(function(c){ wRight.appendChild(c); });
-      wallCtrl.style.cssText='padding:16px;border-right:1px solid var(--line);overflow:auto;max-height:82vh;width:100%';
+      wallCtrl.id='wallMenuL'; wallCtrl.style.cssText='padding:16px;border-right:1px solid var(--line);overflow:auto;max-height:82vh;width:100%';
       // กลาง = canvas ผนัง (เต็ม + กึ่งกลาง)
       wStage.style.cssText='min-height:64vh;max-height:82vh;padding:16px;overflow:auto;background:#eef1f6;display:grid;place-items:center';
 
