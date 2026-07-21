@@ -1515,6 +1515,9 @@ select.numin{cursor:pointer}
       <div style="display:flex;gap:8px;align-items:center">
         <input type="color" id="wColor" value="#efeae1" style="width:44px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;cursor:pointer">
         <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
+      <!-- 🧱 texture/wallpaper ผนัง (procedural · มีชื่อกำกับ) -->
+      <label class="cslab" style="margin-top:12px">🧱 พื้นผิว / ลายผนัง <span id="wTexName" style="font-size:11px;color:#0d9488;font-weight:700"></span></label>
+      <div id="wTexPicker" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px;max-height:260px;overflow:auto"></div>
       <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
       <!-- 🅰️ ออกแบบเร็ว: พิมพ์ข้อความ → วางบนผนังทันที (เฟส 2 · เสนอราคาจบในหน้าเดียว) -->
@@ -5802,6 +5805,11 @@ function wallDraw(){
   cv.width=ww+2*M; cv.height=wh+2*M;
   g.fillStyle='#ffffff'; g.fillRect(0,0,cv.width,cv.height);
   if(wallBgImg){ var iw=wallBgImg.width,ih=wallBgImg.height,sc=Math.max(ww/iw,wh/ih),dw=iw*sc,dh=ih*sc; g.save(); g.beginPath(); g.rect(M,M,ww,wh); g.clip(); g.drawImage(wallBgImg,M+(ww-dw)/2,M+(wh-dh)/2,dw,dh); g.restore(); }
+  else if(window._wTexSel && window._wTexSel!=='none' && typeof _wTexCanvas==='function'){   // 🧱 พื้นผิว/ลายผนัง (procedural)
+    var _tex=_wTexCanvas(window._wTexSel, Math.round(ww), Math.round(wh));
+    if(_tex){ g.drawImage(_tex, M, M, ww, wh); if($('wNight')&&$('wNight').checked){ g.save(); g.globalAlpha=0.45; g.fillStyle='#0e1116'; g.fillRect(M,M,ww,wh); g.restore(); } }
+    else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
+  }
   else { g.fillStyle=($('wNight')&&$('wNight').checked)?'#0e1116':$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
   try{wallPrice();}catch(_e){}
@@ -6785,6 +6793,89 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   else setTimeout(boot,150);
 })();
 
+</script>
+<script>
+/* 🧱 คลังพื้นผิว/ลายผนัง (procedural · มีชื่อกำกับ) — เลือกได้ในหน้าจำลองผนัง */
+(function(){
+  function $(id){return document.getElementById(id);}
+  function rnd(a,b){return a+Math.random()*(b-a);}
+  function leaf(g,x,y,s,rot,col){g.save();g.translate(x,y);g.rotate(rot);g.scale(s,s);g.fillStyle=col;g.beginPath();g.moveTo(0,-15);g.bezierCurveTo(12,-6,12,10,0,18);g.bezierCurveTo(-12,10,-12,-6,0,-15);g.fill();g.restore();}
+  function flower(g,x,y,s,pet,ctr){for(var k=0;k<7;k++){var a=k/7*6.283;g.fillStyle=pet;g.beginPath();g.ellipse(x+Math.cos(a)*s*0.7,y+Math.sin(a)*s*0.7,s*0.55,s*0.32,a,0,7);g.fill();}g.fillStyle=ctr;g.beginPath();g.arc(x,y,s*0.4,0,7);g.fill();}
+  function wood(g,W,H,cols,gap){var pw=W/8;for(var i=0;i<9;i++){var x=i*pw;g.fillStyle=cols[i%cols.length];g.fillRect(x,0,pw-Math.max(1,W*0.006),H);g.strokeStyle='rgba(60,40,18,.22)';g.lineWidth=Math.max(0.6,W*0.004);for(var k=0;k<5;k++){var gx=x+rnd(2,pw-3);g.beginPath();g.moveTo(gx,0);g.bezierCurveTo(gx+rnd(-3,3),H*0.45,gx+rnd(-3,3),H*0.7,gx,H);g.stroke();}g.fillStyle=gap;g.fillRect(x+pw-Math.max(1,W*0.006),0,Math.max(1,W*0.006),H);}}
+  function brick(g,W,H,cols,grout){g.fillStyle=grout;g.fillRect(0,0,W,H);var bh=H/6,bw=W/5;for(var r=0;r<6;r++){var off=(r%2)?bw/2:0;for(var i=-1;i<6;i++){var x=i*bw+off,y=r*bh;g.fillStyle=cols[(r+i+9)%cols.length];g.fillRect(x+2,y+2,bw-4,bh-4);g.fillStyle='rgba(255,255,255,.06)';g.fillRect(x+2,y+2,bw-4,Math.max(1,bh*0.09));}}}
+  function tile(g,W,H,base,tc){g.fillStyle=base;g.fillRect(0,0,W,H);var n=Math.max(5,Math.round(W/34)),s=W/n;for(var yy=0;yy<H;yy+=s)for(var xx=0;xx<W;xx+=s){g.fillStyle=tc;g.fillRect(xx+2,yy+2,s-4,s-4);g.fillStyle='rgba(255,255,255,.45)';g.fillRect(xx+4,yy+4,s*0.4,s*0.13);}}
+  function concrete(g,W,H,base,tone){g.fillStyle=base;g.fillRect(0,0,W,H);var N=Math.round(W*H*0.06);for(var i=0;i<N;i++){var v=rnd(-16,16);g.fillStyle='rgba('+(tone[0]+v)+','+(tone[1]+v)+','+(tone[2]+v)+',.5)';g.fillRect(rnd(0,W),rnd(0,H),1.4,1.4);}for(var p=0;p<12;p++){g.fillStyle='rgba(120,118,112,.09)';g.beginPath();g.arc(rnd(0,W),rnd(0,H),rnd(W*0.03,W*0.09),0,7);g.fill();}}
+  function glass(g,W,H){var lg=g.createLinearGradient(0,0,W,H);lg.addColorStop(0,'#cfe0e6');lg.addColorStop(.5,'#aec6d0');lg.addColorStop(1,'#c2d6dd');g.fillStyle=lg;g.fillRect(0,0,W,H);g.strokeStyle='rgba(255,255,255,.5)';g.lineWidth=W*0.03;g.globalAlpha=.25;for(var d=-H;d<W;d+=W*0.2){g.beginPath();g.moveTo(d,0);g.lineTo(d+H,H);g.stroke();}g.globalAlpha=1;g.strokeStyle='#8a99a0';g.lineWidth=Math.max(2,W*0.012);var cols=3;for(var i=0;i<cols;i++)g.strokeRect(i*W/cols,0,W/cols,H);}
+  function marble(g,W,H,base,veins){g.fillStyle=base;g.fillRect(0,0,W,H);for(var v=0;v<10;v++){g.strokeStyle=veins[v%veins.length];g.lineWidth=rnd(0.8,2.8);g.globalAlpha=rnd(.3,.7);var x=rnd(-20,W),y=rnd(-10,20);g.beginPath();g.moveTo(x,y);while(y<H+10){x+=rnd(-24,24);y+=rnd(9,20);g.lineTo(x,y);}g.stroke();}g.globalAlpha=1;}
+  function granite(g,W,H,base,chips){g.fillStyle=base;g.fillRect(0,0,W,H);var N=Math.round(W*H*0.16);for(var i=0;i<N;i++){g.fillStyle=chips[i%chips.length];g.globalAlpha=rnd(.25,.85);var s=rnd(1,3);g.fillRect(rnd(0,W),rnd(0,H),s,s);}g.globalAlpha=1;}
+  var WTEX=[
+    {id:'none',name:'สีล้วน',draw:function(g,W,H){g.fillStyle=($('wColor')&&$('wColor').value)||'#efeae1';g.fillRect(0,0,W,H);}},
+    {id:'wood_teak',name:'ระแนงไม้สัก',draw:function(g,W,H){wood(g,W,H,['#a9773f','#b9843f','#9c6a34','#c08a4a','#a06b36'],'rgba(40,25,10,.5)');}},
+    {id:'wood_oak',name:'ระแนงไม้โอ๊ค',draw:function(g,W,H){wood(g,W,H,['#d9bd93','#e2c89f','#cdae82','#e8d1ab','#d3b488'],'rgba(120,95,55,.4)');}},
+    {id:'wood_walnut',name:'ระแนงไม้วอลนัท',draw:function(g,W,H){wood(g,W,H,['#5b3f2a','#6b4a30','#4c3422','#75513a','#513826'],'rgba(20,12,6,.6)');}},
+    {id:'wood_bamboo',name:'ระแนงไม้ไผ่',draw:function(g,W,H){wood(g,W,H,['#cbb56e','#d7c384','#bfa85f','#ddca8e','#c4ad64'],'rgba(90,75,35,.4)');}},
+    {id:'wood_white',name:'ระแนงไม้เทาขาว',draw:function(g,W,H){wood(g,W,H,['#d8d5cd','#e3e0d8','#cbc8c0','#ecebe5','#d2cfc7'],'rgba(120,118,110,.35)');}},
+    {id:'wood_grey',name:'ระแนงไม้เทาเข้ม',draw:function(g,W,H){wood(g,W,H,['#7a7871','#87857e','#6d6b65','#918f88','#726f69'],'rgba(30,29,27,.5)');}},
+    {id:'brick_red',name:'อิฐแดง',draw:function(g,W,H){brick(g,W,H,['#a6402f','#b24a34','#963726','#bb5540','#9c3b29'],'#8d8175');}},
+    {id:'brick_white',name:'อิฐขาว',draw:function(g,W,H){brick(g,W,H,['#e6e1d8','#efeae1','#dcd6cb','#f2eee6','#e0dacf'],'#b7b1a5');}},
+    {id:'tile_white',name:'กระเบื้องขาว',draw:function(g,W,H){tile(g,W,H,'#c9cdd2','#eef1f4');}},
+    {id:'tile_beige',name:'กระเบื้องครีม',draw:function(g,W,H){tile(g,W,H,'#c3b8a6','#ece3d3');}},
+    {id:'concrete',name:'ปูนเปลือย',draw:function(g,W,H){concrete(g,W,H,'#b7b4ad',[150,148,142]);}},
+    {id:'concrete_dark',name:'ปูนเปลือยเข้ม',draw:function(g,W,H){concrete(g,W,H,'#6f6d68',[110,108,103]);}},
+    {id:'glass',name:'กระจก',draw:function(g,W,H){glass(g,W,H);}},
+    {id:'m_carrara',name:'หินอ่อนขาว (Carrara)',draw:function(g,W,H){marble(g,W,H,'#f2f1ee',['#b9bcc0','#9aa0a6','#d7d9db']);}},
+    {id:'m_calacatta',name:'Calacatta ทอง',draw:function(g,W,H){marble(g,W,H,'#f6f3ec',['#c9a24b','#b98f3a','#a8adb2']);}},
+    {id:'m_black',name:'หินอ่อนดำ',draw:function(g,W,H){marble(g,W,H,'#1c1c1e',['#e8e6e0','#c9c7c0','#9a9890']);}},
+    {id:'m_green',name:'หินอ่อนเขียว',draw:function(g,W,H){marble(g,W,H,'#2f5d4a',['#dfe9df','#a9c6b3','#8fae9c']);}},
+    {id:'m_pink',name:'หินอ่อนชมพู',draw:function(g,W,H){marble(g,W,H,'#e8ccc6',['#c98f88','#b5726b','#f3e2de']);}},
+    {id:'m_grey',name:'หินอ่อนเทา',draw:function(g,W,H){marble(g,W,H,'#8f9195',['#5f6165','#c9cbce','#6f7175']);}},
+    {id:'m_blue',name:'หินอ่อนน้ำเงิน',draw:function(g,W,H){marble(g,W,H,'#3a5470',['#cdd8e6','#8fa5c0','#22344a']);}},
+    {id:'g_black',name:'แกรนิตดำ',draw:function(g,W,H){granite(g,W,H,'#17181a',['#3b3d40','#6f7175','#0e0f10','#8a8c90']);}},
+    {id:'g_grey',name:'แกรนิตเทา-ขาว',draw:function(g,W,H){granite(g,W,H,'#b8b9bb',['#efeff0','#5a5c60','#8a8c90','#2f3033']);}},
+    {id:'g_brown',name:'แกรนิตน้ำตาล',draw:function(g,W,H){granite(g,W,H,'#6d5642',['#c9a884','#3f3126','#8a6b4f','#e0c8a8']);}},
+    {id:'g_red',name:'แกรนิตแดง',draw:function(g,W,H){granite(g,W,H,'#7a3b34',['#c9756a','#3f1f1b','#a8514a','#e0c0b8']);}},
+    {id:'g_blue',name:'แกรนิตน้ำเงิน',draw:function(g,W,H){granite(g,W,H,'#2b3a4d',['#7f95ad','#14202e','#adc0d4','#4a5f77']);}},
+    {id:'wp_stripe',name:'ลายทางแนวตั้ง',draw:function(g,W,H){g.fillStyle='#eae3d2';g.fillRect(0,0,W,H);g.fillStyle='#9fb098';var sw=W/12;for(var i=0;i<12;i+=2)g.fillRect(i*sw,0,sw,H);}},
+    {id:'wp_geo',name:'ลายเรขาคณิต',draw:function(g,W,H){g.fillStyle='#1f3a4d';g.fillRect(0,0,W,H);g.strokeStyle='#c9a24b';g.lineWidth=2;var s=W/7;for(var y=-s;y<H+s;y+=s)for(var x=-s;x<W+s;x+=s){g.beginPath();g.moveTo(x,y+s/2);g.lineTo(x+s/2,y);g.lineTo(x+s,y+s/2);g.lineTo(x+s/2,y+s);g.closePath();g.stroke();}}},
+    {id:'wp_dot',name:'ลายจุด',draw:function(g,W,H){g.fillStyle='#d9a6a0';g.fillRect(0,0,W,H);g.fillStyle='#fbeee9';var s=W/7;for(var r=0;r*s<H+s;r++)for(var i=0;i*s<W+s;i++){var off=(r%2)?s/2:0;g.beginPath();g.arc(i*s+off,r*s,W*0.025,0,7);g.fill();}}},
+    {id:'wp_terra',name:'Terrazzo',draw:function(g,W,H){g.fillStyle='#f2efe9';g.fillRect(0,0,W,H);var cols=['#d98b6a','#5f8a8b','#e0c04a','#3b4a6b','#c0605f','#8aa06a'];var N=Math.round(W*H*0.003);for(var i=0;i<N;i++){g.fillStyle=cols[i%cols.length];g.beginPath();var x=rnd(0,W),y=rnd(0,H),s=rnd(3,9),n=Math.floor(rnd(4,7));for(var k=0;k<n;k++){var a=k/n*6.28;g.lineTo(x+Math.cos(a)*s*rnd(.7,1.2),y+Math.sin(a)*s*rnd(.7,1.2));}g.closePath();g.fill();}}},
+    {id:'wp_chevron',name:'ลายเชฟรอน',draw:function(g,W,H){g.fillStyle='#f4f1ec';g.fillRect(0,0,W,H);g.strokeStyle='#2f8a86';g.lineWidth=W*0.03;var s=W/8;for(var yy=-s;yy<H+s;yy+=s*1.4){g.beginPath();for(var xx=0;xx<W+s;xx+=s){g.lineTo(xx,yy+((xx/s)%2?0:s*0.55));}g.stroke();}}},
+    {id:'nb_tropical',name:'ใบตองเขตร้อน',draw:function(g,W,H){g.fillStyle='#e7ecdf';g.fillRect(0,0,W,H);for(var i=0;i<12;i++)leaf(g,rnd(0,W),rnd(0,H),rnd(W*0.02,W*0.035),rnd(0,6.28),['#3f6b46','#4e7d54','#5f8f63'][i%3]);}},
+    {id:'nb_bigfloral',name:'ดอกไม้ใหญ่ (moody)',draw:function(g,W,H){g.fillStyle='#20302a';g.fillRect(0,0,W,H);for(var i=0;i<8;i++)leaf(g,rnd(0,W),rnd(0,H),rnd(W*0.016,W*0.03),rnd(0,6.28),'#3f5a42');for(var f=0;f<5;f++)flower(g,rnd(W*0.15,W*0.85),rnd(H*0.15,H*0.85),rnd(W*0.06,W*0.11),['#c56b7a','#b85566','#d98fa0'][f%3],'#e6c25a');}},
+    {id:'nb_forest',name:'ป่าเข้ม + ใบบรอนซ์',draw:function(g,W,H){g.fillStyle='#14261d';g.fillRect(0,0,W,H);for(var i=0;i<18;i++)leaf(g,rnd(0,W),rnd(0,H),rnd(W*0.014,W*0.026),rnd(0,6.28),['#7a5a2e','#9c7a3e','#5f8f63'][i%3]);}},
+    {id:'nb_meadow',name:'ทุ่งดอกไม้ป่า',draw:function(g,W,H){g.fillStyle='#eef2e8';g.fillRect(0,0,W,H);g.strokeStyle='#6f8f5f';g.lineWidth=W*0.006;for(var i=0;i<30;i++){var x=rnd(0,W);g.beginPath();g.moveTo(x,H);g.lineTo(x+rnd(-8,8),rnd(H*0.3,H*0.65));g.stroke();g.fillStyle=['#d98fa0','#e6c25a','#8fa5c0','#c56b7a'][i%4];g.beginPath();g.arc(x+rnd(-6,6),rnd(H*0.25,H*0.6),rnd(3,6),0,7);g.fill();}}},
+    {id:'nb_blossom',name:'กิ่งดอกไม้บาน',draw:function(g,W,H){g.fillStyle='#f3ece9';g.fillRect(0,0,W,H);g.strokeStyle='#6b4a3a';g.lineWidth=W*0.014;g.beginPath();g.moveTo(0,H);g.bezierCurveTo(W*0.3,H*0.75,W*0.55,H*0.4,W,H*0.13);g.stroke();for(var i=0;i<20;i++)flower(g,rnd(W*0.1,W),rnd(H*0.06,H*0.7),rnd(W*0.03,W*0.055),'#f0c2cf','#e6b25a');}},
+    {id:'nb_ivy',name:'เถาวัลย์ / ไอวี่',draw:function(g,W,H){g.fillStyle='#eaf0e6';g.fillRect(0,0,W,H);g.strokeStyle='#5f7d4e';g.lineWidth=W*0.01;for(var v=0;v<4;v++){var x=rnd(0,W),y=0;g.beginPath();g.moveTo(x,y);while(y<H){x+=rnd(-16,16);y+=rnd(12,22);g.lineTo(x,y);leaf(g,x,y,rnd(.6,1),rnd(0,6.28),'#5f8f5a');}g.stroke();}}},
+    {id:'nb_toile',name:'Toile พฤกษศาสตร์',draw:function(g,W,H){g.fillStyle='#f4efe6';g.fillRect(0,0,W,H);g.strokeStyle='#2c3e57';g.lineWidth=1;for(var i=0;i<10;i++){var x=rnd(10,W-10),y=rnd(10,H-10);for(var k=0;k<5;k++)leaf(g,x+rnd(-14,14),y+rnd(-14,14),.55,rnd(0,6.28),'rgba(44,62,87,.5)');}}},
+    {id:'nb_peony',name:'โบตั๋น (sage+เบอร์กันดี)',draw:function(g,W,H){g.fillStyle='#aab79f';g.fillRect(0,0,W,H);for(var i=0;i<8;i++)leaf(g,rnd(0,W),rnd(0,H),rnd(W*0.015,W*0.026),rnd(0,6.28),'#7f9070');for(var f=0;f<4;f++)flower(g,rnd(W*0.2,W*0.8),rnd(H*0.2,H*0.8),rnd(W*0.05,W*0.1),['#7a2f3a','#8a3946'][f%2],'#c98f88');}}
+  ];
+  var _cache={};
+  window._wTexCanvas=function(id,W,H){ W=Math.max(64,Math.round(W||600)); H=Math.max(48,Math.round(H||400));
+    var it=null; for(var i=0;i<WTEX.length;i++){ if(WTEX[i].id===id){it=WTEX[i];break;} } if(!it)return null;
+    var key=id+'_'+Math.round(W/40)+'_'+Math.round(H/40)+'_'+((id==='none'&&$('wColor'))?$('wColor').value:'');
+    if(_cache[key])return _cache[key];
+    var c=document.createElement('canvas'); c.width=W; c.height=H; var g=c.getContext('2d');
+    try{ g.imageSmoothingEnabled=true; it.draw(g,W,H); }catch(_e){}
+    _cache[key]=c; return c;
+  };
+  window._wTexSel=window._wTexSel||'none';
+  function renderSwatches(){ var host=$('wTexPicker'); if(!host||host._done)return; host._done=1;
+    WTEX.forEach(function(it){ var wrap=document.createElement('div'); wrap.style.cssText='cursor:pointer;text-align:center';
+      var cv=document.createElement('canvas'); cv.width=120; cv.height=74; cv.style.cssText='width:100%;border-radius:6px;border:2px solid '+(it.id===window._wTexSel?'#0d9488':'transparent')+';display:block;background:#eee';
+      try{ it.draw(cv.getContext('2d'),120,74); }catch(_e){}
+      var lb=document.createElement('div'); lb.style.cssText='font-size:9px;color:var(--muted);margin-top:2px;line-height:1.1'; lb.textContent=it.name;
+      wrap.appendChild(cv); wrap.appendChild(lb);
+      wrap.onclick=function(){ window._wTexSel=it.id;
+        host.querySelectorAll('canvas').forEach(function(x){x.style.borderColor='transparent';}); cv.style.borderColor='#0d9488';
+        if($('wTexName'))$('wTexName').textContent=(it.id==='none'?'':'· '+it.name);
+        try{ if(typeof wallDraw==='function')wallDraw(); }catch(_e){}
+      };
+      host.appendChild(wrap);
+    });
+  }
+  function boot(){ setTimeout(renderSwatches,300); }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot); else boot();
+})();
 </script>
 </body>
 </html>
