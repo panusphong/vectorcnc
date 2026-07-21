@@ -6569,7 +6569,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       topRow.style.cssText='display:grid;grid-template-columns:'+COLS+';gap:0;align-items:stretch';
       topRow.appendChild(side); topRow.appendChild(dTop); topRow.appendChild(dRight);
 
-      // ===== โซนล่าง: จำลองผนัง =====  (เมนูผนัง 1 คอลัมน์ยาว → ตัดครึ่งซ้าย/ขวา)
+      // ===== โซนล่าง: จำลองผนัง =====
+      // 📎 ย้ายช่องรับไฟล์ (โลโก้/ป้าย .ai + ภาพผนัง) ขึ้นบนสุดของเมนูผนัง — ลากไฟล์เข้าที่นี่ได้เลย ไม่ต้องทำจากด้านบน
+      (function(){
+        var box=document.createElement('div'); box.id='wallDropTop';
+        box.style.cssText='margin-bottom:12px;padding-bottom:10px;border-bottom:2px dashed var(--line)';
+        var hd=document.createElement('div'); hd.style.cssText='font-weight:800;color:#0d9488;font-size:12px;margin-bottom:6px';
+        hd.innerHTML='📎 ลากไฟล์มาวางที่นี่ · โลโก้/ป้าย (.ai .pdf .svg .psd) หรือภาพผนังจริง';
+        box.appendChild(hd);
+        var wd=H('wDrop'); if(wd){ wd.style.display=''; var l1=wd.previousElementSibling; if(l1&&l1.tagName==='LABEL')box.appendChild(l1); box.appendChild(wd); }
+        var wbg=H('wBgDrop'); if(wbg){ var l2=wbg.previousElementSibling; if(l2&&l2.tagName==='LABEL')box.appendChild(l2); box.appendChild(wbg); }
+        if(box.children.length>1) wallCtrl.insertBefore(box, wallCtrl.firstChild);
+      })();
+      // เมนูผนัง 1 คอลัมน์ยาว → ตัดครึ่งซ้าย/ขวา
       var wk=Array.prototype.slice.call(wallCtrl.children); var mid=Math.ceil(wk.length/2);
       var wRight=document.createElement('div'); wRight.id='wallMenuR';
       wRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:82vh';
@@ -6591,10 +6603,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       appBody.appendChild(botHead); appBody.appendChild(botRow);
     });
 
-    // 4) ตัดฟังก์ชันซ้ำฝั่งผนัง (อัปโหลด/พิมพ์ข้อความ/ประเภทป้าย) → ใช้ของหน้าแรกตัวเดียว
+    // 4) ตัดตัวซ้ำ (พิมพ์ข้อความ/ประเภทป้าย) · แต่ 'ช่องรับไฟล์โลโก้/ป้าย (wDrop)' โชว์ไว้ให้ลากไฟล์ .ai เข้าโซนผนังได้เลย
     step(function(){
-      ['wTxtMakeBox','wDrop','wPSingleWrap'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; });
-      var wd=H('wDrop'); if(wd&&wd.previousElementSibling&&wd.previousElementSibling.tagName==='LABEL') wd.previousElementSibling.style.display='none';
+      ['wTxtMakeBox','wPSingleWrap'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; });
     });
 
     // 4b) ประเภทป้าย: หน้าแรก(mainSignType) = ตัวจริง → sync ชื่อไป wPType เพื่อคิดราคา
