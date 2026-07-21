@@ -310,11 +310,24 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
         return {"error": "แยกตัวอักษรไม่ได้ (ภาพควรเป็นตัวอักษร/โลโก้แยกชิ้น)"}
     # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร -> รูน็อตยึด 2 ระดับ
     _H = b[3] - b[1]
-    _cyc = (b[1] + b[3]) / 2.0 if bar_y_cm is None else (b[3] - float(bar_y_cm) * 10.0)
-    _fgap = _H * 0.38
+    if bar_y_cm is None:
+        # auto: วางคานคู่ใน 'แถบที่ตัวอักษรทุกตัวใช้ร่วมกัน' → คานหลบหลังทั้งตัวใหญ่+ตัวเล็ก (ไม่ลอยเหนือตัวเล็ก)
+        try:
+            tops = [L.bounds[1] for L in letters]     # ขอบบนแต่ละตัว (y น้อย = สูง)
+            bots = [L.bounds[3] for L in letters]     # ขอบล่างแต่ละตัว
+            _ct = max(tops); _cb = min(bots)          # แถบร่วม = [ต่ำสุดของขอบบน .. สูงสุดของขอบล่าง]
+            if (_cb - _ct) > _H * 0.08:
+                _cyc = (_ct + _cb) / 2.0; _band = (_cb - _ct)
+            else:
+                _cyc = (b[1] + b[3]) / 2.0; _band = _H
+        except Exception:
+            _cyc = (b[1] + b[3]) / 2.0; _band = _H
+    else:
+        _cyc = (b[3] - float(bar_y_cm) * 10.0); _band = _H
+    _fgap = min(_H * 0.38, _band * 0.62)
     try:
         if gap_cm and float(gap_cm) > 0:
-            _fgap = min(float(gap_cm) * 10.0, _H * 0.60)
+            _fgap = min(float(gap_cm) * 10.0, _band * 0.85, _H * 0.60)
     except Exception:
         pass
     _fgap = max(30.0, _fgap)
