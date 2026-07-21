@@ -1542,6 +1542,7 @@ select.numin{cursor:pointer}
             <button class="chip on" data-fx="off" type="button" style="font-size:11px">◻ ไม่มีไฟ</button>
             <button class="chip" data-fx="front" type="button" style="font-size:11px">🔆 ออกหน้า</button>
             <button class="chip" data-fx="back" type="button" style="font-size:11px">🌙 ออกหลัง</button>
+            <button class="chip" data-fx="around" type="button" style="font-size:11px">💫 ออกรอบตัว</button>
           </div>
           <div id="w3Temp" style="display:flex;gap:5px;margin-top:5px">
             <button class="chip on" data-t="warm" type="button" style="font-size:11px;flex:1">วอร์ม</button>
@@ -1743,6 +1744,7 @@ select.numin{cursor:pointer}
         <button class="chip on" data-fx="off" type="button" style="font-size:11px">◻ ไม่มีไฟ</button>
         <button class="chip" data-fx="front" type="button" style="font-size:11px">🔆 ออกหน้า</button>
         <button class="chip" data-fx="back" type="button" style="font-size:11px">🌙 ออกหลัง</button>
+        <button class="chip" data-fx="around" type="button" style="font-size:11px">💫 ออกรอบตัว</button>
       </div>
       <div id="v3dTemp" style="display:flex;gap:5px;margin-top:5px">
         <button class="chip on" data-t="warm" type="button" style="font-size:11px;flex:1">วอร์ม</button>
@@ -2087,6 +2089,7 @@ function $(id){return document.getElementById(id);}
 
     var FACE=V.face, SIDE=sideCol(), L=light(V.temp);
     if(V.fx==='front')FACE=L;
+    else if(V.fx==='around')FACE=shade(V.face,1.10);
 
     // ---- ผนังข้าง (เฉพาะด้านที่เห็น) + แรเงา
     var lx=0.42, ly=-0.91, quads=[];
@@ -2142,15 +2145,43 @@ function $(id){return document.getElementById(id);}
       }
     }
     g.save();
-    if(V.fx==='front'||V.fx==='back'){
-      g.shadowColor=L; g.shadowBlur=Math.max(10,CW*0.02);
-      facePath(); g.fillStyle=(V.fx==='front')?L:V.face; g.fill('evenodd');
-      g.shadowBlur=Math.max(24,CW*0.05);
-      facePath(); g.fill('evenodd');
+    // เรืองแสงด้านหลัง = แสงตกกระทบผนัง (back = พูลนุ่มมีขอบเขต · around = รอบตัว) — ไม่ฟุ้งจนละลาย
+    if(V.fx==='back'||V.fx==='around'){
+      g.shadowColor=L;
+      var _vIsB=(V.fx==='back');
+      var _vPass = _vIsB ? [0.052,0.036,0.023,0.013]
+                         : [0.072,0.050,0.033,0.020,0.011];
+      var _vAmax = _vIsB ? 0.50 : 0.66;
+      for(var _vp=0;_vp<_vPass.length;_vp++){
+        g.globalAlpha = _vAmax*(0.45+0.55*(_vp/(_vPass.length-1)));
+        g.shadowBlur = Math.max(6, CW*_vPass[_vp]);
+        facePath(); g.fillStyle=L; g.fill('evenodd');
+      }
+      g.globalAlpha=1;
     }
     g.shadowBlur=0;
     facePath();
     g.fillStyle=FACE; g.fill('evenodd');
+    // 💡 ไฟออกหน้า / ออกรอบตัว = สาดแสงเต็มหน้า (บลูมกลางสว่าง) ให้มีไฟส่องออกมาจริง
+    if(V.fx==='front'||V.fx==='around'){
+      g.save(); facePath(); g.clip('evenodd');
+      g.globalCompositeOperation='lighter';
+      var _vc=T(W/2,H/2), _vp0=T(0,0), _vp1=T(W,H);
+      var _vrad=Math.max(8,Math.hypot(_vp1[0]-_vp0[0],_vp1[1]-_vp0[1])/2);
+      var _va0=(V.fx==='front')?0.50:0.34, _va1=(V.fx==='front')?0.15:0.10;
+      var _vgr=g.createRadialGradient(_vc[0],_vc[1],_vrad*0.04,_vc[0],_vc[1],_vrad*1.04);
+      _vgr.addColorStop(0,   rgba(L,_va0));
+      _vgr.addColorStop(0.55,rgba(L,(_va0+_va1)*0.5));
+      _vgr.addColorStop(1,   rgba(L,_va1));
+      g.fillStyle=_vgr; facePath(); g.fill('evenodd');
+      if(V.fx==='around'){
+        g.shadowColor=L; g.shadowBlur=Math.max(6,CW*0.02);
+        var _vr=[[Math.max(2,CW*0.02),0.18],[Math.max(1.5,CW*0.011),0.26],[Math.max(1,CW*0.006),0.34]];
+        for(var _vk=0;_vk<_vr.length;_vk++){ g.globalAlpha=_vr[_vk][1]; g.strokeStyle=L; g.lineWidth=_vr[_vk][0]; facePath(); g.stroke(); }
+        g.shadowBlur=0; g.globalAlpha=1;
+      }
+      g.globalCompositeOperation='source-over'; g.restore();
+    }
     g.strokeStyle=shade(FACE,0.55); g.lineWidth=1; g.stroke();
     g.restore();
 
@@ -2300,6 +2331,8 @@ function $(id){return document.getElementById(id);}
     var f=function(v){return Math.max(0,Math.min(255,Math.round(v*k)));};
     return '#'+[0,2,4].map(function(i){return ('0'+f(parseInt(h.substr(i,2),16)).toString(16)).slice(-2);}).join('');
   }
+  function rgba(hex,a){ var h=(hex||'#fff').replace('#',''); if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')'; }
   function sideCol(){return W3.autoSide?shade(W3.face,0.72):W3.side;}
   function cent(r){var x=0,y=0,n=r.length-1;
     for(var i=0;i<n;i++){x+=r[i][0];y+=r[i][1];}
@@ -2326,6 +2359,7 @@ function $(id){return document.getElementById(id);}
 
     var FACE=W3.face, SIDE=sideCol(), L=light(W3.temp);
     if(W3.fx==='front')FACE=L;
+    else if(W3.fx==='around')FACE=shade(W3.face,1.10);
     // --- ผนังข้าง
     if(D>0.5){
       var lx=0.42, ly=-0.91, quads=[];
@@ -2377,15 +2411,20 @@ function $(id){return document.getElementById(id);}
     function fp(){ pathOf(W3.G.polys); }
 
     g.save();
-    // เรืองแสง (soft halo หลายชั้น = ฟุ้งนวลสมจริง)
-    if(W3.fx==='front'||W3.fx==='back'){
+    // เรืองแสงด้านหลัง = แสงตกกระทบผนังจริง (back = พูลนุ่มแต่ยังเห็นทรง · around = เรืองรอบตัว)
+    if(W3.fx==='back'||W3.fx==='around'){
       g.shadowColor=L;
-      var _hb=(W3.fx==='back');   // ออกหลัง = ฟุ้งกว้างกว่า (เรืองขอบผนัง)
-      var _passes=_hb?[0.02,0.045,0.075]:[0.012,0.03,0.055];
+      var _isB=(W3.fx==='back');
+      // back: blur น้อยลง ให้เป็น "พูลแสง" มีขอบเขต ไม่ฟุ้งจนละลายมองไม่ออก
+      var _passes = _isB ? [0.052,0.036,0.023,0.013]
+                         : [0.072,0.050,0.033,0.020,0.011];   // around = กว้างรอบตัวกว่า
+      var _amax   = _isB ? 0.50 : 0.66;
       for(var _gp=0;_gp<_passes.length;_gp++){
-        g.shadowBlur=Math.max(10,cv.width*_passes[_gp]);
-        fp(); g.fillStyle=(W3.fx==='front')?L:W3.face; g.fill('evenodd');
+        g.globalAlpha = _amax*(0.45+0.55*(_gp/(_passes.length-1))); // ชั้นในเข้มกว่า ไล่จางออกนอก
+        g.shadowBlur = Math.max(6, cv.width*_passes[_gp]);
+        fp(); g.fillStyle=L; g.fill('evenodd');
       }
+      g.globalAlpha=1;
     }
     g.shadowBlur=0;
 
@@ -2400,7 +2439,6 @@ function $(id){return document.getElementById(id);}
       var _ix=Math.min(_q0[0],_q1[0]), _iy=Math.min(_q0[1],_q1[1]);
       var _iw=Math.abs(_q1[0]-_q0[0]), _ih=Math.abs(_q1[1]-_q0[1]);
       try{ g.drawImage(FLAT,_ix,_iy,_iw,_ih); }catch(_e){}
-      if(W3.fx==='front'){ g.globalCompositeOperation='lighter'; g.fillStyle='rgba(255,246,224,0.10)'; fp(); g.fill('evenodd'); g.globalCompositeOperation='source-over'; }
       g.restore();
       // ขอบคิ้ว/โลหะ (ถ้ามีชั้น frame) ทับบาง ๆ ให้ดูมีมิติ
       for(var lf=0;lf<LY.length;lf++){ if(String(LY[lf].kind||'')==='frame'){ pathOf(LY[lf].polys); g.strokeStyle=W3.trim; g.lineWidth=Math.max(1.5,cv.width*0.004); g.stroke(); } }
@@ -2420,6 +2458,27 @@ function $(id){return document.getElementById(id);}
     }else{
       fp(); g.fillStyle=FACE; g.fill('evenodd');
       g.strokeStyle=shade(FACE,0.5); g.lineWidth=Math.max(1,cv.width*0.001); g.stroke();
+    }
+    // 💡 ไฟออกหน้า / ออกรอบตัว = สาดแสงเต็มหน้าป้าย (บลูมกลางสว่าง ไล่จางออกขอบ) ให้เห็นว่า "มีไฟส่องออกมาจริง" ไม่ใช่แค่ขอบ
+    if(W3.fx==='front'||W3.fx==='around'){
+      g.save(); fp(); g.clip('evenodd');
+      g.globalCompositeOperation='lighter';
+      var _cc=T(W/2,H/2), _p0=T(0,0), _p1=T(W,H);
+      var _rad=Math.max(8,Math.hypot(_p1[0]-_p0[0],_p1[1]-_p0[1])/2);
+      var _a0=(W3.fx==='front')?0.52:0.36, _a1=(W3.fx==='front')?0.15:0.10;
+      var _grd=g.createRadialGradient(_cc[0],_cc[1],_rad*0.04,_cc[0],_cc[1],_rad*1.04);
+      _grd.addColorStop(0,   rgba(L,_a0));
+      _grd.addColorStop(0.55,rgba(L,(_a0+_a1)*0.5));
+      _grd.addColorStop(1,   rgba(L,_a1));
+      g.fillStyle=_grd; fp(); g.fill('evenodd');
+      // รอบตัว: เพิ่มขอบเรืองด้านในนุ่ม ๆ ให้เหมือนอะคริลิคเปล่งไฟรอบทรง
+      if(W3.fx==='around'){
+        g.shadowColor=L; g.shadowBlur=Math.max(6,cv.width*0.02);
+        var _rw=Math.max(2,cv.width*0.011), _rP=[[_rw*2.0,0.18],[_rw*1.1,0.26],[_rw*0.6,0.34]];
+        for(var _rp=0;_rp<_rP.length;_rp++){ g.globalAlpha=_rP[_rp][1]; g.strokeStyle=L; g.lineWidth=_rP[_rp][0]; fp(); g.stroke(); }
+        g.shadowBlur=0; g.globalAlpha=1;
+      }
+      g.globalCompositeOperation='source-over'; g.restore();
     }
     g.restore();
     return cv;
@@ -6031,8 +6090,7 @@ function wallPrice(){ if(!$('wPResult'))return;
   if($('wPColorFee'))$('wPColorFee').textContent=colorTotal.toLocaleString()+' บาท';
   var colorSpecial=false;      // ไม่คิดรวมในราคาต่อกรอบอีกแล้ว
   var frameKey=($('wPFrame')&&$('wPFrame').value)||'none';
-  var _armSel=($('wArm')&&$('wArm').value)||'none';           // 🦾 เลือกแขน = คิดราคาเท่าโครงเหล็ก (ถ้ายังไม่ได้เลือกโครง)
-  if(frameKey==='none' && _armSel!=='none') frameKey='steel';
+  var _armSel=($('wArm')&&$('wArm').value)||'none';           // 🦾 เลือกแขน = คิดราคาเท่าโครงเหล็ก (บรรทัดแยกชัดเจน เพิ่มเสมอ)
   if($('wPSplitWrap'))$('wPSplitWrap').style.display=splitOn?'block':'none';
   if($('wPSingleWrap'))$('wPSingleWrap').style.display=splitOn?'none':'block';
   var lines=[], total=0, anyLight=false;
@@ -6052,9 +6110,16 @@ function wallPrice(){ if(!$('wPResult'))return;
   if(!_valid.length){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){} return; }
   // \ud83c\udfa8 \u0e04\u0e48\u0e32\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 \u2014 \u0e1a\u0e27\u0e01\u0e40\u0e02\u0e49\u0e32\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e14\u0e35\u0e22\u0e27 (\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22)
   if(colorTotal>0){ lines.push({colorLine:true,n:nColor,fee:colorTotal}); total+=colorTotal; }
+  // 🦾 แขนยึด/แขวน = คิดราคาเท่าโครงเหล็ก (1,800/ตร.ม.) เป็นบรรทัดแยกชัดเจน เพิ่มเสมอเมื่อเลือกแขน
+  if(_armSel!=='none'){
+    var _aa=wallSignAreaSqm(); var _asqm=Math.max(0,(_aa.w/100)*(_aa.h/100));
+    var _armRate=1800; var _armCost=Math.round(_asqm*_armRate);
+    if(_armCost>0){ lines.push({armLine:true,arm:_armSel,sqm:_asqm,rate:_armRate,fee:_armCost}); total+=_armCost; }
+  }
   var multi=_valid.length>1;
   var html=lines.map(function(l){
     if(l.colorLine)return '<div style="margin-bottom:3px">\ud83c\udfa8 <b>\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e2a\u0e35 \u00d7 1,500</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+    if(l.armLine){ var _an=(l.arm==='top2'?'\u0e41\u0e02\u0e27\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 2 \u0e41\u0e02\u0e19':l.arm==='side1'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 1 \u0e41\u0e02\u0e19':l.arm==='side2'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 2 \u0e41\u0e02\u0e19':'\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14'); return '<div style="margin-bottom:3px">\ud83e\uddbe <b>\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14/\u0e41\u0e02\u0e27\u0e19</b> <span style="font-size:10px;opacity:.85">'+_an+' \u00b7 '+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+' (\u0e40\u0e17\u0e48\u0e32\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01)</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
     if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
     var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
