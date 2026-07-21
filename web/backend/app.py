@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.36-backlit-single-line-led",
+            "version": "9.37-dxf-clean-tiny-slivers",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1152,6 +1152,10 @@ def _poly_to_subs(geom, tol=0.04):
         rings = [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]
         for ring in rings:
             if len(ring) < 4:
+                continue
+            # 🧹 กันวงเศษ/จุดซ้อน (contour จิ๋วผิดปกติ) เข้าไฟล์ตัด — เครื่องตัดจะเบิร์น/ค้างจุด
+            _xs = [p[0] for p in ring]; _ys = [p[1] for p in ring]
+            if (max(_xs) - min(_xs)) < 2.0 and (max(_ys) - min(_ys)) < 2.0:   # ก้อนจิ๋วทุกด้าน (เส้นเรียวยาวจริงยังผ่าน)
                 continue
             try:
                 sp = bezier_vec._fit_ring_to_sub(ring, tol=float(tol))
