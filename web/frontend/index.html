@@ -1502,7 +1502,7 @@ select.numin{cursor:pointer}
       <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
       <!-- 🅰️ ออกแบบเร็ว: พิมพ์ข้อความ → วางบนผนังทันที (เฟส 2 · เสนอราคาจบในหน้าเดียว) -->
-      <div style="margin-top:12px;padding:11px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
+      <div id="wTxtMakeBox" style="margin-top:12px;padding:11px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
         <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">🅰️ พิมพ์ข้อความ → วางบนผนังเลย</div>
         <input class="numin" id="wTxtMakeVal" placeholder="พิมพ์ข้อความป้าย เช่น BARONS" style="width:100%;padding:7px">
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
@@ -5802,21 +5802,7 @@ if($('wHistLink'))$('wHistLink').onclick=function(){ try{openLogModal();}catch(_
 // 🎨 กลับไปหน้าออกแบบ/สร้างตัวอักษร (ปิดจำลองผนัง = โผล่แผงออกแบบ) — ให้ 2 หน้ารู้สึกเป็นหน้าเดียวกัน
 if($('wBackDesign'))$('wBackDesign').onclick=function(){ if($('wallClose'))$('wallClose').click(); try{window.scrollTo(0,0);}catch(_e){} };
 if($('goWallFromDesign'))$('goWallFromDesign').onclick=function(){ if($('btnWall'))$('btnWall').click(); };  // 🛠️ เฟส 4: ทางลัดหน้าออกแบบ -> เสนอราคา
-// 🏠 เฟส 3: หน้าจำลองผนัง = Landing (เปิดแอปมาเจอเลย) · เงียบ ไม่เด้ง alert ให้คนนอก (ไม่มีสิทธิ์ราคา = อยู่หน้าออกแบบตามเดิม)
-(function(){
-  function landing(){
-    if(window._wallLanded)return; window._wallLanded=true;
-    try{ if(document.querySelector('.modal.show'))return; }catch(_e){}         // มี overlay อื่นเปิดอยู่ = ไม่แทรก
-    if(typeof loadPriceCatalog!=='function')return;
-    loadPriceCatalog(function(ok){
-      if(!ok)return;                                                            // คนนอก = ไม่เปิด ไม่เด้ง error
-      try{ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw();
-           try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} try{vcStartPresence();}catch(_e){} }catch(_e){}
-    });
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(landing,450);});
-  else setTimeout(landing,450);
-})();
+// (เฟส 3 landing modal ถูกแทนที่ด้วยการรวมหน้าแบบ inline ด้านล่าง — ONE-PAGE MERGE)
 function wallReset(){ if(!confirm('เคลียร์ทุกอย่างให้ว่างเหมือนเปิดครั้งแรก?'))return;
   wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false; _armTopFy=0;
   textBoxes=[]; _txtSel=-1; if($('wTextEdit'))$('wTextEdit').style.display='none';
@@ -6515,6 +6501,95 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   try{updateTxtInfo();}catch(_e){}
   wallDraw();
 };
+
+/* ============================================================
+   🧩 ONE-PAGE MERGE — รวมหน้าแรก + จำลองผนัง เป็นหน้าเดียว
+   ซ้าย = คุมงาน (อัปโหลด/ประเภทป้าย/พิมพ์ข้อความ ชุดเดียว)
+   กลาง = ผนังจำลองโชว์แบบสดๆ · ขวา = ขนาดผนัง + ราคา
+   ตัดฟังก์ชันซ้ำในฝั่งจำลองผนังออก (ประเภทป้าย/พิมพ์ข้อความ/อัปโหลด)
+   * ปิดได้ด้วย: window.MERGE_ONEPAGE=false ก่อนโหลด
+   ============================================================ */
+(function(){
+  if(window.MERGE_ONEPAGE===false) return;
+  var H=function(id){ return document.getElementById(id); };
+  function step(fn){ try{ fn(); }catch(e){ try{console.warn('[merge step]',e);}catch(_){} } }  // แต่ละสเต็ปพังแยกกัน ไม่ล้มทั้งก้อน
+
+  // 🔒 ปิด modal จำลองผนัง 'ถาวร' ก่อนเลย — ไม่ว่าอะไรจะเกิด ต้องไม่มี modal เต็มจอเด้งมาอีก
+  function killModal(){
+    var ov=H('wallOverlay'); if(!ov)return;
+    ov.classList.remove('show'); ov.style.display='none';
+    var card=ov.querySelector('.modal-card'); if(card){ card.style.width='100%'; card.style.height='auto'; card.style.maxWidth='none'; }
+  }
+
+  function run(){
+    if(window.__ONEPAGE_DONE__) return; window.__ONEPAGE_DONE__=true;
+    var appBody=document.querySelector('.app-body');
+    var stage=document.querySelector('.app-body .stage');
+    var out=document.querySelector('.app-body .out');
+    var ov=H('wallOverlay');
+    var card=ov&&ov.querySelector('.modal-card');
+    if(!appBody||!stage||!out||!card){ killModal(); return; }   // หา element ไม่ครบ = อยู่หน้าออกแบบเฉย ๆ (ไม่เด้ง modal)
+
+    // หา grid (คอนโทรล|canvas) แบบทนทาน + ตัด header 'จำลองผนัง' ทิ้ง
+    var grid=card.querySelector('div[style*="grid-template-columns:340px"]') || card.children[card.children.length-1];
+    var wStage=H('wStage');
+    var wallCtrl=grid && grid.children[0];
+    if(!grid||!wStage||!wallCtrl){ killModal(); return; }
+
+    // 🗑️ ลบแถบหัว 'จำลองป้ายบนผนัง v70' (แต่เก็บลิงก์ เคลียร์หน้าจอ/ประวัติ ไว้บนคอนโทรลขวา)
+    step(function(){
+      var header=card.children[0];
+      var rs=header&&header.querySelector('#wReset');
+      if(rs){ var row=rs.parentNode; row.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-size:11.5px'; wallCtrl.insertBefore(row, wallCtrl.firstChild); }
+      if(header&&header!==grid&&header.parentNode) header.parentNode.removeChild(header);
+    });
+
+    // 1) กลาง = ผนังจำลอง (ซ่อน preview งานตัดเดิม แล้ววาง canvas ผนังลงกลาง)
+    step(function(){
+      Array.prototype.forEach.call(stage.children,function(c){ c.style.display='none'; });
+      wStage.style.cssText='width:100%;min-height:62vh;background:transparent;padding:0;overflow:auto';
+      stage.appendChild(wStage);
+    });
+
+    // 2) ขวา = คุมขนาดผนัง + ราคา (ย้ายคอนโทรลผนังไว้บนสุดของคอลัมน์ขวา · ไม่ล้างปุ่มดาวน์โหลด/.ai เดิม)
+    step(function(){
+      wallCtrl.style.cssText='width:100%;border-right:none;max-height:calc(100vh - 120px);overflow:auto;padding:2px';
+      var sep=document.createElement('div'); sep.style.cssText='border-top:2px dashed var(--line);margin:12px 0';
+      out.insertBefore(sep, out.firstChild);
+      out.insertBefore(wallCtrl, out.firstChild); out.style.overflow='auto';
+    });
+
+    // 3) เลย์เอาต์ 3 คอลัมน์: ซ้าย(คุมงาน) · กลาง(ผนัง) · ขวา(ราคา)
+    step(function(){ appBody.style.gridTemplateColumns='300px 1fr 350px'; });
+
+    // 4) ตัดฟังก์ชันซ้ำฝั่งผนัง (อัปโหลด/พิมพ์ข้อความ/ประเภทป้าย) → ใช้ของหน้าแรกตัวเดียว
+    step(function(){
+      ['wTxtMakeBox','wDrop','wPSingleWrap'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; });
+      var wd=H('wDrop'); if(wd&&wd.previousElementSibling&&wd.previousElementSibling.tagName==='LABEL') wd.previousElementSibling.style.display='none';
+    });
+
+    // 4b) ประเภทป้าย: หน้าแรก(mainSignType) = ตัวจริง → sync ชื่อไป wPType เพื่อคิดราคา
+    var mst=H('mainSignType'), wpt=H('wPType');
+    function stripNo(s){ return (s||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); }
+    function syncType(){ if(!mst||!wpt)return; var nm=''; try{ nm=stripNo(mst.options[mst.selectedIndex].textContent); }catch(_e){}
+      if(nm){ wpt.value=nm; try{wpt.dispatchEvent(new Event('input'));}catch(_e){} try{wpt.dispatchEvent(new Event('change'));}catch(_e){} } }
+    step(function(){ if(mst)mst.addEventListener('change',syncType); });
+
+    // 5) ปิด modal ถาวร + ซ่อนปุ่ม/ลิงก์เปิดหน้าจำลองผนังที่ซ้ำ
+    step(killModal);
+    step(function(){ ['btnWall','wBackDesign','goWallFromDesign','designModeBanner'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; }); });
+
+    // 6) เริ่มระบบผนัง (โหลดราคา → วาด) โดยไม่ต้องเปิด modal
+    setTimeout(function(){ step(function(){
+      if(typeof loadPriceCatalog==='function'){ loadPriceCatalog(function(ok){ step(function(){ if(ok&&typeof wallInitSwatch==='function')wallInitSwatch(); syncType(); if(typeof wallDraw==='function')wallDraw(); }); }); }
+      else { syncType(); if(typeof wallDraw==='function')wallDraw(); }
+    }); }, 350);
+  }
+
+  function boot(){ step(killModal); step(run); }   // ปิด modal ก่อนเสมอ แล้วค่อยรวมหน้า
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,150); });
+  else setTimeout(boot,150);
+})();
 </script>
 </body>
 </html>
