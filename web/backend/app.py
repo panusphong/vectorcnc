@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.35-type19-halo-backlit-letters",
+            "version": "9.36-backlit-single-line-led",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -2359,6 +2359,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _neon:
                 _led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
                                       watt_per_m=8.0, volt=12.0)
+            elif rec.get("back_lit"):
+                # 🆕 ไฟออกหลัง (halo) = LED เส้นเดียวตามแกนกลางตัวอักษร
+                try:
+                    _bsub2 = _skeleton_subs(inp, full)
+                except Exception:
+                    _bsub2 = None
+                _led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub2,
+                                      watt_per_m=12.0, volt=12.0)
             else:
                 from vectorcnc import mount_frame as _MF3
                 _led = _MF3.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=12.0, volt=12.0)
@@ -2589,6 +2597,14 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             if rec.get("neon"):
                 led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_nsub,
+                                     watt_per_m=float(led_watt_per_m), volt=float(led_volt))
+            elif rec.get("back_lit"):
+                # 🆕 ไฟออกหลัง (halo) = เดินไฟ LED 'เส้นเดียว' ตามแกนกลางตัวอักษร (ไม่ถี่เต็มหน้า)
+                try:
+                    _bsub = _skeleton_subs(inp, full)
+                except Exception:
+                    _bsub = None
+                led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub,
                                      watt_per_m=float(led_watt_per_m), volt=float(led_volt))
             else:
                 from vectorcnc import mount_frame as MF
