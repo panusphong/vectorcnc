@@ -63,6 +63,9 @@ h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;c
 .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#CBD6E6}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
 .app-title{font-size:13px;color:var(--dim)}
 .app-body{display:grid;grid-template-columns:300px 1fr 272px;min-height:calc(100vh - 246px)}
+.app-body.full-stage{grid-template-columns:300px 1fr !important}      /* ดูผลลัพธ์ 3มิติ -> ยุบคอลัมน์ขวา ให้ stage เต็มพื้นที่ */
+.app-body.full-stage>.out{display:none !important}
+.app-body.full-stage #ls3dImg{max-width:none !important}             /* ภาพ 3มิติขยายเต็ม */
 @media(max-width:980px){.app-body{grid-template-columns:1fr;min-height:auto}}
 .side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
@@ -234,6 +237,35 @@ select.numin{cursor:pointer}
         <!-- 🔬 ตรวจความละเอียดภาพ เทียบกับขนาดป้ายจริง -->
         <div id="resBox" style="display:none;margin-top:8px;border-radius:11px;padding:10px 12px;font-size:11.5px;line-height:1.55"></div>
 
+        <!-- 🏷️ ประเภทป้าย (ขึ้นบนสุด) -->
+        <div id="signTypeBox" style="margin-top:10px;padding:11px 12px 12px;border:2px solid #4f46e5;border-radius:12px;background:linear-gradient(135deg,#eef2ff,#faf5ff);box-shadow:0 3px 12px rgba(79,70,229,.18)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:17px;line-height:1">🏷️</span>
+            <label data-i18n="lbl.signtype" style="font-weight:800;color:#4338ca;font-size:13.5px;margin:0">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
+          </div>
+          <select class="numin" id="mainSignType" style="border:2px solid #4f46e5;font-weight:700;color:#312e81;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)">
+            <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
+            <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
+            <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
+            <option value="3" data-i18n="st.3">3 · ตัวอักษรไฟออกรอบ</option>
+            <option value="4" data-i18n="st.4">4 · กล่องไฟฉลุหน้า</option>
+            <option value="6" data-i18n="st.6">6 · งานยกขอบ</option>
+            <option value="7" data-i18n="st.7">7 · งานยกขอบ มีไส้</option>
+            <option value="8" data-i18n="st.8">8 · กล่องไฟล้อมตามทรง 1 หน้า</option>
+            <option value="9" data-i18n="st.9">9 · กล่องไฟล้อมตามทรง 2 หน้า</option>
+            <option value="10" data-i18n="st.10">10 · กล่องไฟทรงกลม 1 หน้า</option>
+            <option value="11" data-i18n="st.11">11 · กล่องไฟทรงกลม 2 หน้า</option>
+            <option value="12" data-i18n="st.12">12 · กล่องไฟสี่เหลี่ยม 1 หน้า</option>
+            <option value="13" data-i18n="st.13">13 · กล่องไฟสี่เหลี่ยม 2 หน้า</option>
+            <option value="14" data-i18n="st.14">14 · กล่องไฟวงรี 1 หน้า</option>
+            <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
+            <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
+            <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
+            <option value="18" data-i18n="st.18">18 · กล่องไฟอะคริลิค ไฟออกรอบ</option>
+          </select>
+          <div class="hint" data-i18n="hint.signtype" style="margin-bottom:0">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+        </div>
+
         <div class="grp">
           <div class="gt"  data-i18n="sec.material">วัสดุ / เครื่องตัด</div>
           <div class="chips" id="presetChips">
@@ -266,34 +298,6 @@ select.numin{cursor:pointer}
           <label id="sizeLbl" data-i18n="lbl.width" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
           <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
           <div class="hint" id="sizeHint" data-i18n="hint.size">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
-
-          <div id="signTypeBox" style="margin-top:10px;padding:11px 12px 12px;border:2px solid #4f46e5;border-radius:12px;background:linear-gradient(135deg,#eef2ff,#faf5ff);box-shadow:0 3px 12px rgba(79,70,229,.18)">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="font-size:17px;line-height:1">🏷️</span>
-            <label data-i18n="lbl.signtype" style="font-weight:800;color:#4338ca;font-size:13.5px;margin:0">ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)</label>
-          </div>
-          <select class="numin" id="mainSignType" style="border:2px solid #4f46e5;font-weight:700;color:#312e81;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)">
-            <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
-            <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
-            <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
-            <option value="3" data-i18n="st.3">3 · ตัวอักษรไฟออกรอบ</option>
-            <option value="4" data-i18n="st.4">4 · กล่องไฟฉลุหน้า</option>
-            <option value="6" data-i18n="st.6">6 · งานยกขอบ</option>
-            <option value="7" data-i18n="st.7">7 · งานยกขอบ มีไส้</option>
-            <option value="8" data-i18n="st.8">8 · กล่องไฟล้อมตามทรง 1 หน้า</option>
-            <option value="9" data-i18n="st.9">9 · กล่องไฟล้อมตามทรง 2 หน้า</option>
-            <option value="10" data-i18n="st.10">10 · กล่องไฟทรงกลม 1 หน้า</option>
-            <option value="11" data-i18n="st.11">11 · กล่องไฟทรงกลม 2 หน้า</option>
-            <option value="12" data-i18n="st.12">12 · กล่องไฟสี่เหลี่ยม 1 หน้า</option>
-            <option value="13" data-i18n="st.13">13 · กล่องไฟสี่เหลี่ยม 2 หน้า</option>
-            <option value="14" data-i18n="st.14">14 · กล่องไฟวงรี 1 หน้า</option>
-            <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
-            <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
-            <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
-            <option value="18" data-i18n="st.18">18 · กล่องไฟอะคริลิค ไฟออกรอบ</option>
-          </select>
-          <div class="hint" data-i18n="hint.signtype" style="margin-bottom:0">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
-          </div>
           <button class="btn ghost" id="mainClear" style="width:100%;margin-top:6px;font-size:13px">🧹 เคลียร์งาน (เริ่มใหม่)</button>
           <!-- 🅰️ พิมพ์ข้อความเป็นตัวป้าย (โชว์เมื่อเลือกอักษร+โครงแขวน) -->
           <div id="mfTextPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
@@ -362,10 +366,8 @@ select.numin{cursor:pointer}
             <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
               <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
-              <div style="font-size:10px;color:#92700a;margin:0 0 2px">🌄 ภาพพื้นหลัง (import) — วางข้อความ/โลโก้ทับได้</div>
-              <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
-                <input type="file" id="bxBgFile" accept="image/*" style="font-size:10.5px;flex:1;min-width:0">
-                <button type="button" id="bxBgUse" class="btn ghost" style="font-size:10px;padding:4px 7px;white-space:nowrap">ใช้ภาพที่อัปโหลด</button>
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+                <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#92700a;flex:1"><input type="checkbox" id="bxBgUseChk"> 🌄 ใช้ภาพที่อัปโหลด (ด้านบน) เป็นพื้นหลัง</label>
                 <span id="bxBgClr" style="display:none;color:#ef4444;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap">✕ ล้าง</span>
               </div>
               <input class="numin" id="bxCompText" placeholder="ข้อความ (คั่นแต่ละช่องด้วย | )" style="padding:5px;width:100%;font-size:12px">
@@ -374,8 +376,12 @@ select.numin{cursor:pointer}
                 <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#92700a">สี<input type="color" id="bxTextColor" value="#1f2937" style="width:30px;height:28px;border:none;background:none;padding:0;cursor:pointer"></label>
               </div>
               <div style="font-size:10px;color:#92700a;margin:6px 0 2px">🖼️ โลโก้/ไอคอน (อัปโหลดกี่รูปก็ได้)</div>
-              <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;width:100%">
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;flex:1;min-width:0">
+                <button type="button" id="bxLogoClr" class="btn ghost" style="display:none;font-size:10px;padding:4px 8px;white-space:nowrap">🗑️ ล้างโลโก้</button>
+              </div>
               <div id="bxLogoPrev" style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0"></div>
+              <button type="button" id="bxLogoClr" style="display:none;font-size:10.5px;padding:4px 8px;margin-bottom:5px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font-weight:700">🗑️ ล้างโลโก้ทั้งหมด</button>
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
                 <label style="display:flex;align-items:center;gap:4px;font-size:10.5px;color:#92700a"><input type="checkbox" id="bxLogoTint"> เปลี่ยนสีโลโก้</label>
                 <input type="color" id="bxLogoColor" value="#1f2937" style="width:30px;height:26px;border:none;background:none;padding:0;cursor:pointer">
@@ -1152,7 +1158,9 @@ select.numin{cursor:pointer}
       <div class="step">2) วางชิ้นงานบนภาพผนัง (ปรับสเกล/หมุน) — มีกล่องราคา (font Prompt) + กว้าง×สูง</div>
       <div class="step">3) ดู "🧊 3 มิติ · หมุนรอบตัว" (แผ่นหนา/ตัวนูน/ป้ายไฟ)</div>
       <div class="step">4) Export JPG/PDF (มีขนาด+ระยะจากผนัง) · 💾 บันทึกงาน / 🔎 ค้นหางาน</div>
-      <div class="tip">💡 ส่งขนาดเข้าแอปประเมินราคาอัตโนมัติ / ใส่ลง BOM Check Sheet ได้</div>
+      <div class="step">5) <b>🦾 แขนยึด / การติดตั้ง</b> — เลือก ไม่มีแขน / แขวนเพดาน 2 แขน / แขนข้าง (ปรับ ยาวแขน + ห่างขอบ) · <b>เลือกแขน = บวกค่าโครงเหล็ก 1,800/ตร.ม. เข้าราคาให้อัตโนมัติ</b></div>
+      <div class="step">6) <b>ลากตัวเลขระยะ</b> ที่ทับกันไปวางที่ว่างได้ (ดับเบิลคลิก = คืนตำแหน่งเดิม)</div>
+      <div class="tip">💡 ส่งขนาดเข้าแอปประเมินราคาอัตโนมัติ / ใส่ลง BOM Check Sheet ได้ · โครงเหล็กจะหลบอยู่หลังป้าย</div>
     </div>
 
     <div class="card">
@@ -1201,6 +1209,23 @@ select.numin{cursor:pointer}
         <li>ตาราง BOM (วัสดุ/สเปค) · ช่องเซ็นอนุมัติ 3 ฝ่าย · กำหนดส่งมอบ</li>
       </ul>
       <div class="tip">💡 รายละเอียดชุดเดียวกันยัง<b>แสดงกลางจอ</b>ในหน้าออกแบบด้วย ดูก่อนพิมพ์ได้ · กด 🖨️ ในเอกสารเพื่อบันทึกเป็น PDF · หน้านี้มีปุ่ม <b>💾 บันทึกงาน</b> และ <b>🔎 ค้นหางาน</b>ที่บันทึกไว้</div>
+    </div>
+
+    <div class="card">
+      <h3>4.11 กล่องไฟ — ออกแบบหน้ากล่องเอง (พื้นหลัง + ข้อความ + โลโก้) <span class="pill">ใหม่</span></h3>
+      <p><b>ใช้เมื่อ:</b> ทำกล่องไฟ (ทรงกลม/สี่เหลี่ยม/วงรี/ไฟออกรอบ ฯลฯ) ที่ต้องออกแบบหน้ากล่องเอง — วางพื้นหลัง + ข้อความ + ไอคอน/โลโก้ เช่น <b>ป้ายห้องน้ำ ชาย/หญิง</b></p>
+      <p><b>แผงนี้โผล่เฉพาะเมื่อเลือกประเภท "กล่องไฟ"</b> (8–15, 18) → เลื่อนดูแผง <b>"💡 กล่องไฟ — ออกแบบหน้ากล่อง"</b> ในคอลัมน์ซ้าย</p>
+      <p><b>ตัวอย่างจริง — ป้ายห้องน้ำกล่องไฟทรงกลม:</b></p>
+      <div class="step"><b>1.</b> ลากรูปโลโก้ร้าน (เช่น BARON'S) เข้าช่อง <b>"ลากไฟล์มาวาง"</b> ด้านบน (ถ้าจะใช้เป็นพื้นหลัง)</div>
+      <div class="step"><b>2.</b> เลือกประเภทป้าย <b>"10 · กล่องไฟทรงกลม 1 หน้า"</b> (หรือกล่องอื่น) → แผงออกแบบหน้ากล่องจะเปิดขึ้น</div>
+      <div class="step"><b>3.</b> <b>ขนาดกล่อง (ซม.):</b> ใส่ กว้าง × สูง × ลึก (เว้นสูง = อัตโนมัติ)</div>
+      <div class="step"><b>4. พื้นหลัง:</b> ติ๊ก <b>"🌄 ใช้ภาพที่อัปโหลด (ด้านบน) เป็นพื้นหลัง"</b> → ภาพที่ลากเข้าไปจะเป็นพื้นหลังหน้ากล่อง (กด ✕ ล้าง เอาออกได้)</div>
+      <div class="step"><b>5. ข้อความ:</b> พิมพ์ในช่องข้อความ คั่นแต่ละช่องด้วย <b>|</b> เช่น <code>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</code> · เลือกฟอนต์ + สีอักษร</div>
+      <div class="step"><b>6. ไอคอน/โลโก้:</b> อัปโหลดไอคอน (ชาย/หญิง) กี่รูปก็ได้ · ติ๊ก <b>"เปลี่ยนสีโลโก้"</b> + เลือกสี (สำหรับไอคอนสีเดียว) · กด <b>"🗑️ ล้างโลโก้"</b> ลบทั้งหมด</div>
+      <div class="step"><b>7. จัดวาง:</b> <b>ลากโลโก้/อักษรบนพรีวิว</b> ไปวางตำแหน่งที่ต้องการ (มีกรอบเส้นประบอกว่าลากได้) · สไลเดอร์ปรับ <b>ขนาดอักษร/ขนาดโลโก้</b> (อักษรใหญ่เท่ากันทุกช่อง) · ปุ่ม <b>"🎯 จัดกึ่งกลาง"</b> จัดเข้ากลาง</div>
+      <div class="step"><b>8.</b> กด <b>"🖼️ สร้างหน้ากล่อง + ทำ 3 มิติ"</b> → ได้กล่องไฟ 3 มิติ + เส้นตัด + ใบสั่งผลิต ครบ</div>
+      <div class="tip">💡 <b>การติดตั้ง</b> เลือกที่แผง <b>🦾 แขนยึด</b> (ไม่มี/แขวนเพดาน 2 แขน/แขนข้าง) · <b>ไฟออกรอบ</b> = เลือกประเภท 18 (อะคริลิคทั้งใบ เรืองแสงทุกด้าน ไม่มีคิ้ว)</div>
+      <div class="warn">⚠️ ถ้าโยนกล่องไฟเข้า "จำลองผนัง" แล้วเปิด 3 มิติ — เลือก <b>ประเภทกล่องไฟให้ตรง</b>ในแผง 3D ด้วย ระบบจะได้ทำหน้ากล่องเป็นแผ่นทึบเต็ม (ไม่โบ๋)</div>
     </div>
 
     <h2 id="m5">5. ความรู้ประเภทป้าย + ค่าเผื่อ</h2>
@@ -1258,7 +1283,7 @@ select.numin{cursor:pointer}
       <tr><td>STL (3 มิติ)</td><td>โมเดล 3 มิติ (mesh watertight) — เข้า Fusion 360 / โปรแกรม 3D / เครื่องพิมพ์ 3D · กด "🧊 ดาวน์โหลด STL" ตั้งความหนาได้</td></tr>
     </table>
 
-    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:30px">Graphic Design Solution · โดย Saai Tech — คู่มือฉบับใช้งานภายใน · อัปเดต ก.ค. 2026 (โครงเหล็กคานคู่ · นีออนเฟล็กซ์ · ใบสั่งผลิต + Cut Layers)</p>
+    <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:30px">Graphic Design Solution · โดย Saai Tech — คู่มือฉบับใช้งานภายใน · อัปเดต ก.ค. 2026 (โครงเหล็กคานคู่ · นีออนเฟล็กซ์ · กล่องไฟไฟออกรอบ + ออกแบบหน้ากล่อง · แขนยึดในจำลองผนัง · ใบสั่งผลิต + Cut Layers)</p>
   </div>
 </div>
 
@@ -4381,7 +4406,9 @@ var TRIMW=1, TRIMDIR='out';
     window._bxLogos.forEach(function(im,idx){ var w=document.createElement('span'); w.style.cssText='position:relative;display:inline-block';
       var t=document.createElement('img'); t.src=im.src; t.style.cssText='width:38px;height:38px;object-fit:contain;border:1px solid #fde68a;border-radius:5px;background:#fff';
       var x=document.createElement('span'); x.textContent='×'; x.style.cssText='position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:12px;line-height:16px;text-align:center;cursor:pointer;font-weight:700';
-      x.onclick=function(){ window._bxLogos.splice(idx,1); prev(); }; w.appendChild(t); w.appendChild(x); box.appendChild(w); }); } draw(); }
+      x.onclick=function(){ window._bxLogos.splice(idx,1); prev(); }; w.appendChild(t); w.appendChild(x); box.appendChild(w); }); }
+    if($('bxLogoClr'))$('bxLogoClr').style.display=(window._bxLogos.length?'inline-block':'none'); draw(); }
+  if($('bxLogoClr'))$('bxLogoClr').onclick=function(){ window._bxLogos=[]; prev(); };
   if($('bxLogoFile'))$('bxLogoFile').onchange=function(){ var files=this.files||[], cnt=files.length, done=0; if(!cnt)return;
     for(var i=0;i<cnt;i++){ (function(f){ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){ window._bxLogos.push(im); if(++done>=cnt)prev(); }; im.onerror=function(){ if(++done>=cnt)prev(); }; im.src=r.result; }; r.readAsDataURL(f); })(files[i]); }
     this.value=''; };
@@ -4401,6 +4428,8 @@ var TRIMW=1, TRIMDIR='out';
   function render(c,S,edit){
     var asp=aspect(); var PW=Math.round(560*S), PH=Math.max(Math.round(150*S),Math.round(PW/asp));
     c.width=PW; c.height=PH; var g=c.getContext('2d'); g.clearRect(0,0,PW,PH);
+    // 💡 หน้ากล่อง = อะคริลิคขาว 'ทึบเต็มหน้า' (กันหน้าโบ๋ตอนทำ 3D ในจำลองผนัง — เงาจะเป็นสี่เหลี่ยมเต็ม ไม่ใช่แค่รูปไอคอน)
+    g.fillStyle='#ffffff'; g.fillRect(0,0,PW,PH);
     if(window._bxBg){ var bg=window._bxBg, bw=(bg.width||bg.naturalWidth||1), bh=(bg.height||bg.naturalHeight||1), br=bw/bh, cr=PW/PH, dw, dh;   // 🌄 พื้นหลัง (cover เต็มหน้า)
       if(br>cr){ dh=PH; dw=dh*br; } else { dw=PW; dh=dw/br; } g.drawImage(bg,(PW-dw)/2,(PH-dh)/2,dw,dh); }
     var lg=window._bxLogos||[], sg=segList();
@@ -4418,11 +4447,12 @@ var TRIMW=1, TRIMDIR='out';
   function draw(){ var pv=$('bxPreview'); if(!pv)return; sync(); var lg=window._bxLogos||[], sg=segList();
     if(!lg.length && !sg.length && !window._bxBg){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; }
   window._bxDrawPrev=draw;
-  // 🌄 ภาพพื้นหลัง (import) — วางข้อความ/โลโก้ทับ
+  // 🌄 พื้นหลัง = ภาพที่อัปโหลดจากด้านบน (ไม่เพิ่มช่องอัปโหลดใหม่)
   function loadBg(src){ var im=new Image(); im.onload=function(){ window._bxBg=im; if($('bxBgClr'))$('bxBgClr').style.display='inline'; draw(); }; im.src=src; }
-  if($('bxBgFile'))$('bxBgFile').onchange=function(){ var f=this.files&&this.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(f); this.value=''; };
-  if($('bxBgUse'))$('bxBgUse').onclick=function(){ if(typeof fileObj!=='undefined'&&fileObj&&fileObj.type&&fileObj.type.indexOf('image')>=0){ var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(fileObj); } else { alert('ยังไม่มีภาพที่อัปโหลด — ลากภาพเข้าหน้าหลักก่อน แล้วกดปุ่มนี้'); } };
-  if($('bxBgClr'))$('bxBgClr').onclick=function(){ window._bxBg=null; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); };
+  if($('bxBgUseChk'))$('bxBgUseChk').onchange=function(){
+    if(this.checked){ if(typeof fileObj!=='undefined'&&fileObj&&fileObj.type&&fileObj.type.indexOf('image')>=0){ var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(fileObj); } else { alert('ยังไม่มีภาพที่อัปโหลด — ลากภาพเข้าช่องด้านบนก่อน'); this.checked=false; } }
+    else { window._bxBg=null; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); } };
+  if($('bxBgClr'))$('bxBgClr').onclick=function(){ window._bxBg=null; if($('bxBgUseChk'))$('bxBgUseChk').checked=false; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); };
   // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง
   (function(){ var pv=$('bxPreview'); if(!pv)return;
     function P(e){ var r=pv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*pv.width/Math.max(1,r.width), y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*pv.height/Math.max(1,r.height)}; }
