@@ -4561,6 +4561,9 @@ async def api_geom3d(file: UploadFile = File(...),
         # 🆕 กล่องไฟล้อมตามทรง -> เชื่อมเป็นเงารวมก้อนเดียวก่อนสร้างโครง 3 มิติ
         if rec and rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+        # 🆕 กล่องไฟทรงเรขาคณิต (กลม/สี่เหลี่ยม/วงรี · type 10-15,18) -> ใช้ 'กล่องทึบ' เป็นรูปทรง (กันหน้าโบ๋ตอนทำ 3D)
+        elif rec and rec.get("box_shape"):
+            full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
         layers_out = []
         outer = full
         if rec:
