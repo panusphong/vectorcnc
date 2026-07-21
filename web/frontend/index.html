@@ -6544,37 +6544,46 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       if(header&&header!==grid&&header.parentNode) header.parentNode.removeChild(header);
     });
 
-    // 🧱 จัดใหม่เป็น 2 โซนแนวนอน · แต่ละโซน = เมนูซ้าย + พื้นที่ทำงานขวา (เส้นกั้นชัด)
-    //    บน = ออกแบบเบื้องต้น + เตรียมไฟล์ผลิต · ล่าง = จำลองผนัง (เมนูผนังย้ายจากขวามาซ้าย)
+    // 🧱 2 โซนแนวนอน · แต่ละโซน = เมนูซ้าย | พื้นที่ทำงานกลาง(เต็ม+กึ่งกลาง) | เมนูขวา
+    //    เมนูที่ยาว ตัดครึ่งไปฝั่งขวา · แยกบน(ออกแบบ)/ล่าง(ผนัง) ชัดเจน ของใครของมัน
     step(function(){
       var side=document.querySelector('.app-body .side'); if(!side) return;
-      // โซนบน-ขวา = พื้นที่แสดงแบบงาน (preview เดิมของ .stage)
+      var COLS='290px minmax(0,1fr) 280px';
+
+      // ===== โซนบน: ออกแบบ =====
+      // กลาง = พื้นที่แสดงแบบงาน (เต็มพื้นที่ + จัดกึ่งกลาง)
       var dTop=document.createElement('div'); dTop.id='designPane';
-      dTop.style.cssText='min-height:40vh;padding:16px;overflow:auto;background:var(--panel2);display:flex;align-items:center;justify-content:center;position:relative';
+      dTop.style.cssText='min-height:64vh;max-height:80vh;padding:16px;overflow:auto;background:var(--panel2);display:grid;place-items:center;position:relative';
       Array.prototype.slice.call(stage.children).forEach(function(c){ if(c!==wStage) dTop.appendChild(c); });
-      // ปุ่มเตรียมไฟล์ผลิต (ดาวน์โหลด/.ai ใน .out เดิม) → ย้ายลงใต้เมนูออกแบบ (ซ้ายบน)
-      var dl=document.createElement('div'); dl.style.cssText='margin-top:10px;border-top:2px dashed var(--line);padding-top:10px';
-      Array.prototype.slice.call(out.children).forEach(function(c){ dl.appendChild(c); });
-      side.appendChild(dl); side.style.borderRight='1px solid var(--line)'; side.style.maxHeight='none';
+      // ขวา = เตรียมไฟล์ผลิต (ดาวน์โหลด/.ai = .out เดิม กลับไปอยู่ขวาเหมือนเดิม)
+      var dRight=document.createElement('div'); dRight.id='designMenuR';
+      dRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:80vh';
+      Array.prototype.slice.call(out.children).forEach(function(c){ dRight.appendChild(c); });
+      // ซ้าย = เมนูออกแบบ (side)
+      side.style.borderRight='1px solid var(--line)'; side.style.maxHeight='80vh'; side.style.overflow='auto';
 
-      // โซนล่าง-ซ้าย = เมนูจำลองผนัง (ย้ายจากขวามาซ้าย) · โซนล่าง-ขวา = canvas ผนัง
-      wallCtrl.style.cssText='width:100%;border-right:1px solid var(--line);padding:16px;overflow:auto';
-      wStage.style.cssText='min-height:46vh;padding:16px;overflow:auto;background:#eef1f6';
-
-      // ประกอบ 2 โซน + หัวข้อคั่นชัด
       var topHead=document.createElement('div');
       topHead.style.cssText='background:#eef2ff;border-bottom:1px solid var(--line);padding:8px 16px;font-weight:800;color:#4338ca;font-size:13px';
       topHead.innerHTML='🎨 ส่วนที่ 1 · ออกแบบเบื้องต้น + เตรียมไฟล์งานผลิต';
       var topRow=document.createElement('div'); topRow.id='topPanel';
-      topRow.style.cssText='display:grid;grid-template-columns:320px 1fr;gap:0;align-items:start';
-      topRow.appendChild(side); topRow.appendChild(dTop);
+      topRow.style.cssText='display:grid;grid-template-columns:'+COLS+';gap:0;align-items:stretch';
+      topRow.appendChild(side); topRow.appendChild(dTop); topRow.appendChild(dRight);
+
+      // ===== โซนล่าง: จำลองผนัง =====  (เมนูผนัง 1 คอลัมน์ยาว → ตัดครึ่งซ้าย/ขวา)
+      var wk=Array.prototype.slice.call(wallCtrl.children); var mid=Math.ceil(wk.length/2);
+      var wRight=document.createElement('div'); wRight.id='wallMenuR';
+      wRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:82vh';
+      wk.slice(mid).forEach(function(c){ wRight.appendChild(c); });
+      wallCtrl.style.cssText='padding:16px;border-right:1px solid var(--line);overflow:auto;max-height:82vh;width:100%';
+      // กลาง = canvas ผนัง (เต็ม + กึ่งกลาง)
+      wStage.style.cssText='min-height:64vh;max-height:82vh;padding:16px;overflow:auto;background:#eef1f6;display:grid;place-items:center';
 
       var botHead=document.createElement('div');
       botHead.style.cssText='background:linear-gradient(90deg,#fff7ed,#eef2ff);border-top:5px solid #ea580c;border-bottom:2px solid #fed7aa;padding:9px 16px;font-weight:800;color:#ea580c;font-size:13px';
       botHead.innerHTML='📐 ส่วนที่ 2 · จำลองผนัง · วางสเกล · ประเมินราคา <span style="color:#64748b;font-weight:500;font-size:11px">— กด “ส่งเข้าจำลองผนัง” เอาแบบจากด้านบนลงมา หรือเริ่มงานใหม่ที่นี่ได้เลย</span>';
       var botRow=document.createElement('div'); botRow.id='bottomPanel';
-      botRow.style.cssText='display:grid;grid-template-columns:320px 1fr;gap:0;align-items:start';
-      botRow.appendChild(wallCtrl); botRow.appendChild(wStage);
+      botRow.style.cssText='display:grid;grid-template-columns:'+COLS+';gap:0;align-items:stretch';
+      botRow.appendChild(wallCtrl); botRow.appendChild(wStage); botRow.appendChild(wRight);
 
       appBody.style.display='block'; appBody.style.gridTemplateColumns='none';
       appBody.innerHTML='';
