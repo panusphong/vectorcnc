@@ -4418,7 +4418,8 @@ _AN_CACHE = {"t": 0.0, "data": None}
 
 def _stats_from_sheet(days):
     """อ่านสถิติสะสมจาก Google Sheet (แหล่งจริง — ไม่หายตอน deploy)"""
-    hook = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL
+    # ใช้ _sheet_hook() ตัวเดียวกับฝั่งเขียน (ล้าง space/tab/newline ที่ติดมาตอนวางใน Render)
+    hook = _sheet_hook()
     if not hook:
         return None
     import time as _t
@@ -4429,15 +4430,19 @@ def _stats_from_sheet(days):
         import urllib.parse
         u = hook + ("&" if "?" in hook else "?") + urllib.parse.urlencode(
             {"api": "stats", "days": int(days)})
-        with urllib.request.urlopen(u, timeout=12) as r:
-            j = json.loads(r.read().decode("utf-8"))
+        # User-Agent + timeout ยาวขึ้น (Apps Script cold start / ชีตแถวเยอะ อ่านช้าได้) + ตาม redirect googleusercontent
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (VectorCNC-Stats)"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            body = r.read().decode("utf-8", "replace")
+        j = json.loads(body)
         if j.get("ok"):
             j["source"] = "sheet"
             _AN_CACHE["t"] = _t.time()
             _AN_CACHE["data"] = j
             return j
-    except Exception:
-        pass
+        print("[analytics] read: sheet ตอบแต่ ok=false ->", str(body)[:160], flush=True)
+    except Exception as e:
+        print("[analytics] read failed:", repr(e)[:200], flush=True)
     return None
 
 
