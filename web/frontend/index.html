@@ -63,9 +63,6 @@ h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;c
 .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#CBD6E6}.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
 .app-title{font-size:13px;color:var(--dim)}
 .app-body{display:grid;grid-template-columns:300px 1fr 272px;min-height:calc(100vh - 246px)}
-.app-body.full-stage{grid-template-columns:300px 1fr !important}      /* ดูผลลัพธ์ 3มิติ -> ยุบคอลัมน์ขวา ให้ stage เต็มพื้นที่ */
-.app-body.full-stage>.out{display:none !important}
-.app-body.full-stage #ls3dImg{max-width:none !important}             /* ภาพ 3มิติขยายเต็ม */
 @media(max-width:980px){.app-body{grid-template-columns:1fr;min-height:auto}}
 .side{padding:20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
 .drop{border:2px dashed var(--line2);border-radius:14px;padding:22px 16px;text-align:center;cursor:pointer;transition:.2s;background:var(--panel2)}
@@ -2965,10 +2962,20 @@ window.setLang=setLang; window.t=t;
         '<td style="color:#94a3b8;white-space:nowrap">'+(x.ref||'เข้าตรง')+' · '+(x.device||'')+'</td>'+
         '<td class="n">'+(x.dur?fmtSec(x.dur):'')+'</td></tr>';
     }).join('') : '<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';
-    var src=(j.source==='sheet')
+    var isSheet=(j.source==='sheet');
+    var src=isSheet
       ? '<b style="color:#16a34a">📗 Google Sheet (ถาวร)</b>'
       : '<b style="color:#f59e0b">💾 ในเครื่อง (รีเซ็ตตอน deploy)</b>';
     q('swWhen').innerHTML='อัปเดต '+new Date().toLocaleTimeString('th-TH')+' · แหล่งข้อมูล: '+src;
+    // ⚠️ แบนเนอร์เตือนเมื่อยังไม่เชื่อม Google Sheet -> สถิติจะรีเซ็ตทุก deploy
+    var wb=q('swWarn');
+    if(!wb){ wb=document.createElement('div'); wb.id='swWarn';
+      var hdr=q('swWhen'), host=(hdr&&hdr.closest)?hdr.closest('.sw-h'):null;
+      if(host&&host.parentNode){ host.parentNode.insertBefore(wb, host.nextSibling); }
+      else if(q('statsWidget')){ q('statsWidget').insertBefore(wb, q('statsWidget').firstChild); } }
+    if(wb){ if(isSheet){ wb.style.display='none'; }
+      else { wb.style.cssText='display:block;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#92400e;line-height:1.75';
+        wb.innerHTML='⚠️ <b>สถิติยังไม่สะสมถาวร — ข้อมูลจะรีเซ็ตทุกครั้งที่ deploy</b><br>ตอนนี้เก็บ "ในเครื่อง" (ชั่วคราว). ให้สะสมถาวร: Deploy สคริปต์ <code>apps_script/Analytics.gs</code> เป็น Web App (Execute as: Me · Who has access: <b>Anyone</b>) แล้วตั้ง env <code>ANALYTICS_WEBHOOK</code> = URL /exec บน Render → หัวข้อจะเปลี่ยนเป็น 📗 Google Sheet (ถาวร)'; } }
   }
   function card(k,v,s,raw){
     return '<div class="sw-c"><div class="k">'+k+'</div><div class="v">'+
