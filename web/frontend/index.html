@@ -1642,8 +1642,8 @@ select.numin{cursor:pointer}
           <button class="btn ghost" id="wPAddBox" style="width:100%;padding:5px;font-size:12px;margin-top:2px">➕ เพิ่มกรอบ (ตัวอักษร)</button>
         </div>
         <div id="wPSingleWrap">
-          <label class="cslab">ประเภทป้าย</label>
-          <input class="numin" id="wPType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย" autocomplete="off">
+          <label class="cslab">ประเภทป้าย (เลือกเพื่อคิดราคาตามขนาด)</label>
+          <input class="numin" id="wPType" list="wPTypeList" placeholder="🔍 พิมพ์ค้นหา / เลือกประเภทป้าย (100+ รายการ)" autocomplete="off" style="width:100%">
         </div>
         <datalist id="wPTypeList"></datalist>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
@@ -4774,8 +4774,8 @@ $('goLayer').onclick=function(){
               if($('wRatio'))$('wRatio').value=String(Math.round(_r*1000)/1000);
               if($('wSlider'))$('wSlider').value=String(Math.round(_r*100)); }
             if($('wDsgnSplit'))$('wDsgnSplit').checked=false;              // แบบจากด้านบน = ป้ายชิ้นเดียว ไม่ตีกรอบแยก
-            var _mst=$('mainSignType'), _wpt=$('wPType');
-            if(_mst&&_wpt&&_mst.selectedIndex>=0){ var _nm=(_mst.options[_mst.selectedIndex].textContent||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); if(_nm)_wpt.value=_nm; }
+            var _mst=$('mainSignType');
+            if(_mst&&_mst.selectedIndex>=0&&typeof window._setWallType==='function'){ var _nm=(_mst.options[_mst.selectedIndex].textContent||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); if(_nm)window._setWallType(_nm); }
           }catch(_e){}
           if(typeof _wallLoad==='function'){ _wallLoad(e.target.result,(lastName||'design')+' (จากออกแบบ)'); }
           else { var im=new Image(); im.onload=function(){ window.wallImg=im; try{wallDraw();}catch(_x){} }; im.src=e.target.result; }
@@ -6293,9 +6293,17 @@ function wAddBox(){ var n=measBoxes.length, col=WBOXCOLORS[n%WBOXCOLORS.length],
   measBoxes.push(nb); renderBoxRows(); wallDraw(); }
 if($('wPAddBox'))$('wPAddBox').onclick=wAddBox;
 function buildTypeList(){ var opts='';
-  Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var hint=(it.t==='f'?(it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.'):'\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23'); opts+='<option value="'+k.replace(/"/g,'&quot;')+'">'+hint+'</option>'; });
-  if($('wPTypeList'))$('wPTypeList').innerHTML=opts;
+  Object.keys(WCAT).forEach(function(k){ var it=WCAT[k]; var hint=(it.t==='f'?(it.p.toLocaleString()+'/\u0e15\u0e23.\u0e21.'):'\u0e23\u0e32\u0e04\u0e32\u0e15\u0e32\u0e21\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e2d\u0e31\u0e01\u0e29\u0e23'); opts+='<option value="'+k.replace(/"/g,'&quot;')+'">'+k+' \u00b7 '+hint+'</option>'; });
+  if($('wPTypeList'))$('wPTypeList').innerHTML=opts;   // 100+ \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23 (\u0e04\u0e49\u0e19\u0e2b\u0e32/\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e14\u0e49) \u00b7 \u0e43\u0e0a\u0e49\u0e23\u0e48\u0e27\u0e21\u0e01\u0e31\u0e1a\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21/\u0e42\u0e25\u0e42\u0e01\u0e49
 }
+// \ud83c\udfaf \u0e15\u0e31\u0e49\u0e07\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e43\u0e19\u0e15\u0e31\u0e27\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32 (input+datalist) \u0e43\u0e2b\u0e49\u0e15\u0e23\u0e07\u0e01\u0e31\u0e1a WCAT key \u2014 match exact -> contains
+window._setWallType=function(nm){ var el=$('wPType'); if(!el||!nm||typeof WCAT!=='object')return false; nm=String(nm).trim();
+  var keys=Object.keys(WCAT||{}), hit='';
+  for(var i=0;i<keys.length;i++){ if(keys[i]===nm){hit=keys[i];break;} }
+  if(!hit)for(var j=0;j<keys.length;j++){ if(keys[j].indexOf(nm)>=0||nm.indexOf(keys[j])>=0){hit=keys[j];break;} }
+  if(hit){ el.value=hit; try{el.dispatchEvent(new Event('input'));}catch(_e){} try{el.dispatchEvent(new Event('change'));}catch(_e){} return true; }
+  return false;
+};
 buildTypeList();
 renderBoxRows();
 var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0}, _txtMode='move', _txtCorner=-1;
@@ -6663,14 +6671,14 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
 
     // 4) ตัดตัวซ้ำ (พิมพ์ข้อความ/ประเภทป้าย) · แต่ 'ช่องรับไฟล์โลโก้/ป้าย (wDrop)' โชว์ไว้ให้ลากไฟล์ .ai เข้าโซนผนังได้เลย
     step(function(){
-      ['wTxtMakeBox','wPSingleWrap'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; });
+      ['wTxtMakeBox'].forEach(function(id){ var e=H(id); if(e)e.style.display='none'; });   // 'ประเภทป้าย' (wPSingleWrap) โชว์ไว้ในช่องราคา ให้ user เลือก dropdown เองได้
     });
 
     // 4b) ประเภทป้าย: หน้าแรก(mainSignType) = ตัวจริง → sync ชื่อไป wPType เพื่อคิดราคา
     var mst=H('mainSignType'), wpt=H('wPType');
     function stripNo(s){ return (s||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); }
-    function syncType(){ if(!mst||!wpt)return; var nm=''; try{ nm=stripNo(mst.options[mst.selectedIndex].textContent); }catch(_e){}
-      if(nm){ wpt.value=nm; try{wpt.dispatchEvent(new Event('input'));}catch(_e){} try{wpt.dispatchEvent(new Event('change'));}catch(_e){} } }
+    function syncType(){ if(!mst)return; var nm=''; try{ nm=stripNo(mst.options[mst.selectedIndex].textContent); }catch(_e){}
+      if(nm && typeof window._setWallType==='function'){ window._setWallType(nm); } }
     step(function(){ if(mst)mst.addEventListener('change',syncType); });
 
     // 5) ปิด modal ถาวร + ซ่อนปุ่ม/ลิงก์เปิดหน้าจำลองผนังที่ซ้ำ
