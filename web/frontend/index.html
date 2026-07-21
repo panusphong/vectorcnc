@@ -2388,10 +2388,11 @@ function $(id){return document.getElementById(id);}
     var W=W3.G.w_mm, H=W3.G.h_mm;
     // ✅ เก็บภาพงานจริง (art) ให้ชัวร์: ระหว่าง build() ตัว wallImg ยังเป็นรูปจริงเสมอ (apply จะเซ็ต canvas ทีหลัง)
     try{ if((!FLAT || (FLAT.tagName==='CANVAS')) && typeof wallImg!=='undefined' && wallImg && wallImg.tagName==='IMG'){ FLAT=wallImg; window._wallFlatImg=FLAT; } }catch(_ef){}
-    var PX=1400/Math.max(W,H);
+    var PX=2400/Math.max(W,H);   // 🔎 เพิ่มความละเอียด (จาก 1400) → ขอบเนียน คมชัด เหมือนภาพ SVG หน้าออกแบบ
     var cv=document.createElement('canvas');
     cv.width=Math.max(2,Math.round(W*PX)); cv.height=Math.max(2,Math.round(H*PX));
     var g=cv.getContext('2d');
+    try{ g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high'; g.lineJoin='round'; g.lineCap='round'; }catch(_e){}   // เนียน anti-alias
     var D=Math.max(0,W3.rd)*10;
     var dvx=D*Math.cos(W3.el)*Math.sin(W3.az);
     var dvy=-D*Math.sin(W3.el);
@@ -2432,9 +2433,10 @@ function $(id){return document.getElementById(id);}
         var Q=quads[t];
         var p1=T(Q.a[0],Q.a[1]),p2=T(Q.b[0],Q.b[1]);
         var p3=T(Q.b[0]+dx/k,Q.b[1]+dy/k),p4=T(Q.a[0]+dx/k,Q.a[1]+dy/k);
+        var _slw=Math.max(1,cv.width*0.0016);   // เส้นปิดรอยต่อระหว่างผนังข้าง (กันรอยแตกเป็นเส้นบางตอนความละเอียดสูง)
         g.beginPath();g.moveTo(p1[0],p1[1]);g.lineTo(p2[0],p2[1]);
         g.lineTo(p3[0],p3[1]);g.lineTo(p4[0],p4[1]);g.closePath();
-        g.fillStyle=SIDE;g.strokeStyle=SIDE;g.lineWidth=1;g.fill();g.stroke();
+        g.fillStyle=SIDE;g.strokeStyle=SIDE;g.lineWidth=_slw;g.fill();g.stroke();
         if(Q.sh>0.02){g.fillStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';
           g.strokeStyle='rgba(0,0,0,'+Q.sh.toFixed(3)+')';g.fill();g.stroke();}
       }
@@ -5777,6 +5779,7 @@ function _wPriceBanner(g,M,ww,wh){
 }
 function wallDraw(){
   var cv=$('wCanvas'); if(!cv) return; var g=cv.getContext('2d');
+  try{ g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high'; }catch(_e){}   // 🔎 ย่อภาพ 3D ความละเอียดสูงให้เนียน
   window._wDimOff=window._wDimOff||{}; window._wDimHit=[];   // 🏷️ ตัวเลขระยะลากได้: เก็บ hitbox ใหม่ทุกครั้งที่วาด
   var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
   var ww=Math.round(s.Wm*ppm), wh=Math.round(s.Hm*ppm);
