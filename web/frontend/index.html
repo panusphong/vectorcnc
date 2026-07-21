@@ -4764,8 +4764,22 @@ $('goLayer').onclick=function(){
             for(var i=0;i<tabs.length;i++)tabs[i].classList.toggle('on',tabs[i].getAttribute('data-wm')==='design');
             if($('wDsgnHint'))$('wDsgnHint').style.display='block'; if($('wMeasHint'))$('wMeasHint').style.display='none';
           }catch(_e){}
+          // 🎯 แบบจากด้านบน = auto ขนาดจริง (กว้าง×สูง) ตามสเกลผนัง + คิดราคาตามประเภทที่เลือก (เหมือนเพิ่มกล่องข้อความ)
+          //    ตีกรอบแยกโลโก้/ตัวอักษร ใช้เฉพาะไฟล์ภาพล้วนที่ไม่ได้ทำแบบจากด้านบน
+          try{
+            var _rwmm=parseFloat($('realW')&&$('realW').value)||0;
+            var _wwcm=parseFloat($('wWall')&&$('wWall').value)||400;
+            if(_rwmm>0&&_wwcm>0){ var _r=Math.max(0.02,Math.min(0.98,(_rwmm/10)/_wwcm));
+              if($('wMode'))$('wMode').value='width';
+              if($('wRatio'))$('wRatio').value=String(Math.round(_r*1000)/1000);
+              if($('wSlider'))$('wSlider').value=String(Math.round(_r*100)); }
+            if($('wDsgnSplit'))$('wDsgnSplit').checked=false;              // แบบจากด้านบน = ป้ายชิ้นเดียว ไม่ตีกรอบแยก
+            var _mst=$('mainSignType'), _wpt=$('wPType');
+            if(_mst&&_wpt&&_mst.selectedIndex>=0){ var _nm=(_mst.options[_mst.selectedIndex].textContent||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); if(_nm)_wpt.value=_nm; }
+          }catch(_e){}
           if(typeof _wallLoad==='function'){ _wallLoad(e.target.result,(lastName||'design')+' (จากออกแบบ)'); }
           else { var im=new Image(); im.onload=function(){ window.wallImg=im; try{wallDraw();}catch(_x){} }; im.src=e.target.result; }
+          setTimeout(function(){ try{ if(typeof wallPrice==='function')wallPrice(); }catch(_e){} }, 250);   // คิดราคาให้ครบหลังภาพโหลด
           try{ vcLogSim && vcLogSim('จำลองผนัง (จากออกแบบ)'); }catch(_e){}
         };
         // เช็คสิทธิ์เหมือนปุ่มเมนู (โหลดตารางราคา) แล้วเปิด
@@ -5670,6 +5684,26 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
   } else { window._armHandle=null; }
   g.restore();
 }
+// 🔩 โครงเหล็กยึดป้าย (โครงยึดป้าย = เหล็ก/สแตนเลส) — วาด 'คานคู่แนวนอน' พาดกลางตัวอักษร + ปิดหัวท้าย + 2 แขนยึดเพดาน
+//    (แบบเดียวกับหน้าออกแบบ) · โชว์เสมอไม่ว่าป้ายอยู่ตำแหน่งไหน
+function _wDrawSteelFrame(g, sx,sy,sw,sh, ppm, M){
+  g.save();
+  var steel='#9aa1ac', steelD='#5b626d';
+  var barH=Math.max(4, Math.min(sh*0.09, sw*0.02));
+  var cy=sy+sh/2, gap=sh*0.40;
+  var y1=cy-gap/2-barH/2, y2=cy+gap/2-barH/2;
+  var inset=Math.max(6, sw*0.03), x0=sx+inset, x1=sx+sw-inset, w=Math.max(4,x1-x0);
+  g.strokeStyle=steelD; g.lineWidth=1;
+  // คานคู่แนวนอน (พาดกลางตัวอักษร)
+  [y1,y2].forEach(function(y){ g.fillStyle=steel; g.fillRect(x0,y,w,barH); g.strokeRect(x0,y,w,barH); });
+  // ปิดหัวท้ายซ้าย-ขวา = คานตั้งเชื่อมคานคู่เป็นกรอบ
+  var capW=Math.max(3,barH*0.85), capY=y1, capH=(y2+barH)-y1;
+  [x0, x1-capW].forEach(function(x){ g.fillStyle=steel; g.fillRect(x,capY,capW,capH); g.strokeRect(x,capY,capW,capH); });
+  // 2 แขนยื่นขึ้นยึดเพดาน (คลิปไม่ให้เกินฝ้า)
+  var armW=Math.max(3,barH*0.85), top=Math.max((M||0), sy-Math.max(sh*0.35,30));
+  if(y1-top>2){ [sx+sw*0.30, sx+sw*0.70].forEach(function(ax){ g.fillStyle=steel; g.fillRect(ax-armW/2, top, armW, y1-top); g.strokeStyle=steelD; g.strokeRect(ax-armW/2, top, armW, y1-top); }); }
+  g.restore();
+}
 function _wDrawSplit(g,M,ww,wh){
   var Wc=parseFloat($('wWall').value)||0, Hc=parseFloat($('hWall').value)||0;
   measBoxes.forEach(function(b){
@@ -5761,7 +5795,11 @@ function wallDraw(){
   wallPos.fx=(cx-M)/ww; wallPos.fy=(cy-M)/wh;
   var sx=cx-sw/2, sy=cy-sh/2;
   var mLcm=(sx-M)/ppm, mRcm=((M+ww)-(sx+sw))/ppm, mTcm=(sy-M)/ppm, mBcm=((M+wh)-(sy+sh))/ppm;
-  try{ var _armMode=($('wArm')&&$('wArm').value)||(_wFrameKind()?'top2':'none'); if(_armMode!=='none')_wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armMode); }catch(_e){}
+  try{
+    var _armSel=($('wArm')&&$('wArm').value)||'none';
+    if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }         // เลือกแขน = วาดแขนตามที่เลือก
+    else if(_wFrameKind()){ _wDrawSteelFrame(g,sx,sy,sw,sh,ppm,M); }                      // เลือกโครงเหล็ก/สแตนเลส (ไม่มีแขน) = วาดคานคู่พาดกลาง (หลังตัวอักษร)
+  }catch(_e){}
   if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
   else { }
   if($('wLabels').checked){
@@ -6190,7 +6228,7 @@ function wallPrice(){ if(!$('wPResult'))return;
   var lines=[], total=0, anyLight=false;
   function addLine(label,type,a,role){ if(!type){ lines.push({label:label,empty:true}); return; }
     if(wIsLight(type))anyLight=true;
-    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, frameKey, role);
+    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, 'none', role);   // 🔩 โครงคิดเป็นบรรทัดแยกด้านล่าง (คิดครั้งเดียวทั้งป้าย · กันซ้ำ)
     if(r.error){ lines.push({label:label,error:r.error}); return; }
     lines.push({label:label,type:type,w:Math.round(a.w),h:Math.round(a.h),r:r}); total+=r.total; }
   if(splitOn){
@@ -6210,10 +6248,18 @@ function wallPrice(){ if(!$('wPResult'))return;
     var _armRate=1800; var _armCost=Math.round(_asqm*_armRate);
     if(_armCost>0){ lines.push({armLine:true,arm:_armSel,sqm:_asqm,rate:_armRate,fee:_armCost}); total+=_armCost; }
   }
+  // 🔩 โครงยึดป้าย (เหล็ก 1,800 / สแตนเลส 4,800 ต่อ ตร.ม.) = บรรทัดแยกชัดเจน · คิดครั้งเดียวทั้งป้าย · เพิ่มเสมอเมื่อเลือกโครง
+  if(frameKey==='steel'||frameKey==='stainless'){
+    var _fr={steel:1800,stainless:4800}[frameKey];
+    var _fa=wallSignAreaSqm(); var _fsq=Math.max(0,(_fa.w/100)*(_fa.h/100));
+    var _fc=Math.round(_fsq*_fr);
+    if(_fc>0){ lines.push({frameLine:true,kind:frameKey,sqm:_fsq,rate:_fr,fee:_fc}); total+=_fc; }
+  }
   var multi=_valid.length>1;
   var html=lines.map(function(l){
     if(l.colorLine)return '<div style="margin-bottom:3px">\ud83c\udfa8 <b>\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e2a\u0e35 \u00d7 1,500</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(l.armLine){ var _an=(l.arm==='top2'?'\u0e41\u0e02\u0e27\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 2 \u0e41\u0e02\u0e19':l.arm==='side1'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 1 \u0e41\u0e02\u0e19':l.arm==='side2'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 2 \u0e41\u0e02\u0e19':'\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14'); return '<div style="margin-bottom:3px">\ud83e\uddbe <b>\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14/\u0e41\u0e02\u0e27\u0e19</b> <span style="font-size:10px;opacity:.85">'+_an+' \u00b7 '+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+' (\u0e40\u0e17\u0e48\u0e32\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01)</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
+    if(l.frameLine){ var _fn=(l.kind==='stainless'?'\u0e42\u0e04\u0e23\u0e07\u0e2a\u0e41\u0e15\u0e19\u0e40\u0e25\u0e2a':'\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01'); return '<div style="margin-bottom:3px">\ud83d\udd29 <b>'+_fn+'</b> <span style="font-size:10px;opacity:.85">'+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
     if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
     var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
@@ -6564,7 +6610,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       if(stb&&stb.parentNode)stb.parentNode.insertBefore(extra, stb.nextSibling);
       // (ข) ขวา = เตรียมไฟล์ผลิต: วัสดุ/เครื่องตัด(.grp) → โหมด/ขนาด/kerf(.set) → ปุ่มแปลง(go/goLayer) → ดาวน์โหลด(.out)
       var dRight=document.createElement('div'); dRight.id='designMenuR';
-      dRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:80vh';
+      dRight.style.cssText='padding:16px;border-left:1px solid var(--line);overflow:auto;max-height:80vh;display:flex;flex-direction:column;gap:12px';
       Array.prototype.slice.call(out.children).forEach(function(c){ dRight.appendChild(c); });      // ดาวน์โหลด/.ai อยู่ล่างสุด
       var setEl=side.querySelector('.set'), grpEl=side.querySelector('.grp');
       [H('goLayer'), H('go'), setEl, grpEl].forEach(function(el){ if(el)dRight.insertBefore(el, dRight.firstChild); }); // ดันขึ้นบน: grp, set, go, goLayer
