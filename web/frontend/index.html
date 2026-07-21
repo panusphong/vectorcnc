@@ -1531,6 +1531,22 @@ select.numin{cursor:pointer}
       </div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg .psd ก็ได้)<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง หรือไฟล์เวกเตอร์ .ai/.psd · แตกชิ้น/เลเยอร์ให้เลือกได้ · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span><input id="wFile" type="file" accept="image/*,.ai,.pdf,.eps,.ps,.svg,.psd,.psb,application/pdf,application/postscript,application/illustrator,image/svg+xml,image/vnd.adobe.photoshop" hidden></div>
+      <!-- 💡 เอฟเฟกต์ไฟบนภาพป้าย (ไม่ต้องเปิด 3 มิติ) -->
+      <div style="margin-top:12px;padding:11px;border:1px solid #fde68a;border-radius:10px;background:#fffbeb">
+        <div style="font-weight:700;font-size:13px;color:#b45309;margin-bottom:6px">💡 เอฟเฟกต์ไฟ (บนภาพป้าย)</div>
+        <div id="wFlatFx" style="display:flex;gap:5px;flex-wrap:wrap">
+          <button class="chip on" data-fx="off" type="button" style="font-size:11px">◻ ไม่มีไฟ</button>
+          <button class="chip" data-fx="front" type="button" style="font-size:11px">🔆 ออกหน้า</button>
+          <button class="chip" data-fx="back" type="button" style="font-size:11px">🌙 ออกหลัง</button>
+          <button class="chip" data-fx="around" type="button" style="font-size:11px">💫 ออกรอบ</button>
+        </div>
+        <div style="font-size:11px;color:#92700a;margin:7px 0 3px">แสง (อุณหภูมิ)</div>
+        <div id="wFlatTemp" style="display:flex;gap:5px">
+          <button class="chip on" data-t="warm" type="button" style="font-size:11px;flex:1">🔥 วอร์ม</button>
+          <button class="chip" data-t="white" type="button" style="font-size:11px;flex:1">⚪ ขาว</button>
+          <button class="chip" data-t="cool" type="button" style="font-size:11px;flex:1">❄️ คูล</button>
+        </div>
+      </div>
       <!-- 🧊 ป้าย 3 มิติจริงบนผนัง -->
       <div style="margin-top:12px;padding:11px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
         <label style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;color:#0f766e;cursor:pointer">
@@ -5833,7 +5849,26 @@ function wallDraw(){
     if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }         // เลือกแขน = วาดแขนตามที่เลือก
     else if(_wFrameKind()){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,'top2'); _wDrawSteelRails(g,sx,sy,sw,sh,ppm,true); }  // โครงเหล็ก = แขน + คานคู่ (วาดก่อนภาพ = อยู่หลังตัวอักษร โผล่เฉพาะช่องที่ไม่โดนบัง)
   }catch(_e){}
-  if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
+  if(wallImg){
+    // 💡 เอฟเฟกต์ไฟบนภาพแบน (ไม่ต้องเปิด 3 มิติ) — ออกหน้า/ออกหลัง/ออกรอบ + เลือกแสง
+    var _ffx=window._wFlatFx||'off', _ftmp=window._wFlatTemp||'warm';
+    var _fcol=(_ftmp==='cool')?'#86b9ff':(_ftmp==='white'?'#ffffff':'#ffb457');
+    if(_ffx==='back'||_ffx==='around'){                       // ฮาโลเรืองด้านหลัง (บนผนัง) ก่อนวาดตัวป้าย
+      g.save(); g.shadowColor=_fcol;
+      var _ps=(_ffx==='around')?[0.10,0.06,0.035]:[0.075,0.045];
+      for(var _pi=0;_pi<_ps.length;_pi++){ g.shadowBlur=Math.max(8,sw*_ps[_pi]); g.drawImage(wallImg,sx,sy,sw,sh); }
+      g.restore();
+    }
+    g.drawImage(wallImg,sx,sy,sw,sh);                          // ตัวป้ายจริง
+    if(_ffx==='front'||_ffx==='around'){                      // สาดแสงบน 'ตัวป้าย' (เฉพาะพื้นที่ป้าย) ให้ดูมีไฟ
+      try{ var _ow=Math.max(1,Math.round(sw)), _oh=Math.max(1,Math.round(sh));
+        var _oc=document.createElement('canvas'); _oc.width=_ow; _oc.height=_oh; var _og=_oc.getContext('2d');
+        _og.drawImage(wallImg,0,0,_ow,_oh);
+        _og.globalCompositeOperation='source-atop'; _og.fillStyle=_fcol; _og.globalAlpha=(_ffx==='front')?0.30:0.18; _og.fillRect(0,0,_ow,_oh);
+        g.save(); g.globalCompositeOperation='lighter'; g.drawImage(_oc,sx,sy,sw,sh); g.restore();
+      }catch(_e){}
+    }
+  }
   // 🔩 ป้ายวัด 'คานคู่ X cm' — วาดหลังภาพ (นอกตัวป้าย) ให้เห็นตัวเลขเสมอ
   try{ if((($('wArm')&&$('wArm').value)||'none')==='none' && _wFrameKind()){ _wDrawSteelRails(g,sx,sy,sw,sh,ppm,false,true); } }catch(_e){}
   if($('wLabels').checked){
@@ -6307,6 +6342,15 @@ function wallPrice(){ if(!$('wPResult'))return;
   try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){}
 }
 ['wPColorN','wPFrame'].forEach(function(id){ var el=$(id); if(el){ el.oninput=wallDraw; el.onchange=wallDraw; } });
+// 💡 เอฟเฟกต์ไฟบนภาพแบน (ผนัง) — ปุ่มเอฟเฟกต์ + อุณหภูมิแสง (ไม่ต้องเปิด 3 มิติ)
+window._wFlatFx=window._wFlatFx||'off'; window._wFlatTemp=window._wFlatTemp||'warm';
+(function(){ ['wFlatFx','wFlatTemp'].forEach(function(gid){ var gg=$(gid); if(!gg)return;
+  gg.querySelectorAll('.chip').forEach(function(b){ b.onclick=function(){
+    gg.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on');}); b.classList.add('on');
+    if(gid==='wFlatFx')window._wFlatFx=b.getAttribute('data-fx'); else window._wFlatTemp=b.getAttribute('data-t');
+    try{wallDraw();}catch(_e){}
+  };});
+}); })();
 // 🦾 แขนยึดในหน้าจำลองผนัง — โชว์/ซ่อนช่องตั้งค่า + วาดใหม่
 function _wArmToggle(){ var v=($('wArm')&&$('wArm').value)||'none'; if($('wArmRow'))$('wArmRow').style.display=(v==='none')?'none':'flex'; if($('wArmSideWrap'))$('wArmSideWrap').style.display=(v==='side1'||v==='side2')?'block':'none'; }
 ['wArm','wArmLen','wArmEdge','wArmSide'].forEach(function(id){ var el=$(id); if(el){ el.oninput=function(){_wArmToggle();wallDraw();}; el.onchange=function(){_wArmToggle();wallDraw();}; } });
