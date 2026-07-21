@@ -5703,6 +5703,10 @@ function wallReset(){ if(!confirm('เคลียร์ทุกอย่าง
   if($('wSpot'))$('wSpot').checked=false; if($('wSpotRow'))$('wSpotRow').style.display='none';
   if($('wRatio'))$('wRatio').value='0.33'; if($('wSlider'))$('wSlider').value=33; if($('wMode'))$('wMode').value='width';
   if($('wPType'))$('wPType').value=''; if($('wPColorN'))$('wPColorN').value=0; if($('wPColorFee'))$('wPColorFee').textContent='0 บาท'; if($('wPFrame'))$('wPFrame').value='none';
+  // 🧹 เคลียร์ให้หมด: แขนยึด + ตัวเลขระยะที่ลาก + พื้นหลัง/โลโก้ในตัวประกอบ + cache alpha
+  if($('wArm'))$('wArm').value='none'; try{if(typeof _wArmToggle==='function')_wArmToggle();}catch(_e){}
+  window._wDimOff={}; window._wDimDrag=null; window._armHandle=null;
+  window._bxBg=null; window._bxLogos=[]; window._bxItems=[]; window._bxSig=''; window._wAlphaImg=null; window._wAlphaDat=null;
   if(typeof renderBoxRows==='function')renderBoxRows();
   if($('wPResult'))$('wPResult').innerHTML='เลือกประเภทป้าย → <b>0 บาท</b>'; _wLast=null;
   if($('wDrop'))$('wDrop').innerHTML='ลาก/คลิกเลือกภาพป้าย<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span>';
