@@ -69,7 +69,7 @@ def health():
         except Exception as e:
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
-            "version": "9.33-type3-edgelit-letters+type18-notrim",
+            "version": "9.35-type19-halo-backlit-letters",
             "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -897,6 +897,11 @@ SIGN_TYPES = {
            "layers": [{"name": "หน้าอะคริลิคขาวพิมพ์ (เต็มหน้า)", "off": 0.0, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ (ลึกกล่อง)", "h": 10.0}]},
+    # 🆕 ตัวอักษรยกขอบไฟออกหลัง (halo / backlit) — อักษรทึบยกขอบ ยึดลอยจากผนัง · LED ส่องออกหลัง เรืองบนผนังรอบตัวอักษร
+    "19": {"name": "ตัวอักษรยกขอบไฟออกหลัง", "depth_cm": 5.0, "back_lit": True, "glow_color": "#eaf2ff", "standoff_cm": 2.5,
+           "layers": [{"name": "หน้าอักษร (ทึบ)", "off": 0.0, "kind": "solid", "color": "#334155", "rgb": (51, 65, 85)},
+                      {"name": "แผ่นหลัง/ฐานยึด (LED ส่องหลัง)", "off": 0.5, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ (returns)", "h": 5.0}]},
 }
 
 
@@ -992,6 +997,7 @@ _TYPE_EN = {
     "อักษรยกขอบไฟออกหน้า + โครงแขวน": "Front-lit Raised Letters + Hanging Frame",
     "นีออนเฟล็กซ์": "Neon Flex + Clear Acrylic Backing",
     "กล่องไฟอะคริลิค ไฟออกรอบ": "Edge-lit Acrylic Light Box (glow all sides)",
+    "ตัวอักษรยกขอบไฟออกหลัง": "Halo-lit Raised Letters (back-lit)",
     "กล่องไฟ 2 หน้า": "Light Box · Double-Face",
     "งานยกขอบ": "Fabricated Return (Metal)",
     "งานยกขอบ มีไส้": "Fabricated Return · with Core",
@@ -1277,6 +1283,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
     _edgelit = bool(rec.get("edge_lit"))
+    _backlit = bool(rec.get("back_lit"))
     if _edgelit:                                       # 💡 ไฟออกรอบ = อะคริลิคทั้งใบ ไฟส่องออกทุกด้าน -> ผนังข้างเรืองแสง
         wallFill = "#fbe6b8"; edge = "#e6c672"
 
@@ -1304,6 +1311,13 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in polys:                               # ฮาโลรอบกล่อง (หน้า+ลึก) ให้แสงเรืองออกทุกด้าน
             parts.append('<path d="%s" fill="%s" filter="url(#w3dHalo)" opacity="0.55"/>' % (faced(pg, F), _gc))
             parts.append('<path d="%s" fill="%s" filter="url(#w3dHalo)" opacity="0.40"/>' % (faced(pg, Bk), _gc))
+    if _backlit and not _edgelit:                      # 💡 ไฟออกหลัง (halo) — เรืองเฉพาะด้านหลังตกกระทบผนังรอบตัวอักษร · หน้าอักษรทึบ
+        _gcb = rec.get("glow_color", "#eaf2ff")
+        parts.append('<defs><filter id="w3dHaloB" x="-80%%" y="-80%%" width="260%%" height="260%%"><feGaussianBlur stdDeviation="%.1f"/></filter></defs>'
+                     % max(8.0, S * 0.07))
+        for pg in polys:                               # ฮาโลด้านหลัง (Bk) = แสงเรืองบนผนังรอบอักษร (ไล่โทน 2 ชั้น)
+            parts.append('<path d="%s" fill="%s" filter="url(#w3dHaloB)" opacity="0.60"/>' % (faced(pg, Bk), _gcb))
+            parts.append('<path d="%s" fill="%s" filter="url(#w3dHaloB)" opacity="0.32"/>' % (faced(pg, Bk), _gcb))
     for pg in polys:                                   # ผนังข้าง (ขอบที่เห็น)
         cen = pg.centroid; cx, cy = cen.x, cen.y
         ring = list(pg.exterior.coords)
@@ -1695,12 +1709,18 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
             parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw / 2, cyb, tw, armbot - cyb + tw, steel, steelD, lw))
             parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="%s" stroke="%s" stroke-width="%.2f"/>' % (ax - tw * 1.1, cyb - tw * 0.9, tw * 2.2, tw * 0.9, plateC, steelD, lw))
     parts.append('<g filter="url(#fsh)">')
-    if art_href:                                       # หน้าพิมพ์: คิ้ว 1cm + พื้นขาว + artwork (ไม่ล้น)
-        _ik = full.buffer(-10.0); _ia = full.buffer(-14.0)
-        for pg in polys:
-            parts.append('<path d="%s" fill="#a9b4c4" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw))
-        for pg in P(_ik):
-            parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd"/>' % d(pg))
+    if art_href:                                       # หน้าพิมพ์
+        # 🆕 ไม่มีคิ้ว (กล่องไฟอะคริลิคไฟออกรอบ / edge-lit) = หน้าพิมพ์เต็มใบ ไม่มีแถบคิ้วเทา ไม่เว้นขอบขาว
+        _notrim = bool(rec.get("no_trim") or rec.get("edge_lit"))
+        _kg = 0.0 if _notrim else 10.0                 # ความกว้างคิ้ว (มม.)
+        _ag = max(1.5, S * 0.003) if _notrim else 14.0 # ระยะเว้น artwork จากขอบ (ไม่มีคิ้ว = เกือบเต็มขอบ)
+        _baseFill = "#fffdf5" if _notrim else "#a9b4c4"
+        _ik = full if _kg <= 0 else full.buffer(-_kg); _ia = full.buffer(-_ag)
+        for pg in polys:                               # ฐานหน้า: ไม่มีคิ้ว=ขาวเรืองเต็มหน้า · มีคิ้ว=แถบเทา
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), _baseFill, edge, lw))
+        if _kg > 0:                                    # พื้นขาวด้านใน — เฉพาะแบบมีคิ้ว
+            for pg in P(_ik):
+                parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd"/>' % d(pg))
         iap = P(_ia)
         if iap:
             parts.append('<defs><clipPath id="fArt" clip-rule="evenodd">%s</clipPath></defs>'
