@@ -398,12 +398,11 @@ select.numin{cursor:pointer}
                 <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#92700a;flex:1"><input type="checkbox" id="bxBgUseChk"> 🌄 ใช้ภาพที่อัปโหลด (ด้านบน) เป็นพื้นหลัง</label>
                 <span id="bxBgClr" style="display:none;color:#ef4444;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap">✕ ล้าง</span>
               </div>
-              <input class="numin" id="bxCompText" placeholder="ข้อความ (คั่นแต่ละช่องด้วย | )" style="padding:5px;width:100%;font-size:12px">
+              <input class="numin" id="bxCompText" placeholder="พิมพ์ข้อความ (พิมพ์อะไรขึ้นตามนั้น)" style="padding:5px;width:100%;font-size:12px">
               <div style="display:flex;gap:5px;margin-top:5px">
                 <select class="numin" id="bxFont" style="flex:1;padding:5px;font-size:11px"></select>
                 <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#92700a">สี<input type="color" id="bxTextColor" value="#1f2937" style="width:30px;height:28px;border:none;background:none;padding:0;cursor:pointer"></label>
               </div>
-              <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#92700a;margin-top:5px"><input type="checkbox" id="bxDivider"> ➗ เส้นแบ่งกลาง (พิมพ์บนป้ายจริง · คั่นระหว่างช่อง)</label>
               <div style="font-size:10px;color:#92700a;margin:6px 0 2px">🖼️ โลโก้/ไอคอน (อัปโหลดกี่รูปก็ได้)</div>
               <div style="display:flex;gap:6px;align-items:center">
                 <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;flex:1;min-width:0">
@@ -4526,7 +4525,7 @@ var TRIMW=1, TRIMDIR='out';
   if($('bxLogoFile'))$('bxLogoFile').onchange=function(){ var files=this.files||[], cnt=files.length, done=0; if(!cnt)return;
     for(var i=0;i<cnt;i++){ (function(f){ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){ window._bxLogos.push(im); if(++done>=cnt)prev(); }; im.onerror=function(){ if(++done>=cnt)prev(); }; im.src=r.result; }; r.readAsDataURL(f); })(files[i]); }
     this.value=''; };
-  function segList(){ var t=($('bxCompText')&&$('bxCompText').value||'').trim(); return t?t.split('|').map(function(s){return s.trim();}):[]; }
+  function segList(){ var t=($('bxCompText')&&$('bxCompText').value||'').trim(); return t?[t]:[]; }   // พิมพ์อะไรขึ้นตามนั้น (ข้อความก้อนเดียว · ไม่แยกช่อง/ไม่มีเส้นกั้น)
   function sig(){ var lg=window._bxLogos||[], sg=segList(); return lg.length+'x'+sg.length+'|'+sg.join('~')+'|'+(($('bxLayout')&&$('bxLayout').value)||''); }
   function layout(){ var lg=window._bxLogos||[], sg=segList(); var n=Math.max(lg.length,sg.length); window._bxItems=[];
     var mode=($('bxLayout')&&$('bxLayout').value)||'hrow', cols=Math.max(1,n);
@@ -4551,13 +4550,6 @@ var TRIMW=1, TRIMDIR='out';
     var gts=(+(($('bxTS')&&$('bxTS').value)||100))/100, gls=(+(($('bxLS')&&$('bxLS').value)||100))/100;
     var tintOn=$('bxLogoTint')&&$('bxLogoTint').checked, tintCol=($('bxLogoColor')&&$('bxLogoColor').value)||'#1f2937';
     var fs=PH*0.16*gts;                       // ✅ ตัวอักษรขนาดเท่ากันทุกช่อง (คงที่ ไม่ย่อตามความยาว)
-    // ➗ เส้นแบ่งกลาง (พิมพ์บนป้ายจริง) — วาดคั่นระหว่างช่อง ก่อนตัวอักษร/โลโก้ (อยู่ด้านหลัง)
-    if($('bxDivider')&&$('bxDivider').checked){
-      var _dc=Math.max(1,Math.max(lg.length,sg.length));
-      if(_dc>1){ g.save(); g.strokeStyle=col; g.globalAlpha=0.55; g.lineWidth=Math.max(1.5,PW*0.004); g.lineCap='round';
-        for(var _di=1;_di<_dc;_di++){ var _dx=(_di/_dc)*PW; g.beginPath(); g.moveTo(_dx,PH*0.14); g.lineTo(_dx,PH*0.86); g.stroke(); }
-        g.restore(); }
-    }
     (window._bxItems||[]).forEach(function(it){
       if(it.kind==='logo'){ var im=lg[it.ref]; if(!im)return; var ih=PH*0.46*gls; var iw=ih*(im.width/im.height); g.drawImage(tintOn?tinted(im,tintCol):im, it.cx*PW-iw/2, it.cy*PH-ih/2, iw, ih); it._w=iw; it._h=ih; }
       else { var tx=sg[it.ref]; if(tx==null)return; g.font='700 '+fs+'px "'+font+'",sans-serif'; g.fillStyle=col; g.textAlign='center'; g.textBaseline='middle'; g.fillText(tx, it.cx*PW, it.cy*PH); it._w=g.measureText(tx).width; it._h=fs; }
@@ -4590,7 +4582,6 @@ var TRIMW=1, TRIMDIR='out';
   }
   _bxBindDrag();
   if($('bxCompText'))$('bxCompText').oninput=draw;
-  if($('bxDivider'))$('bxDivider').onchange=draw;
   if($('bxLayout'))$('bxLayout').onchange=function(){ layout(); draw(); };
   if($('bxTextColor'))$('bxTextColor').oninput=draw;
   if($('bxLogoColor'))$('bxLogoColor').oninput=draw;
