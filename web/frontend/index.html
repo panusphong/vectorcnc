@@ -1557,23 +1557,23 @@ select.numin{cursor:pointer}
         <div style="font-weight:700;font-size:12.5px;color:#4f46e5;margin-bottom:5px">🏢 คิดราคางานหน้าตึก (เลือกเอง)</div>
         <select class="numin" id="wFacadeItem" style="width:100%;padding:6px;font-size:11.5px">
           <option value="0">— ไม่คิดราคา facade —</option>
-          <option value="1800">ACP อลูมิเนียมคอมโพสิต · มาตรฐาน (1,800/ตร.ม.)</option>
-          <option value="2300">ACP เกรดพรีเมียม/PVDF (2,300)</option>
-          <option value="2600">ACP ลายไม้/ลายพิเศษ (2,600)</option>
-          <option value="2200">เหล็กฉีก/ตะแกรง Expanded metal (2,200)</option>
-          <option value="2400">ระแนงอลูมิเนียม (2,400)</option>
-          <option value="2650">ระแนงไม้เทียม (2,650)</option>
-          <option value="2600">ครีบแนวตั้ง Fins (2,600)</option>
-          <option value="2800">แผ่นฉลุ Perforated · มาตรฐาน (2,800)</option>
-          <option value="3400">แผ่นฉลุลายพิเศษ/ฉลุหนา (3,400)</option>
-          <option value="4500">Curtain Wall กระจก (4,500)</option>
-          <option value="3500">GRC หล่อลาย (3,500)</option>
-          <option value="3200">หินแกรนิต/หินแผ่นใหญ่ (3,200)</option>
+          <option value="3500">ACP อลูมิเนียมคอมโพสิต · มาตรฐาน (3,500/ตร.ม.)</option>
+          <option value="4500">ACP เกรดพรีเมียม/PVDF (4,500)</option>
+          <option value="5050">ACP ลายไม้/ลายพิเศษ (5,050)</option>
+          <option value="4300">เหล็กฉีก/ตะแกรง Expanded metal (4,300)</option>
+          <option value="4650">ระแนงอลูมิเนียม (4,650)</option>
+          <option value="5150">ระแนงไม้เทียม (5,150)</option>
+          <option value="5050">ครีบแนวตั้ง Fins (5,050)</option>
+          <option value="5450">แผ่นฉลุ Perforated · มาตรฐาน (5,450)</option>
+          <option value="6600">แผ่นฉลุลายพิเศษ/ฉลุหนา (6,600)</option>
+          <option value="8750">Curtain Wall กระจก (8,750)</option>
+          <option value="6800">GRC หล่อลาย (6,800)</option>
+          <option value="6200">หินแกรนิต/หินแผ่นใหญ่ (6,200)</option>
           <option value="custom">กำหนดเรตเอง…</option>
         </select>
         <div id="wFacadeRateWrap" style="display:none;align-items:center;gap:6px;margin-top:6px">
           <span style="font-size:11px;color:#4f46e5">เรตเอง</span>
-          <input class="numin" id="wFacadeRate" type="number" min="0" step="50" value="2000" style="width:90px;padding:5px">
+          <input class="numin" id="wFacadeRate" type="number" min="0" step="50" value="3500" style="width:90px;padding:5px">
           <span style="font-size:11px;color:#64748b">บาท/ตร.ม.</span>
         </div>
         <div style="font-size:10.5px;color:#64748b;margin-top:5px">คิดจากพื้นที่ผนัง (กว้าง×สูง) × เรตที่เลือก · ปรับเรตได้ทุกเมื่อ</div>
@@ -6498,20 +6498,30 @@ function wallPrice(){ if(!$('wPResult'))return;
     var _fnm=''; try{ if(_fitem&&_fitem.selectedIndex>=0)_fnm=_fitem.options[_fitem.selectedIndex].text.replace(/\s*\([^)]*\)\s*$/,'').replace(/…$/,''); }catch(_e){}
     if(_facFee>0){ lines.push({facadeLine:true,name:_fnm,sqm:_fsqm,front:_frontSqm,wrap:_wrap,wrapTxt:_wrapTxt.join('+'),rate:_frate,fee:_facFee}); total+=_facFee; }
   }
+  // 💡 เส้นไฟ LED หน้าตึก — คิดตามความยาวเส้น × 600 บาท/เมตร
+  var _ledFee=0;
+  if(window._wFacadeMode && window._wFacadeLines && window._wFacadeLines!=='0'){
+    var _HC={h3:3,h5:5,h8:8,grid:4,grid2:7}, _VC={v4:4,v6:6,v10:10,grid:4,grid2:7}, _lm=window._wFacadeLines;
+    var _ledM=(_HC[_lm]||0)*(s.Wm/100)+(_VC[_lm]||0)*(s.Hm/100);
+    _ledFee=Math.round(_ledM*600);
+    if(_ledFee>0){ lines.push({ledLine:true,m:_ledM,rate:600,fee:_ledFee}); total+=_ledFee; }
+  }
   var multi=_valid.length>1;
   var html=lines.map(function(l){
     if(l.colorLine)return '<div style="margin-bottom:3px">\ud83c\udfa8 <b>\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e2a\u0e35 \u00d7 1,500</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(l.armLine){ var _an=(l.arm==='top2'?'\u0e41\u0e02\u0e27\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 2 \u0e41\u0e02\u0e19':l.arm==='side1'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 1 \u0e41\u0e02\u0e19':l.arm==='side2'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 2 \u0e41\u0e02\u0e19':'\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14'); return '<div style="margin-bottom:3px">\ud83e\uddbe <b>\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14/\u0e41\u0e02\u0e27\u0e19</b> <span style="font-size:10px;opacity:.85">'+_an+' \u00b7 '+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+' (\u0e40\u0e17\u0e48\u0e32\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01)</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.frameLine){ var _fn=(l.kind==='stainless'?'\u0e42\u0e04\u0e23\u0e07\u0e2a\u0e41\u0e15\u0e19\u0e40\u0e25\u0e2a':'\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01'); return '<div style="margin-bottom:3px">\ud83d\udd29 <b>'+_fn+'</b> <span style="font-size:10px;opacity:.85">'+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.facadeLine){ var _wd=(l.wrap>0)?(' <span style="font-size:9.5px;opacity:.8">(\u0e2b\u0e19\u0e49\u0e32 '+l.front.toFixed(2)+' + '+(l.wrapTxt||'\u0e2b\u0e38\u0e49\u0e21')+' '+l.wrap.toFixed(2)+')</span>'):''; return '<div style="margin-bottom:3px">\ud83c\udfe2 <b>\u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+(l.name?l.name+' \u00b7 ':'')+l.sqm.toFixed(2)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span>'+_wd+' \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
+    if(l.ledLine){ return '<div style="margin-bottom:3px">\ud83d\udca1 <b>\u0e40\u0e2a\u0e49\u0e19\u0e44\u0e1f LED \u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+l.m.toFixed(1)+' \u0e21. \u00d7 '+l.rate.toLocaleString()+'/\u0e21.</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
     if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
     var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
     var tail=multi?(' \u2192 <b>'+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>'):'';
     return '<div style="margin-bottom:3px">'+head+'<br><span style="font-size:11px;opacity:.9">'+_pDetail(l.r)+'</span>'+tail+'</div>'; }).join('');
-  if(_facFee>0){
+  if(_facFee>0||_ledFee>0){
     html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px;font-size:12px">\ud83e\udea7 \u0e23\u0e32\u0e04\u0e32\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>'+Math.round(_signSub).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
-    html+='<div style="font-size:12px">\ud83c\udfe2 \u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01 (facade) \u2192 <b>'+Math.round(_facFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+    if(_facFee>0)html+='<div style="font-size:12px">\ud83c\udfe2 \u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01 (facade) \u2192 <b>'+Math.round(_facFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+    if(_ledFee>0)html+='<div style="font-size:12px">\ud83d\udca1 \u0e40\u0e2a\u0e49\u0e19\u0e44\u0e1f LED \u2192 <b>'+Math.round(_ledFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     html+='<div style="border-top:1px solid rgba(255,255,255,.5);margin-top:4px;padding-top:4px">\ud83d\udcb0 <b>\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
   } else {
     html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px">\ud83d\udcb0 <b>'+(multi?'\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21':'\u0e23\u0e32\u0e04\u0e32')+'</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
