@@ -1456,7 +1456,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                         _ty = _it.bounds[1]
                 except Exception:
                     _ty = b[1]
-                a = F((_ax, _ty)); specs.append((a, (a[0], a[1] - _aL)))
+                # 🦾 ยึดที่ 'กึ่งกลางความลึกด้านบนกล่อง' (เลื่อน +dvx/2,+dvy/2) -> แขนสมดุลซ้าย-ขวาเหนือกล่องจริง
+                _af = F((_ax, _ty)); a = (_af[0] + dvx / 2.0, _af[1] + dvy / 2.0)
+                specs.append((a, (a[0], a[1] - _aL)))
             _cy = min(w[1] for _a, w in specs)
             # ฝ้าเพดาน = แถบทึบบางแนวนอน (เพลทเรียบแนบด้านล่างฝ้า)
             arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
