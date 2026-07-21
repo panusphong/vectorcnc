@@ -4427,6 +4427,11 @@ function applyGlow(){
     g.style.zIndex='3';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='none';
     g.style.background='radial-gradient(ellipse at 50% 48%,'+_hexA(c,0.42)+' 0%,'+_hexA(c,0.22)+' 55%,transparent 80%)';
     img.style.filter='drop-shadow(0 0 5px '+_hexA(c,0.85)+') brightness(1.18) saturate(1.15)';}
+  else if(GLOW.mode==='around'){ // 💫 ไฟออกรอบ = เรืองทุกด้าน (edge-lit) หน้าสว่าง + ฮาโลรอบตัว
+    wrap.style.background='#14100a';
+    g.style.zIndex='3';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='blur(10px)';
+    g.style.background='radial-gradient(ellipse at 50% 50%,'+_hexA(c,0.6)+' 0%,'+_hexA(c,0.35)+' 50%,'+_hexA(c,0.12)+' 75%,transparent 90%)';
+    img.style.filter='drop-shadow(0 0 10px '+_hexA(c,0.95)+') drop-shadow(0 0 22px '+_hexA(c,0.6)+') brightness(1.14) saturate(1.1)';}
   else{ // ไฟออกหลัง = halo เรืองรอบขอบ พื้นหลังมืด
     wrap.style.background='#0b1220';
     g.style.zIndex='0';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='blur(16px)';
@@ -4666,7 +4671,7 @@ $('goLayer').onclick=function(){
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 6px">'+
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
         '<span style="font-size:11px;color:#64748b">ไฟ:</span><div id="glowMode" style="display:inline-flex;gap:3px">'+
-          '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button></div>'+
+          '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button><button type="button" class="chip glowM" data-g="around">💫 ออกรอบ</button></div>'+
         '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
           '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
         '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
@@ -5709,23 +5714,24 @@ function _wContentBandY(sx,sy,sw,sh){
     return { cy: sy+((sumY/n)/ih)*sh, top: sy+(topR/ih)*sh, bot: sy+(botR/ih)*sh };
   }catch(e){ return null; }
 }
-function _wDrawSteelRails(g, sx,sy,sw,sh, ppm){
+function _wDrawSteelRails(g, sx,sy,sw,sh, ppm, drawBars, drawLabel){
   g.save();
   var steel='#8b93a0', steelD='#5b626d';
   var barH=Math.max(3, Math.min(sh*0.07, sw*0.012));
-  // 🔩 วางคานคู่ตาม 'จุดศูนย์ถ่วงตัวอักษรจริง' (เฉลี่ยตามพิกเซล) → เมื่อมีตัวใหญ่+เล็กปน คานจะกดลงมาหลบหลังตัวเล็ก ไม่ลอยเหนือ
+  // 🔩 วางคานคู่ตาม 'จุดศูนย์ถ่วงตัวอักษรจริง' → มีตัวใหญ่+เล็กปน คานกดลงหลบหลังตัวเล็ก ไม่ลอยเหนือ
   var band=_wContentBandY(sx,sy,sw,sh);
   var cy=band?band.cy:(sy+sh*0.5);
   var gap=band?Math.max(sh*0.18, Math.min(sh*0.42, (band.bot-band.top)*0.5)):(sh*0.40);
   var y1=cy-gap/2-barH/2, y2=cy+gap/2-barH/2;
   var inset=Math.max(4, sw*0.02), x0=sx+inset, x1=sx+sw-inset, w=Math.max(4,x1-x0);
-  g.globalAlpha=0.55;                                             // โปร่ง ให้เห็นตัวอักษรใต้คานคู่
-  [y1,y2].forEach(function(y){ g.fillStyle=steel; g.fillRect(x0,y,w,barH); g.strokeStyle=steelD; g.lineWidth=1; g.strokeRect(x0,y,w,barH); });
-  // ปิดหัวท้ายซ้าย-ขวา (คานตั้งเชื่อมเป็นกรอบ)
-  var capW=Math.max(2,barH*0.9);
-  [x0, x1-capW].forEach(function(x){ g.fillStyle=steel; g.fillRect(x,y1,capW,(y2+barH)-y1); g.strokeRect(x,y1,capW,(y2+barH)-y1); });
-  g.globalAlpha=1;
-  if($('wLabels')&&$('wLabels').checked){ _wDimH(g, x0, x1, y2+barH+16, 'คานคู่ '+(w/ppm).toFixed(0)+' cm', steelD, 'railw'); }
+  if(drawBars){   // วาดคานคู่ 'ทึบ' — ต้องเรียกก่อน drawImage(ป้าย) เพื่อให้ตัวอักษรทึบบังคานไว้ (โผล่เฉพาะช่องที่ไม่โดนบัง)
+    var capW=Math.max(2,barH*0.9);
+    [y1,y2].forEach(function(y){ g.fillStyle=steel; g.fillRect(x0,y,w,barH); g.strokeStyle=steelD; g.lineWidth=1; g.strokeRect(x0,y,w,barH); });
+    [x0, x1-capW].forEach(function(x){ g.fillStyle=steel; g.fillRect(x,y1,capW,(y2+barH)-y1); g.strokeRect(x,y1,capW,(y2+barH)-y1); });
+  }
+  if(drawLabel && $('wLabels')&&$('wLabels').checked){   // ป้ายวัด — วาดหลังภาพ นอกตัวป้าย (ใต้ป้าย) ให้เห็นเสมอ
+    _wDimH(g, x0, x1, sy+sh+18, 'คานคู่ '+(w/ppm).toFixed(0)+' cm', steelD, 'railw');
+  }
   g.restore();
 }
 function _wDrawSplit(g,M,ww,wh){
@@ -5822,11 +5828,11 @@ function wallDraw(){
   try{
     var _armSel=($('wArm')&&$('wArm').value)||'none';
     if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }         // เลือกแขน = วาดแขนตามที่เลือก
-    else if(_wFrameKind()){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,'top2'); }            // เลือกโครงเหล็ก/สแตนเลส (ไม่มีแขน) = แขนแขวนที่ track ขอบป้าย + ลากปรับ + โชว์ระยะจากฝ้า
+    else if(_wFrameKind()){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,'top2'); _wDrawSteelRails(g,sx,sy,sw,sh,ppm,true); }  // โครงเหล็ก = แขน + คานคู่ (วาดก่อนภาพ = อยู่หลังตัวอักษร โผล่เฉพาะช่องที่ไม่โดนบัง)
   }catch(_e){}
   if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
-  // 🔩 คานคู่พาดตามความกว้างป้าย (โครงเหล็ก · ไม่มีแขนข้าง) — วาดทับหลังภาพให้เห็น 'วิ่งตามระยะป้าย'
-  try{ if((($('wArm')&&$('wArm').value)||'none')==='none' && _wFrameKind()){ _wDrawSteelRails(g,sx,sy,sw,sh,ppm); } }catch(_e){}
+  // 🔩 ป้ายวัด 'คานคู่ X cm' — วาดหลังภาพ (นอกตัวป้าย) ให้เห็นตัวเลขเสมอ
+  try{ if((($('wArm')&&$('wArm').value)||'none')==='none' && _wFrameKind()){ _wDrawSteelRails(g,sx,sy,sw,sh,ppm,false,true); } }catch(_e){}
   if($('wLabels').checked){
     g.fillStyle='#334155'; g.textAlign='center'; g.font='bold 20px sans-serif';
     g.fillText(Math.round(s.Wm)+' cm', M+ww/2, M-24);
