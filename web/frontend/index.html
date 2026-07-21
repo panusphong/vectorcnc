@@ -372,6 +372,7 @@ select.numin{cursor:pointer}
                 <select class="numin" id="bxFont" style="flex:1;padding:5px;font-size:11px"></select>
                 <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#92700a">สี<input type="color" id="bxTextColor" value="#1f2937" style="width:30px;height:28px;border:none;background:none;padding:0;cursor:pointer"></label>
               </div>
+              <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:#92700a;margin-top:5px"><input type="checkbox" id="bxDivider"> ➗ เส้นแบ่งกลาง (พิมพ์บนป้ายจริง · คั่นระหว่างช่อง)</label>
               <div style="font-size:10px;color:#92700a;margin:6px 0 2px">🖼️ โลโก้/ไอคอน (อัปโหลดกี่รูปก็ได้)</div>
               <div style="display:flex;gap:6px;align-items:center">
                 <input type="file" id="bxLogoFile" accept="image/*" multiple style="font-size:11px;flex:1;min-width:0">
@@ -4503,6 +4504,13 @@ var TRIMW=1, TRIMDIR='out';
     var gts=(+(($('bxTS')&&$('bxTS').value)||100))/100, gls=(+(($('bxLS')&&$('bxLS').value)||100))/100;
     var tintOn=$('bxLogoTint')&&$('bxLogoTint').checked, tintCol=($('bxLogoColor')&&$('bxLogoColor').value)||'#1f2937';
     var fs=PH*0.16*gts;                       // ✅ ตัวอักษรขนาดเท่ากันทุกช่อง (คงที่ ไม่ย่อตามความยาว)
+    // ➗ เส้นแบ่งกลาง (พิมพ์บนป้ายจริง) — วาดคั่นระหว่างช่อง ก่อนตัวอักษร/โลโก้ (อยู่ด้านหลัง)
+    if($('bxDivider')&&$('bxDivider').checked){
+      var _dc=Math.max(1,Math.max(lg.length,sg.length));
+      if(_dc>1){ g.save(); g.strokeStyle=col; g.globalAlpha=0.55; g.lineWidth=Math.max(1.5,PW*0.004); g.lineCap='round';
+        for(var _di=1;_di<_dc;_di++){ var _dx=(_di/_dc)*PW; g.beginPath(); g.moveTo(_dx,PH*0.14); g.lineTo(_dx,PH*0.86); g.stroke(); }
+        g.restore(); }
+    }
     (window._bxItems||[]).forEach(function(it){
       if(it.kind==='logo'){ var im=lg[it.ref]; if(!im)return; var ih=PH*0.46*gls; var iw=ih*(im.width/im.height); g.drawImage(tintOn?tinted(im,tintCol):im, it.cx*PW-iw/2, it.cy*PH-ih/2, iw, ih); it._w=iw; it._h=ih; }
       else { var tx=sg[it.ref]; if(tx==null)return; g.font='700 '+fs+'px "'+font+'",sans-serif'; g.fillStyle=col; g.textAlign='center'; g.textBaseline='middle'; g.fillText(tx, it.cx*PW, it.cy*PH); it._w=g.measureText(tx).width; it._h=fs; }
@@ -4511,7 +4519,7 @@ var TRIMW=1, TRIMDIR='out';
     return c;
   }
   function draw(){ var pv=$('bxPreview'); if(!pv)return; sync(); var lg=window._bxLogos||[], sg=segList();
-    if(!lg.length && !sg.length && !window._bxBg){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; }
+    if(!lg.length && !sg.length && !window._bxBg){ pv.style.display='none'; return; } render(pv,1,true); pv.style.display='block'; _bxBindDrag(); }
   window._bxDrawPrev=draw;
   // 🌄 พื้นหลัง = ภาพที่อัปโหลดจากด้านบน (ไม่เพิ่มช่องอัปโหลดใหม่)
   function loadBg(src){ var im=new Image(); im.onload=function(){ window._bxBg=im; if($('bxBgClr'))$('bxBgClr').style.display='inline'; draw(); }; im.src=src; }
@@ -4519,17 +4527,23 @@ var TRIMW=1, TRIMDIR='out';
     if(this.checked){ if(typeof fileObj!=='undefined'&&fileObj&&fileObj.type&&fileObj.type.indexOf('image')>=0){ var r=new FileReader(); r.onload=function(){ loadBg(r.result); }; r.readAsDataURL(fileObj); } else { alert('ยังไม่มีภาพที่อัปโหลด — ลากภาพเข้าช่องด้านบนก่อน'); this.checked=false; } }
     else { window._bxBg=null; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); } };
   if($('bxBgClr'))$('bxBgClr').onclick=function(){ window._bxBg=null; if($('bxBgUseChk'))$('bxBgUseChk').checked=false; if($('bxBgClr'))$('bxBgClr').style.display='none'; draw(); };
-  // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง
-  (function(){ var pv=$('bxPreview'); if(!pv)return;
+  // 🖱️ ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่ง — ผูก event แบบ idempotent (กัน canvas ยังไม่พร้อมตอนโหลด → ผูกซ้ำได้ตอนพรีวิวโผล่)
+  function _bxBindDrag(){ var pv=$('bxPreview'); if(!pv||pv._bxBound)return; pv._bxBound=true;
     function P(e){ var r=pv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*pv.width/Math.max(1,r.width), y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*pv.height/Math.max(1,r.height)}; }
-    function hit(p){ var it=window._bxItems||[]; for(var i=it.length-1;i>=0;i--){ var o=it[i]; var hw=((o._w||40)/2)+10, hh=((o._h||40)/2)+10; if(Math.abs(p.x-o.cx*pv.width)<=hw && Math.abs(p.y-o.cy*pv.height)<=hh) return o; } return null; }
-    var down=function(e){ var o=hit(P(e)); if(o){ window._bxDragIt=o; if(e.preventDefault)e.preventDefault(); } };
+    function hit(p){ var it=window._bxItems||[], best=null, bd=1e9;   // จับตัวที่ใกล้ที่สุดในระยะเผื่อ (คลิกใกล้ ๆ ก็ลากได้)
+      for(var i=it.length-1;i>=0;i--){ var o=it[i]; var hw=((o._w||60)/2)+16, hh=((o._h||40)/2)+16;
+        var dx=Math.abs(p.x-o.cx*pv.width), dy=Math.abs(p.y-o.cy*pv.height);
+        if(dx<=hw&&dy<=hh){ var d=dx+dy; if(d<bd){bd=d;best=o;} } }
+      return best; }
+    var down=function(e){ var o=hit(P(e)); if(o){ window._bxDragIt=o; pv.style.cursor='grabbing'; if(e.preventDefault)e.preventDefault(); } };
     var move=function(e){ if(!window._bxDragIt)return; var p=P(e); window._bxDragIt.cx=Math.max(0,Math.min(1,p.x/pv.width)); window._bxDragIt.cy=Math.max(0,Math.min(1,p.y/pv.height)); draw(); if(e.preventDefault)e.preventDefault(); };
-    var up=function(){ window._bxDragIt=null; };
+    var up=function(){ if(window._bxDragIt){ window._bxDragIt=null; pv.style.cursor='move'; } };
     pv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
     pv.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
-  })();
+  }
+  _bxBindDrag();
   if($('bxCompText'))$('bxCompText').oninput=draw;
+  if($('bxDivider'))$('bxDivider').onchange=draw;
   if($('bxLayout'))$('bxLayout').onchange=function(){ layout(); draw(); };
   if($('bxTextColor'))$('bxTextColor').oninput=draw;
   if($('bxLogoColor'))$('bxLogoColor').oninput=draw;
