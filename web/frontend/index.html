@@ -6530,6 +6530,13 @@ function wallPrice(){ if(!$('wPResult'))return;
     _blFee=Math.round(_blM*600);
     if(_blFee>0){ lines.push({backlitLine:true,m:_blM,rate:600,fee:_blFee}); total+=_blFee; }
   }
+  // 🔦 สปอตไลต์ส่องหน้าตึก — ดวงละ 2,500
+  var _spotFee=0;
+  if(window._wFacadeMode && $('wFacadeSpot') && $('wFacadeSpot').checked){
+    var _spN=parseInt(($('wFacadeSpotN')&&$('wFacadeSpotN').value)||3,10)||3;
+    _spotFee=_spN*2500;
+    if(_spotFee>0){ lines.push({spotLine:true,n:_spN,rate:2500,fee:_spotFee}); total+=_spotFee; }
+  }
   // 📦 BOM วัตถุดิบ facade — จำนวนแผ่น + ตร.ม. + โครงเหล็กเฟรม (กี่เส้น)
   if($('wFacadeBOM')){
     if(window._wFacadeMode){
@@ -6557,16 +6564,18 @@ function wallPrice(){ if(!$('wPResult'))return;
     if(l.facadeLine){ var _wd=(l.wrap>0)?(' <span style="font-size:9.5px;opacity:.8">(\u0e2b\u0e19\u0e49\u0e32 '+l.front.toFixed(2)+' + '+(l.wrapTxt||'\u0e2b\u0e38\u0e49\u0e21')+' '+l.wrap.toFixed(2)+')</span>'):''; return '<div style="margin-bottom:3px">\ud83c\udfe2 <b>\u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+(l.name?l.name+' \u00b7 ':'')+l.sqm.toFixed(2)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span>'+_wd+' \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.ledLine){ return '<div style="margin-bottom:3px">\ud83d\udca1 <b>\u0e40\u0e2a\u0e49\u0e19\u0e44\u0e1f LED \u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+l.m.toFixed(1)+' \u0e21. \u00d7 '+l.rate.toLocaleString()+'/\u0e21.</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.backlitLine){ return '<div style="margin-bottom:3px">\ud83d\udca1 <b>\u0e44\u0e1f LED \u0e2b\u0e25\u0e31\u0e07\u0e41\u0e1c\u0e48\u0e19\u0e09\u0e25\u0e38</b> <span style="font-size:10px;opacity:.85">'+l.m.toFixed(1)+' \u0e21. \u00d7 '+l.rate.toLocaleString()+'/\u0e21.</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
+    if(l.spotLine){ return '<div style="margin-bottom:3px">\ud83d\udd26 <b>\u0e2a\u0e1b\u0e2d\u0e15\u0e44\u0e25\u0e15\u0e4c\u0e2a\u0e48\u0e2d\u0e07\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e14\u0e27\u0e07 \u00d7 '+l.rate.toLocaleString()+'</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
     if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
     var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
     var tail=multi?(' \u2192 <b>'+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>'):'';
     return '<div style="margin-bottom:3px">'+head+'<br><span style="font-size:11px;opacity:.9">'+_pDetail(l.r)+'</span>'+tail+'</div>'; }).join('');
-  if(_facFee>0||_ledFee>0||_blFee>0){
+  if(_facFee>0||_ledFee>0||_blFee>0||_spotFee>0){
     html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px;font-size:12px">\ud83e\udea7 \u0e23\u0e32\u0e04\u0e32\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>'+Math.round(_signSub).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(_facFee>0)html+='<div style="font-size:12px">\ud83c\udfe2 \u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01 (facade) \u2192 <b>'+Math.round(_facFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(_ledFee>0)html+='<div style="font-size:12px">\ud83d\udca1 \u0e40\u0e2a\u0e49\u0e19\u0e44\u0e1f LED \u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01 \u2192 <b>'+Math.round(_ledFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(_blFee>0)html+='<div style="font-size:12px">\ud83d\udca1 \u0e44\u0e1f LED \u0e2b\u0e25\u0e31\u0e07\u0e41\u0e1c\u0e48\u0e19\u0e09\u0e25\u0e38 \u2192 <b>'+Math.round(_blFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+    if(_spotFee>0)html+='<div style="font-size:12px">\ud83d\udd26 \u0e2a\u0e1b\u0e2d\u0e15\u0e44\u0e25\u0e15\u0e4c \u2192 <b>'+Math.round(_spotFee).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     html+='<div style="border-top:1px solid rgba(255,255,255,.5);margin-top:4px;padding-top:4px">\ud83d\udcb0 <b>\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
   } else {
     html+='<div style="border-top:1px solid rgba(255,255,255,.3);margin-top:5px;padding-top:5px">\ud83d\udcb0 <b>'+(multi?'\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21':'\u0e23\u0e32\u0e04\u0e32')+'</b> \u2192 <b style="font-size:18px">'+Math.round(total).toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
