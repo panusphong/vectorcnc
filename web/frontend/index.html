@@ -112,7 +112,7 @@ input[type=range]{width:100%;accent-color:var(--brand);height:4px}
 .layer-row{display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:9px}
 .sw{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid rgba(0,0,0,.1)}.layer-row .n{flex:1}
 .stat{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0}.stat b{color:var(--brand)}
-.dl{display:flex;flex-direction:column;gap:8px;margin-top:auto}.dl .btn{width:100%}.dl .row2{display:flex;gap:8px}.dl .row2 .btn{flex:1;padding:10px}
+.dl{display:flex;flex-direction:column;gap:8px}.dl .btn{width:100%}.dl .row2{display:flex;gap:8px}.dl .row2 .btn{flex:1;padding:10px}
 .muted-note{color:var(--dim);font-size:12px;text-align:center;padding:14px 0}
 footer{border-top:1px solid var(--line);padding:24px 0;color:var(--dim);font-size:13px;text-align:center}
 .modal{position:fixed;inset:0;z-index:80;background:rgba(27,42,74,.45);backdrop-filter:blur(4px);display:none;place-items:center;padding:20px}
@@ -5489,6 +5489,39 @@ function _wDimV(g,y1,y2,x,txt,col,id){ g.strokeStyle=col; g.fillStyle=col; g.lin
   if(id&&window._wDimHit) window._wDimHit.push({id:id,x:lx-20,y:ly-tw/2-2,w:24,h:tw+4}); }
 function _wFrameKind(){ var v=($('wPFrame')&&$('wPFrame').value)||'none'; return (v==='steel'||v==='stainless')?v:''; }
 var _armTopFy=0;   // ตำแหน่งบนสุดของแขนโครง (0 = ฝ้าเพดาน) — ลากปรับได้
+// หาขอบบนของ 'ตัวป้ายจริง' ที่ตำแหน่ง x (จาก alpha ของภาพ) -> ให้ปลายแขนแตะขอบกล่อง (โดยเฉพาะวงกลม/วงรี)
+function _wSignTopAt(ax, sx, sy, sw, sh){
+  try{
+    var img=wallImg; if(!img) return sy;
+    var iw=img.width||img.naturalWidth||0, ih=img.height||img.naturalHeight||0; if(!iw||!ih) return sy;
+    if(window._wAlphaImg!==img){
+      var tc=document.createElement('canvas'); tc.width=iw; tc.height=ih; tc.getContext('2d').drawImage(img,0,0);
+      try{ window._wAlphaDat=tc.getContext('2d').getImageData(0,0,iw,ih).data; }catch(e){ window._wAlphaDat=null; }
+      window._wAlphaImg=img;
+    }
+    var dat=window._wAlphaDat; if(!dat) return sy;
+    var col=Math.max(0,Math.min(iw-1,Math.round((ax-sx)/Math.max(1,sw)*iw)));
+    for(var y=0;y<ih;y++){ if(dat[(y*iw+col)*4+3]>40) return sy + (y/ih)*sh; }
+    return sy;
+  }catch(e){ return sy; }
+}
+// หาขอบข้าง (ซ้าย/ขวา) ของตัวป้ายจริงที่ตำแหน่ง y -> ให้แขนข้างแตะขอบกล่อง (วงกลม/วงรี)
+function _wSignSideAt(ay, side, sx, sy, sw, sh){
+  var def=(side==='left')?sx:sx+sw;
+  try{
+    var img=wallImg; if(!img) return def;
+    var iw=img.width||img.naturalWidth||0, ih=img.height||img.naturalHeight||0; if(!iw||!ih) return def;
+    if(window._wAlphaImg!==img){
+      var tc=document.createElement('canvas'); tc.width=iw; tc.height=ih; tc.getContext('2d').drawImage(img,0,0);
+      try{ window._wAlphaDat=tc.getContext('2d').getImageData(0,0,iw,ih).data; }catch(e){ window._wAlphaDat=null; }
+      window._wAlphaImg=img;
+    }
+    var dat=window._wAlphaDat; if(!dat) return def;
+    var row=Math.max(0,Math.min(ih-1,Math.round((ay-sy)/Math.max(1,sh)*ih)));
+    if(side==='left'){ for(var x=0;x<iw;x++){ if(dat[(row*iw+x)*4+3]>40) return sx + (x/iw)*sw; } return sx; }
+    for(var x2=iw-1;x2>=0;x2--){ if(dat[(row*iw+x2)*4+3]>40) return sx + (x2/iw)*sw; } return sx+sw;
+  }catch(e){ return def; }
+}
 function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
   var col='#141414'; mode=mode||'top2';
   var armW=Math.max(3,Math.round(sw*0.014));
@@ -5502,27 +5535,27 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
     var ex=(side==='left')?sx:sx+sw, dir=(side==='left')?-1:1;
     var wallX=ex+dir*aLen;
     var ys=(mode==='side1')?[sy+sh/2]:[sy+sh*0.26, sy+sh*0.74];
-    ys.forEach(function(ay){ g.fillRect(Math.min(ex,wallX), ay-armW/2, aLen, armW); });        // แขนแนวนอน
+    ys.forEach(function(ay){ var innerX=_wSignSideAt(ay, side, sx,sy,sw,sh); var x0=Math.min(wallX,innerX); g.fillRect(x0, ay-armW/2, Math.max(3,Math.abs(innerX-wallX)), armW); });  // แขนจากเสาถึงขอบกล่องจริง (ต่อ y)
     g.fillRect((dir>0?wallX-armW*0.9:wallX), ys[0]-armW*1.2, armW*0.9, (ys[ys.length-1]-ys[0])+2.4*armW); // เพลท/เสาปลายแขน
     window._armHandle=null;
     if($('wLabels')&&$('wLabels').checked){ _wDimH(g, Math.min(ex,wallX), Math.max(ex,wallX), ys[0]-armW*2.2, armLenCm.toFixed(0)+' cm', col, 'arm'); }
     g.restore(); return;
   }
-  // 🦾 แขวนเพดาน 2 แขน (top2) — เงื่อนไขเดียวกับหน้าแรก · แขนไม่เกินขอบป้าย · คานหลบหลังป้าย
+  // 🦾 แขวนเพดาน 2 แขน (top2) — ปลายแขน 'ชนขอบกล่อง' (คำนวณจากภาพจริง โดยเฉพาะวงกลม) · ไม่มีคานล่าง
   var signTopFy=(sy-M)/wh;
   var topFy=Math.max(0, Math.min(_armTopFy, signTopFy-0.01));
-  var top=M+topFy*wh, armLen=sy-top;
-  if(armLen>3){
+  var top=M+topFy*wh;
+  if((sy-top)>3){
     var edgePx=Math.max(armW*0.5, Math.min(sw*0.44, armEdgeCm*ppm));
     var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;
-    [axL,axR].forEach(function(ax){ g.fillRect(ax, top, armW, armLen); });
-    g.fillRect(sx, top-armW*0.6, sw, Math.max(3,armW));                        // คานบนเชื่อมแขน
-    g.fillRect(sx, sy+sh-Math.max(6,armW*1.6), sw, Math.max(3,armW*0.8));      // คานล่างหลบหลังป้าย
+    var railY=sy;                                              // ต่ำสุดของขอบบนที่แขนแตะ -> วางคานบนตรงนั้น
+    [axL,axR].forEach(function(ax){ var ey=_wSignTopAt(ax+armW/2, sx,sy,sw,sh); if(ey<railY)railY=ey; g.fillRect(ax, top, armW, Math.max(3, ey-top)); });  // แขนจากเพดานถึงขอบกล่อง
+    g.fillRect(sx, top-armW*0.6, sw, Math.max(3,armW));        // คานบนเชื่อมแขน (ที่เพดาน) — ❌ ไม่มีคานล่าง
     var hx=sx+sw/2;
     window._armHandle={x:hx-9,y:top-9,w:18,h:18};
     g.fillStyle='#2563eb'; g.fillRect(hx-6,top-6,12,12); g.strokeStyle='#fff'; g.lineWidth=1.5; g.strokeRect(hx-6,top-6,12,12); g.fillStyle=col;
     if($('wLabels')&&$('wLabels').checked){
-      _wDimV(g, top, sy, sx-16, (armLen/ppm).toFixed(1)+' cm', col, 'arm');
+      _wDimV(g, top, railY, sx-16, ((railY-top)/ppm).toFixed(1)+' cm', col, 'arm');
       _wDimH(g, sx, sx+sw, top-armW*2.4, (sw/ppm).toFixed(0)+' cm (เฟรม)', col, 'fw');
     }
   } else { window._armHandle=null; }
