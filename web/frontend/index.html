@@ -205,11 +205,18 @@ select.numin{cursor:pointer}
 <nav><div class="nav-in">
   <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 L9 7 L14 15 L20 5"/></svg></span>Graphic Design <b>Solution</b></div>
   <div class="nav-right">
-    <button class="nav-btn" id="btnNest" data-i18n="nav.nest">▦ Nesting</button>
-    <button class="nav-btn" id="btnMulti" data-i18n="nav.multi">🗂 จัดวางหลายไฟล์</button>
-    <button class="nav-btn" id="btnLayer" data-i18n="nav.layer">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
-    <button class="nav-btn" id="btnCsheet" data-i18n="nav.bom">📋 BOM Check Sheet</button>
-    <button class="nav-btn" id="btnWall" data-i18n="nav.wall">📐 ขนาดป้าย + จำลองผนัง</button>
+    <!-- 🛒 เส้นทางคนขาย: ปุ่มเสนอราคาเป็น CTA หลัก -->
+    <button class="nav-btn" id="btnWall" data-i18n="nav.wall" style="background:#ea580c;color:#fff;font-weight:700;border-color:#ea580c">📐 จำลองผนัง + เสนอราคา</button>
+    <!-- 🏭 เครื่องมือฝ่ายผลิต — ยุบรวมในเมนูเดียว ไม่รกเมนูคนขาย -->
+    <span class="nav-dd" style="position:relative;display:inline-block">
+      <button class="nav-btn" id="btnProdMenu" type="button">🏭 เครื่องมือผลิต ▾</button>
+      <span id="prodMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line2);border-radius:12px;box-shadow:0 12px 34px rgba(15,23,42,.20);padding:6px;z-index:200;min-width:236px">
+        <button class="nav-btn" id="btnLayer" data-i18n="nav.layer" style="display:block;width:100%;text-align:left;margin:2px 0">🏭 ชุดชั้นตัด (ตามแบบป้าย)</button>
+        <button class="nav-btn" id="btnNest" data-i18n="nav.nest" style="display:block;width:100%;text-align:left;margin:2px 0">▦ Nesting</button>
+        <button class="nav-btn" id="btnMulti" data-i18n="nav.multi" style="display:block;width:100%;text-align:left;margin:2px 0">🗂 จัดวางหลายไฟล์</button>
+        <button class="nav-btn" id="btnCsheet" data-i18n="nav.bom" style="display:block;width:100%;text-align:left;margin:2px 0">📋 BOM Check Sheet</button>
+      </span>
+    </span>
     <button class="nav-btn" id="btnIntake" data-i18n="nav.intake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
     <button class="nav-btn" id="btnManual" data-i18n="nav.manual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
     <!-- 🌐 สวิตช์ภาษา: ตัวที่ไฮไลต์ = ภาษาที่ใช้อยู่ -->
@@ -234,6 +241,12 @@ select.numin{cursor:pointer}
         <!-- 🔬 ตรวจความละเอียดภาพ เทียบกับขนาดป้ายจริง -->
         <div id="resBox" style="display:none;margin-top:8px;border-radius:11px;padding:10px 12px;font-size:11.5px;line-height:1.55"></div>
 
+        <!-- 🛠️ เฟส 4: กำกับว่าหน้านี้ = ออกแบบ+ผลิต · ทางลัดกลับไปเสนอราคา (จำลองผนัง) -->
+        <div id="designModeBanner" style="margin-top:8px;padding:9px 11px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc;font-size:11.5px;color:#475569;display:flex;align-items:center;gap:8px;justify-content:space-between">
+          <span>🛠️ หน้านี้: <b>ออกแบบ + ออกไฟล์ผลิต</b> (ตัวอักษร/ชั้นตัด/3มิติ)</span>
+          <button type="button" id="goWallFromDesign" class="btn" style="padding:5px 10px;font-size:11px;background:#ea580c;color:#fff;border:none;font-weight:700;white-space:nowrap">📐 ไปเสนอราคา</button>
+        </div>
+
         <!-- 🏷️ ประเภทป้าย (ขึ้นบนสุด) -->
         <div id="signTypeBox" style="margin-top:10px;padding:11px 12px 12px;border:2px solid #4f46e5;border-radius:12px;background:linear-gradient(135deg,#eef2ff,#faf5ff);box-shadow:0 3px 12px rgba(79,70,229,.18)">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
@@ -242,6 +255,8 @@ select.numin{cursor:pointer}
           </div>
           <select class="numin" id="mainSignType" style="border:2px solid #4f46e5;font-weight:700;color:#312e81;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)">
             <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
+            <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
+            <option value="19" data-i18n="st.19">19 · ตัวอักษรยกขอบไฟออกหลัง</option>
             <option value="1" data-i18n="st.1">1 · ไฟออกหน้า มีคิ้ว</option>
             <option value="2" data-i18n="st.2">2 · ไฟออกหน้า ไม่มีคิ้ว</option>
             <option value="3" data-i18n="st.3">3 · ตัวอักษรไฟออกรอบ</option>
@@ -256,7 +271,6 @@ select.numin{cursor:pointer}
             <option value="13" data-i18n="st.13">13 · กล่องไฟสี่เหลี่ยม 2 หน้า</option>
             <option value="14" data-i18n="st.14">14 · กล่องไฟวงรี 1 หน้า</option>
             <option value="15" data-i18n="st.15">15 · กล่องไฟวงรี 2 หน้า</option>
-            <option value="16" data-i18n="st.16">16 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
             <option value="17" data-i18n="st.17">17 · นีออนเฟล็กซ์</option>
             <option value="18" data-i18n="st.18">18 · กล่องไฟอะคริลิค ไฟออกรอบ</option>
           </select>
@@ -306,7 +320,7 @@ select.numin{cursor:pointer}
               <input type="color" id="mfTextColor" value="#1f2937" title="สีตัวอักษร" style="width:36px;height:40px;border:none;background:none;padding:0;cursor:pointer">
             </div>
             <button class="btn" id="mfTextGo" style="width:100%;margin-top:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700">🅰️ สร้างป้ายจากข้อความนี้</button>
-            <div class="hint" style="margin-top:3px">ตัวอักษรแยกชิ้น ยึดโครงแขวน · เจาะรูน็อต Ø3 / สายไฟ Ø5 ให้อัตโนมัติ · พร้อมภาพด้านหลัง</div>
+            <div class="hint" style="margin-top:3px">พิมพ์ข้อความ → สร้างเป็นตัวป้ายตามประเภทที่เลือก (ยกขอบ/ไม่ยกขอบ/ไฟออกหน้า-หลัง) · ไม่ต้องอัปโหลดภาพ</div>
           </div>
           <!-- 🔩 ปรับโครงเหล็กแขวน (type 16) -->
           <div id="frameAdjPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #fecdd3;border-radius:10px;background:#fff5f7">
@@ -1239,6 +1253,7 @@ select.numin{cursor:pointer}
       <tr><td>16</td><td>อักษรยกขอบไฟออกหน้า + โครงแขวน</td><td>หน้า/คิ้ว/แผ่นพื้น + <b>โครงเหล็กคานคู่</b> (รูน็อต Ø3 / สายไฟ Ø5)</td><td>โครงแขวน 2 แขน · standoff 5 ซม.</td></tr>
       <tr><td>17</td><td>นีออนเฟล็กซ์</td><td>เส้นนีออน 12 สี · อะคริลิคใส 8 มม. (+3 ซม.) · ร่องเซาะ CNC 4 มม.</td><td>เจาะหมุดยึดผนัง + จุดสายไฟออก</td></tr>
       <tr><td>18</td><td>กล่องไฟอะคริลิค ไฟออกรอบ</td><td>กล่องสี่เหลี่ยม · หน้าอะคริลิคขาวพิมพ์ (โลโก้/พิมพ์ Text ได้) · <b>ขอบเรืองแสงรอบ</b></td><td>เลือกแขวนเพดาน/ติดผนัง · กว้าง+ลึกปรับได้</td></tr>
+      <tr><td>19</td><td>ตัวอักษรยกขอบไฟออกหลัง</td><td>อักษรทึบยกขอบ (returns) + แผ่นหลัง/ฐานยึด · <b>ไฟ LED ส่องออกหลัง เรืองบนผนัง (halo)</b></td><td>ยึดลอยจากผนัง (standoff 2.5 ซม.) · เดินไฟหลังตัวอักษร</td></tr>
     </table>
     <p><b>หลักค่าเผื่อ:</b> <b>ไซซ์เต็ม (0)</b> = เส้นออกแบบจริง (หน้า/คิ้ว/ซิ้งค์) · <b>+0.1</b> = ขยาย (แผ่นพื้น) · <b>−0.25</b> = หด (อะคริลิคตู้ไฟ) · <b>−0.15/−0.16</b> = หด (ไส้ใน) · <b>คิ้ว = เจาะโบ๋</b> (กรอบกลวงตามความกว้างคิ้ว) · <b>ยกขอบ</b> = ตัดเป็นแถบยาว=เส้นรอบรูป แล้วพับ</p>
 
@@ -1451,14 +1466,14 @@ select.numin{cursor:pointer}
   </div>
 </div></div>
 <!-- ===== จำลองป้ายบนผนังตามสเกลจริง ===== -->
-<div class="modal" id="wallOverlay"><div class="modal-card" style="width:90vw;max-width:90vw;height:90vh;padding:0;overflow:hidden">
+<div class="modal" id="wallOverlay"><div class="modal-card" style="width:100vw;max-width:100vw;height:100vh;padding:0;overflow:hidden;border-radius:0">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)">
     <div><b style="font-size:16px">🖼️ จำลองป้ายบนผนัง (ตามสเกลจริง)</b>
       <div style="font-size:12px;color:var(--muted);margin-top:2px">ใส่ขนาดผนัง + สัดส่วนป้าย → วางหลายโลโก้ · ไฟออกหน้า/หลัง/นีออน + มุมมอง 3D + 🔦 สปอตไลต์ + คิดราคา+จับระยะ · <b style="color:#0d9488">v70 · Intake Studio</b></div>
-      <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span></div></div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:5px;flex-wrap:wrap"><span id="wOnline" style="font-size:11.5px;color:#16a34a"></span><span class="lk" id="wHistLink" style="font-size:11.5px;color:var(--muted);cursor:pointer;text-decoration:underline">📜 ประวัติการเข้าใช้</span><span class="lk" id="wReset" style="font-size:11.5px;color:var(--red);cursor:pointer;text-decoration:underline">🧹 เคลียร์หน้าจอ</span><span class="lk" id="wBackDesign" style="font-size:11.5px;color:#4f46e5;cursor:pointer;text-decoration:underline;font-weight:700">🎨 ออกแบบ / สร้างตัวอักษร</span></div></div>
     <button class="csm-x" id="wallClose" title="ปิด">✕</button>
   </div>
-  <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(90vh - 96px)">
+  <div style="display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(100vh - 96px)">
     <div style="padding:16px 18px;border-right:1px solid var(--line);height:100%;overflow:auto">
       <div style="display:flex;gap:6px;margin-bottom:12px" id="wModeTabs">
         <button class="chip on" data-wm="design" style="flex:1">🎨 ออกแบบ (วาง logo)</button>
@@ -1486,6 +1501,18 @@ select.numin{cursor:pointer}
         <div id="wSwatches" style="display:flex;gap:5px;flex-wrap:wrap"></div></div>
       <label class="cslab" style="margin-top:12px">ภาพพื้นหลังผนัง (ถ้ามี) <span class="lk" id="wBgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wBgDrop" style="margin-top:4px;padding:12px;font-size:12px">ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)<input id="wBgFile" type="file" accept="image/*" hidden></div>
+      <!-- 🅰️ ออกแบบเร็ว: พิมพ์ข้อความ → วางบนผนังทันที (เฟส 2 · เสนอราคาจบในหน้าเดียว) -->
+      <div style="margin-top:12px;padding:11px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
+        <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">🅰️ พิมพ์ข้อความ → วางบนผนังเลย</div>
+        <input class="numin" id="wTxtMakeVal" placeholder="พิมพ์ข้อความป้าย เช่น BARONS" style="width:100%;padding:7px">
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+          <select class="numin" id="wTxtMakeFont" style="flex:1;padding:6px"></select>
+          <div style="width:74px"><label style="font-size:10px;color:#64748b">สูง(ซม.)</label><input class="numin" id="wTxtMakeH" type="number" value="20" min="3" style="padding:6px;width:100%"></div>
+          <input type="color" id="wTxtMakeColor" value="#1f2937" title="สีตัวอักษร" style="width:36px;height:40px;border:none;background:none;padding:0;cursor:pointer">
+        </div>
+        <button class="btn" id="wTxtMakeGo" style="width:100%;margin-top:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700">🅰️ สร้างตัวอักษร → วางบนผนัง</button>
+        <div class="hint" style="margin-top:3px">พิมพ์ข้อความแล้ววางบนผนังทันที เพื่อจับสเกล + ประเมินราคาได้เลย (อยากได้ไฟล์ตัด/3มิติ ค่อยไปหน้าออกแบบ)</div>
+      </div>
       <label class="cslab" style="margin-top:12px">ภาพป้าย (crop เฉพาะตัวป้าย) <span class="lk" id="wImgClear" style="font-size:11px;color:var(--red);cursor:pointer;display:none">✕ ล้าง</span></label>
       <div class="drop" id="wDrop" style="margin-top:4px;padding:16px;font-size:12px">ลาก/คลิกเลือกภาพป้าย / โลโก้ (.ai .pdf .svg .psd ก็ได้)<br><span style="font-size:11px;color:var(--muted)">แนะนำ PNG พื้นหลังโปร่ง หรือไฟล์เวกเตอร์ .ai/.psd · แตกชิ้น/เลเยอร์ให้เลือกได้ · ติ๊ก ✂ ถ้าต้องการตัดพื้นหลัง</span><input id="wFile" type="file" accept="image/*,.ai,.pdf,.eps,.ps,.svg,.psd,.psb,application/pdf,application/postscript,application/illustrator,image/svg+xml,image/vnd.adobe.photoshop" hidden></div>
       <!-- 🧊 ป้าย 3 มิติจริงบนผนัง -->
@@ -2727,7 +2754,7 @@ var I18N={
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
   'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'1 · ไฟออกหน้า มีคิ้ว','st.2':'2 · ไฟออกหน้า ไม่มีคิ้ว',
-  'st.3':'3 · ตัวอักษรไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ',
+  'st.3':'3 · ตัวอักษรไฟออกรอบ','st.4':'4 · กล่องไฟฉลุหน้า','st.5':'','st.16':'16 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ','st.19':'19 · ตัวอักษรยกขอบไฟออกหลัง',
   'st.6':'6 · งานยกขอบ','st.7':'7 · งานยกขอบ มีไส้',
   'st.8':'8 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'9 · กล่องไฟล้อมตามทรง 2 หน้า',
   'st.10':'10 · กล่องไฟทรงกลม 1 หน้า','st.11':'11 · กล่องไฟทรงกลม 2 หน้า',
@@ -2778,7 +2805,7 @@ var I18N={
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
   'st.0':'— Flat cut lines (normal) —','st.1':'1 · Front-lit, with trim','st.2':'2 · Front-lit, no trim',
-  'st.3':'3 · Edge-lit Letters (light all around)','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box',
+  'st.3':'3 · Edge-lit Letters (light all around)','st.4':'4 · Light box · Cut-out face','st.5':'','st.16':'16 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box','st.19':'19 · Halo-lit Raised Letters (back-lit)',
   'st.6':'6 · Raised (return) letters','st.7':'7 · Raised letters with insert',
   'st.8':'8 · Contour light box · 1-face','st.9':'9 · Contour light box · 2-face',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
@@ -4424,12 +4451,14 @@ var TRIMW=1, TRIMDIR='out';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   var _boxTypes=['8','9','10','11','12','13','14','15','18'];   // กล่องไฟทุกชนิด
   function toggle(){ var v=sel.value; var _isBox=_boxTypes.indexOf(v)>=0;
-    if($('mfTextPanel'))$('mfTextPanel').style.display=(v==='16')?'block':'none';   // แผงพิมพ์ข้อความเดิม = เฉพาะ type16 (กล่องไฟรวมไว้ในแผงกล่องแล้ว)
-    if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';
+    // 🅰️ ตัวอักษรทุกชนิด (ยกขอบ/ไม่ยกขอบ) = พิมพ์ text สร้างเป็นตัวป้ายได้เหมือนกันหมด — ไม่ใช่แค่ type16
+    var _isLetter=(!_isBox && v!=='17' && v!=='0' && v!=='');
+    if($('mfTextPanel'))$('mfTextPanel').style.display=_isLetter?'block':'none';
+    if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';   // ปรับโครงแขวน = เฉพาะอักษร+โครง (type16)
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
     if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
-    if(v==='16')fillFonts(); if(v==='17')fillNeon(); }
+    if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0)$('realW').value=Math.round(parseFloat(this.value)*10); };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
@@ -5135,6 +5164,13 @@ function csPrefillFromMain(){
 }
 $('btnCsheet').onclick=function(){ csSyncFile(); csPrefillFromMain(); $('csOverlay').classList.add('show'); };
 $('csClose').onclick=function(){ $('csOverlay').classList.remove('show'); };
+// 🏭 เมนู 'เครื่องมือผลิต' — เปิด/ปิด dropdown + ปิดเมื่อคลิกนอกเมนูหรือเลือกเครื่องมือ
+(function(){ var tb=$('btnProdMenu'), mn=$('prodMenu'); if(!tb||!mn)return;
+  function close(){ mn.style.display='none'; }
+  tb.onclick=function(e){ e.stopPropagation(); mn.style.display=(mn.style.display==='none'?'block':'none'); };
+  mn.addEventListener('click',function(e){ e.stopPropagation(); setTimeout(close,0); });  // เลือกเครื่องมือแล้วปิดเมนู
+  document.addEventListener('click',function(e){ if(mn.style.display!=='none' && !mn.contains(e.target) && e.target!==tb) close(); });
+})();
 $('csGoUpload').onclick=function(){ $('csOverlay').classList.remove('show'); $('drop').scrollIntoView({behavior:'smooth'}); $('drop').classList.add('over'); setTimeout(function(){$('drop').classList.remove('over');},1200); };
 $('csInstall').onchange=function(){ $('csWt').textContent=$('csInstall').value==='outdoor'?'VCT':'THW'; };
 
@@ -5763,6 +5799,24 @@ if($('btnWall'))$('btnWall').onclick=function(){
   });
 };
 if($('wHistLink'))$('wHistLink').onclick=function(){ try{openLogModal();}catch(_e){} };
+// 🎨 กลับไปหน้าออกแบบ/สร้างตัวอักษร (ปิดจำลองผนัง = โผล่แผงออกแบบ) — ให้ 2 หน้ารู้สึกเป็นหน้าเดียวกัน
+if($('wBackDesign'))$('wBackDesign').onclick=function(){ if($('wallClose'))$('wallClose').click(); try{window.scrollTo(0,0);}catch(_e){} };
+if($('goWallFromDesign'))$('goWallFromDesign').onclick=function(){ if($('btnWall'))$('btnWall').click(); };  // 🛠️ เฟส 4: ทางลัดหน้าออกแบบ -> เสนอราคา
+// 🏠 เฟส 3: หน้าจำลองผนัง = Landing (เปิดแอปมาเจอเลย) · เงียบ ไม่เด้ง alert ให้คนนอก (ไม่มีสิทธิ์ราคา = อยู่หน้าออกแบบตามเดิม)
+(function(){
+  function landing(){
+    if(window._wallLanded)return; window._wallLanded=true;
+    try{ if(document.querySelector('.modal.show'))return; }catch(_e){}         // มี overlay อื่นเปิดอยู่ = ไม่แทรก
+    if(typeof loadPriceCatalog!=='function')return;
+    loadPriceCatalog(function(ok){
+      if(!ok)return;                                                            // คนนอก = ไม่เปิด ไม่เด้ง error
+      try{ $('wallOverlay').classList.add('show'); wallInitSwatch(); wallDraw();
+           try{vcLogSim('จำลอง/ประเมินราคา');}catch(_e){} try{vcStartPresence();}catch(_e){} }catch(_e){}
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(landing,450);});
+  else setTimeout(landing,450);
+})();
 function wallReset(){ if(!confirm('เคลียร์ทุกอย่างให้ว่างเหมือนเปิดครั้งแรก?'))return;
   wallImg=null; wallBgImg=null; _wallSignOrig=null; wallPos={fx:0.5,fy:0.5}; wallDrag=false; wLockX=false; wLockY=false; _armTopFy=0;
   textBoxes=[]; _txtSel=-1; if($('wTextEdit'))$('wTextEdit').style.display='none';
@@ -5828,6 +5882,46 @@ function wallSignFile(cb){
   }catch(e){ cb(null); }
 }
 window.wallSignFile=wallSignFile;
+// 🅰️ เฟส 2: พิมพ์ข้อความ → เรนเดอร์เป็นภาพตัวอักษร → วางบนผนังทันที (ออกแบบ+เสนอราคาในหน้าเดียว)
+(function(){
+  var fs=$('wTxtMakeFont');
+  if(fs && !fs._done){ fs._done=1;
+    var list=(typeof GFONTS!=='undefined'&&GFONTS.length)?GFONTS:['Prompt','Kanit','Sarabun','Mitr','Bebas Neue','Anton','Poppins','Montserrat'];
+    list.forEach(function(f){var o=document.createElement('option');o.value=f;o.textContent=f;fs.appendChild(o);}); fs.value='Prompt';
+    try{loadGFont('Prompt');}catch(_e){}
+    fs.addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
+  }
+  var btn=$('wTxtMakeGo'); if(!btn)return;
+  btn.onclick=function(){
+    var txt=(($('wTxtMakeVal')&&$('wTxtMakeVal').value)||'').trim();
+    if(!txt){ alert('พิมพ์ข้อความก่อนนะคะ'); if($('wTxtMakeVal'))$('wTxtMakeVal').focus(); return; }
+    var font=($('wTxtMakeFont')&&$('wTxtMakeFont').value)||'Prompt',
+        hcm=parseFloat($('wTxtMakeH')&&$('wTxtMakeH').value)||20,
+        col=($('wTxtMakeColor')&&$('wTxtMakeColor').value)||'#1f2937';
+    var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังสร้าง...';
+    try{loadGFont(font);}catch(_e){}
+    var render=function(){
+      try{
+        var PPC=12, px=Math.max(24,hcm*PPC);
+        var c=document.createElement('canvas'), g=c.getContext('2d');
+        g.font='700 '+px+'px "'+font+'", sans-serif';
+        var m=g.measureText(txt);
+        var asc=(m.actualBoundingBoxAscent||px*0.72), desc=(m.actualBoundingBoxDescent||px*0.24);
+        var lft=(m.actualBoundingBoxLeft||0), rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
+        var mrg=px*0.2, w=Math.ceil(lft+rgt+mrg*2), h=Math.ceil(asc+desc+mrg*2);
+        c.width=w; c.height=h; g=c.getContext('2d');
+        g.font='700 '+px+'px "'+font+'", sans-serif'; g.textBaseline='alphabetic'; g.fillStyle=col;
+        g.fillText(txt, mrg+lft, mrg+asc);
+        var url=c.toDataURL('image/png');
+        _wallSignOrig=url; if($('wEditBg'))$('wEditBg').style.display='block';
+        _wallLoad(url, 'ข้อความ: '+txt);
+      }catch(_e){ alert('สร้างภาพข้อความไม่ได้'); }
+      btn.disabled=false; btn.textContent=old;
+    };
+    if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(render).catch(render); }
+    else setTimeout(render,150);
+  };
+})();
 function wallSetImg(f){
   try{ _wallFile=f; }catch(_e){}
   // ไฟล์เวกเตอร์/PSD (.ai/.pdf/.eps/.ps/.svg/.psd) -> แตกเป็นชิ้น/เลเยอร์ให้เลือก แล้ววางเหมือน JPG
