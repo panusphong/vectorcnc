@@ -4454,6 +4454,7 @@ var TRIMW=1, TRIMDIR='out';
     // 🅰️ ตัวอักษรทุกชนิด (ยกขอบ/ไม่ยกขอบ) = พิมพ์ text สร้างเป็นตัวป้ายได้เหมือนกันหมด — ไม่ใช่แค่ type16
     var _isLetter=(!_isBox && v!=='17' && v!=='0' && v!=='');
     if($('mfTextPanel'))$('mfTextPanel').style.display=_isLetter?'block':'none';
+    if($('mfTextGoWrap'))$('mfTextGoWrap').style.display=_isLetter?'block':'none';   // ปุ่ม 'สร้างป้ายจากข้อความ' (ย้ายไปล่างสุด) โชว์คู่กับแผงพิมพ์ข้อความ
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';   // ปรับโครงแขวน = เฉพาะอักษร+โครง (type16)
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
@@ -5668,7 +5669,8 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
   var signTopFy=(sy-M)/wh;
   var topFy=Math.max(0, Math.min(_armTopFy, signTopFy-0.01));
   var top=M+topFy*wh;
-  if((sy-top)>3){
+  if(sy-top<Math.max(14,sh*0.22)) top=Math.max(0, sy-Math.max(14,sh*0.22));   // ป้ายชิดฝ้า -> ดันแขนขึ้นให้มีระยะเสมอ (โครง/แขนขึ้นทุกกรณี)
+  {
     var edgePx=Math.max(armW*0.5, Math.min(sw*0.44, armEdgeCm*ppm));
     var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;
     var railY=sy;                                              // ต่ำสุดของขอบบนที่แขนแตะ -> วางคานบนตรงนั้น
@@ -5681,27 +5683,24 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
       _wDimV(g, top, railY, sx-16, ((railY-top)/ppm).toFixed(1)+' cm', col, 'arm');
       _wDimH(g, sx, sx+sw, top-armW*2.4, (sw/ppm).toFixed(0)+' cm (ระยะแขน)', col, 'fw');
     }
-  } else { window._armHandle=null; }
+  }
   g.restore();
 }
-// 🔩 โครงเหล็กยึดป้าย (โครงยึดป้าย = เหล็ก/สแตนเลส) — วาด 'คานคู่แนวนอน' พาดกลางตัวอักษร + ปิดหัวท้าย + 2 แขนยึดเพดาน
-//    (แบบเดียวกับหน้าออกแบบ) · โชว์เสมอไม่ว่าป้ายอยู่ตำแหน่งไหน
-function _wDrawSteelFrame(g, sx,sy,sw,sh, ppm, M){
+// 🔩 คานคู่แนวนอน (โครงเหล็กยึดป้าย) — พาดตามความกว้างป้าย 'วิ่งตามระยะป้าย' · วาดทับแบบโปร่งให้เห็น + เส้นวัดความกว้าง
+//    ใช้คู่กับแขน top2 (แขน=ยึดฝ้า+ลากปรับ+ระยะฝ้า · คานคู่=พาดตามความกว้างป้าย) ให้เหมือนแบบหน้าออกแบบ
+function _wDrawSteelRails(g, sx,sy,sw,sh, ppm){
   g.save();
-  var steel='#9aa1ac', steelD='#5b626d';
-  var barH=Math.max(4, Math.min(sh*0.09, sw*0.02));
-  var cy=sy+sh/2, gap=sh*0.40;
-  var y1=cy-gap/2-barH/2, y2=cy+gap/2-barH/2;
-  var inset=Math.max(6, sw*0.03), x0=sx+inset, x1=sx+sw-inset, w=Math.max(4,x1-x0);
-  g.strokeStyle=steelD; g.lineWidth=1;
-  // คานคู่แนวนอน (พาดกลางตัวอักษร)
-  [y1,y2].forEach(function(y){ g.fillStyle=steel; g.fillRect(x0,y,w,barH); g.strokeRect(x0,y,w,barH); });
-  // ปิดหัวท้ายซ้าย-ขวา = คานตั้งเชื่อมคานคู่เป็นกรอบ
-  var capW=Math.max(3,barH*0.85), capY=y1, capH=(y2+barH)-y1;
-  [x0, x1-capW].forEach(function(x){ g.fillStyle=steel; g.fillRect(x,capY,capW,capH); g.strokeRect(x,capY,capW,capH); });
-  // 2 แขนยื่นขึ้นยึดเพดาน (คลิปไม่ให้เกินฝ้า)
-  var armW=Math.max(3,barH*0.85), top=Math.max((M||0), sy-Math.max(sh*0.35,30));
-  if(y1-top>2){ [sx+sw*0.30, sx+sw*0.70].forEach(function(ax){ g.fillStyle=steel; g.fillRect(ax-armW/2, top, armW, y1-top); g.strokeStyle=steelD; g.strokeRect(ax-armW/2, top, armW, y1-top); }); }
+  var steel='#8b93a0', steelD='#5b626d';
+  var barH=Math.max(3, Math.min(sh*0.07, sw*0.012));
+  var y1=sy+sh*0.30-barH/2, y2=sy+sh*0.70-barH/2;
+  var inset=Math.max(4, sw*0.02), x0=sx+inset, x1=sx+sw-inset, w=Math.max(4,x1-x0);
+  g.globalAlpha=0.55;                                             // โปร่ง ให้เห็นตัวอักษรใต้คานคู่
+  [y1,y2].forEach(function(y){ g.fillStyle=steel; g.fillRect(x0,y,w,barH); g.strokeStyle=steelD; g.lineWidth=1; g.strokeRect(x0,y,w,barH); });
+  // ปิดหัวท้ายซ้าย-ขวา (คานตั้งเชื่อมเป็นกรอบ)
+  var capW=Math.max(2,barH*0.9);
+  [x0, x1-capW].forEach(function(x){ g.fillStyle=steel; g.fillRect(x,y1,capW,(y2+barH)-y1); g.strokeRect(x,y1,capW,(y2+barH)-y1); });
+  g.globalAlpha=1;
+  if($('wLabels')&&$('wLabels').checked){ _wDimH(g, x0, x1, y2+barH+16, 'คานคู่ '+(w/ppm).toFixed(0)+' cm', steelD, 'railw'); }
   g.restore();
 }
 function _wDrawSplit(g,M,ww,wh){
@@ -5798,10 +5797,11 @@ function wallDraw(){
   try{
     var _armSel=($('wArm')&&$('wArm').value)||'none';
     if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }         // เลือกแขน = วาดแขนตามที่เลือก
-    else if(_wFrameKind()){ _wDrawSteelFrame(g,sx,sy,sw,sh,ppm,M); }                      // เลือกโครงเหล็ก/สแตนเลส (ไม่มีแขน) = วาดคานคู่พาดกลาง (หลังตัวอักษร)
+    else if(_wFrameKind()){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,'top2'); }            // เลือกโครงเหล็ก/สแตนเลส (ไม่มีแขน) = แขนแขวนที่ track ขอบป้าย + ลากปรับ + โชว์ระยะจากฝ้า
   }catch(_e){}
   if(wallImg){ g.drawImage(wallImg,sx,sy,sw,sh); }
-  else { }
+  // 🔩 คานคู่พาดตามความกว้างป้าย (โครงเหล็ก · ไม่มีแขนข้าง) — วาดทับหลังภาพให้เห็น 'วิ่งตามระยะป้าย'
+  try{ if((($('wArm')&&$('wArm').value)||'none')==='none' && _wFrameKind()){ _wDrawSteelRails(g,sx,sy,sw,sh,ppm); } }catch(_e){}
   if($('wLabels').checked){
     g.fillStyle='#334155'; g.textAlign='center'; g.font='bold 20px sans-serif';
     g.fillText(Math.round(s.Wm)+' cm', M+ww/2, M-24);
@@ -6615,6 +6615,14 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       // (ก) ดึงพาเนล 'ออกแบบ' (พิมพ์ข้อความ/ประกอบกล่อง/นีออน/ปรับโครง) ให้อยู่ซ้าย ใต้ประเภทป้าย
       var extra=document.createElement('div'); extra.id='designExtras';
       ['mfTextPanel','frameAdjPanel','neonPanel','boxLitPanel'].forEach(function(id){ var p=H(id); if(p)extra.appendChild(p); });
+      // 🅰️ ย้ายปุ่ม 'สร้างป้ายจากข้อความ' + hint ไปล่างสุด (ปรับโครงเหล็กก่อนแล้วค่อยกดสร้าง)
+      (function(){ var btn=H('mfTextGo'); if(!btn)return;
+        var wrap=document.createElement('div'); wrap.id='mfTextGoWrap'; wrap.style.marginTop='8px';
+        var hint=btn.nextElementSibling; wrap.appendChild(btn);
+        if(hint&&hint.className&&(''+hint.className).indexOf('hint')>=0)wrap.appendChild(hint);
+        var mp=H('mfTextPanel'); wrap.style.display=(mp&&mp.style.display!=='none')?'block':'none';
+        extra.appendChild(wrap);
+      })();
       if(stb&&stb.parentNode)stb.parentNode.insertBefore(extra, stb.nextSibling);
       // (ข) ขวา = เตรียมไฟล์ผลิต: วัสดุ/เครื่องตัด(.grp) → โหมด/ขนาด/kerf(.set) → ปุ่มแปลง(go/goLayer) → ดาวน์โหลด(.out)
       var dRight=document.createElement('div'); dRight.id='designMenuR';
