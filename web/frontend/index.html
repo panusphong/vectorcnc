@@ -1000,6 +1000,7 @@ select.numin{cursor:pointer}
         <li><a href="#m2">ประโยชน์แยกตามฝ่าย</a></li>
         <li><a href="#m3">เมนูหลัก (ภาพรวม)</a></li>
         <li><a href="#mIK"><b style="color:#0d9488">🚀 Intake Studio — รับงาน / กรอง / เสนอ (ใหม่)</b></a></li>
+        <li><a href="#mPix"><b style="color:#7c3aed">🖼️ คู่มือภาพ — Facade + ป้าย ทีละขั้น (ใหม่)</b></a></li>
         <li><a href="#m4">คู่มือใช้งานทีละฟีเจอร์</a></li>
         <li><a href="#m5">ความรู้ประเภทป้าย + ค่าเผื่อ (รวมโครงเหล็ก · นีออน)</a></li>
         <li><a href="#m6">ตัวอย่าง Workflow (ตั้งแต่รับงานถึงตัด)</a></li>
@@ -1008,6 +1009,179 @@ select.numin{cursor:pointer}
         <li><a href="#m9">อภิธานศัพท์</a></li>
       </ol>
     </div>
+
+    <!-- ============ 🖼️ คู่มือภาพ ทีละขั้น ============ -->
+    <h2 id="mPix">🖼️ คู่มือภาพ — ทำงาน Facade + ป้าย ทีละขั้น</h2>
+    <p style="color:#64748b;margin-bottom:4px">อ่านตามภาพประกอบด้านล่างได้เลย แต่ละการ์ด = 1 ขั้นตอน · ทำจากบนลงล่าง</p>
+    <style>
+      #manualOverlay .pxstep{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;margin:12px 0;box-shadow:0 1px 5px rgba(0,0,0,.05)}
+      #manualOverlay .pxstep svg{flex:none;width:250px;height:150px;border-radius:10px;border:1px solid #eef2f7;background:#f8fafc}
+      #manualOverlay .pxstep .pxbody{flex:1;min-width:0}
+      #manualOverlay .pxnum{display:inline-block;background:#7c3aed;color:#fff;font-weight:800;border-radius:8px;padding:1px 9px;margin-right:6px;font-size:13px}
+      #manualOverlay .pxbody b{color:#4338ca}
+      @media(max-width:720px){#manualOverlay .pxstep{flex-direction:column}#manualOverlay .pxstep svg{width:100%;height:150px}}
+    </style>
+
+    <h3>ส่วนที่ 1 · ออกแบบป้าย (ก่อนโยนเข้าผนัง)</h3>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="12" y="16" width="160" height="26" rx="6" fill="#eef2ff" stroke="#4f46e5"/>
+        <text x="20" y="33" font-size="11" fill="#312e81" font-weight="bold">ประเภทป้าย ▾</text>
+        <rect x="12" y="50" width="226" height="18" rx="4" fill="#fff" stroke="#c7d2fe"/><text x="18" y="63" font-size="9" fill="#475569">1 · ไฟออกหน้า+โครง</text>
+        <rect x="12" y="72" width="226" height="18" rx="4" fill="#e0e7ff" stroke="#4f46e5"/><text x="18" y="85" font-size="9" fill="#312e81">11 · กล่องไฟทรงกลม 1 หน้า ✓</text>
+        <rect x="12" y="94" width="226" height="18" rx="4" fill="#fff" stroke="#c7d2fe"/><text x="18" y="107" font-size="9" fill="#475569">18 · กล่องไฟอะคริลิค ไฟออกรอบ</text>
+        <text x="12" y="132" font-size="9" fill="#94a3b8">100+ ประเภท · ค้นหาได้</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">1</span><b>เลือกประเภทป้าย</b></p>
+        <p>ที่กล่องม่วง "ประเภทป้าย" เลือกชนิดงาน เช่น ไฟออกหน้า/ออกหลัง, กล่องไฟกลม/เหลี่ยม, นีออนเฟล็กซ์, ตัวอักษรยกขอบ ฯลฯ — ระบบจะเปิดแผงตั้งค่าให้ตรงชนิดงานอัตโนมัติ</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="14" y="20" width="60" height="40" rx="4" fill="#fff" stroke="#94a3b8"/><text x="20" y="16" font-size="8" fill="#64748b">กว้าง</text><text x="30" y="44" font-size="12" fill="#0f172a">350</text>
+        <rect x="84" y="20" width="60" height="40" rx="4" fill="#fff" stroke="#94a3b8"/><text x="90" y="16" font-size="8" fill="#64748b">สูง</text><text x="96" y="44" font-size="11" fill="#94a3b8">auto</text>
+        <rect x="154" y="20" width="50" height="40" rx="4" fill="#fff" stroke="#94a3b8"/><text x="160" y="16" font-size="8" fill="#64748b">ลึก</text><text x="168" y="44" font-size="12" fill="#0f172a">10</text>
+        <rect x="14" y="78" width="180" height="14" rx="7" fill="#e2e8f0"/><circle cx="120" cy="85" r="9" fill="#4f46e5"/>
+        <text x="14" y="112" font-size="9" fill="#64748b">ปรับขนาด/สัดส่วน (ซม.)</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">2</span><b>ใส่ขนาด + เลือกวัสดุ</b></p>
+        <p>กรอกกว้าง/สูง/ลึก (เว้นช่องสูง = auto) เลือกวัสดุ/เครื่อง (Fiber·สแตนเลส, CO2·อะคริลิค, Router) และความหนาคิ้ว/เผื่อขอบตามชนิดงาน</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="230" height="130" rx="8" fill="#0b1220"/>
+        <ellipse cx="125" cy="72" rx="80" ry="55" fill="#fff"/>
+        <ellipse cx="125" cy="72" rx="80" ry="55" fill="none" stroke="#ff5a3c" stroke-width="3"/>
+        <text x="95" y="78" font-size="15" fill="#1e3a8a" font-weight="bold">LOGO</text>
+        <ellipse cx="125" cy="72" rx="92" ry="66" fill="none" stroke="#ff5a3c" stroke-width="2" opacity=".5"/>
+        <rect x="14" y="14" width="12" height="12" fill="#ef4444"/><rect x="28" y="14" width="12" height="12" fill="#f59e0b"/><rect x="42" y="14" width="12" height="12" fill="#22c55e"/>
+        <text x="150" y="24" font-size="9" fill="#fbbf24">อะคริลิคนีออน 12 สี</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">3</span><b>ดู 3 มิติ + แสง + สีอะคริลิค</b></p>
+        <p>ในแผง <b>🧊 3D Structure</b> เลือกไฟ (ออกหน้า/หลัง/รอบ) + อุณหภูมิแสง (วอร์ม/ขาว/คูล) และ <b>อะคริลิคนีออน 12 สี</b> — กดสีไหน หน้าเป็นสีนั้น แสงเป็นสีเดียวกัน · เลือกสี <b>หน้า</b> และ <b>ขอบ/คิ้ว</b> แยกได้</p>
+      </div>
+    </div>
+
+    <h3>ส่วนที่ 2 · จำลองผนัง · วางสเกล · ประเมินราคา</h3>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="12" width="230" height="118" rx="6" fill="#efeae1" stroke="#334155"/>
+        <rect x="60" y="52" width="130" height="34" rx="4" fill="#1e3a8a"/><text x="78" y="74" font-size="12" fill="#fff" font-weight="bold">SIGN</text>
+        <line x1="60" y1="96" x2="190" y2="96" stroke="#e11d48" stroke-width="1"/><text x="105" y="108" font-size="9" fill="#e11d48">316 cm</text>
+        <line x1="200" y1="52" x2="200" y2="86" stroke="#f59e0b" stroke-width="1"/><text x="204" y="72" font-size="8" fill="#f59e0b">30</text>
+        <rect x="150" y="112" width="86" height="14" rx="3" fill="#0f172a"/><text x="156" y="122" font-size="8" fill="#fff">21,384 บาท</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">4</span><b>โยนเข้าจำลองผนัง + วางสเกล</b></p>
+        <p>กด <b>🧱 ส่งเข้าจำลองผนัง</b> → ตั้งขนาดผนัง (กว้าง×สูง) + สัดส่วนป้าย → ลากป้ายวางตำแหน่ง เห็นระยะขอบจริงเป็น ซม. และ <b>ราคาประเมินสด</b> มุมขวาล่าง</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="12" width="110" height="126" rx="6" fill="#a9773f"/>
+        <g stroke="#5b3f2a" stroke-width="2"><line x1="22" y1="12" x2="22" y2="138"/><line x1="40" y1="12" x2="40" y2="138"/><line x1="58" y1="12" x2="58" y2="138"/><line x1="76" y1="12" x2="76" y2="138"/><line x1="94" y1="12" x2="94" y2="138"/><line x1="108" y1="12" x2="108" y2="138"/></g>
+        <rect x="130" y="20" width="108" height="20" rx="5" fill="#0d9488"/><text x="140" y="34" font-size="9" fill="#fff">🧱 ผนังภายใน</text>
+        <rect x="130" y="44" width="108" height="20" rx="5" fill="#fff" stroke="#0d9488"/><text x="140" y="58" font-size="9" fill="#0d9488">🏢 หน้าตึก Facade</text>
+        <g><rect x="130" y="74" width="24" height="18" fill="#8f9aa2"/><rect x="158" y="74" width="24" height="18" fill="#a9773f"/><rect x="186" y="74" width="24" height="18" fill="#2b2e32"/><rect x="130" y="96" width="24" height="18" fill="#3f6b5a"/><rect x="158" y="96" width="24" height="18" fill="#b0553a"/><rect x="186" y="96" width="24" height="18" fill="#8a9aa4"/></g>
+        <text x="130" y="130" font-size="8" fill="#94a3b8">89 ลาย · มีชื่อกำกับ</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">5</span><b>เลือกพื้นผิวผนัง / สลับโหมด Facade</b></p>
+        <p>เลือกลายผนัง (ไม้/หิน/กระเบื้อง/วอลเปเปอร์ ฯลฯ) หรือกดปุ่มสลับ <b>🏢 หน้าตึก Facade</b> เพื่อเข้าโหมดหน้าตึก (วัสดุจะเปลี่ยนเป็น ACP/ระแนง/ฉลุ/parametric) · เพิ่มรูปเองด้วยปุ่ม ➕ อัปโหลด</p>
+      </div>
+    </div>
+
+    <h3>ส่วนที่ 3 · โหมด Facade (หน้าตึก)</h3>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="12" width="150" height="126" rx="6" fill="#0d0e11"/>
+        <g fill="#ffd27f"><circle cx="30" cy="30" r="4"/><circle cx="55" cy="30" r="4"/><circle cx="80" cy="30" r="4"/><circle cx="105" cy="30" r="4"/><circle cx="130" cy="30" r="4"/><circle cx="30" cy="55" r="4"/><circle cx="55" cy="55" r="4"/><circle cx="80" cy="55" r="4"/><circle cx="105" cy="55" r="4"/><circle cx="130" cy="55" r="4"/><circle cx="30" cy="80" r="4"/><circle cx="55" cy="80" r="4"/><circle cx="80" cy="80" r="4"/><circle cx="105" cy="80" r="4"/><circle cx="130" cy="80" r="4"/></g>
+        <rect x="170" y="20" width="70" height="16" rx="4" fill="#fffbeb" stroke="#fde68a"/><text x="176" y="31" font-size="8" fill="#b45309">☑ ไฟหลังฉลุ</text>
+        <rect x="170" y="42" width="70" height="16" rx="4" fill="#fffbeb" stroke="#fde68a"/><text x="176" y="53" font-size="8" fill="#b45309">เส้นไฟ นอน/ตั้ง</text>
+        <rect x="170" y="64" width="70" height="16" rx="4" fill="#fffbeb" stroke="#fde68a"/><text x="176" y="75" font-size="8" fill="#b45309">🔦 สปอตไลต์</text>
+        <rect x="170" y="90" width="70" height="16" rx="4" fill="#f0fdfa" stroke="#a7f3d0"/><text x="176" y="101" font-size="8" fill="#0f766e">🎨 ACP เลือกสี</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">6</span><b>ตกแต่งไฟ + สี Facade</b></p>
+        <p>ในโหมด Facade เปิดได้: <b>ไฟหลังแผ่นฉลุ</b> (รูเรืองแสง) · <b>เส้นไฟ LED</b> แนวนอน/ตั้ง/ตาราง · <b>🔦 สปอตไลต์ส่องตึก</b> · เลือกสีไฟได้ · แผง <b>🎨 ACP สลับสี</b> และ <b>ระแนงเหล็กทำสี</b> (ตั้ง/นอน + ติดไฟเรืองหลัง)</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="70" y="12" width="110" height="92" fill="#8f9aa2"/>
+        <g stroke="#3f4750" stroke-width="1.5"><line x1="86" y1="12" x2="86" y2="104"/><line x1="102" y1="12" x2="102" y2="104"/><line x1="118" y1="12" x2="118" y2="104"/><line x1="134" y1="12" x2="134" y2="104"/><line x1="150" y1="12" x2="150" y2="104"/><line x1="166" y1="12" x2="166" y2="104"/></g>
+        <rect x="70" y="104" width="110" height="30" fill="#33414d"/>
+        <text x="90" y="122" font-size="8" fill="#cbd5e1">ชั้น 1 (ของเดิม)</text>
+        <line x1="70" y1="104" x2="180" y2="104" stroke="#22c55e" stroke-width="2" stroke-dasharray="4 3"/>
+        <text x="186" y="60" font-size="8" fill="#7c3aed">facade</text><text x="186" y="70" font-size="8" fill="#7c3aed">ชั้น 2 ↑</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">7</span><b>เว้นชั้น 1 (retrofit ตึกเก่า)</b></p>
+        <p>ติ๊ก <b>🏚️ เว้นชั้น 1</b> + ใส่ความสูงชั้นล่าง (ซม.) → facade จะขึ้นตั้งแต่ชั้น 2 ส่วนชั้นล่างวาดเป็นของเดิม (หน้าร้านกระจก) · <b>ราคา/วัตถุดิบ/ไฟ คำนวณเฉพาะพื้นที่จริง</b> ไม่รวมชั้น 1</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="230" height="130" rx="8" fill="#eef2ff"/>
+        <text x="18" y="26" font-size="10" fill="#4f46e5" font-weight="bold">💰 สรุปราคา (แยก + รวม)</text>
+        <text x="18" y="46" font-size="9" fill="#334155">🪧 ราคาป้าย → 22,657</text>
+        <text x="18" y="62" font-size="9" fill="#334155">🏢 งานหน้าตึก → 96,000</text>
+        <text x="18" y="78" font-size="9" fill="#334155">💡 เส้นไฟ LED → 4,200</text>
+        <text x="18" y="94" font-size="9" fill="#334155">🔦 สปอตไลต์ → 7,500</text>
+        <line x1="18" y1="102" x2="222" y2="102" stroke="#c7d2fe"/>
+        <text x="18" y="120" font-size="12" fill="#4338ca" font-weight="bold">รวมทั้งหมด → 130,357 บาท</text>
+        <text x="18" y="134" font-size="8" fill="#64748b">📦 BOM: แผ่น 12 · เหล็ก 9 เส้น</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">8</span><b>คิดราคา + วัตถุดิบ (BOM)</b></p>
+        <p>เลือกวัสดุ facade (มีหลายเกรดราคา) → ระบบแยกราคา <b>ป้าย / งานหน้าตึก / ไฟ / สปอตไลต์</b> แล้วรวมยอด · กล่อง <b>📦 วัตถุดิบ (BOM)</b> บอก จำนวนแผ่น + ตร.ม. + โครงเหล็กกี่เส้น (ปรับขนาดแผ่น/ระยะกริดได้)</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="230" height="130" rx="8" fill="#0a1024"/>
+        <g fill="#233"><rect x="10" y="70" width="40" height="60"/><rect x="200" y="60" width="40" height="70"/></g>
+        <polygon points="95,30 165,30 175,120 85,120" fill="#1c2431"/>
+        <g fill="#37e0b0"><circle cx="105" cy="45" r="3"/><circle cx="120" cy="45" r="3"/><circle cx="135" cy="45" r="3"/><circle cx="150" cy="45" r="3"/><circle cx="105" cy="62" r="3"/><circle cx="120" cy="62" r="3"/><circle cx="135" cy="62" r="3"/><circle cx="150" cy="62" r="3"/></g>
+        <rect x="60" y="132" width="140" height="6" fill="#c9a227"/>
+        <text x="150" y="24" font-size="8" fill="#94a3b8">มุมเอียง 3/4 · กลางคืน</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">9</span><b>ดูวิวตึกระยะไกล + เลือกแบบตึก</b></p>
+        <p>กด <b>🌆 ดูวิวตึกใกล้ๆ</b> → เลือกรูปแบบตึก 5 แบบ (กล่องโมเดิร์น/อาคารสูง/ตึกแถว/โชว์รูม/ซุ้ม) · สลับ <b>หน้าตรง / มุมเอียง 3/4</b> · กลางวัน-คืน · กด <b>บันทึกรูป</b> ส่งลูกค้าได้</p>
+      </div>
+    </div>
+
+    <div class="pxstep">
+      <svg viewBox="0 0 250 150" xmlns="http://www.w3.org/2000/svg">
+        <rect x="14" y="20" width="66" height="26" rx="6" fill="#2563eb"/><text x="24" y="37" font-size="9" fill="#fff">↓ SVG</text>
+        <rect x="90" y="20" width="66" height="26" rx="6" fill="#7c3aed"/><text x="98" y="37" font-size="9" fill="#fff">↓ DXF</text>
+        <rect x="166" y="20" width="70" height="26" rx="6" fill="#16a34a"/><text x="174" y="37" font-size="9" fill="#fff">↓ .ai</text>
+        <rect x="14" y="56" width="100" height="26" rx="6" fill="#0f172a"/><text x="24" y="73" font-size="9" fill="#fff">🧾 ใบสั่งผลิต</text>
+        <rect x="14" y="92" width="222" height="40" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+        <text x="22" y="108" font-size="8" fill="#475569">3มิติ + โครงเหล็ก + LED</text>
+        <text x="22" y="122" font-size="8" fill="#475569">+ Cut Layers + BOM → เซ็นอนุมัติ</text>
+      </svg>
+      <div class="pxbody">
+        <p><span class="pxnum">10</span><b>ส่งออกไฟล์ + ใบสั่งผลิต</b></p>
+        <p>ดาวน์โหลด <b>SVG / DXF (แยกเลเยอร์) / .ai (ขนาดจริง พร้อมตัด) / PDF</b> · หรือกด <b>🧾 ใบสั่งผลิต</b> ออกเอกสารครบ (3มิติ + โครงเหล็ก + LED + Cut Layers + BOM) ให้ลูกค้าเซ็นอนุมัติ · กด <b>💾 บันทึกงาน</b> เก็บประวัติค้นย้อนหลังได้</p>
+      </div>
+    </div>
+
+    <div class="tip">💡 <b>ลำดับแนะนำ:</b> ออกแบบป้าย (ส่วน 1) → โยนเข้าผนัง/เลือกโหมด (ส่วน 2) → ถ้าเป็นงานตึกให้สลับ Facade แต่งไฟ+สี+เว้นชั้น 1 (ส่วน 3) → เช็คราคา/BOM → ดูวิวตึก → ส่งออกไฟล์</div>
 
     <h2 id="m1">1. ประโยชน์ของระบบ (ภาพรวม)</h2>
     <ul>
