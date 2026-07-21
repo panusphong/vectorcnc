@@ -1577,6 +1577,10 @@ select.numin{cursor:pointer}
           <span style="font-size:11px;color:#64748b">บาท/ตร.ม.</span>
         </div>
         <div style="font-size:10.5px;color:#64748b;margin-top:5px">คิดจากพื้นที่ผนัง (กว้าง×สูง) × เรตที่เลือก · ปรับเรตได้ทุกเมื่อ</div>
+        <div style="border-top:1px dashed #c7d2fe;margin-top:8px;padding-top:7px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#334155;flex-wrap:wrap"><input type="checkbox" id="wFacGF"> 🏚️ เว้นชั้น 1 (เริ่ม facade ชั้น 2) · สูงชั้น 1 <input class="numin" id="wFacGFh" type="number" value="350" min="0" step="10" style="width:62px;padding:4px"> ซม.</label>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">งาน retrofit ตึกเก่า — ชั้นล่างเปิดโล่ง/ของเดิม ไม่คิดพื้นที่ facade</div>
+        </div>
         <div style="border-top:1px dashed #c7d2fe;margin-top:8px;padding-top:7px;font-size:11px;color:#4f46e5;font-weight:700">➕ คิดพื้นที่หุ้มเพิ่ม (นอกจากหน้าตรง)</div>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#334155;margin-top:5px"><input type="checkbox" id="wFacSide"> หุ้มข้าง ซ้าย+ขวา · ลึก <input class="numin" id="wFacSideD" type="number" value="30" min="0" step="5" style="width:58px;padding:4px"> ซม.</label>
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#334155;margin-top:4px"><input type="checkbox" id="wFacBot"> ปิดล่าง / soffit · ลึก <input class="numin" id="wFacBotD" type="number" value="40" min="0" step="5" style="width:58px;padding:4px"> ซม.</label>
@@ -5935,17 +5939,34 @@ function _wDrawFacadeLines(g,M,ww,wh){
   function line(x1,y1,x2,y2){ g.save(); g.strokeStyle=col; g.lineWidth=lw; g.shadowColor=col; g.shadowBlur=Math.max(8,ww*0.02); g.lineCap='round';
     g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
     g.shadowBlur=0; g.strokeStyle='rgba(255,255,255,.85)'; g.lineWidth=lw*0.4; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke(); g.restore(); }
+  var gf=window._wGFpx||0, eh=wh-gf;   // เว้นชั้น 1: เส้นไฟอยู่เฉพาะโซน facade (ชั้น 2 ขึ้น)
   var i,n,H={h3:3,h5:5,h8:8,grid:4,grid2:7},V={v4:4,v6:6,v10:10,grid:4,grid2:7};
-  if(H[mode]){ n=H[mode]; for(i=1;i<=n;i++){ var y=M+wh*i/(n+1); line(M+ww*0.02,y,M+ww*0.98,y); } }
-  if(V[mode]){ n=V[mode]; for(i=1;i<=n;i++){ var x=M+ww*i/(n+1); line(x,M+wh*0.02,x,M+wh*0.98); } }
+  if(H[mode]){ n=H[mode]; for(i=1;i<=n;i++){ var y=M+eh*i/(n+1); line(M+ww*0.02,y,M+ww*0.98,y); } }
+  if(V[mode]){ n=V[mode]; for(i=1;i<=n;i++){ var x=M+ww*i/(n+1); line(x,M+eh*0.02,x,M+eh*0.98); } }
 }
-// 🔦 สปอตไลต์ส่องหน้าตึก (uplight) — ลำแสงพุ่งขึ้นจากฐานผนัง
+// 🏚️ ชั้น 1 ของเดิม (retrofit ตึกเก่า) — เว้นไว้ไม่ทำ facade
+function _wDrawGroundFloor(g,x,y,w,h){
+  var night=$('wNight')&&$('wNight').checked;
+  g.save();
+  g.fillStyle=night?'#20242c':'#b8bcc2'; g.fillRect(x,y,w,h);
+  g.fillStyle=night?'#0b1420':'#33414d'; g.fillRect(x+w*0.04,y+h*0.14,w*0.92,h*0.72);
+  g.fillStyle=night?'rgba(120,180,255,.22)':'rgba(255,255,255,.25)';
+  for(var wx=x+w*0.08;wx<x+w*0.9;wx+=w*0.14)g.fillRect(wx,y+h*0.18,w*0.09,h*0.62);
+  g.fillStyle=night?'#2a2f37':'#9aa0a7'; var nc=Math.max(2,Math.round(w/Math.max(1,h*1.2)));
+  for(var i=0;i<=nc;i++){ var cx=x+w*i/nc; g.fillRect(cx-w*0.012,y,w*0.024,h); }
+  g.strokeStyle='#5b626d'; g.lineWidth=2; g.beginPath(); g.moveTo(x,y); g.lineTo(x+w,y); g.stroke();
+  g.fillStyle=night?'#94a3b8':'#475569'; g.font='bold 11px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('▼ ชั้น 1 (ของเดิม · เว้นไว้)', x+w/2, y+Math.min(h*0.5,14));
+  g.restore();
+}
+// 🔦 สปอตไลต์ส่องหน้าตึก (uplight) — ลำแสงพุ่งขึ้นจากฐาน facade
 function _wDrawFacadeUplights(g,M,ww,wh){
   var n=parseInt(($('wFacadeSpotN')&&$('wFacadeSpotN').value)||3,10)||3;
   var col=($('wFacadeLed')&&$('wFacadeLed').value)||'#ffe6b0';
+  var gf=window._wGFpx||0, base=M+wh-gf;
   function rgba(hex,a){ var h=hex.replace('#','');if(h.length===3)h=h.replace(/(.)/g,'$1$1'); return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')'; }
   g.save(); g.globalCompositeOperation='lighter';
-  for(var i=1;i<=n;i++){ var x=M+ww*i/(n+1), by=M+wh, spread=ww*0.12;
+  for(var i=1;i<=n;i++){ var x=M+ww*i/(n+1), by=base, spread=ww*0.12;
     var grd=g.createLinearGradient(x,by,x,M); grd.addColorStop(0,rgba(col,0.55)); grd.addColorStop(0.55,rgba(col,0.14)); grd.addColorStop(1,rgba(col,0));
     g.fillStyle=grd; g.beginPath(); g.moveTo(x,by); g.lineTo(x-spread,M); g.lineTo(x+spread,M); g.closePath(); g.fill();
     var rg=g.createRadialGradient(x,by,0,x,by,ww*0.11); rg.addColorStop(0,rgba(col,0.7)); rg.addColorStop(1,rgba(col,0)); g.fillStyle=rg; g.beginPath(); g.arc(x,by,ww*0.11,Math.PI,2*Math.PI); g.fill();
@@ -5959,12 +5980,15 @@ function wallDraw(){
   var s=wallSignReal(), M=WALL_M, ppm=s.ppm;
   var ww=Math.round(s.Wm*ppm), wh=Math.round(s.Hm*ppm);
   cv.width=ww+2*M; cv.height=wh+2*M;
-  g.fillStyle='#ffffff'; g.fillRect(0,0,cv.width,cv.height);
+  g.fillStyle='#ffffff'; g.fillRect(0,0,cv.width,cv.height); window._wGFpx=0;
   if(wallBgImg){ var iw=wallBgImg.width,ih=wallBgImg.height,sc=Math.max(ww/iw,wh/ih),dw=iw*sc,dh=ih*sc; g.save(); g.beginPath(); g.rect(M,M,ww,wh); g.clip(); g.drawImage(wallBgImg,M+(ww-dw)/2,M+(wh-dh)/2,dw,dh); g.restore(); }
   else if(window._wTexSel && window._wTexSel!=='none' && typeof _wTexCanvas==='function'){   // 🧱 พื้นผิว/ลายผนัง (procedural)
-    var _tex=_wTexCanvas(window._wTexSel, Math.round(ww), Math.round(wh));
-    if(_tex){ g.drawImage(_tex, M, M, ww, wh); if($('wNight')&&$('wNight').checked){ g.save(); g.globalAlpha=0.45; g.fillStyle='#0e1116'; g.fillRect(M,M,ww,wh); g.restore(); } }
-    else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,wh); }
+    var _gf=(window._wFacadeMode && $('wFacGF') && $('wFacGF').checked)?Math.min(wh*0.7,Math.max(0,(parseFloat($('wFacGFh').value)||0)*ppm)):0;
+    window._wGFpx=_gf; var _th=Math.max(1,wh-_gf);
+    var _tex=_wTexCanvas(window._wTexSel, Math.round(ww), Math.round(_th));
+    if(_tex){ g.drawImage(_tex, M, M, ww, _th); if($('wNight')&&$('wNight').checked){ g.save(); g.globalAlpha=0.45; g.fillStyle='#0e1116'; g.fillRect(M,M,ww,_th); g.restore(); } }
+    else { g.fillStyle=$('wColor').value; g.fillRect(M,M,ww,_th); }
+    if(_gf>0){ try{_wDrawGroundFloor(g,M,M+_th,ww,_gf);}catch(_e){} }
   }
   else { g.fillStyle=($('wNight')&&$('wNight').checked)?'#0e1116':$('wColor').value; g.fillRect(M,M,ww,wh); }
   g.strokeStyle='#334155'; g.lineWidth=2; g.strokeRect(M,M,ww,wh);
@@ -6504,7 +6528,8 @@ function wallPrice(){ if(!$('wPResult'))return;
   var _fitem=$('wFacadeItem'), _fval=_fitem?_fitem.value:'0';
   if(window._wFacadeMode && _fval && _fval!=='0'){
     var _frate=(_fval==='custom')?(parseFloat(($('wFacadeRate')&&$('wFacadeRate').value)||0)||0):(parseFloat(_fval)||0);
-    var _frontSqm=Math.max(0,(s.Wm/100)*(s.Hm/100)), _Hm=s.Hm/100, _Wm=s.Wm/100;
+    var _gfCm=($('wFacGF')&&$('wFacGF').checked)?(parseFloat($('wFacGFh').value)||0):0;
+    var _Hm=Math.max(0,(s.Hm-_gfCm))/100, _Wm=s.Wm/100, _frontSqm=Math.max(0,_Wm*_Hm);
     // ➕ พื้นที่หุ้มเพิ่ม: ข้าง(2)=สูง×ลึก×2 · ล่าง=กว้าง×ลึก · บน=กว้าง×ลึก
     var _wrap=0, _wrapTxt=[];
     if($('wFacSide')&&$('wFacSide').checked){ var _ds=(parseFloat(($('wFacSideD')&&$('wFacSideD').value)||0)||0)/100; if(_ds>0){ _wrap+=2*_Hm*_ds; _wrapTxt.push('หุ้มข้าง'); } }
@@ -6519,14 +6544,16 @@ function wallPrice(){ if(!$('wPResult'))return;
   var _ledFee=0;
   if(window._wFacadeMode && window._wFacadeLines && window._wFacadeLines!=='0'){
     var _HC={h3:3,h5:5,h8:8,grid:4,grid2:7}, _VC={v4:4,v6:6,v10:10,grid:4,grid2:7}, _lm=window._wFacadeLines;
-    var _ledM=(_HC[_lm]||0)*(s.Wm/100)+(_VC[_lm]||0)*(s.Hm/100);
+    var _gfL=($('wFacGF')&&$('wFacGF').checked)?(parseFloat($('wFacGFh').value)||0):0, _effHl=Math.max(0,s.Hm-_gfL)/100;
+    var _ledM=(_HC[_lm]||0)*(s.Wm/100)+(_VC[_lm]||0)*_effHl;
     _ledFee=Math.round(_ledM*600);
     if(_ledFee>0){ lines.push({ledLine:true,m:_ledM,rate:600,fee:_ledFee}); total+=_ledFee; }
   }
   // 💡 ไฟเส้น LED หลังแผ่นฉลุ (backlit) — คิดจากความยาวเส้นเดินหลังแผ่น (พื้นที่ ÷ ระยะเส้น 0.25 ม.) × 600
   var _blFee=0;
   if(window._wFacadeMode && window._wFacadeBacklit){
-    var _blArea=(s.Wm/100)*(s.Hm/100), _blM=_blArea/0.25;
+    var _gfB=($('wFacGF')&&$('wFacGF').checked)?(parseFloat($('wFacGFh').value)||0):0;
+    var _blArea=(s.Wm/100)*(Math.max(0,s.Hm-_gfB)/100), _blM=_blArea/0.25;
     _blFee=Math.round(_blM*600);
     if(_blFee>0){ lines.push({backlitLine:true,m:_blM,rate:600,fee:_blFee}); total+=_blFee; }
   }
@@ -6540,7 +6567,8 @@ function wallPrice(){ if(!$('wPResult'))return;
   // 📦 BOM วัตถุดิบ facade — จำนวนแผ่น + ตร.ม. + โครงเหล็กเฟรม (กี่เส้น)
   if($('wFacadeBOM')){
     if(window._wFacadeMode){
-      var _bWm=s.Wm/100,_bHm=s.Hm/100,_bfront=_bWm*_bHm,_bwrap=0;
+      var _gfBom=($('wFacGF')&&$('wFacGF').checked)?(parseFloat($('wFacGFh').value)||0):0;
+      var _bWm=s.Wm/100,_bHm=Math.max(0,s.Hm-_gfBom)/100,_bfront=_bWm*_bHm,_bwrap=0;
       if($('wFacSide')&&$('wFacSide').checked)_bwrap+=2*_bHm*((parseFloat($('wFacSideD').value)||0)/100);
       if($('wFacBot')&&$('wFacBot').checked)_bwrap+=_bWm*((parseFloat($('wFacBotD').value)||0)/100);
       if($('wFacTop')&&$('wFacTop').checked)_bwrap+=_bWm*((parseFloat($('wFacTopD').value)||0)/100);
@@ -6612,7 +6640,7 @@ if($('wPType')){ $('wPType').onchange=wallDraw; $('wPType').oninput=wallDraw; }
 // 🏢 facade: เลือกวัสดุ/เกรดราคาเอง → คิดราคา + โชว์ช่องเรตเอง
 if($('wFacadeItem')){ $('wFacadeItem').onchange=function(){ var rw=$('wFacadeRateWrap'); if(rw)rw.style.display=(this.value==='custom')?'flex':'none'; try{wallDraw();}catch(_e){} }; }
 if($('wFacadeRate')){ $('wFacadeRate').oninput=function(){try{wallDraw();}catch(_e){}}; $('wFacadeRate').onchange=function(){try{wallDraw();}catch(_e){}}; }
-['wFacSide','wFacSideD','wFacBot','wFacBotD','wFacTop','wFacTopD','wFacSheetW','wFacSheetH','wFacGrid'].forEach(function(id){ var el=$(id); if(el){ el.oninput=function(){try{wallDraw();}catch(_e){}}; el.onchange=function(){try{wallDraw();}catch(_e){}}; } });
+['wFacSide','wFacSideD','wFacBot','wFacBotD','wFacTop','wFacTopD','wFacSheetW','wFacSheetH','wFacGrid','wFacGF','wFacGFh'].forEach(function(id){ var el=$(id); if(el){ el.oninput=function(){try{wallDraw();}catch(_e){}}; el.onchange=function(){try{wallDraw();}catch(_e){}}; } });
 function renderBoxRows(){ var c=$('wPBoxRows'); if(!c)return; c.innerHTML='';
   measBoxes.forEach(function(b,i){ var row=document.createElement('div'); row.style.cssText='display:flex;gap:5px;align-items:center;margin-bottom:5px';
     var sw=document.createElement('span'); sw.style.cssText='width:12px;height:12px;border-radius:3px;flex:none;background:'+b.color; row.appendChild(sw);
