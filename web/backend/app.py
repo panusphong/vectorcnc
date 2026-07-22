@@ -1751,13 +1751,47 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
             'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
 
 
+def _skeleton_from_geom(full):
+    """หา 'เส้นแกนกลาง' (centerline) จาก 'รูปเรขาคณิตตัวอักษร' (full) โดยตรง
+       ใช้ได้แม้ไม่มีไฟล์ภาพ (เช่น ป้ายที่พิมพ์จากข้อความ) -> LED เส้นเดียวเดินตามรูปตัวอักษร"""
+    import numpy as np
+    from skimage.morphology import skeletonize
+    from PIL import Image, ImageDraw
+    b = full.bounds; fw = b[2] - b[0]; fh = b[3] - b[1]
+    if fw <= 0 or fh <= 0:
+        return []
+    RES = 1100.0 / max(fw, fh)
+    Wpx = max(2, int(fw * RES)); Hpx = max(2, int(fh * RES))
+    img = Image.new("L", (Wpx, Hpx), 0); dr = ImageDraw.Draw(img)
+    def _dp(poly):
+        try:
+            ext = [((x - b[0]) * RES, (y - b[1]) * RES) for (x, y) in poly.exterior.coords]
+            if len(ext) >= 3:
+                dr.polygon(ext, fill=255)
+            for ring in poly.interiors:
+                ip = [((x - b[0]) * RES, (y - b[1]) * RES) for (x, y) in ring.coords]
+                if len(ip) >= 3:
+                    dr.polygon(ip, fill=0)
+        except Exception:
+            pass
+    geoms = list(getattr(full, "geoms", [full]))
+    for g in geoms:
+        if getattr(g, "geom_type", "") == "Polygon":
+            _dp(g)
+    a = np.array(img); mask = a > 128
+    if not mask.any():
+        return []
+    sk = skeletonize(mask)
+    return _trace_skeleton_mask(sk, full)
+
 def _skeleton_subs(inp, full):
     """หา 'เส้นแกนกลาง' (centerline) ของลายเส้นภาพ -> polylines (subs) สำหรับนีออนเส้นเดี่ยว
-       จัดตำแหน่ง/สเกลให้ตรงกับ full (กรอบเดียวกัน)"""
+       จัดตำแหน่ง/สเกลให้ตรงกับ full (กรอบเดียวกัน) · ถ้าไม่มีภาพ/สกัดไม่ได้ ใช้จากรูปตัวอักษรแทน"""
     import numpy as np
     from PIL import Image
     from skimage.morphology import skeletonize
-    from shapely.geometry import LineString
+    if not inp:
+        return _skeleton_from_geom(full)
     im = Image.open(inp).convert("L")
     W, H = im.size
     scl = 1400.0 / max(W, H) if max(W, H) > 1400 else 1.0   # ลดขนาดกันช้า
@@ -1765,6 +1799,13 @@ def _skeleton_subs(inp, full):
         im = im.resize((max(1, int(W * scl)), max(1, int(H * scl))), Image.LANCZOS); W, H = im.size
     a = np.array(im); mask = a < 128
     sk = skeletonize(mask)
+    _r = _trace_skeleton_mask(sk, full)
+    return _r if _r else _skeleton_from_geom(full)
+
+def _trace_skeleton_mask(sk, full):
+    """เดินตาม skeleton (bool array) -> subs (polylines) map เข้ากรอบ full"""
+    import numpy as np
+    from shapely.geometry import LineString
     fg = set(map(tuple, np.argwhere(sk)))
     if not fg:
         return []
@@ -2364,11 +2405,16 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
                                       watt_per_m=8.0, volt=12.0)
             elif rec.get("back_lit"):
-                # 🆕 ไฟออกหลัง (halo) = LED เส้นเดียวตามแกนกลางตัวอักษร
+                # 🆕 ไฟออกหลัง (halo) = LED เส้นเดียวตามแกนกลางตัวอักษร (เดินตามรูปตัวอักษร)
                 try:
                     _bsub2 = _skeleton_subs(inp, full)
                 except Exception:
                     _bsub2 = None
+                if not _bsub2:
+                    try:
+                        _bsub2 = _skeleton_from_geom(full)
+                    except Exception:
+                        _bsub2 = None
                 _led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub2,
                                       watt_per_m=12.0, volt=12.0)
             else:
@@ -2608,6 +2654,11 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _bsub = _skeleton_subs(inp, full)
                 except Exception:
                     _bsub = None
+                if not _bsub:
+                    try:
+                        _bsub = _skeleton_from_geom(full)
+                    except Exception:
+                        _bsub = None
                 led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub,
                                      watt_per_m=float(led_watt_per_m), volt=float(led_volt))
             else:
