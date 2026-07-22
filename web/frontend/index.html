@@ -4735,19 +4735,21 @@ function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
-  function paint(sel, prevCol, newCol){
+  function paint(sel, cands, newCol){
     var els=img.querySelectorAll(sel);
     if(els.length){ els.forEach(function(p){p.setAttribute('fill',newCol);}); return true; }
-    if(!prevCol) return false;
-    var pc=String(prevCol).toLowerCase(), hit=false;
+    var list=[]; (cands||[]).forEach(function(c){ if(c)list.push(String(c).toLowerCase()); });
+    if(!list.length) return false;
+    var hit=false;
     img.querySelectorAll('path').forEach(function(p){
       var f=(p.getAttribute('fill')||'').toLowerCase();
-      if(f && f!=='none' && f===pc){ p.setAttribute('fill',newCol); hit=true; }
+      if(f && f!=='none' && list.indexOf(f)>=0){ p.setAttribute('fill',newCol); hit=true; }
     });
     return hit;
   }
-  paint('.w3d-face', window._lsGenFace, FCOL);   // หน้าอะคริลิค
-  paint('.w3d-side', window._lsGenSide, SCOL);   // ผนังข้าง
+  // สีหน้า/ข้าง 'ที่ backend เคยวาดมา' — รวมทั้งค่าที่เราส่งไป และค่า default ของ backend รุ่นเก่า
+  paint('.w3d-face', [window._lsGenFace,'#c9cdd4','#eef1f6','#eef4ff','#fffdf5','#fff8ec','#ffffff'], FCOL);
+  paint('.w3d-side', [window._lsGenSide,'#9aa1ac','#8f959c','#a9b4c4','#fbe6b8'], SCOL);
   img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
   window._lsGenFace=FCOL; window._lsGenSide=SCOL;   // อัปเดตอ้างอิงสำหรับการเปลี่ยนสีครั้งถัดไป
 }
@@ -6514,13 +6516,55 @@ function _wallPickPieces(pieces, f){
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   var pv=_shpSel,pt=_txtSel,pl=_lgSel; _shpSel=-1; _txtSel=-1; _lgSel=-1;   // ซ่อนจุดจับตอน export
-  window._wNoBanner=true; window._wExporting=true; try{ wallDraw(); }catch(_e){}   // แสดง ขนาด+ระยะจากผนัง ของทุกวัตถุ
-  var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height;
+  window._wNoBanner=false; window._wExporting=true; try{ wallDraw(); }catch(_e){}   // ✅ เก็บป้ายราคาไว้ + แสดงขนาดทุกวัตถุ
+  // 💰 สรุปราคาแบบข้อความ (ต่อท้ายภาพ)
+  var priceLines=[];
+  try{ var pr=$('wPResult'); if(pr){ (pr.innerText||'').split('\n').forEach(function(l){ l=l.trim(); if(l)priceLines.push(l); }); } }catch(_e){}
+  var padF=priceLines.length?(46+priceLines.length*30+22):0;
+  var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height+padF;
   var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height); g.drawImage(cv,0,0);
-  window._wNoBanner=false; window._wExporting=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
+  try{ if(window._wDrawNotesOn)window._wDrawNotesOn(g,cv.width,cv.height); }catch(_e){}   // 🗒️ โน้ต + เส้นชี้
+  if(padF){                                                        // แผงราคาใต้ภาพ
+    var y0=cv.height+8;
+    g.fillStyle='#f8fafc'; g.fillRect(20,y0,out.width-40,padF-16);
+    g.strokeStyle='#cbd5e1'; g.lineWidth=2; g.strokeRect(20,y0,out.width-40,padF-16);
+    g.fillStyle='#0f172a'; g.font='bold 26px sans-serif'; g.textAlign='left'; g.textBaseline='alphabetic';
+    g.fillText('ประเมินราคา', 40, y0+36);
+    g.font='22px sans-serif'; g.fillStyle='#334155';
+    priceLines.forEach(function(l,i){ g.fillText(l, 40, y0+72+i*30); });
+  }
+  window._wExporting=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
   return out;
 }
+// 📄 canvas -> PDF (สร้างไฟล์ PDF เองแบบ minimal ฝัง JPEG · ไม่ต้องใช้ไลบรารีนอก)
+function _canvasToPdfBlob(cv){
+  var jb=atob(cv.toDataURL('image/jpeg',0.92).split(',')[1]);
+  var W=cv.width, H=cv.height;
+  var pw=595.28, ph=841.89, m=24;                       // A4 แนวตั้ง (pt)
+  if(W>H){ pw=841.89; ph=595.28; }                      // ภาพแนวนอน -> A4 แนวนอน
+  var sc=Math.min((pw-2*m)/W,(ph-2*m)/H), iw=W*sc, ih=H*sc, ix=(pw-iw)/2, iy=(ph-ih)/2;
+  var content='q '+iw.toFixed(2)+' 0 0 '+ih.toFixed(2)+' '+ix.toFixed(2)+' '+iy.toFixed(2)+' cm /Im0 Do Q\n';
+  var parts=[], off=[], pos=0;
+  function put(s){ parts.push(s); pos+=s.length; }
+  put('%PDF-1.4\n');
+  function obj(n,body,stream){ off[n]=pos; put(n+' 0 obj\n'+body+'\n'); if(stream!=null){ put('stream\n'); put(stream); put('\nendstream\n'); } put('endobj\n'); }
+  obj(1,'<</Type/Catalog/Pages 2 0 R>>');
+  obj(2,'<</Type/Pages/Kids[3 0 R]/Count 1>>');
+  obj(3,'<</Type/Page/Parent 2 0 R/MediaBox[0 0 '+pw.toFixed(2)+' '+ph.toFixed(2)+']/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>');
+  obj(4,'<</Type/XObject/Subtype/Image/Width '+W+'/Height '+H+'/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length '+jb.length+'>>', jb);
+  obj(5,'<</Length '+content.length+'>>', content);
+  var xref=pos;
+  var x='xref\n0 6\n0000000000 65535 f \n';
+  for(var i=1;i<=5;i++){ x+=('0000000000'+off[i]).slice(-10)+' 00000 n \n'; }
+  put(x); put('trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n'+xref+'\n%%EOF');
+  var all=parts.join(''), u=new Uint8Array(all.length);
+  for(var k=0;k<all.length;k++)u[k]=all.charCodeAt(k)&0xff;
+  return new Blob([u],{type:'application/pdf'});
+}
 if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
+if($('wPdf'))$('wPdf').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); if(!cv)return;
+  try{ var b=_canvasToPdfBlob(cv); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='wall_mockup.pdf'; a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},4000); }
+  catch(e){ alert('สร้าง PDF ไม่ได้: '+e); } };
 // ⬇ บันทึกเป็น .ai ขนาดจริง (พร้อมสั่งผลิต) — ส่งแบบ + ขนาดจริงจากผนัง เข้าเครื่องพิมพ์ .ai + เส้นตัด
 if($('wDlAi'))$('wDlAi').onclick=function(){
   var s=(typeof wallSignReal==='function')?wallSignReal():null;
@@ -7879,18 +7923,25 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       _drag(dot,function(dx,dy){ n.tx=Math.max(0,Math.min(1,n.tx+dx/W)); n.ty=Math.max(0,Math.min(1,n.ty+dy/H)); render(); });
     });
   }
-  function saveImg(){
-    var c=cv(); if(!c)return; var cw=c.width, ch=c.height;
-    var out=document.createElement('canvas'); out.width=cw; out.height=ch; var g=out.getContext('2d');
-    try{ g.drawImage(c,0,0); }catch(e){}
+  // 🗒️ วาดโน้ต+เส้นชี้ ลงบน context ใดก็ได้ (ใช้ร่วมกับ export JPG/PDF)
+  window._wDrawNotesOn=function(g,cw,ch){
+    var D=window._wallNoteData||[]; if(!D.length)return;
+    g.save();
     g.setLineDash([6,4]); g.strokeStyle='#f59e0b'; g.lineWidth=3;
-    window._wallNoteData.forEach(function(n){ g.beginPath(); g.moveTo(n.nx*cw,n.ny*ch); g.lineTo(n.tx*cw,n.ty*ch); g.stroke(); }); g.setLineDash([]);
-    window._wallNoteData.forEach(function(n){ g.fillStyle='#ef4444'; g.beginPath(); g.arc(n.tx*cw,n.ty*ch,8,0,7); g.fill(); g.strokeStyle='#fff'; g.lineWidth=3; g.stroke();
+    D.forEach(function(n){ g.beginPath(); g.moveTo(n.nx*cw,n.ny*ch); g.lineTo(n.tx*cw,n.ty*ch); g.stroke(); }); g.setLineDash([]);
+    D.forEach(function(n){ g.fillStyle='#ef4444'; g.beginPath(); g.arc(n.tx*cw,n.ty*ch,8,0,7); g.fill(); g.strokeStyle='#fff'; g.lineWidth=3; g.stroke();
       g.font='bold 20px sans-serif'; var lines=(n.text||'').split('\n'); var tw=0; lines.forEach(function(l){tw=Math.max(tw,g.measureText(l).width);});
       var bw=Math.min(360,tw+26), bh=lines.length*24+34, bx=n.nx*cw, by=n.ny*ch;
       g.fillStyle='#f59e0b'; g.fillRect(bx,by,bw,26); g.fillStyle='#fff'; g.font='bold 15px sans-serif'; g.fillText('📌 โน้ต',bx+7,by+19);
       g.fillStyle='#fffbe6'; g.fillRect(bx,by+26,bw,bh-26); g.strokeStyle='#f59e0b'; g.lineWidth=2; g.strokeRect(bx,by,bw,bh);
       g.fillStyle='#334155'; g.font='19px sans-serif'; lines.forEach(function(l,i){ g.fillText(l,bx+10,by+(50+i*24)); }); });
+    g.restore();
+  };
+  function saveImg(){
+    var c=cv(); if(!c)return; var cw=c.width, ch=c.height;
+    var out=document.createElement('canvas'); out.width=cw; out.height=ch; var g=out.getContext('2d');
+    try{ g.drawImage(c,0,0); }catch(e){}
+    window._wDrawNotesOn(g,cw,ch);
     try{ var a=document.createElement('a'); a.download='wall-note.png'; a.href=out.toDataURL('image/png'); a.click(); }
     catch(e){ alert('บันทึกรูปไม่ได้ — ลองแคปหน้าจอแทนนะคะ'); }
   }
