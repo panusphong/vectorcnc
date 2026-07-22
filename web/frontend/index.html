@@ -4824,8 +4824,14 @@ var TRIMW=1, TRIMDIR='out';
     var btn=$('mfTextGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังสร้าง...';
     try{loadGFont(font);}catch(_e){}
     var render=function(){
-      var PPC=12, px=Math.max(24,hcm*PPC);
+      var PPC=12, target=Math.max(24,hcm*PPC);   // 🎯 ความสูง 'ตัวอักษรจริง' ที่ต้องการ (px)
       var c=document.createElement('canvas'), g=c.getContext('2d');
+      // วัดที่ขนาดอ้างอิงก่อน แล้วสเกล font-size ให้ 'ความสูงหมึกจริง' = ค่าที่กรอก (font-size ≠ ความสูงตัวอักษร)
+      var probe=200;
+      g.font='700 '+probe+'px "'+font+'", sans-serif';
+      var m0=g.measureText(txt);
+      var a0=(m0.actualBoundingBoxAscent||probe*0.72), d0=(m0.actualBoundingBoxDescent||probe*0.24);
+      var px=probe*(target/Math.max(1,a0+d0));
       g.font='700 '+px+'px "'+font+'", sans-serif';
       var m=g.measureText(txt);
       var asc=(m.actualBoundingBoxAscent||px*0.72), desc=(m.actualBoundingBoxDescent||px*0.24);
