@@ -4730,20 +4730,21 @@ if($('ikBrGo'))$('ikBrGo').onclick=function(){
 if($('ikBrDl'))$('ikBrDl').onclick=function(){ikDlTxt(IK_BRTXT,'job_brief.txt');};
 
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#eef1f6', SCOL='#9aa1ac';
+var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#ffffff', SCOL='#9aa1ac';
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
+  function setFill(p,col){ try{ p.setAttribute('fill',col); if(p.style){ p.style.fill=col; } }catch(e){} }   // ⚠️ style ทับ attribute ได้ -> ตั้งทั้งคู่
   function paint(sel, cands, newCol){
     var els=img.querySelectorAll(sel);
-    if(els.length){ els.forEach(function(p){p.setAttribute('fill',newCol);}); return true; }
+    if(els.length){ els.forEach(function(p){setFill(p,newCol);}); return true; }
     var list=[]; (cands||[]).forEach(function(c){ if(c)list.push(String(c).toLowerCase()); });
     if(!list.length) return false;
     var hit=false;
     img.querySelectorAll('path').forEach(function(p){
       var f=(p.getAttribute('fill')||'').toLowerCase();
-      if(f && f!=='none' && list.indexOf(f)>=0){ p.setAttribute('fill',newCol); hit=true; }
+      if(f && f!=='none' && list.indexOf(f)>=0){ setFill(p,newCol); hit=true; }
     });
     return hit;
   }
@@ -4752,25 +4753,59 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return;
     return 0.299*parseInt(h.substr(0,2),16)+0.587*parseInt(h.substr(2,2),16)+0.114*parseInt(h.substr(4,2),16); }
   // ✅ เช็ค 'แยกทีละส่วน' — backend บางรุ่นมีแค่ w3d-side (ทำให้เมื่อก่อนเปลี่ยนได้แค่ขอบ)
   var faceEls=img.querySelectorAll('.w3d-face'), sideEls=img.querySelectorAll('.w3d-side'), kimEls=img.querySelectorAll('.w3d-kim');
-  sideEls.forEach(function(p){p.setAttribute('fill',SCOL);});      // ผนังข้าง
-  kimEls.forEach(function(p){p.setAttribute('fill',SCOL);});       // คิ้ว
-  if(faceEls.length){ faceEls.forEach(function(p){p.setAttribute('fill',FCOL);}); }
+  sideEls.forEach(function(p){setFill(p,SCOL);});      // ผนังข้าง
+  kimEls.forEach(function(p){setFill(p,SCOL);});       // คิ้ว
+  var nFace=0;
+  if(faceEls.length){ faceEls.forEach(function(p){setFill(p,FCOL);}); nFace=faceEls.length; }
   else {
     // 🎨 หลักการเดียวกับ 'จำลองผนัง' — ย้อมทับสิ่งที่วาดอยู่ โดยไม่ต้องรู้ว่าเดิมสีอะไร
     var items=[];
-    img.querySelectorAll('path,polygon,rect').forEach(function(p){
+    img.querySelectorAll('path,polygon,rect,circle,ellipse').forEach(function(p){
       if(p.classList&&(p.classList.contains('w3d-side')||p.classList.contains('w3d-kim')))return;   // ข้ามส่วนที่จัดการแล้ว
-      var f=(p.getAttribute('fill')||'').trim(); if(!f||f.toLowerCase()==='none')return;
+      var f=(p.getAttribute('fill')||(p.style&&p.style.fill)||'').trim(); if(!f||f.toLowerCase()==='none')return;
       var L=lum(f); if(L==null)return; items.push({p:p,l:L});
     });
     if(items.length){
-      if(sideEls.length){ items.forEach(function(it){ it.p.setAttribute('fill',FCOL); }); }   // ข้างจัดการแล้ว -> ที่เหลือคือหน้า
-      else {                                                                                  // ไม่มี class เลย -> แยกด้วยความสว่าง
+      if(sideEls.length){ items.forEach(function(it){ setFill(it.p,FCOL); }); nFace=items.length; }   // ข้างจัดการแล้ว -> ที่เหลือคือหน้า
+      else {                                                                                          // ไม่มี class เลย -> แยกด้วยความสว่าง
         var ls=items.map(function(i){return i.l;}), lo=Math.min.apply(null,ls), hi=Math.max.apply(null,ls), mid=(lo+hi)/2;
-        items.forEach(function(it){ it.p.setAttribute('fill', (hi-lo<12 || it.l>=mid) ? FCOL : SCOL); });
+        items.forEach(function(it){ var isFace=(hi-lo<12 || it.l>=mid); setFill(it.p, isFace?FCOL:SCOL); if(isFace)nFace++; });
       }
     }
   }
+  // 🎨 ถ้าย้อมผ่าน DOM ไม่ได้ -> ใช้วิธีเดียวกับ 'จำลองผนัง' เป๊ะ: แปลงเป็นภาพแล้วย้อมทับพิกเซล
+  if(!nFace){ try{ _recolor3dRaster(); }catch(e){} }
+}
+// 📋 คัดลอกหลักการจากจำลองผนัง — ย้อมทับบนภาพแรสเตอร์ (ไม่สนโครงสร้าง SVG)
+function _hex2rgb(h){ h=String(h||'#ffffff').replace('#',''); if(h.length===3)h=h.replace(/(.)/g,'$1$1');
+  return [parseInt(h.substr(0,2),16)||0, parseInt(h.substr(2,2),16)||0, parseInt(h.substr(4,2),16)||0]; }
+function _recolor3dRaster(){
+  var host=$('ls3dImg'); if(!host)return false;
+  if(!host._origSvg){ var s0=host.querySelector('svg'); if(!s0)return false; host._origSvg=s0.outerHTML; }
+  var im=new Image();
+  im.onload=function(){
+    var W=Math.max(320, host.clientWidth||700), ar=(im.height&&im.width)?(im.height/im.width):0.4;
+    var c=document.createElement('canvas'); c.width=Math.round(W*2); c.height=Math.round(W*2*ar);
+    var g=c.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,c.width,c.height);
+    g.drawImage(im,0,0,c.width,c.height);
+    try{
+      var d=g.getImageData(0,0,c.width,c.height), a=d.data, F=_hex2rgb(FCOL), S=_hex2rgb(SCOL);
+      for(var i=0;i<a.length;i+=4){
+        if(a[i+3]<8)continue;
+        var r=a[i],gg=a[i+1],b=a[i+2];
+        if(Math.max(r,gg,b)-Math.min(r,gg,b)>34)continue;              // สีจัด (เส้นบอกขนาด/ข้อความ) -> ไม่แตะ
+        var L=0.299*r+0.587*gg+0.114*b;
+        if(L>=196){ var k=0.74+0.26*(L/255); a[i]=F[0]*k; a[i+1]=F[1]*k; a[i+2]=F[2]*k; }        // สว่าง = หน้าอะคริลิค
+        else if(L>=95){ var k2=0.74+0.26*(L/255); a[i]=S[0]*k2; a[i+1]=S[1]*k2; a[i+2]=S[2]*k2; } // กลาง = ขอบ/ผนังข้าง
+      }
+      g.putImageData(d,0,0);
+    }catch(e){ return; }
+    c.style.cssText='width:100%;height:auto;display:block';
+    host.innerHTML=''; host.appendChild(c);
+  };
+  im.onerror=function(){};
+  im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(host._origSvg);
+  return true;
   img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
   window._lsGenFace=FCOL; window._lsGenSide=SCOL;   // อัปเดตอ้างอิงสำหรับการเปลี่ยนสีครั้งถัดไป
 }
