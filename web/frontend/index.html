@@ -4734,15 +4734,23 @@ var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',tem
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
-  var faces=img.querySelectorAll('.w3d-face');
-  if(!faces.length){   // 🩹 fallback: backend เก่าไม่มี class -> จับ path 'หน้าอะคริลิค' จากสี default
-    var FF=['#c9cdd4','#eef1f6','#eef4ff','#fffdf5','#fff8ec'];
-    img.querySelectorAll('path').forEach(function(p){ var f=(p.getAttribute('fill')||'').toLowerCase(); if(FF.indexOf(f)>=0)p.classList.add('w3d-face'); });
-    faces=img.querySelectorAll('.w3d-face');
+  // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
+  function paint(sel, prevCol, newCol){
+    var els=img.querySelectorAll(sel);
+    if(els.length){ els.forEach(function(p){p.setAttribute('fill',newCol);}); return true; }
+    if(!prevCol) return false;
+    var pc=String(prevCol).toLowerCase(), hit=false;
+    img.querySelectorAll('path').forEach(function(p){
+      var f=(p.getAttribute('fill')||'').toLowerCase();
+      if(f && f!=='none' && f===pc){ p.setAttribute('fill',newCol); hit=true; }
+    });
+    return hit;
   }
-  faces.forEach(function(p){p.setAttribute('fill',FCOL);});                                // หน้าอะคริลิค
-  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});    // ผนังข้าง
-  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});}    // คิ้ว = สีขอบ/คิ้ว
+  paint('.w3d-face', window._lsGenFace, FCOL);   // หน้าอะคริลิค
+  paint('.w3d-side', window._lsGenSide, SCOL);   // ผนังข้าง
+  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
+  window._lsGenFace=FCOL; window._lsGenSide=SCOL;   // อัปเดตอ้างอิงสำหรับการเปลี่ยนสีครั้งถัดไป
+}
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
@@ -4980,6 +4988,7 @@ $('goLayer').onclick=function(){
   fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
+  window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
