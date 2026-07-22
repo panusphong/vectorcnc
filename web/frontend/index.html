@@ -4747,25 +4747,28 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return;
     });
     return hit;
   }
-  var hasCls = img.querySelector('.w3d-face') || img.querySelector('.w3d-side');
-  if(hasCls){
-    paint('.w3d-face', [window._lsGenFace], FCOL);
-    paint('.w3d-side', [window._lsGenSide], SCOL);
-  } else {
+  function lum(c){ c=String(c||'').trim().toLowerCase(); var m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c); if(!m)return null; var h=m[1];
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return 0.299*parseInt(h.substr(0,2),16)+0.587*parseInt(h.substr(2,2),16)+0.114*parseInt(h.substr(4,2),16); }
+  // ✅ เช็ค 'แยกทีละส่วน' — backend บางรุ่นมีแค่ w3d-side (ทำให้เมื่อก่อนเปลี่ยนได้แค่ขอบ)
+  var faceEls=img.querySelectorAll('.w3d-face'), sideEls=img.querySelectorAll('.w3d-side'), kimEls=img.querySelectorAll('.w3d-kim');
+  sideEls.forEach(function(p){p.setAttribute('fill',SCOL);});      // ผนังข้าง
+  kimEls.forEach(function(p){p.setAttribute('fill',SCOL);});       // คิ้ว
+  if(faceEls.length){ faceEls.forEach(function(p){p.setAttribute('fill',FCOL);}); }
+  else {
     // 🎨 หลักการเดียวกับ 'จำลองผนัง' — ย้อมทับสิ่งที่วาดอยู่ โดยไม่ต้องรู้ว่าเดิมสีอะไร
-    // แยกด้วยความสว่าง: ชิ้นสว่าง = หน้าอะคริลิค · ชิ้นเข้ม = ขอบ/ผนังข้าง
-    function lum(c){ c=String(c||'').trim().toLowerCase(); var m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c); if(!m)return null; var h=m[1];
-      if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
-      return 0.299*parseInt(h.substr(0,2),16)+0.587*parseInt(h.substr(2,2),16)+0.114*parseInt(h.substr(4,2),16); }
     var items=[];
     img.querySelectorAll('path,polygon,rect').forEach(function(p){
+      if(p.classList&&(p.classList.contains('w3d-side')||p.classList.contains('w3d-kim')))return;   // ข้ามส่วนที่จัดการแล้ว
       var f=(p.getAttribute('fill')||'').trim(); if(!f||f.toLowerCase()==='none')return;
       var L=lum(f); if(L==null)return; items.push({p:p,l:L});
     });
     if(items.length){
-      var ls=items.map(function(i){return i.l;}), lo=Math.min.apply(null,ls), hi=Math.max.apply(null,ls);
-      var mid=(lo+hi)/2;
-      items.forEach(function(it){ it.p.setAttribute('fill', (hi-lo<12 || it.l>=mid) ? FCOL : SCOL); });
+      if(sideEls.length){ items.forEach(function(it){ it.p.setAttribute('fill',FCOL); }); }   // ข้างจัดการแล้ว -> ที่เหลือคือหน้า
+      else {                                                                                  // ไม่มี class เลย -> แยกด้วยความสว่าง
+        var ls=items.map(function(i){return i.l;}), lo=Math.min.apply(null,ls), hi=Math.max.apply(null,ls), mid=(lo+hi)/2;
+        items.forEach(function(it){ it.p.setAttribute('fill', (hi-lo<12 || it.l>=mid) ? FCOL : SCOL); });
+      }
     }
   }
   img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
