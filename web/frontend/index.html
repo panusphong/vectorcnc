@@ -4747,9 +4747,27 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return;
     });
     return hit;
   }
-  // สีหน้า/ข้าง 'ที่ backend เคยวาดมา' — รวมทั้งค่าที่เราส่งไป และค่า default ของ backend รุ่นเก่า
-  paint('.w3d-face', [window._lsGenFace,'#c9cdd4','#eef1f6','#eef4ff','#fffdf5','#fff8ec','#ffffff'], FCOL);
-  paint('.w3d-side', [window._lsGenSide,'#9aa1ac','#8f959c','#a9b4c4','#fbe6b8'], SCOL);
+  var hasCls = img.querySelector('.w3d-face') || img.querySelector('.w3d-side');
+  if(hasCls){
+    paint('.w3d-face', [window._lsGenFace], FCOL);
+    paint('.w3d-side', [window._lsGenSide], SCOL);
+  } else {
+    // 🎨 หลักการเดียวกับ 'จำลองผนัง' — ย้อมทับสิ่งที่วาดอยู่ โดยไม่ต้องรู้ว่าเดิมสีอะไร
+    // แยกด้วยความสว่าง: ชิ้นสว่าง = หน้าอะคริลิค · ชิ้นเข้ม = ขอบ/ผนังข้าง
+    function lum(c){ c=String(c||'').trim().toLowerCase(); var m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c); if(!m)return null; var h=m[1];
+      if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+      return 0.299*parseInt(h.substr(0,2),16)+0.587*parseInt(h.substr(2,2),16)+0.114*parseInt(h.substr(4,2),16); }
+    var items=[];
+    img.querySelectorAll('path,polygon,rect').forEach(function(p){
+      var f=(p.getAttribute('fill')||'').trim(); if(!f||f.toLowerCase()==='none')return;
+      var L=lum(f); if(L==null)return; items.push({p:p,l:L});
+    });
+    if(items.length){
+      var ls=items.map(function(i){return i.l;}), lo=Math.min.apply(null,ls), hi=Math.max.apply(null,ls);
+      var mid=(lo+hi)/2;
+      items.forEach(function(it){ it.p.setAttribute('fill', (hi-lo<12 || it.l>=mid) ? FCOL : SCOL); });
+    }
+  }
   img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
   window._lsGenFace=FCOL; window._lsGenSide=SCOL;   // อัปเดตอ้างอิงสำหรับการเปลี่ยนสีครั้งถัดไป
 }
@@ -5021,6 +5039,7 @@ $('goLayer').onclick=function(){
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
         (j.ai_base64?'<button id="lsDlAi" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ .ai (โครงสร้าง+งานพิมพ์ แยกเลเยอร์)</button>':'')+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
+        '<button id="lsPresent" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 แผ่นนำเสนอแบบ</button>'+
         '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
         '<button id="lsSaveJob" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">💾 บันทึกงาน</button>'+
         '<button id="lsFindJob" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🔎 ค้นหางาน</button>'+
@@ -5167,6 +5186,7 @@ $('goLayer').onclick=function(){
     };
     wireGlow();
     try{ if(window._initLs3dNotes)_initLs3dNotes(); }catch(_e){}
+    try{ if(window._wirePresent)_wirePresent(); }catch(_e){}
   }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
 
@@ -7952,6 +7972,135 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     window.addEventListener('resize',function(){ try{render();}catch(e){} });
   }
   setTimeout(boot, 600);
+})();
+</script>
+<!-- 📐 แผ่นนำเสนอแบบ (Presentation Sheet) — side-L | front | side-R + isometric + ป้ายชี้วัสดุ -->
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function faceHref(){
+    try{ var pv=$('bxPreview'); if(pv&&pv.width>4) return pv.toDataURL('image/png'); }catch(e){}
+    try{ var im=window._wallFlatImg||window.wallImg; if(im){ var c=document.createElement('canvas'); c.width=im.naturalWidth||im.width||600; c.height=im.naturalHeight||im.height||200; c.getContext('2d').drawImage(im,0,0); return c.toDataURL('image/png'); } }catch(e){}
+    return '';
+  }
+  function dims(){
+    var W=parseFloat(($('bxW')&&$('bxW').value))||0, H=parseFloat(($('bxH')&&$('bxH').value))||0, D=parseFloat(($('bxD')&&$('bxD').value))||0;
+    if(!(W>0)){ try{ W=Math.round((parseFloat($('realW').value)||2000)/10); }catch(e){ W=200; } }
+    if(!(H>0)) H=Math.max(20,Math.round(W*0.2));
+    if(!(D>0)) D=Math.max(10,Math.round(H));
+    return {W:W,H:H,D:D};
+  }
+  function build(){
+    var d=dims(), W=d.W, H=d.H, D=d.D, art=faceHref();
+    var SW=1400, SH=1010;
+    var maxFrontPx=640, sc=maxFrontPx/Math.max(1,W);
+    if(H*sc>200) sc=200/H;
+    var fw=W*sc, fh=H*sc, dw=D*sc;
+    var gap=54, totalW=dw+gap+fw+gap+dw, x0=(SW-totalW)/2, yTop=190, ceil=96;
+    var p=[];
+    p.push('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+SW+'" height="'+SH+'" viewBox="0 0 '+SW+' '+SH+'" font-family="Prompt,Arial,sans-serif">');
+    p.push('<rect width="'+SW+'" height="'+SH+'" fill="#ffffff"/>');
+    p.push('<rect x="18" y="18" width="'+(SW-36)+'" height="'+(SH-36)+'" fill="none" stroke="#111" stroke-width="2"/>');
+    // เส้นเพดาน
+    p.push('<line x1="'+(x0-40)+'" y1="'+ceil+'" x2="'+(x0+totalW+40)+'" y2="'+ceil+'" stroke="#111" stroke-width="2"/>');
+    function rod(cx,topY){
+      p.push('<rect x="'+(cx-16)+'" y="'+(ceil-9)+'" width="32" height="12" rx="3" fill="#111"/>');
+      p.push('<line x1="'+cx+'" y1="'+(ceil+3)+'" x2="'+cx+'" y2="'+topY+'" stroke="#111" stroke-width="7"/>');
+    }
+    function dimH(x1,x2,y,txt){
+      p.push('<line x1="'+x1+'" y1="'+y+'" x2="'+x2+'" y2="'+y+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<line x1="'+x1+'" y1="'+(y-6)+'" x2="'+x1+'" y2="'+(y+6)+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<line x1="'+x2+'" y1="'+(y-6)+'" x2="'+x2+'" y2="'+(y+6)+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<text x="'+((x1+x2)/2)+'" y="'+(y+18)+'" font-size="14" fill="#111" text-anchor="middle">'+esc(txt)+'</text>');
+    }
+    function dimV(y1,y2,x,txt){
+      p.push('<line x1="'+x+'" y1="'+y1+'" x2="'+x+'" y2="'+y2+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<line x1="'+(x-6)+'" y1="'+y1+'" x2="'+(x+6)+'" y2="'+y1+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<line x1="'+(x-6)+'" y1="'+y2+'" x2="'+(x+6)+'" y2="'+y2+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<text x="'+(x-10)+'" y="'+((y1+y2)/2)+'" font-size="14" fill="#111" text-anchor="middle" transform="rotate(-90 '+(x-10)+' '+((y1+y2)/2)+')">'+esc(txt)+'</text>');
+    }
+    // ── แถวบน: side-L | front | side-R
+    var xL=x0, xF=x0+dw+gap, xR=xF+fw+gap;
+    p.push('<text x="'+(xL+dw/2)+'" y="'+(yTop-118)+'" font-size="15" fill="#111" text-anchor="middle">side-L</text>');
+    p.push('<text x="'+(xF+fw/2)+'" y="'+(yTop-118)+'" font-size="15" fill="#111" text-anchor="middle">front</text>');
+    p.push('<text x="'+(xR+dw/2)+'" y="'+(yTop-118)+'" font-size="15" fill="#111" text-anchor="middle">side-R</text>');
+    rod(xL+dw/2,yTop); rod(xF+fw/2,yTop); rod(xR+dw/2,yTop);
+    p.push('<rect x="'+xL+'" y="'+yTop+'" width="'+dw+'" height="'+fh+'" fill="#fff" stroke="#111" stroke-width="2"/>');
+    p.push('<rect x="'+xF+'" y="'+yTop+'" width="'+fw+'" height="'+fh+'" fill="#fff" stroke="#111" stroke-width="2"/>');
+    p.push('<rect x="'+xR+'" y="'+yTop+'" width="'+dw+'" height="'+fh+'" fill="#fff" stroke="#111" stroke-width="2"/>');
+    if(art){ p.push('<image href="'+art+'" xlink:href="'+art+'" x="'+(xF+6)+'" y="'+(yTop+6)+'" width="'+(fw-12)+'" height="'+(fh-12)+'" preserveAspectRatio="xMidYMid meet"/>'); }
+    dimH(xL,xL+dw,yTop+fh+34,D+' cm'); dimH(xF,xF+fw,yTop+fh+34,W+' cm'); dimH(xR,xR+dw,yTop+fh+34,D+' cm');
+    dimV(yTop,yTop+fh,xL-22,H+' cm'); dimV(yTop,yTop+fh,xF-22,H+' cm'); dimV(yTop,yTop+fh,xR+dw+22,H+' cm');
+    // ── แถวล่าง: isometric 2 ตัว
+    function isoBox(ox,oy,bw,bh,bd,faceFill,topFill,sideFill,withArt){
+      var kx=bd*0.62, ky=bd*0.42;
+      p.push('<polygon points="'+ox+','+oy+' '+(ox+bw)+','+oy+' '+(ox+bw+kx)+','+(oy-ky)+' '+(ox+kx)+','+(oy-ky)+'" fill="'+topFill+'" stroke="#111" stroke-width="1.6"/>');
+      p.push('<polygon points="'+(ox+bw)+','+oy+' '+(ox+bw+kx)+','+(oy-ky)+' '+(ox+bw+kx)+','+(oy+bh-ky)+' '+(ox+bw)+','+(oy+bh)+'" fill="'+sideFill+'" stroke="#111" stroke-width="1.6"/>');
+      p.push('<rect x="'+ox+'" y="'+oy+'" width="'+bw+'" height="'+bh+'" fill="'+faceFill+'" stroke="#111" stroke-width="1.8"/>');
+      if(withArt&&art) p.push('<image href="'+art+'" xlink:href="'+art+'" x="'+(ox+5)+'" y="'+(oy+5)+'" width="'+(bw-10)+'" height="'+(bh-10)+'" preserveAspectRatio="xMidYMid meet"/>');
+      return {kx:kx,ky:ky};
+    }
+    function lead(x1,y1,x2,y2,txt,anchor){
+      p.push('<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#111" stroke-width="1.2"/>');
+      p.push('<circle cx="'+x1+'" cy="'+y1+'" r="3" fill="#111"/>');
+      p.push('<text x="'+(x2+(anchor==='end'?-6:6))+'" y="'+(y2+4)+'" font-size="13" fill="#111" text-anchor="'+(anchor||'start')+'">'+esc(txt)+'</text>');
+    }
+    var iy=640, ibw=Math.min(430,fw*0.68), ibh=ibw*(H/Math.max(1,W)), ibd=ibh*1.9;
+    // ซ้าย: ทึบ + ZINC
+    var L1x=150; var k1=isoBox(L1x,iy,ibw,ibh,ibd,'#ffffff','#2b2b2b','#e8e8e8',true);
+    rod(L1x+ibw*0.5,iy-k1.ky-26); p.push('<line x1="'+(L1x+ibw*0.5)+'" y1="'+(iy-k1.ky-26)+'" x2="'+(L1x+ibw*0.5)+'" y2="'+(iy-k1.ky)+'" stroke="#111" stroke-width="7"/>');
+    lead(L1x+ibw*0.72, iy-k1.ky*0.5, L1x+ibw+k1.kx+70, iy-k1.ky-30, 'ZINC');
+    p.push('<text x="'+(L1x-16)+'" y="'+(iy+ibh*0.5)+'" font-size="12" fill="#111" text-anchor="end">ISOMETRIC</text>');
+    // ขวา: เรืองแสง + UV PRINT / ACRYLIC / BOTTOM
+    var R1x=800; var k2=isoBox(R1x,iy,ibw,ibh,ibd,'#fdf6dc','#fbeeb8','#f5e6b0',true);
+    lead(R1x+ibw*0.55, iy+ibh*0.25, R1x+ibw+k2.kx+60, iy-40, 'UV PRINT');
+    lead(R1x+ibw+k2.kx*0.5, iy+ibh-k2.ky*0.4, R1x+ibw+k2.kx+60, iy+ibh+40, 'ACRYLIC');
+    lead(R1x+ibw*0.25, iy+ibh, R1x-40, iy+ibh+54, 'BOTTOM','end');
+    // ── หัวเรื่อง + ฟุตเตอร์
+    var tname=''; try{ var sel=$('mainSignType'); tname=sel?(sel.options[sel.selectedIndex].text||''):''; }catch(e){}
+    var title=(($('presentTitle')&&$('presentTitle').value)||'OPTION-B')+'_'+(tname||'กล่องไฟอะคริลิค');
+    p.push('<text x="'+(SW/2)+'" y="'+(SH-58)+'" font-size="19" fill="#111" text-anchor="middle" text-decoration="underline">'+esc(title)+'</text>');
+    var dt=new Date(), fdt=dt.getDate()+'-'+(dt.getMonth()+1)+'-'+dt.getFullYear();
+    var cust=(($('presentCust')&&$('presentCust').value)||'');
+    p.push('<text x="'+(SW/2)+'" y="'+(SH-28)+'" font-size="11" fill="#9aa1ac" text-anchor="middle">'+esc((cust?cust+'_':'')+'SIGNAGE_'+fdt)+'</text>');
+    p.push('</svg>');
+    return p.join('');
+  }
+  function svgToCanvas(svg,cb){
+    var img=new Image();
+    img.onload=function(){ var c=document.createElement('canvas'); c.width=1400*1.6; c.height=1010*1.6;
+      var g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height); cb(c); };
+    img.onerror=function(){ cb(null); };
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  }
+  function open(){
+    var svg=build();
+    var ov=$('presentOv');
+    if(!ov){ ov=document.createElement('div'); ov.id='presentOv';
+      ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.88);z-index:99999;display:none;align-items:center;justify-content:center;padding:14px;overflow:auto';
+      ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:1180px;width:100%;padding:12px">'
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">'
+        +'<b style="flex:1;min-width:120px;font-size:15px">📐 แผ่นนำเสนอแบบ</b>'
+        +'<input id="presentTitle" class="numin" placeholder="ชื่อแบบ เช่น OPTION-B" value="OPTION-B" style="width:150px;padding:5px;font-size:12px">'
+        +'<input id="presentCust" class="numin" placeholder="ชื่อลูกค้า/งาน" style="width:150px;padding:5px;font-size:12px">'
+        +'<button type="button" id="presentRe" class="btn ghost" style="font-size:12px;padding:6px 10px">↻ อัปเดต</button>'
+        +'<button type="button" id="presentPng" class="btn" style="font-size:12px;padding:6px 10px">⬇ PNG</button>'
+        +'<button type="button" id="presentPdf" class="btn" style="font-size:12px;padding:6px 10px;background:#0f172a;color:#fff;border:none">⬇ PDF</button>'
+        +'<button type="button" id="presentClose" class="btn ghost" style="font-size:12px;padding:6px 10px">✕ ปิด</button></div>'
+        +'<div id="presentBody" style="border:1px solid #e2e8f0;border-radius:10px;overflow:auto"></div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click',function(e){ if(e.target===ov)ov.style.display='none'; });
+      $('presentClose').onclick=function(){ ov.style.display='none'; };
+      $('presentRe').onclick=function(){ $('presentBody').innerHTML=build(); };
+      $('presentPng').onclick=function(){ svgToCanvas(build(),function(c){ if(!c){alert('สร้างรูปไม่ได้');return;} var a=document.createElement('a'); a.download='present_sheet.png'; a.href=c.toDataURL('image/png'); a.click(); }); };
+      $('presentPdf').onclick=function(){ svgToCanvas(build(),function(c){ if(!c){alert('สร้าง PDF ไม่ได้');return;}
+        try{ var b=_canvasToPdfBlob(c); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='present_sheet.pdf'; a.click(); }catch(e){ alert('สร้าง PDF ไม่ได้: '+e); } }); };
+    }
+    $('presentBody').innerHTML=svg; ov.style.display='flex';
+  }
+  window._openPresentSheet=open;
+  window._wirePresent=function(){ var b=$('lsPresent'); if(b)b.onclick=open; };
 })();
 </script>
 </body>
