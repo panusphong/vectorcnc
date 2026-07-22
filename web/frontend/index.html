@@ -7806,5 +7806,87 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   window._initLs3dNotes=function(){ var w=ensure(); if(w)render(); };
 })();
 </script>
+<!-- 🗒️ โน้ต + เส้นชี้ บนหน้าจำลองผนัง (canvas ผนัง) -->
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  window._wallNoteData = window._wallNoteData || [];
+  var addMode=false;
+  function cv(){ return $('wCanvas'); }
+  function _drag(el, move){
+    el.addEventListener('mousedown',function(e){ e.preventDefault(); e.stopPropagation(); var px=e.clientX,py=e.clientY;
+      function mv(ev){ move(ev.clientX-px,ev.clientY-py); px=ev.clientX; py=ev.clientY; }
+      function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+      document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); });
+    el.addEventListener('touchstart',function(e){ var t=e.touches[0]; if(!t)return; var px=t.clientX,py=t.clientY;
+      function mv(ev){ var tt=ev.touches[0]; if(!tt)return; move(tt.clientX-px,tt.clientY-py); px=tt.clientX; py=tt.clientY; ev.preventDefault(); }
+      function up(){ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); }
+      document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up); },{passive:false});
+  }
+  function ensure(){
+    var c=cv(); if(!c)return null;
+    var wrp=$('wNoteWrap');
+    if(!wrp || wrp!==c.parentNode){
+      wrp=document.createElement('div'); wrp.id='wNoteWrap'; wrp.style.cssText='position:relative;display:inline-block;line-height:0';
+      c.parentNode.insertBefore(wrp,c); wrp.appendChild(c);
+      var tb=document.createElement('div'); tb.style.cssText='position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:20;line-height:normal';
+      tb.innerHTML='<button type="button" id="wNoteAdd" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#7c3aed;color:#fff">🗒️ เพิ่มโน้ต</button>'
+        +'<button type="button" id="wNoteSave" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#0f172a;color:#fff">🖼️ บันทึกรูป+โน้ต</button>';
+      wrp.appendChild(tb);
+      var svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.setAttribute('id','wNoteSvg'); svg.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:18;overflow:visible'; wrp.appendChild(svg);
+      var nc=document.createElement('div'); nc.id='wNoteBoxes'; nc.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:19'; wrp.appendChild(nc);
+      $('wNoteAdd').onclick=function(){ addMode=!addMode; this.style.background=addMode?'#16a34a':'#7c3aed'; this.textContent=addMode?'✓ คลิกจุดบนภาพ':'🗒️ เพิ่มโน้ต'; };
+      $('wNoteSave').onclick=saveImg;
+      wrp.addEventListener('click',function(e){ if(!addMode)return; if(e.target.closest('.wNote')||e.target.closest('button'))return;
+        var r=c.getBoundingClientRect(); var fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
+        if(fx<0||fx>1||fy<0||fy>1)return;
+        window._wallNoteData.push({id:'w'+Date.now(),tx:fx,ty:fy,nx:Math.min(0.96,fx+0.05),ny:Math.max(0.02,fy-0.14),text:'พิมพ์โน้ต...'});
+        addMode=false; var b=$('wNoteAdd'); if(b){b.style.background='#7c3aed';b.textContent='🗒️ เพิ่มโน้ต';} render(); });
+    }
+    return wrp;
+  }
+  function render(){
+    var c=cv(), nc=$('wNoteBoxes'), svg=$('wNoteSvg'); if(!c||!nc||!svg)return;
+    var W=c.clientWidth||c.width, H=c.clientHeight||c.height;
+    svg.setAttribute('width',W); svg.setAttribute('height',H); svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    nc.innerHTML=''; while(svg.firstChild)svg.removeChild(svg.firstChild);
+    window._wallNoteData.forEach(function(n){
+      var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',n.nx*W);line.setAttribute('y1',n.ny*H);line.setAttribute('x2',n.tx*W);line.setAttribute('y2',n.ty*H);
+      line.setAttribute('stroke','#f59e0b');line.setAttribute('stroke-width','2');line.setAttribute('stroke-dasharray','5 3'); svg.appendChild(line);
+      var box=document.createElement('div'); box.className='wNote'; box.style.cssText='position:absolute;pointer-events:auto;left:'+(n.nx*100)+'%;top:'+(n.ny*100)+'%;max-width:210px;background:#fffbe6;border:1.5px solid #f59e0b;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,.18);font-size:12px;color:#334155;line-height:1.35';
+      var head=document.createElement('div'); head.style.cssText='display:flex;align-items:center;gap:4px;background:#f59e0b;color:#fff;padding:2px 6px;border-radius:6px 6px 0 0;cursor:move;font-size:10px;font-weight:700'; head.innerHTML='<span>📌 โน้ต</span>';
+      var del=document.createElement('span'); del.textContent='✕'; del.style.cssText='margin-left:auto;cursor:pointer;padding:0 2px'; del.onclick=function(ev){ev.stopPropagation();window._wallNoteData=window._wallNoteData.filter(function(x){return x.id!==n.id;});render();}; head.appendChild(del);
+      var body=document.createElement('div'); body.contentEditable='true'; body.textContent=n.text; body.style.cssText='padding:5px 7px;outline:none;min-width:80px;word-break:break-word;white-space:pre-wrap'; body.oninput=function(){n.text=body.textContent;};
+      box.appendChild(head); box.appendChild(body); nc.appendChild(box);
+      var dot=document.createElement('div'); dot.className='wNote'; dot.style.cssText='position:absolute;pointer-events:auto;left:'+(n.tx*100)+'%;top:'+(n.ty*100)+'%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 0 0 2px rgba(239,68,68,.4);cursor:move;z-index:21'; nc.appendChild(dot);
+      _drag(head,function(dx,dy){ n.nx=Math.max(0,Math.min(1,n.nx+dx/W)); n.ny=Math.max(0,Math.min(1,n.ny+dy/H)); render(); });
+      _drag(dot,function(dx,dy){ n.tx=Math.max(0,Math.min(1,n.tx+dx/W)); n.ty=Math.max(0,Math.min(1,n.ty+dy/H)); render(); });
+    });
+  }
+  function saveImg(){
+    var c=cv(); if(!c)return; var cw=c.width, ch=c.height;
+    var out=document.createElement('canvas'); out.width=cw; out.height=ch; var g=out.getContext('2d');
+    try{ g.drawImage(c,0,0); }catch(e){}
+    g.setLineDash([6,4]); g.strokeStyle='#f59e0b'; g.lineWidth=3;
+    window._wallNoteData.forEach(function(n){ g.beginPath(); g.moveTo(n.nx*cw,n.ny*ch); g.lineTo(n.tx*cw,n.ty*ch); g.stroke(); }); g.setLineDash([]);
+    window._wallNoteData.forEach(function(n){ g.fillStyle='#ef4444'; g.beginPath(); g.arc(n.tx*cw,n.ty*ch,8,0,7); g.fill(); g.strokeStyle='#fff'; g.lineWidth=3; g.stroke();
+      g.font='bold 20px sans-serif'; var lines=(n.text||'').split('\n'); var tw=0; lines.forEach(function(l){tw=Math.max(tw,g.measureText(l).width);});
+      var bw=Math.min(360,tw+26), bh=lines.length*24+34, bx=n.nx*cw, by=n.ny*ch;
+      g.fillStyle='#f59e0b'; g.fillRect(bx,by,bw,26); g.fillStyle='#fff'; g.font='bold 15px sans-serif'; g.fillText('📌 โน้ต',bx+7,by+19);
+      g.fillStyle='#fffbe6'; g.fillRect(bx,by+26,bw,bh-26); g.strokeStyle='#f59e0b'; g.lineWidth=2; g.strokeRect(bx,by,bw,bh);
+      g.fillStyle='#334155'; g.font='19px sans-serif'; lines.forEach(function(l,i){ g.fillText(l,bx+10,by+(50+i*24)); }); });
+    try{ var a=document.createElement('a'); a.download='wall-note.png'; a.href=out.toDataURL('image/png'); a.click(); }
+    catch(e){ alert('บันทึกรูปไม่ได้ — ลองแคปหน้าจอแทนนะคะ'); }
+  }
+  window._initWallNotes=function(){ var w=ensure(); if(w)render(); };
+  window._renderWallNotes=render;
+  function boot(){ try{ window._initWallNotes(); }catch(e){}
+    try{ var c=cv(); if(c&&window.ResizeObserver){ new ResizeObserver(function(){ try{render();}catch(_e){} }).observe(c); } }catch(e){}
+    window.addEventListener('resize',function(){ try{render();}catch(e){} });
+  }
+  setTimeout(boot, 600);
+})();
+</script>
 </body>
 </html>
