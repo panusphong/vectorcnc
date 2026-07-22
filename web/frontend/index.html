@@ -648,11 +648,14 @@ select.numin{cursor:pointer}
             </script>
           </div>
           <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:10px">
-            <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:4px" data-i18n="stl.h">🧊 โมเดล 3 มิติ (STL) → Fusion 360 / เครื่องพิมพ์ 3D</div>
-            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px" data-i18n="stl.p">extrude ตัวอักษร/โลโก้เป็นก้อน 3 มิติ (watertight) ส่งเข้าโปรแกรม 3D หรือสั่งพิมพ์ได้เลย</div>
-            <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-end">
-              <div style="flex:1"><label style="font-size:11px;color:#5A6B8C" data-i18n="stl.thick">ความหนา มม.</label><input class="numin" id="stlThick" type="number" value="30" min="1" step="1" style="padding:6px"></div>
-              <button class="btn" id="dl3d" data-i18n="dl.stl" style="flex:2;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-weight:700;height:38px">🧊 ดาวน์โหลด STL</button>
+            <div style="font-size:12px;font-weight:700;color:#0891b2;margin-bottom:4px" data-i18n="stl.h">🧊 โมเดล 3 มิติ → Fusion 360 / Rhino / Blender / เครื่องพิมพ์ 3D</div>
+            <div style="font-size:11px;color:#8A99B5;margin-bottom:6px" data-i18n="stl.p">แปลงงานเป็นโมเดล 3 มิติ (watertight) นำเข้าโปรแกรม 3D ทุกตัว หรือสั่งพิมพ์ได้ทันที</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#0e7490;margin-bottom:6px"><input type="checkbox" id="stl3dLayered" checked> 🏗️ หลายชั้นตามโครงป้าย (แผ่นหลัง+ผนังยกขอบ+อะคริลิค+คิ้ว)</label>
+            <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-end;flex-wrap:wrap">
+              <div><label style="font-size:11px;color:#5A6B8C">ฟอร์แมต</label><select class="numin" id="stl3dFmt" style="padding:6px"><option value="stl">STL</option><option value="obj">OBJ</option><option value="3mf">3MF</option><option value="all">ทั้งหมด (zip ไม่มี · โหลดทีละไฟล์)</option></select></div>
+              <div style="flex:1"><label style="font-size:11px;color:#5A6B8C">ความลึกตัว (ซม.)</label><input class="numin" id="stl3dDepth" type="number" value="5" min="0" step="0.5" style="padding:6px"></div>
+              <div style="flex:1"><label style="font-size:11px;color:#5A6B8C" data-i18n="stl.thick">ความหนา (ชั้นเดียว) มม.</label><input class="numin" id="stlThick" type="number" value="30" min="1" step="1" style="padding:6px"></div>
+              <button class="btn" id="dl3d" data-i18n="dl.stl" style="flex:2;min-width:150px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-weight:700;height:38px">🧊 ดาวน์โหลด 3D</button>
             </div>
             <div id="stlOut" style="font-size:11px;color:#8A99B5"></div>
           </div>
@@ -4731,9 +4734,15 @@ var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',tem
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
-  img.querySelectorAll('.w3d-face').forEach(function(p){p.setAttribute('fill',FCOL);});   // หน้าอะคริลิค
-  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});   // ผนังข้าง
-  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});}   // คิ้ว = สีขอบ/คิ้ว
+  var faces=img.querySelectorAll('.w3d-face');
+  if(!faces.length){   // 🩹 fallback: backend เก่าไม่มี class -> จับ path 'หน้าอะคริลิค' จากสี default
+    var FF=['#c9cdd4','#eef1f6','#eef4ff','#fffdf5','#fff8ec'];
+    img.querySelectorAll('path').forEach(function(p){ var f=(p.getAttribute('fill')||'').toLowerCase(); if(FF.indexOf(f)>=0)p.classList.add('w3d-face'); });
+    faces=img.querySelectorAll('.w3d-face');
+  }
+  faces.forEach(function(p){p.setAttribute('fill',FCOL);});                                // หน้าอะคริลิค
+  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});    // ผนังข้าง
+  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});}    // คิ้ว = สีขอบ/คิ้ว
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
@@ -5268,21 +5277,42 @@ if($('ledGo'))$('ledGo').onclick=function(){
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('ledOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
 
-// ---- STL 3D export (Fusion 360 / 3D printer) ----
+// ---- 3D export (Fusion 360 / Rhino / Blender / 3D printer) — ชั้นเดียว หรือ หลายชั้นตามโครงป้าย ----
+function _dl3dSave(b64,name,mime){ var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  var b=new Blob([u],{type:mime||'application/octet-stream'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click(); }
 $('dl3d').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
   if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน — ภาพไม่มีขนาดกำกับ');$('realW').focus();return;}
   var btn=$('dl3d');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ สร้าง 3D...';
-  $('stlOut').textContent='กำลัง extrude เป็นโมเดล 3 มิติ...';
-  var fd=new FormData();
-  fd.append('file',fileObj);fd.append('width_mm',$('realW').value||'600');
-  fd.append('thickness_mm',$('stlThick').value||'30');fd.append('n_colors',$('nColors')?$('nColors').value:'6');
-  fetch((API||'')+'/api/export-3d',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  var layered=$('stl3dLayered')&&$('stl3dLayered').checked;
+  var base=(lastName||'model');
+  if(layered){
+    var fmt=($('stl3dFmt')&&$('stl3dFmt').value)||'stl';
+    $('stlOut').textContent='กำลังสร้างโมเดล 3 มิติ หลายชั้น...';
+    var fd=new FormData(); fd.append('file',fileObj);
+    fd.append('sign_type',($('mainSignType')&&$('mainSignType').value)||'1');
+    fd.append('real_width_mm',$('realW').value||'600'); fd.append('real_height_mm',($('realH')&&$('realH').value)||'0');
+    fd.append('return_depth_cm',($('stl3dDepth')&&$('stl3dDepth').value)||'5');
+    fd.append('trim_width_cm',(typeof TRIMW!=='undefined'?TRIMW:1)); fd.append('trim_dir',(typeof TRIMDIR!=='undefined'?TRIMDIR:'out'));
+    fd.append('n_colors',$('nColors')?$('nColors').value:'6'); fd.append('fmt',fmt);
+    fetch((API||'')+'/api/export-3d-layered',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+      btn.disabled=false;btn.textContent=old;
+      if(j.error){$('stlOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
+      var mime={stl:'model/stl',obj:'text/plain',tmf:'model/3mf'};
+      var got=[];
+      ['stl','obj','tmf'].forEach(function(k){ if(j[k+'_base64']){ _dl3dSave(j[k+'_base64'], base+'.'+(k==='tmf'?'3mf':k), mime[k]); got.push(k==='tmf'?'3mf':k); } });
+      $('stlOut').innerHTML='✓ โมเดลหลายชั้น '+j.bodies+' ชิ้น · '+j.w_mm+'×'+j.h_mm+'×'+j.depth_mm+' มม. · ไฟล์: '+got.join(', ').toUpperCase()+' (พร้อมใช้ใน Fusion 360)';
+    }).catch(function(e){btn.disabled=false;btn.textContent=old;$('stlOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+    return;
+  }
+  $('stlOut').textContent='กำลัง extrude เป็นโมเดล 3 มิติ (ชั้นเดียว)...';
+  var fd2=new FormData();
+  fd2.append('file',fileObj);fd2.append('width_mm',$('realW').value||'600');
+  fd2.append('thickness_mm',$('stlThick').value||'30');fd2.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fetch((API||'')+'/api/export-3d',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('stlOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
-    var bin=atob(j.stl_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
-    var b=new Blob([u],{type:'model/stl'});var a=document.createElement('a');
-    a.href=URL.createObjectURL(b);a.download=(lastName||'model')+'.stl';a.click();
+    _dl3dSave(j.stl_base64, base+'.stl','model/stl');
     $('stlOut').innerHTML='✓ ได้ไฟล์ .stl · '+j.w_mm+'×'+j.h_mm+'×'+j.thickness_mm+' มม. · '+j.facets+' facets (watertight)';
   }).catch(function(e){btn.disabled=false;btn.textContent=old;$('stlOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
