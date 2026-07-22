@@ -1862,11 +1862,15 @@ def _trace_skeleton_mask(sk, full):
     def mp(p):
         return (fb[0] + (p[0] - rxmin) / rw * fw, fb[1] + (p[1] - rymin) / rh * fh)
     tol = max(fw, fh) * 0.004
+    spur = max(fw, fh) * 0.018   # ตัด 'หนวด/สปูร์' สั้นๆ ที่มุมตัวอักษร ให้เส้นเรียบเหมือนไฟออกหน้า
     subs = []
     for pl in raw:
         pts = [mp(p) for p in pl]
         try:
-            cc = list(LineString(pts).simplify(tol).coords)
+            ls = LineString(pts).simplify(tol)
+            if ls.length < spur and len(pl) < 6:   # เส้นสั้นมาก + จุดน้อย = สปูร์ → ทิ้ง
+                continue
+            cc = list(ls.coords)
         except Exception:
             cc = pts
         if len(cc) >= 2:
