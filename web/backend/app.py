@@ -1347,10 +1347,11 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _ik = None; _ia = None
         _ikp = ([] if _ik is None or _ik.is_empty else (list(_ik.geoms) if _ik.geom_type == "MultiPolygon" else [_ik]))
         _iap = ([] if _ia is None or _ia.is_empty else (list(_ia.geoms) if _ia.geom_type == "MultiPolygon" else [_ia]))
+        _kimcls = "w3d-face" if _notrim else "w3d-kim"   # ไม่มีคิ้ว = หน้าเต็ม=อะคริลิค(ย้อมสีหน้า) · มีคิ้ว = แถบนี้คือคิ้ว(ย้อมสีคิ้ว)
         for pg in polys:                               # คิ้ว = เต็มหน้า (สีคิ้ว) — จะเห็นขอบ 1cm รอบตัว
-            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), kimFill, edge, lw))
-        for pg in _ikp:                                # หน้าใน (หลังคิ้ว) = พื้นขาว (ไม่มีพื้นเทา) -> เกิดขอบคิ้ว 1cm
-            parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), edge, lw * 0.7))
+            parts.append('<path class="%s" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (_kimcls, faced(pg, F), kimFill, edge, lw))
+        for pg in _ikp:                                # หน้าใน (หลังคิ้ว) = อะคริลิค (ย้อมสีหน้าอะคริลิคได้)
+            parts.append('<path class="w3d-face" d="%s" fill="#ffffff" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), edge, lw * 0.7))
         if _iap:                                       # artwork วางในหน้า · ไม่ล้นออกนอกทรง
             _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in _iap)
             parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
@@ -1760,7 +1761,10 @@ def _skeleton_from_geom(full):
     b = full.bounds; fw = b[2] - b[0]; fh = b[3] - b[1]
     if fw <= 0 or fh <= 0:
         return []
-    RES = 1100.0 / max(fw, fh)
+    # ให้ 'ด้านสั้น' มีพิกเซลพอ (สแกนแกนตัวอักษรคม) แต่จำกัดด้านยาวไม่ให้ใหญ่เกิน
+    RES = 300.0 / max(1e-6, min(fw, fh))
+    if max(fw, fh) * RES > 2800:
+        RES = 2800.0 / max(fw, fh)
     Wpx = max(2, int(fw * RES)); Hpx = max(2, int(fh * RES))
     img = Image.new("L", (Wpx, Hpx), 0); dr = ImageDraw.Draw(img)
     def _dp(poly):
@@ -2409,14 +2413,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
                                       watt_per_m=8.0, volt=12.0)
             elif rec.get("back_lit"):
-                # 🆕 ไฟออกหลัง (halo) = LED เส้นเดียวตามแกนกลางตัวอักษร (เดินตามรูปตัวอักษร)
+                # 🆕 ไฟออกหลัง (halo) = LED เส้นเดียวตามแกนกลางตัวอักษร — หาแกนจาก 'รูปตัวอักษร' เป็นหลัก (แม่นกว่าจากภาพ)
                 try:
-                    _bsub2 = _skeleton_subs(inp, full)
+                    _bsub2 = _skeleton_from_geom(full)
                 except Exception:
                     _bsub2 = None
                 if not _bsub2:
                     try:
-                        _bsub2 = _skeleton_from_geom(full)
+                        _bsub2 = _skeleton_subs(inp, full)
                     except Exception:
                         _bsub2 = None
                 _led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub2,
@@ -2653,14 +2657,14 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_nsub,
                                      watt_per_m=float(led_watt_per_m), volt=float(led_volt))
             elif rec.get("back_lit"):
-                # 🆕 ไฟออกหลัง (halo) = เดินไฟ LED 'เส้นเดียว' ตามแกนกลางตัวอักษร (ไม่ถี่เต็มหน้า)
+                # 🆕 ไฟออกหลัง (halo) = เดินไฟ LED 'เส้นเดียว' ตามแกนกลางตัวอักษร — หาแกนจาก 'รูปตัวอักษร' เป็นหลัก
                 try:
-                    _bsub = _skeleton_subs(inp, full)
+                    _bsub = _skeleton_from_geom(full)
                 except Exception:
                     _bsub = None
                 if not _bsub:
                     try:
-                        _bsub = _skeleton_from_geom(full)
+                        _bsub = _skeleton_subs(inp, full)
                     except Exception:
                         _bsub = None
                 led = _neon_led_info(full, color=str(rec.get("glow_color") or "#eaf2ff"), neon_subs=_bsub,
