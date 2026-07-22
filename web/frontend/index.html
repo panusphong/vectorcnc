@@ -4743,9 +4743,6 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return;
   faces.forEach(function(p){p.setAttribute('fill',FCOL);});                                // หน้าอะคริลิค
   img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});    // ผนังข้าง
   img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});}    // คิ้ว = สีขอบ/คิ้ว
-// 🎨 เปลี่ยนสีหน้าอะคริลิค/ขอบ -> ยิงสร้าง 3D ใหม่ (backend เบคสีให้ตรงเป๊ะทุก backend) · debounce กันสแปม
-var _colRegenT=null;
-function _regen3dColor(){ clearTimeout(_colRegenT); _colRegenT=setTimeout(function(){ try{ if($('goLayer')&&$('goLayer').onclick)$('goLayer').onclick(); }catch(e){} }, 650); }
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
@@ -4770,13 +4767,13 @@ function wireGlow(){
   var gm=document.querySelectorAll('.glowM'),gt=document.querySelectorAll('.glowT');
   for(var i=0;i<gm.length;i++){gm[i].classList.toggle('on',gm[i].getAttribute('data-g')===GLOW.mode);gm[i].onclick=function(){for(var j=0;j<gm.length;j++)gm[j].classList.remove('on');this.classList.add('on');GLOW.mode=this.getAttribute('data-g');applyGlow();};}
   for(var k=0;k<gt.length;k++){gt[k].classList.toggle('on',gt[k].getAttribute('data-t')===GLOW.temp);gt[k].onclick=function(){for(var j=0;j<gt.length;j++)gt[j].classList.remove('on');this.classList.add('on');GLOW.temp=this.getAttribute('data-t');applyGlow();};}
-  if($('faceColor'))$('faceColor').oninput=function(){FCOL=this.value;GLOW.acr=null;var od=$('acrOffD');if(od)od.classList.add('on');recolor3d();applyGlow();_regen3dColor();};
-  if($('sideColor'))$('sideColor').oninput=function(){SCOL=this.value;recolor3d();_regen3dColor();};
+  if($('faceColor'))$('faceColor').oninput=function(){FCOL=this.value;GLOW.acr=null;var od=$('acrOffD');if(od)od.classList.add('on');recolor3d();applyGlow();};
+  if($('sideColor'))$('sideColor').oninput=function(){SCOL=this.value;recolor3d();};
   // 🎨 อะคริลิคนีออน 12 สี — หน้าเป็นสีนี้ + แสงเป็นสีเดียวกัน
   var host=$('acrSwD'), offD=$('acrOffD');
   function setAcrD(col){ GLOW.acr=col||null; if(col){FCOL=col; if($('faceColor'))$('faceColor').value=col;}
     if(host)host.querySelectorAll('button[data-acr]').forEach(function(x){x.style.outline=(x.getAttribute('data-acr')===col)?'2px solid #7c3aed':'none';x.style.outlineOffset='1px';});
-    if(offD)offD.classList.toggle('on',!col); recolor3d(); applyGlow(); _regen3dColor(); }
+    if(offD)offD.classList.toggle('on',!col); recolor3d(); applyGlow(); }
   if(offD)offD.onclick=function(){ setAcrD(null); };
   if(host&&typeof NEON!=='undefined'&&!host.querySelector('button[data-acr]')){ NEON.forEach(function(col){ var b=document.createElement('button'); b.type='button'; b.setAttribute('data-acr',col); b.title=col; b.style.cssText='width:20px;height:20px;border-radius:5px;border:1px solid var(--line);background:'+col+';cursor:pointer'; b.onclick=function(){ setAcrD(col); }; host.appendChild(b); }); }
   recolor3d();applyGlow();
