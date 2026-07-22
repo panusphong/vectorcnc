@@ -4727,12 +4727,13 @@ if($('ikBrGo'))$('ikBrGo').onclick=function(){
 if($('ikBrDl'))$('ikBrDl').onclick=function(){ikDlTxt(IK_BRTXT,'job_brief.txt');};
 
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#c9cdd4', SCOL='#9aa1ac';
+var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#eef1f6', SCOL='#9aa1ac';
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
-  img.querySelectorAll('.w3d-face').forEach(function(p){p.setAttribute('fill',FCOL);});
-  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});}
+  img.querySelectorAll('.w3d-face').forEach(function(p){p.setAttribute('fill',FCOL);});   // หน้าอะคริลิค
+  img.querySelectorAll('.w3d-side').forEach(function(p){p.setAttribute('fill',SCOL);});   // ผนังข้าง
+  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});}   // คิ้ว = สีขอบ/คิ้ว
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
@@ -5139,6 +5140,7 @@ $('goLayer').onclick=function(){
       else { var rd=new FileReader(); rd.onload=function(ev){_go(ev.target.result);}; rd.readAsDataURL(fileObj); }
     };
     wireGlow();
+    try{ if(window._initLs3dNotes)_initLs3dNotes(); }catch(_e){}
   }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
 
@@ -7695,6 +7697,83 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     if($('fsNight'))$('fsNight').checked=_fsNight; $('fsOv').style.display='flex'; tabs(); render(); }
   function boot(){ var b=$('wFacadeSceneBtn'); if(b)b.onclick=open; var b2=$('wFacadeSceneTop'); if(b2)b2.onclick=open; }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot); else boot();
+})();
+</script>
+<!-- 🗒️ โน้ต + เส้นชี้ บนภาพผลลัพธ์ 3 มิติ (วาง/ลาก/แก้/ลบ + บันทึกรูปพร้อมโน้ต) -->
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  window._ls3dNoteData = window._ls3dNoteData || [];
+  var addMode=false;
+  function wrap(){ return $('ls3dWrap'); }
+  function _drag(el, move){
+    el.addEventListener('mousedown',function(e){ e.preventDefault(); e.stopPropagation(); var px=e.clientX, py=e.clientY;
+      function mv(ev){ move(ev.clientX-px, ev.clientY-py); px=ev.clientX; py=ev.clientY; }
+      function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+      document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); });
+    el.addEventListener('touchstart',function(e){ var t=e.touches[0]; if(!t)return; var px=t.clientX,py=t.clientY;
+      function mv(ev){ var tt=ev.touches[0]; if(!tt)return; move(tt.clientX-px,tt.clientY-py); px=tt.clientX; py=tt.clientY; ev.preventDefault(); }
+      function up(){ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); }
+      document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up); },{passive:false});
+  }
+  function ensure(){
+    var w=wrap(); if(!w)return null; if(w._noteReady)return w; w._noteReady=true;
+    var tb=document.createElement('div'); tb.style.cssText='position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:8';
+    tb.innerHTML='<button type="button" id="ls3dNoteAdd" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#7c3aed;color:#fff">🗒️ เพิ่มโน้ต</button>'
+      +'<button type="button" id="ls3dNoteSave" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#0f172a;color:#fff">🖼️ บันทึกรูป+โน้ต</button>';
+    w.appendChild(tb);
+    var svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.setAttribute('id','ls3dNoteSvg'); svg.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:5;overflow:visible'; w.appendChild(svg);
+    var nc=document.createElement('div'); nc.id='ls3dNoteBoxes'; nc.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:6'; w.appendChild(nc);
+    $('ls3dNoteAdd').onclick=function(){ addMode=!addMode; this.style.background=addMode?'#16a34a':'#7c3aed'; this.textContent=addMode?'✓ คลิกจุดบนภาพ':'🗒️ เพิ่มโน้ต'; w.style.cursor=addMode?'crosshair':''; };
+    $('ls3dNoteSave').onclick=saveImg;
+    w.addEventListener('click',function(e){ if(!addMode)return; if(e.target.closest('.ls3dNote')||e.target.closest('button'))return;
+      var r=w.getBoundingClientRect(); var fx=(e.clientX-r.left)/r.width, fy=(e.clientY-r.top)/r.height;
+      window._ls3dNoteData.push({id:'n'+Date.now(),tx:fx,ty:fy,nx:Math.min(0.96,fx+0.06),ny:Math.max(0.02,fy-0.16),text:'พิมพ์โน้ต...'});
+      addMode=false; var b=$('ls3dNoteAdd'); if(b){b.style.background='#7c3aed';b.textContent='🗒️ เพิ่มโน้ต';} w.style.cursor=''; render(); });
+    return w;
+  }
+  function render(){
+    var w=wrap(); if(!w)return; var nc=$('ls3dNoteBoxes'), svg=$('ls3dNoteSvg'); if(!nc||!svg)return;
+    var r=w.getBoundingClientRect(); svg.setAttribute('width',r.width); svg.setAttribute('height',r.height); svg.setAttribute('viewBox','0 0 '+r.width+' '+r.height);
+    nc.innerHTML=''; while(svg.firstChild)svg.removeChild(svg.firstChild);
+    window._ls3dNoteData.forEach(function(n){
+      var bx=n.nx*r.width, by=n.ny*r.height, tx=n.tx*r.width, ty=n.ty*r.height;
+      var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',bx);line.setAttribute('y1',by);line.setAttribute('x2',tx);line.setAttribute('y2',ty);
+      line.setAttribute('stroke','#f59e0b');line.setAttribute('stroke-width','2');line.setAttribute('stroke-dasharray','5 3'); svg.appendChild(line);
+      var box=document.createElement('div'); box.className='ls3dNote'; box.style.cssText='position:absolute;pointer-events:auto;left:'+(n.nx*100)+'%;top:'+(n.ny*100)+'%;max-width:210px;background:#fffbe6;border:1.5px solid #f59e0b;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,.18);font-size:12px;color:#334155';
+      var head=document.createElement('div'); head.style.cssText='display:flex;align-items:center;gap:4px;background:#f59e0b;color:#fff;padding:2px 6px;border-radius:6px 6px 0 0;cursor:move;font-size:10px;font-weight:700'; head.innerHTML='<span>📌 โน้ต</span>';
+      var del=document.createElement('span'); del.textContent='✕'; del.style.cssText='margin-left:auto;cursor:pointer;padding:0 2px'; del.onclick=function(ev){ev.stopPropagation();window._ls3dNoteData=window._ls3dNoteData.filter(function(x){return x.id!==n.id;});render();}; head.appendChild(del);
+      var body=document.createElement('div'); body.contentEditable='true'; body.textContent=n.text; body.style.cssText='padding:5px 7px;outline:none;min-width:80px;word-break:break-word;white-space:pre-wrap'; body.oninput=function(){n.text=body.textContent;};
+      box.appendChild(head); box.appendChild(body); nc.appendChild(box);
+      var dot=document.createElement('div'); dot.className='ls3dNote'; dot.style.cssText='position:absolute;pointer-events:auto;left:'+(n.tx*100)+'%;top:'+(n.ty*100)+'%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 0 0 2px rgba(239,68,68,.4);cursor:move;z-index:7'; nc.appendChild(dot);
+      _drag(head,function(dx,dy){ n.nx=Math.max(0,Math.min(1,n.nx+dx/r.width)); n.ny=Math.max(0,Math.min(1,n.ny+dy/r.height)); render(); });
+      _drag(dot,function(dx,dy){ n.tx=Math.max(0,Math.min(1,n.tx+dx/r.width)); n.ty=Math.max(0,Math.min(1,n.ty+dy/r.height)); render(); });
+    });
+  }
+  function saveImg(){
+    var w=wrap(), img=$('ls3dImg'); if(!w||!img)return; var svgEl=img.querySelector('svg'); var r=w.getBoundingClientRect();
+    var SC=2, cw=Math.round(r.width*SC), ch=Math.round(r.height*SC);
+    var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; var g=cv.getContext('2d');
+    g.fillStyle=getComputedStyle(w).backgroundColor||'#faf9ff'; g.fillRect(0,0,cw,ch);
+    function box(n){ g.font='bold '+(12*SC)+'px sans-serif'; var lines=(n.text||'').split('\n'); var tw=0; lines.forEach(function(l){tw=Math.max(tw,g.measureText(l).width);});
+      var bw=Math.min(210*SC,tw+16*SC), bh=(lines.length*15+22)*SC, bx=n.nx*cw, by=n.ny*ch;
+      g.fillStyle='#f59e0b'; g.fillRect(bx,by,bw,16*SC); g.fillStyle='#fff'; g.font='bold '+(10*SC)+'px sans-serif'; g.fillText('📌 โน้ต',bx+5*SC,by+12*SC);
+      g.fillStyle='#fffbe6'; g.fillRect(bx,by+16*SC,bw,bh-16*SC); g.strokeStyle='#f59e0b'; g.lineWidth=1.5*SC; g.strokeRect(bx,by,bw,bh);
+      g.fillStyle='#334155'; g.font=(12*SC)+'px sans-serif'; lines.forEach(function(l,i){ g.fillText(l,bx+7*SC,by+(30+i*15)*SC); }); }
+    function drawNotes(){
+      g.setLineDash([5*SC,3*SC]); g.strokeStyle='#f59e0b'; g.lineWidth=2*SC;
+      window._ls3dNoteData.forEach(function(n){ g.beginPath(); g.moveTo(n.nx*cw,n.ny*ch); g.lineTo(n.tx*cw,n.ty*ch); g.stroke(); }); g.setLineDash([]);
+      window._ls3dNoteData.forEach(function(n){ g.fillStyle='#ef4444'; g.beginPath(); g.arc(n.tx*cw,n.ty*ch,7*SC,0,7); g.fill(); g.strokeStyle='#fff'; g.lineWidth=2*SC; g.stroke(); box(n); });
+      try{ var a=document.createElement('a'); a.download='design-note.png'; a.href=cv.toDataURL('image/png'); a.click(); }
+      catch(e){ alert('บันทึกรูปไม่ได้ (ภาพมีองค์ประกอบภายนอก) — ลองแคปหน้าจอแทนนะคะ'); }
+    }
+    if(svgEl){ try{ var xml=new XMLSerializer().serializeToString(svgEl); var im=new Image();
+      im.onload=function(){ var ir=img.getBoundingClientRect(); g.drawImage(im,(ir.left-r.left)*SC,(ir.top-r.top)*SC,ir.width*SC,ir.height*SC); drawNotes(); };
+      im.onerror=drawNotes; im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+    }catch(e){ drawNotes(); } } else drawNotes();
+  }
+  window._initLs3dNotes=function(){ var w=ensure(); if(w)render(); };
 })();
 </script>
 </body>
