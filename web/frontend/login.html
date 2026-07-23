@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>เข้าสู่ระบบ · VectorCNC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:'Prompt',system-ui,Arial,sans-serif;padding:20px;
+    background:linear-gradient(135deg,#0f1729,#1e293b 55%,#0d9488)}
+  .card{width:100%;max-width:390px;background:#fff;border-radius:20px;padding:34px 30px;
+    box-shadow:0 24px 70px rgba(0,0,0,.45)}
+  .logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
+  .logo .n{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#2563eb,#0d9488);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px}
+  h1{font-size:20px;color:#0f172a;text-align:center;margin:10px 0 2px}
+  .sub{text-align:center;color:#64748b;font-size:13px;margin-bottom:20px}
+  label{display:block;font-size:12.5px;color:#475569;font-weight:600;margin:12px 0 4px}
+  input{width:100%;font-family:inherit;font-size:14.5px;padding:11px 13px;border:1.5px solid #cbd5e1;
+    border-radius:11px;outline:none;transition:.15s;background:#f8fafc}
+  input:focus{border-color:#0d9488;background:#fff;box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+  .btn{width:100%;margin-top:20px;border:none;border-radius:12px;padding:13px;font-family:inherit;
+    font-size:15px;font-weight:800;color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,#0d9488,#0891b2)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .msg{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
+  .msg.err{color:#dc2626}
+  .msg.ok{color:#16a34a}
+  .foot{margin-top:22px;text-align:center;font-size:12.5px;color:#94a3b8;line-height:1.7}
+  .foot a{color:#0d9488;text-decoration:none;font-weight:700}
+  .row2{display:flex;gap:10px}
+  .row2>div{flex:1}
+  .adv{margin-top:10px;text-align:center}
+  .adv a{font-size:12px;color:#94a3b8;text-decoration:underline;cursor:pointer}
+  .extra{display:none;margin-top:2px}
+  .note{margin-top:16px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;
+    padding:9px 12px;font-size:12px;color:#92700a;text-align:center}
+</style>
+</head>
+<body>
+  <form class="card" id="loginForm" autocomplete="on">
+    <div class="logo"><div class="n">N</div><b style="font-size:19px;color:#0f172a">VectorCNC</b></div>
+    <h1>เข้าสู่ระบบ</h1>
+    <div class="sub">Graphic Design Solution · สำหรับสมาชิก</div>
+
+    <label for="lu">ชื่อผู้ใช้ (Username)</label>
+    <input id="lu" name="username" type="text" autocomplete="username" placeholder="username" required>
+
+    <label for="lp">รหัสผ่าน (Password)</label>
+    <input id="lp" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+
+    <div class="adv"><a id="advToggle">+ ยืนยันตัวตนเพิ่ม (มือถือ/อีเมล)</a></div>
+    <div class="extra" id="extra">
+      <div class="row2">
+        <div><label for="lm">มือถือ</label><input id="lm" name="mobile" type="tel" placeholder="08x-xxx-xxxx"></div>
+        <div><label for="le">อีเมล</label><input id="le" name="email" type="email" placeholder="you@email.com"></div>
+      </div>
+    </div>
+
+    <button class="btn" id="loginBtn" type="submit">🔑 เข้าสู่ระบบ</button>
+    <div class="msg" id="msg"></div>
+
+    <div class="note" id="regNote">การสมัครสมาชิกใหม่ยังไม่เปิดให้บริการ — ติดต่อทีมงานเพื่อขอบัญชี</div>
+
+    <div class="foot">
+      ทีมงาน: เข้าผ่าน <b>CRM Hub</b> ได้ตามปกติ<br>
+      <a href="/welcome">ดูแพ็กเกจ / รายละเอียด</a>
+    </div>
+  </form>
+
+<script>
+  var $=function(id){return document.getElementById(id);};
+  $('advToggle').onclick=function(){ var e=$('extra'); e.style.display=(e.style.display==='block')?'none':'block'; };
+  $('loginForm').onsubmit=function(ev){
+    ev.preventDefault();
+    var btn=$('loginBtn'), m=$('msg'); m.className='msg'; m.textContent='';
+    var u=$('lu').value.trim(), p=$('lp').value;
+    if(!u||!p){ m.className='msg err'; m.textContent='กรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
+    btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังเข้าสู่ระบบ...';
+    var fd=new FormData();
+    fd.append('username',u); fd.append('password',p);
+    fd.append('mobile',$('lm').value.trim()); fd.append('email',$('le').value.trim());
+    fetch('/api/login',{method:'POST',body:fd,credentials:'same-origin'})
+      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j};});})
+      .then(function(res){
+        var j=res.j;
+        if(j&&j.ok){ m.className='msg ok'; m.textContent='✓ เข้าสู่ระบบสำเร็จ — กำลังเข้าแอป...';
+          setTimeout(function(){ location.href=j.redirect||'/app'; },500); return; }
+        btn.disabled=false; btn.textContent=old;
+        m.className='msg err'; m.textContent=(j&&(j.msg||j.error))||'เข้าสู่ระบบไม่สำเร็จ';
+      })
+      .catch(function(e){ btn.disabled=false; btn.textContent=old; m.className='msg err'; m.textContent='ต่อเซิร์ฟเวอร์ไม่ได้: '+e; });
+  };
+</script>
+</body>
+</html>
