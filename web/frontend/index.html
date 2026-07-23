@@ -2071,6 +2071,18 @@ select.numin{cursor:pointer}
     <div style="flex:1;min-width:300px;background:#0f1319;border-radius:12px;overflow:hidden;position:relative;min-height:320px">
       <canvas id="v3dCv" style="width:100%;display:block;cursor:grab"></canvas>
       <div id="v3dHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px;pointer-events:none">กด "สร้างภาพ 3 มิติ"</div>
+      <!-- 📏 เส้นจับระยะ กว้าง/สูง (ชัดเจน) -->
+      <div id="v3dDim" style="position:absolute;inset:0;pointer-events:none;display:none">
+        <div style="position:absolute;left:52px;right:52px;bottom:26px;height:1px;background:#e11d48"></div>
+        <div style="position:absolute;left:52px;bottom:20px;width:1px;height:13px;background:#e11d48"></div>
+        <div style="position:absolute;right:52px;bottom:20px;width:1px;height:13px;background:#e11d48"></div>
+        <div id="v3dDimW" style="position:absolute;left:0;right:0;bottom:32px;text-align:center;color:#e11d48;font-size:13px;font-weight:800;text-shadow:0 1px 3px rgba(255,255,255,.9)"></div>
+        <div style="position:absolute;top:40px;bottom:52px;left:30px;width:1px;background:#e11d48"></div>
+        <div style="position:absolute;top:40px;left:24px;width:13px;height:1px;background:#e11d48"></div>
+        <div style="position:absolute;bottom:52px;left:24px;width:13px;height:1px;background:#e11d48"></div>
+        <div id="v3dDimH" style="position:absolute;top:50%;left:-16px;transform:translateY(-50%) rotate(-90deg);color:#e11d48;font-size:13px;font-weight:800;text-shadow:0 1px 3px rgba(255,255,255,.9);white-space:nowrap"></div>
+        <div id="v3dDimBadge" style="position:absolute;top:12px;left:12px;background:rgba(15,23,42,.88);color:#fff;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:9px"></div>
+      </div>
     </div>
     <div style="width:250px;max-width:100%">
       <label style="font-size:12px;color:var(--muted);display:block">ความกว้างป้ายจริง (ซม.)</label>
@@ -2565,6 +2577,14 @@ function $(id){return document.getElementById(id);}
       g.fillText('ยกขอบ '+V.rd+' ซม.', e1[0]+6, e1[1]-fs*0.5);
     }
     q('v3dInfo').innerHTML='ป้าย <b>'+wcm.toFixed(0)+' × '+hcm.toFixed(0)+' ซม.</b> · ยกขอบ '+V.rd+' ซม. · ลากเพื่อหมุน · สกอลล์ = ซูม';
+    try{   // 📏 เส้นจับระยะ กว้าง/สูง บนภาพ 3 มิติ
+      var _dm=q('v3dDim'); if(_dm){ _dm.style.display='block';
+        var _w=q('v3dDimW'), _h=q('v3dDimH'), _bd=q('v3dDimBadge');
+        if(_w)_w.textContent='กว้าง '+wcm.toFixed(0)+' ซม.';
+        if(_h)_h.textContent='สูง '+hcm.toFixed(0)+' ซม.';
+        if(_bd)_bd.innerHTML='📏 '+wcm.toFixed(0)+' × '+hcm.toFixed(0)+' × ลึก '+V.rd+' ซม.';
+      }
+    }catch(_e){}
   }
 
   function load(){
@@ -4890,26 +4910,31 @@ var TRIMW=1, TRIMDIR='out';
     var btn=$('mfTextGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังสร้าง...';
     try{loadGFont(font);}catch(_e){}
     var render=function(){
-      var PPC=12, target=Math.max(24,hcm*PPC);   // 🎯 ความสูง 'ตัวอักษรจริง' ที่ต้องการ (px)
+      var px=Math.max(48,hcm*12);                 // ขนาดวาดเริ่มต้น (ไม่ต้องแม่น — เดี๋ยววัดจากพิกเซลจริง)
       var c=document.createElement('canvas'), g=c.getContext('2d');
-      // วัดที่ขนาดอ้างอิงก่อน แล้วสเกล font-size ให้ 'ความสูงหมึกจริง' = ค่าที่กรอก (font-size ≠ ความสูงตัวอักษร)
-      var probe=200;
-      g.font='700 '+probe+'px "'+font+'", sans-serif';
-      var m0=g.measureText(txt);
-      var a0=(m0.actualBoundingBoxAscent||probe*0.72), d0=(m0.actualBoundingBoxDescent||probe*0.24);
-      var px=probe*(target/Math.max(1,a0+d0));
       g.font='700 '+px+'px "'+font+'", sans-serif';
       var m=g.measureText(txt);
-      var asc=(m.actualBoundingBoxAscent||px*0.72), desc=(m.actualBoundingBoxDescent||px*0.24);
+      var asc=(m.actualBoundingBoxAscent||px*0.8), desc=(m.actualBoundingBoxDescent||px*0.25);
       var lft=(m.actualBoundingBoxLeft||0), rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
-      var mrg=px*0.2, w=Math.ceil(lft+rgt+mrg*2), h=Math.ceil(asc+desc+mrg*2);
+      var mrg=Math.ceil(px*0.25), w=Math.ceil(lft+rgt+mrg*2), h=Math.ceil(asc+desc+mrg*2);
       c.width=w; c.height=h; g=c.getContext('2d');
       g.font='700 '+px+'px "'+font+'", sans-serif'; g.textBaseline='alphabetic'; g.fillStyle=col;
       g.fillText(txt, mrg+lft, mrg+asc);
+      // ✅ วัด 'ความสูงหมึกจริง' จากพิกเซล — แม่นกว่า font metrics (งานผลิตต้องเป๊ะ)
+      var inkH=0;
+      try{
+        var dat=g.getImageData(0,0,w,h).data, top=-1, bot=-1;
+        for(var y=0;y<h;y++){ var has=false;
+          for(var x=0;x<w;x++){ if(dat[(y*w+x)*4+3]>10){ has=true; break; } }
+          if(has){ if(top<0)top=y; bot=y; } }
+        if(top>=0) inkH=bot-top+1;
+      }catch(_e){}
+      if(!inkH) inkH=Math.max(1,asc+desc);
+      var mmPerPx=(hcm*10)/inkH;                  // มม./พิกเซล -> ตัวอักษรสูง = ค่าที่กรอกเป๊ะ
       c.toBlob(function(bl){
         if(!bl){btn.disabled=false;btn.textContent=old;alert('สร้างภาพข้อความไม่ได้');return;}
         fileObj=new File([bl],'text_sign.png',{type:'image/png'});
-        if($('realW'))$('realW').value=Math.round((w/PPC)*10);
+        if($('realW'))$('realW').value=Math.round(w*mmPerPx);   // กว้างรวม(มม.) ที่ทำให้สูงตรงเป๊ะ
         btn.disabled=false; btn.textContent=old;
         try{ if($('goLayer'))$('goLayer').click(); }catch(_e){}
       },'image/png');
@@ -5057,6 +5082,23 @@ $('goLayer').onclick=function(){
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
+    // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
+    try{
+      var _tw=parseFloat(($('bxW')&&$('bxW').value))||0;     // ขนาดกล่องที่ผู้ใช้กำหนด (ซม.)
+      if(_tw>0){
+        var _outer=0; (j.layers||[]).forEach(function(l){ if((l.w_mm||0)>_outer)_outer=l.w_mm||0; });
+        var _target=_tw*10, _cur=parseFloat($('realW').value)||0;
+        window._bxFit=(window._bxFit||0);
+        if(_outer>0 && _cur>0 && Math.abs(_outer-_target)>1 && window._bxFit<2){
+          window._bxFit++;
+          $('realW').value=Math.max(10,Math.round(_cur+(_target-_outer)));   // ชดเชยแบบตรงตัว (คิ้วเป็นค่าคงที่)
+          st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">ปรับขนาดให้ตรงกับที่กำหนด...</div></div>';
+          setTimeout(function(){ try{ $('goLayer').click(); }catch(_e){} },30);
+          return;
+        }
+        window._bxFit=0;
+      }
+    }catch(_e){}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
     try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.add('full-stage');}catch(_e){}
     try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
@@ -6185,8 +6227,22 @@ function _wDrawSplit(g,M,ww,wh){
     var right=(x+w+34)<=(M+ww); _wDimV(g,y,y+h, right?(x+w+22):(x-14), hcm.toFixed(1)+' cm', c);
   });
 }
+// 💰 ราคาสำหรับไฟล์ส่งลูกค้า (JPG/PDF) = +10% แล้วปัดขึ้นเป็นเลขกลม (>=10,000 ปัดหลักพัน · ต่ำกว่านั้นหลักร้อย)
+function _wExpPrice(t){ var v=(Number(t)||0)*1.10; if(v<=0)return 0; var step=(v>=10000)?1000:100; return Math.ceil(v/step)*step; }
+// 💰 ให้ผู้ขายกรอก "ราคาขาย" เองก่อน Export (โชว์มุมล่างขวาแทนราคาประเมิน) · เว้นว่าง = ใช้ราคาประเมิน (+10%)
+function _wAskSellPrice(){
+  var def=(typeof _wLast!=='undefined'&&_wLast)?_wExpPrice(_wLast.total):0;
+  var ans=window.prompt('💰 กรอกราคาขายที่จะแสดงบนภาพ (มุมล่างขวา) — หน่วยบาท\nเว้นว่างไว้ = ใช้ราคาประเมิน '+(def?def.toLocaleString():'-')+' บาท', def?String(def):'');
+  if(ans===null) return false;                       // กด Cancel = ยกเลิก export
+  ans=String(ans).replace(/[,\s฿]+/g,'').trim();
+  if(ans===''){ window._wSellOverride=null; return true; }   // ใช้ราคาประเมินเดิม
+  var v=Number(ans);
+  if(!isFinite(v)||v<0){ alert('ราคาไม่ถูกต้อง ลองใหม่นะคะ'); return _wAskSellPrice(); }
+  window._wSellOverride=v; return true;
+}
 function _wPriceBanner(g,M,ww,wh){
   try{ if(typeof _wLast==='undefined'||!_wLast||!_wLast.lines)return;
+    var _EXP=!!window._wExporting;
     var _vl=_wLast.lines.filter(function(l){return l.r;}); if(!_vl.length)return;
     var FONT='"Prompt", sans-serif';
     // ---- auto-size ตามสเกลภาพ (อิงด้านที่สั้นกว่า + จำกัดไม่ให้ใหญ่เกินจนบังงาน) ----
@@ -6196,12 +6252,13 @@ function _wPriceBanner(g,M,ww,wh){
     var _lh=_lf+6;
     var _dim=function(l){ return (l.w&&l.h)?(' · '+Math.round(l.w)+'×'+Math.round(l.h)+' ซม.'):''; };
     var _rows=[];
-    if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+_dim(l)+' : '+Math.round(l.r.total).toLocaleString(), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
+    if(_vl.length>1){ _vl.forEach(function(l){ _rows.push({t:(l.label||'')+_dim(l)+(_EXP?'':(' : '+Math.round(l.r.total).toLocaleString())), f:_lf, c:(l.label&&l.label.indexOf('🔴')>=0)?'#fda4af':((l.label&&l.label.indexOf('🔵')>=0)?'#93c5fd':'#dbe4f0'), b:false}); }); }
     else { var l0=_vl[0]; if(l0&&l0.w&&l0.h)_rows.push({t:(l0.label?String(l0.label).replace(/^[^\wก-๙"]+/,''):'ป้าย')+_dim(l0), f:_lf, c:'#cdd9ea', b:false}); }
     var _cl=(_wLast.lines.filter(function(l){return l.colorLine;})[0]);
-    if(_cl)_rows.push({t:'สีพิเศษ '+_cl.n+' สี × 1,500 : '+_cl.fee.toLocaleString(), f:_lf, c:'#d8b4fe', b:false});
+    if(_cl)_rows.push({t:'สีพิเศษ '+_cl.n+' สี'+(_EXP?'':(' × 1,500 : '+_cl.fee.toLocaleString())), f:_lf, c:'#d8b4fe', b:false});
     _rows.push({t:(_vl.length>1?'ราคารวม':'ราคาประเมิน')+' (ยังไม่รวม VAT)', f:_lf, c:'#9fb0c9', b:false});
-    _rows.push({t:Math.round(_wLast.total).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
+    var _ovr=window._wSellOverride; var _tot=(_EXP&&_ovr!=null&&Number(_ovr)>0)?Number(_ovr):(_EXP?_wExpPrice(_wLast.total):_wLast.total);
+    _rows.push({t:Math.round(_tot).toLocaleString()+' บาท', f:_fh, c:'#ffffff', b:true});
     g.save(); g.textBaseline='top';
     var _bw=0; _rows.forEach(function(r){ g.font=(r.b?'bold ':'')+r.f+'px '+FONT; _bw=Math.max(_bw,g.measureText(r.t).width); }); _bw+=24;
     var _bh=14; _rows.forEach(function(r){ _bh+=(r.b?r.f+7:_lh); });
@@ -6574,23 +6631,10 @@ function _wallPickPieces(pieces, f){
 })();
 function wallExportCanvas(){ var cv=$('wCanvas'); if(!cv)return null;
   var pv=_shpSel,pt=_txtSel,pl=_lgSel; _shpSel=-1; _txtSel=-1; _lgSel=-1;   // ซ่อนจุดจับตอน export
-  window._wNoBanner=false; window._wExporting=true; try{ wallDraw(); }catch(_e){}   // ✅ เก็บป้ายราคาไว้ + แสดงขนาดทุกวัตถุ
-  // 💰 สรุปราคาแบบข้อความ (ต่อท้ายภาพ)
-  var priceLines=[];
-  try{ var pr=$('wPResult'); if(pr){ (pr.innerText||'').split('\n').forEach(function(l){ l=l.trim(); if(l)priceLines.push(l); }); } }catch(_e){}
-  var padF=priceLines.length?(46+priceLines.length*30+22):0;
-  var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height+padF;
+  window._wNoBanner=false; window._wExporting=true; try{ wallDraw(); }catch(_e){}   // ✅ เก็บป้ายราคาบนผนังไว้ + แสดงขนาดทุกวัตถุ
+  var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height;
   var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height); g.drawImage(cv,0,0);
   try{ if(window._wDrawNotesOn)window._wDrawNotesOn(g,cv.width,cv.height); }catch(_e){}   // 🗒️ โน้ต + เส้นชี้
-  if(padF){                                                        // แผงราคาใต้ภาพ
-    var y0=cv.height+8;
-    g.fillStyle='#f8fafc'; g.fillRect(20,y0,out.width-40,padF-16);
-    g.strokeStyle='#cbd5e1'; g.lineWidth=2; g.strokeRect(20,y0,out.width-40,padF-16);
-    g.fillStyle='#0f172a'; g.font='bold 26px sans-serif'; g.textAlign='left'; g.textBaseline='alphabetic';
-    g.fillText('ประเมินราคา', 40, y0+36);
-    g.font='22px sans-serif'; g.fillStyle='#334155';
-    priceLines.forEach(function(l,i){ g.fillText(l, 40, y0+72+i*30); });
-  }
   window._wExporting=false; _shpSel=pv; _txtSel=pt; _lgSel=pl; try{ wallDraw(); }catch(_e){}
   return out;
 }
@@ -6619,10 +6663,11 @@ function _canvasToPdfBlob(cv){
   for(var k=0;k<all.length;k++)u[k]=all.charCodeAt(k)&0xff;
   return new Blob([u],{type:'application/pdf'});
 }
-if($('wJpg'))$('wJpg').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); };
-if($('wPdf'))$('wPdf').onclick=function(){ var cv=wallExportCanvas()||$('wCanvas'); if(!cv)return;
+if($('wJpg'))$('wJpg').onclick=function(){ if(typeof _wLast!=='undefined'&&_wLast){ if(!_wAskSellPrice())return; } var cv=wallExportCanvas()||$('wCanvas'); var a=document.createElement('a'); a.href=cv.toDataURL('image/jpeg',0.95); a.download='wall_mockup.jpg'; a.click(); window._wSellOverride=null; };
+if($('wPdf'))$('wPdf').onclick=function(){ if(typeof _wLast!=='undefined'&&_wLast){ if(!_wAskSellPrice())return; } var cv=wallExportCanvas()||$('wCanvas'); if(!cv){window._wSellOverride=null;return;}
   try{ var b=_canvasToPdfBlob(cv); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='wall_mockup.pdf'; a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},4000); }
-  catch(e){ alert('สร้าง PDF ไม่ได้: '+e); } };
+  catch(e){ alert('สร้าง PDF ไม่ได้: '+e); }
+  window._wSellOverride=null; };
 // ⬇ บันทึกเป็น .ai ขนาดจริง (พร้อมสั่งผลิต) — ส่งแบบ + ขนาดจริงจากผนัง เข้าเครื่องพิมพ์ .ai + เส้นตัด
 if($('wDlAi'))$('wDlAi').onclick=function(){
   var s=(typeof wallSignReal==='function')?wallSignReal():null;
@@ -8137,8 +8182,13 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     }
     $('presentBody').innerHTML=svg; ov.style.display='flex';
   }
-  window._openPresentSheet=open;
-  window._wirePresent=function(){ var b=$('lsPresent'); if(b)b.onclick=open; };
+  window._openPresentSheetOrtho=open;   // ผังฉาย (side/front/side) — เก็บไว้เผื่อใช้
+  // 📐 แผ่นนำเสนอ = หมุนดูแบบ Perspective เห็นครบทุกด้าน (ใช้ตัวหมุน 3D ที่มีอยู่) + เส้นจับระยะ กว้าง/สูง
+  window._openPresentSheet=function(){
+    if(typeof window.open3DViewer==='function'){ window.open3DViewer(); return; }
+    open();
+  };
+  window._wirePresent=function(){ var b=$('lsPresent'); if(b)b.onclick=window._openPresentSheet; };
 })();
 </script>
 </body>
