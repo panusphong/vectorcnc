@@ -3431,27 +3431,8 @@ def _gate_ok(request: Request) -> bool:
 
 
 def _gate_page():
-    """หน้า 'เฉพาะทีมงาน' — โชว์เมื่อคนนอกพยายามเปิดตัวแอปตรง ๆ ตอน APP_LOCK=1"""
-    html = ("<!doctype html><html lang='th'><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<meta name='robots' content='noindex,nofollow'>"
-            "<title>VectorCNC — เฉพาะทีมงาน</title><style>"
-            "*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;"
-            "justify-content:center;font-family:'Prompt',system-ui,Arial,sans-serif;"
-            "background:linear-gradient(135deg,#0f1729,#1e293b);color:#e2e8f0}"
-            ".card{max-width:440px;margin:24px;padding:40px 32px;text-align:center;"
-            "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);"
-            "border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)}"
-            ".lock{font-size:52px;margin-bottom:8px}h1{font-size:22px;margin:12px 0 8px}"
-            "p{color:#94a3b8;line-height:1.6;margin:8px 0;font-size:14px}"
-            "b{color:#e2e8f0}.small{font-size:12px;color:#64748b;margin-top:18px}</style></head>"
-            "<body><div class='card'><div class='lock'>🔒</div>"
-            "<h1>หน้านี้สำหรับสมาชิกเท่านั้น</h1>"
-            "<p>กรุณาเข้าสู่ระบบเพื่อใช้งาน VectorCNC</p>"
-            "<a href='/login' style='display:inline-block;margin-top:14px;background:#0d9488;color:#fff;"
-            "text-decoration:none;padding:11px 26px;border-radius:10px;font-weight:700'>🔑 เข้าสู่ระบบ</a>"
-            "<p class='small'>ทีมงานเข้าผ่าน <b>CRM Hub</b> ได้ตามปกติ (ตั๋วหมดอายุทุก 12 ชม.)</p></div></body></html>")
-    return HTMLResponse(html, status_code=403)
+    """ยังไม่ได้เข้าสู่ระบบ -> ส่งไปหน้า /login (สมาชิกภายในต้อง login ทุกครั้งก่อนเข้าใช้)"""
+    return RedirectResponse("/login", status_code=302)
 
 
 def _serve_app(request: Request, path=None):
@@ -3461,12 +3442,12 @@ def _serve_app(request: Request, path=None):
     try:
         tok = _token_of(request)
         if tok and A.role_of(tok) in ("internal", "admin", "user"):
-            resp.set_cookie("vc_acc", tok, max_age=12 * 3600,
+            resp.set_cookie("vc_acc", tok,
                             httponly=True, samesite="lax", secure=True)
         elif _gate_ok(request):                          # เข้าด้วยคีย์ -> ออกคุกกี้เซ็นให้
             try:
                 resp.set_cookie("vc_acc", A.sign_internal("team", "internal", 12),
-                                max_age=12 * 3600, httponly=True, samesite="lax", secure=True)
+                                httponly=True, samesite="lax", secure=True)
             except Exception:
                 pass
     except Exception:
@@ -3538,7 +3519,7 @@ async def api_login(request: Request, username: str = Form(""), password: str = 
     resp = JSONResponse({"ok": True, "username": u, "nickname": j.get("nickname") or u,
                          "role": role, "redirect": "/app?u=" + _upq(u)})
     try:
-        resp.set_cookie("vc_acc", tok, max_age=30 * 86400, httponly=True, samesite="lax", secure=True)
+        resp.set_cookie("vc_acc", tok, httponly=True, samesite="lax", secure=True)
     except Exception:
         pass
     return resp
