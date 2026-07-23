@@ -81,12 +81,12 @@ def sign_internal(email: str, role: str = "internal", hours: int = 12) -> str:
 
 
 def role_of(token: str) -> str:
-    """คืน 'admin' / 'internal' / '' (คนนอก)"""
+    """คืน 'admin' / 'internal' / 'user' / '' (คนนอก)"""
     p = verify(token)
     if not p:
         return ""
     r = p.get("r", "")
-    return r if r in ("internal", "admin") else ""
+    return r if r in ("internal", "admin", "user") else ""
 
 
 def verify(token: str):
