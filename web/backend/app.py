@@ -798,6 +798,98 @@ async def export_3d(file: UploadFile = File(...), width_mm: float = Form(600.0),
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
+def _extrude_layers_3d(full, rec, trimw_mm=10.0, trim_out=True, depth_mm=50.0, fmt="stl"):
+    """สร้างโมเดล 3 มิติ 'หลายชั้นจริง' ตามโครงป้าย (แผ่นหลัง + ผนังยกขอบ + อะคริลิคหน้า + คิ้ว)
+       -> ไฟล์ STL / OBJ / 3MF / GLB (import เข้า Fusion 360 / Rhino / Blender / เครื่องพิมพ์ 3D ได้ทันที)
+       คืน (bytes, จำนวนชิ้น)"""
+    import trimesh
+    scene = trimesh.Scene()
+    T_BASE, T_ACR, T_KIM, T_WALL = 3.0, 5.0, 10.0, 3.0
+
+    def _polys(g):
+        if g is None or getattr(g, "is_empty", True):
+            return []
+        return list(g.geoms) if g.geom_type == "MultiPolygon" else ([g] if g.geom_type == "Polygon" else [])
+
+    def _add(g, h, z, name):
+        for pg in _polys(g):
+            try:
+                pg2 = pg.simplify(0.3, preserve_topology=True)
+                if pg2.is_empty or pg2.geom_type != "Polygon":
+                    continue
+                m = trimesh.creation.extrude_polygon(pg2, height=max(0.6, float(h)))
+                m.apply_translation([0.0, 0.0, float(z)])
+                scene.add_geometry(m, node_name=name)
+            except Exception:
+                pass
+    depth_mm = max(6.0, float(depth_mm))
+    _add(full, T_BASE, 0.0, "back_plate")                               # แผ่นหลัง (ฐานยึด)
+    try:
+        _add(full.difference(full.buffer(-T_WALL)), depth_mm, T_BASE, "return_wall")   # ผนังยกขอบรอบตัว
+    except Exception:
+        pass
+    topz = T_BASE + depth_mm
+    for L in rec.get("layers", []):
+        kind = L.get("kind", "solid"); off = float(L["off"])
+        base = _mbuf(full, off)
+        if base is None or base.is_empty:
+            continue
+        if kind == "frame":                                             # คิ้ว = กรอบบนสุด
+            band = trimw_mm if trimw_mm > 0 else float(L.get("band", 10.0))
+            if trim_out:
+                o2 = _mbuf(full, off + band); g = o2.difference(base) if base is not None else o2
+            else:
+                i2 = _mbuf(full, off - band); g = base.difference(i2) if (i2 is not None and not i2.is_empty) else base
+            _add(g, T_KIM, topz, "kim_trim")
+        elif kind == "base":
+            continue                                                    # เป็นแผ่นหลังแล้ว
+        else:                                                           # อะคริลิคหน้า (ใต้คิ้ว)
+            _add(base, T_ACR, topz - T_ACR, "acrylic_face")
+    if not scene.geometry:
+        raise ValueError("no geometry to extrude")
+    data = scene.export(file_type=fmt)
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return bytes(data), len(scene.geometry)
+
+
+@app.post("/api/export-3d-layered")
+async def export_3d_layered(file: UploadFile = File(...), sign_type: str = Form("1"),
+                            real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
+                            return_depth_cm: float = Form(5.0), trim_width_cm: float = Form(1.0),
+                            trim_dir: str = Form("out"), n_colors: int = Form(6), fmt: str = Form("stl")):
+    """แปลงงานเวกเตอร์ -> โมเดล 3 มิติ 'หลายชั้น' (STL/OBJ/3MF) พร้อมใช้ใน Fusion 360 / โปรแกรม 3D ทุกตัว"""
+    tmp = tempfile.mkdtemp()
+    inp = os.path.join(tmp, file.filename or "in.png")
+    with open(inp, "wb") as f:
+        f.write(await file.read())
+    try:
+        rec = SIGN_TYPES.get(str(sign_type))
+        if not rec:
+            return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
+        full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        if full.is_empty:
+            return JSONResponse({"error": "ไม่พบรูปทรงสำหรับสร้าง 3 มิติ"}, status_code=400)
+        depth_mm = (float(return_depth_cm) * 10.0) if float(return_depth_cm) > 0 else float(rec.get("depth_cm", 5.0)) * 10.0
+        trim_out = (str(trim_dir) != "in")
+        want = ["stl", "obj", "3mf"] if str(fmt) == "all" else [str(fmt)]
+        out = {}; nb = 0
+        for f_ in want:
+            data, nb = _extrude_layers_3d(full, rec, trimw_mm=float(trim_width_cm) * 10.0,
+                                          trim_out=trim_out, depth_mm=depth_mm, fmt=f_)
+            out[f_.replace("3mf", "tmf") + "_base64"] = base64.b64encode(data).decode()
+        b = full.bounds
+        return {"bodies": nb, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                "depth_mm": round(depth_mm, 1), **out}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+    finally:
+        try:
+            import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+        except Exception:
+            pass
+
+
 # ==================== ชุดชั้นตัดตามแบบป้าย 1-7 (auto multi-layer offset) ====================
 # off = ค่าเผื่อ 'มม.' จากไซซ์เต็ม (บวก=ขยายออก, ลบ=หดเข้า) · walls = ความสูงผนัง(ซม.) ไว้บอกช่าง(ดัดขอบ)
 # kind: "solid"=ตัดเต็มแผ่น · "frame"=กรอบเจาะโบ๋ (band=ความกว้างคิ้ว มม.) · depth_cm=ความลึกตัว(สำหรับภาพ 3 มิติ)
@@ -3332,8 +3424,8 @@ def _gate_ok(request: Request) -> bool:
         return True
     if ak and str(q.get("ak", "")) == str(ak):
         return True
-    ck = request.cookies.get("vc_acc", "")               # ③ คุกกี้เข้าถึง (ตั้งหลังเข้าถูกครั้งแรก)
-    if ck and A.role_of(ck) in ("internal", "admin"):
+    ck = request.cookies.get("vc_acc", "")               # ③ คุกกี้เข้าถึง (ตั้งหลังเข้าถูก/หลัง login)
+    if ck and A.role_of(ck) in ("internal", "admin", "user"):
         return True
     return False
 
@@ -3354,10 +3446,11 @@ def _gate_page():
             "p{color:#94a3b8;line-height:1.6;margin:8px 0;font-size:14px}"
             "b{color:#e2e8f0}.small{font-size:12px;color:#64748b;margin-top:18px}</style></head>"
             "<body><div class='card'><div class='lock'>🔒</div>"
-            "<h1>หน้านี้สำหรับทีมงานเท่านั้น</h1>"
-            "<p>กรุณาเปิด VectorCNC ผ่าน <b>CRM Hub</b> เพื่อเข้าใช้งาน</p>"
-            "<p class='small'>ถ้าเป็นทีมงานแต่เข้าไม่ได้ ให้กดเปิดจากปุ่มใน CRM Hub อีกครั้ง "
-            "(ตั๋วหมดอายุทุก 12 ชม.)</p></div></body></html>")
+            "<h1>หน้านี้สำหรับสมาชิกเท่านั้น</h1>"
+            "<p>กรุณาเข้าสู่ระบบเพื่อใช้งาน VectorCNC</p>"
+            "<a href='/login' style='display:inline-block;margin-top:14px;background:#0d9488;color:#fff;"
+            "text-decoration:none;padding:11px 26px;border-radius:10px;font-weight:700'>🔑 เข้าสู่ระบบ</a>"
+            "<p class='small'>ทีมงานเข้าผ่าน <b>CRM Hub</b> ได้ตามปกติ (ตั๋วหมดอายุทุก 12 ชม.)</p></div></body></html>")
     return HTMLResponse(html, status_code=403)
 
 
@@ -3367,7 +3460,7 @@ def _serve_app(request: Request, path=None):
     resp = FileResponse(path or FRONTEND)
     try:
         tok = _token_of(request)
-        if tok and A.role_of(tok) in ("internal", "admin"):
+        if tok and A.role_of(tok) in ("internal", "admin", "user"):
             resp.set_cookie("vc_acc", tok, max_age=12 * 3600,
                             httponly=True, samesite="lax", secure=True)
         elif _gate_ok(request):                          # เข้าด้วยคีย์ -> ออกคุกกี้เซ็นให้
@@ -3401,6 +3494,59 @@ def home(request: Request):
     if os.path.exists(FRONTEND):
         return _serve_app(request)
     return {"msg": "VectorCNC API running. POST /api/vectorize"}
+
+
+@app.get("/login")
+def login_page():
+    """หน้า Login (username/password ตรวจกับ Table: user ใน CRM Hub)"""
+    p = os.path.join(os.path.dirname(FRONTEND), "login.html")
+    if os.path.exists(p):
+        return FileResponse(p)
+    return JSONResponse({"error": "login.html not found"}, status_code=404)
+
+
+def _crm_hub_url():
+    """URL Apps Script (CRM Hub) ฝั่ง server — ตั้งใน Render env: CRM_HUB_URL=.../exec"""
+    return (os.environ.get("CRM_HUB_URL", "") or "").strip()
+
+
+@app.post("/api/login")
+async def api_login(request: Request, username: str = Form(""), password: str = Form(""),
+                    mobile: str = Form(""), email: str = Form("")):
+    """ตรวจ Username/Password กับ Table: user (CRM Hub) -> ออกโทเคน + คุกกี้เข้าถึง"""
+    from vectorcnc import auth as A
+    u = (username or "").strip(); pw = (password or "")
+    if not u or not pw:
+        return JSONResponse({"ok": False, "error": "missing"}, status_code=400)
+    hub = _crm_hub_url()
+    if not hub:
+        return JSONResponse({"ok": False, "error": "no_crm_url",
+                             "msg": "ยังไม่ได้ตั้ง CRM_HUB_URL ที่เซิร์ฟเวอร์"}, status_code=503)
+    try:
+        import urllib.request as _u, urllib.parse as _up, json as _json
+        qs = _up.urlencode({"api": "auth", "user": u, "pass": pw, "mobile": mobile, "email": email})
+        with _u.urlopen(hub + ("&" if "?" in hub else "?") + qs, timeout=15) as r:
+            j = _json.loads(r.read().decode("utf-8", "ignore") or "{}")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": "crm_unreachable", "detail": str(e)[:120]}, status_code=502)
+    if not j.get("ok"):
+        err = j.get("error", "bad_credentials")
+        msg = {"not_paid": "บัญชีนี้ยังไม่ชำระเงิน", "bad_credentials": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"}.get(err, err)
+        return JSONResponse({"ok": False, "error": err, "msg": msg}, status_code=401)
+    role = "admin" if str(j.get("permission", "")).lower() == "admin" else "user"
+    tok = A.sign(str(j.get("email") or u), str(j.get("plan") or "pro"), days=30, role=role)
+    resp = JSONResponse({"ok": True, "username": u, "nickname": j.get("nickname") or u,
+                         "role": role, "redirect": "/app?u=" + _upq(u)})
+    try:
+        resp.set_cookie("vc_acc", tok, max_age=30 * 86400, httponly=True, samesite="lax", secure=True)
+    except Exception:
+        pass
+    return resp
+
+
+def _upq(s):
+    import urllib.parse as _up
+    return _up.quote(str(s or ""))
 
 
 @app.get("/app")
