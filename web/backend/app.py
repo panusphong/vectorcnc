@@ -3514,7 +3514,13 @@ async def api_login(request: Request, username: str = Form(""), password: str = 
         err = j.get("error", "bad_credentials")
         msg = {"not_paid": "บัญชีนี้ยังไม่ชำระเงิน", "bad_credentials": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"}.get(err, err)
         return JSONResponse({"ok": False, "error": err, "msg": msg}, status_code=401)
-    role = "admin" if str(j.get("permission", "")).lower() == "admin" else "user"
+    perm = str(j.get("permission", "")).strip().lower()
+    if perm.startswith("admin"):                       # admin / administrator
+        role = "admin"
+    elif perm in ("", "user", "customer", "ลูกค้า"):     # ลูกค้าภายนอก
+        role = "user"
+    else:                                              # staff / team / พนักงาน ฯลฯ = ทีมงานภายใน
+        role = "internal"
     tok = A.sign(str(j.get("email") or u), str(j.get("plan") or "pro"), days=30, role=role)
     resp = JSONResponse({"ok": True, "username": u, "nickname": j.get("nickname") or u,
                          "role": role, "redirect": "/app?u=" + _upq(u)})
