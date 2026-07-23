@@ -4125,7 +4125,9 @@ BRIEF_FIELDS = [
 
 def _token_of(request: Request) -> str:
     return (request.headers.get("X-User-Token")
-            or request.query_params.get("t") or "")
+            or request.query_params.get("t")
+            or request.cookies.get("vc_acc", "")   # 🍪 โทเคนจากการ login ผ่านฟอร์ม (vc_acc)
+            or "")
 
 
 def _role_of(request: Request) -> str:
