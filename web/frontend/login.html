@@ -6,80 +6,194 @@
 <meta name="robots" content="noindex,nofollow">
 <title>เข้าสู่ระบบ · Graphic Design Solution</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-    font-family:'Prompt',system-ui,Arial,sans-serif;padding:20px;
-    background:linear-gradient(135deg,#0f1729,#1e293b 55%,#0d9488)}
-  .card{width:100%;max-width:390px;background:#fff;border-radius:20px;padding:34px 30px;
-    box-shadow:0 24px 70px rgba(0,0,0,.45)}
-  .logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
-  .logo .n{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#2563eb,#0d9488);
-    display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px}
-  h1{font-size:20px;color:#0f172a;text-align:center;margin:10px 0 2px}
-  .sub{text-align:center;color:#64748b;font-size:13px;margin-bottom:20px}
-  label{display:block;font-size:12.5px;color:#475569;font-weight:600;margin:12px 0 4px}
-  input{width:100%;font-family:inherit;font-size:14.5px;padding:11px 13px;border:1.5px solid #cbd5e1;
-    border-radius:11px;outline:none;transition:.15s;background:#f8fafc}
-  input:focus{border-color:#0d9488;background:#fff;box-shadow:0 0 0 3px rgba(13,148,136,.15)}
-  .btn{width:100%;margin-top:20px;border:none;border-radius:12px;padding:13px;font-family:inherit;
-    font-size:15px;font-weight:800;color:#fff;cursor:pointer;
-    background:linear-gradient(135deg,#0d9488,#0891b2)}
-  .btn:disabled{opacity:.6;cursor:default}
-  .msg{margin-top:14px;font-size:13px;text-align:center;min-height:18px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --teal:#0d9488; --teal2:#0891b2; --blue:#2563eb;
+    --ink:#0f172a; --slate:#64748b; --line:#e2e8f0;
+  }
+  html,body{height:100%}
+  body{font-family:'Prompt',system-ui,Arial,sans-serif;color:var(--ink);
+    background:#0b1120;display:flex;min-height:100vh;overflow:hidden}
+
+  /* ===== LEFT — hero / brand ===== */
+  .hero{flex:1.1;position:relative;display:flex;flex-direction:column;
+    justify-content:space-between;padding:54px 52px;color:#fff;overflow:hidden;
+    background:linear-gradient(140deg,#0f1729 0%,#0e3a44 42%,#0d9488 78%,#0891b2 100%)}
+  .hero::before{content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(600px 600px at 78% 18%,rgba(45,212,191,.28),transparent 60%),
+      radial-gradient(520px 520px at 12% 88%,rgba(37,99,235,.30),transparent 60%)}
+  .hero::after{content:"";position:absolute;inset:0;opacity:.5;
+    background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+    background-size:46px 46px;
+    -webkit-mask-image:radial-gradient(circle at 60% 40%,#000,transparent 75%);
+            mask-image:radial-gradient(circle at 60% 40%,#000,transparent 75%)}
+  .hero>*{position:relative;z-index:1}
+  .brand{display:flex;align-items:center;gap:13px}
+  .brand .mark{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;
+    font-weight:800;font-size:26px;color:#fff;
+    background:linear-gradient(135deg,#38bdf8,#0d9488);
+    box-shadow:0 10px 30px rgba(13,148,136,.5)}
+  .brand .bt{font-weight:800;font-size:20px;line-height:1.08}
+  .brand .bs{font-size:12px;color:#a5f3ea;letter-spacing:.06em;font-weight:500}
+
+  .hero-mid{max-width:440px}
+  .hero-mid h1{font-size:40px;line-height:1.15;font-weight:800;letter-spacing:-.01em}
+  .hero-mid h1 .g{background:linear-gradient(90deg,#5eead4,#7dd3fc);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-mid p{margin-top:18px;font-size:15.5px;line-height:1.7;color:#cbd5e1;font-weight:300}
+  .feats{margin-top:30px;display:flex;flex-direction:column;gap:14px}
+  .feat{display:flex;align-items:center;gap:13px;font-size:14.5px;color:#e2e8f0}
+  .feat .ic{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;
+    font-size:17px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16)}
+  .hero-foot{font-size:12.5px;color:#93a3b8}
+
+  /* ===== RIGHT — form ===== */
+  .pane{flex:.9;display:flex;align-items:center;justify-content:center;padding:32px;
+    background:radial-gradient(120% 120% at 50% 0%,#ffffff,#f1f5f9)}
+  .card{width:100%;max-width:392px}
+  .card .mobrand{display:none}
+  .head h2{font-size:25px;font-weight:800}
+  .head .sub{margin-top:5px;color:var(--slate);font-size:13.5px}
+
+  form{margin-top:26px}
+  label{display:block;font-size:12.5px;color:#475569;font-weight:600;margin:0 0 6px}
+  .field{position:relative;margin-bottom:15px}
+  .field .ic{position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    font-size:16px;opacity:.5;pointer-events:none}
+  input{width:100%;font-family:inherit;font-size:15px;padding:13px 14px 13px 42px;
+    border:1.6px solid var(--line);border-radius:13px;outline:none;background:#fff;
+    transition:border-color .15s,box-shadow .15s}
+  input::placeholder{color:#94a3b8}
+  input:focus{border-color:var(--teal);box-shadow:0 0 0 4px rgba(13,148,136,.13)}
+
+  .adv{margin:2px 0 4px;text-align:right}
+  .adv a{font-size:12px;color:#94a3b8;text-decoration:none;cursor:pointer;font-weight:500}
+  .adv a:hover{color:var(--teal)}
+  .extra{display:none;gap:11px;margin-bottom:6px}
+  .extra.on{display:flex}
+  .extra>.field{flex:1;margin-bottom:9px}
+
+  .btn{width:100%;margin-top:12px;border:none;border-radius:13px;padding:14px;
+    font-family:inherit;font-size:15.5px;font-weight:700;color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,#0d9488,#0891b2);
+    box-shadow:0 10px 26px rgba(13,148,136,.34);transition:transform .12s,box-shadow .15s,opacity .15s}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 14px 32px rgba(13,148,136,.42)}
+  .btn:active{transform:translateY(0)}
+  .btn:disabled{opacity:.65;cursor:default;transform:none;box-shadow:none}
+
+  .msg{margin-top:14px;font-size:13px;text-align:center;min-height:18px;font-weight:500}
   .msg.err{color:#dc2626}
-  .msg.ok{color:#16a34a}
-  .foot{margin-top:22px;text-align:center;font-size:12.5px;color:#94a3b8;line-height:1.7}
-  .foot a{color:#0d9488;text-decoration:none;font-weight:700}
-  .row2{display:flex;gap:10px}
-  .row2>div{flex:1}
-  .adv{margin-top:10px;text-align:center}
-  .adv a{font-size:12px;color:#94a3b8;text-decoration:underline;cursor:pointer}
-  .extra{display:none;margin-top:2px}
-  .note{margin-top:16px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;
-    padding:9px 12px;font-size:12px;color:#92700a;text-align:center}
+  .msg.ok{color:#0d9488}
+
+  .note{margin-top:20px;display:flex;gap:10px;align-items:flex-start;
+    background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:11px 13px;
+    font-size:12.2px;color:#92700a;line-height:1.55}
+  .note .ic{font-size:15px;line-height:1.3}
+  .foot{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);
+    text-align:center;font-size:12.5px;color:#94a3b8;line-height:1.9}
+  .foot b{color:#475569}
+  .foot a{color:var(--teal);text-decoration:none;font-weight:700}
+  .foot a:hover{text-decoration:underline}
+
+  /* ===== responsive ===== */
+  @media (max-width:860px){
+    body{overflow:auto}
+    .hero{display:none}
+    .pane{flex:1;padding:26px 18px;min-height:100vh;align-items:flex-start;padding-top:44px;
+      background:linear-gradient(160deg,#0f1729,#0e3a44 60%,#0d9488)}
+    .card{background:#fff;border-radius:22px;padding:30px 24px;
+      box-shadow:0 24px 70px rgba(0,0,0,.4)}
+    .card .mobrand{display:flex;align-items:center;gap:11px;justify-content:center;margin-bottom:18px}
+    .card .mobrand .mark{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+      font-weight:800;font-size:22px;color:#fff;background:linear-gradient(135deg,#38bdf8,#0d9488)}
+    .card .mobrand .bt{font-weight:800;font-size:16px;line-height:1.05;color:var(--ink)}
+    .head{text-align:center}
+  }
 </style>
 </head>
 <body>
-  <form class="card" id="loginForm" autocomplete="on">
-    <div class="logo"><div class="n">G</div><b style="font-size:17px;color:#0f172a;line-height:1.05">Graphic Design<br>Solution</b></div>
-    <h1>เข้าสู่ระบบ</h1>
-    <div class="sub">สำหรับสมาชิกเท่านั้น</div>
 
-    <label for="lu">ชื่อผู้ใช้ (Username)</label>
-    <input id="lu" name="username" type="text" autocomplete="username" placeholder="username" required>
-
-    <label for="lp">รหัสผ่าน (Password)</label>
-    <input id="lp" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
-
-    <div class="adv"><a id="advToggle">+ ยืนยันตัวตนเพิ่ม (มือถือ/อีเมล)</a></div>
-    <div class="extra" id="extra">
-      <div class="row2">
-        <div><label for="lm">มือถือ</label><input id="lm" name="mobile" type="tel" placeholder="08x-xxx-xxxx"></div>
-        <div><label for="le">อีเมล</label><input id="le" name="email" type="email" placeholder="you@email.com"></div>
+  <!-- LEFT: hero -->
+  <aside class="hero">
+    <div class="brand">
+      <div class="mark">G</div>
+      <div>
+        <div class="bt">Graphic Design<br>Solution</div>
+        <div class="bs">SIGN &amp; CNC PLATFORM</div>
       </div>
     </div>
 
-    <button class="btn" id="loginBtn" type="submit">🔑 เข้าสู่ระบบ</button>
-    <div class="msg" id="msg"></div>
-
-    <div class="note" id="regNote">การสมัครสมาชิกใหม่ยังไม่เปิดให้บริการ — ติดต่อทีมงานเพื่อขอบัญชี</div>
-
-    <div class="foot">
-      ทีมงาน: เข้าผ่าน <b>CRM Hub</b> ได้ตามปกติ<br>
-      <a href="/welcome">ดูแพ็กเกจ / รายละเอียด</a>
+    <div class="hero-mid">
+      <h1>ออกแบบป้าย<br><span class="g">ครบจบในที่เดียว</span></h1>
+      <p>เครื่องมือออกแบบ ประเมินราคา และสั่งผลิตงานป้าย-งาน CNC สำหรับทีมงานมืออาชีพ</p>
+      <div class="feats">
+        <div class="feat"><span class="ic">✏️</span> ออกแบบ &amp; วางเลย์เอาต์อัตโนมัติ</div>
+        <div class="feat"><span class="ic">💰</span> ประเมินราคา &amp; BOM ทันที</div>
+        <div class="feat"><span class="ic">🏭</span> ส่งเข้าไลน์ผลิต CNC ได้เลย</div>
+      </div>
     </div>
-  </form>
+
+    <div class="hero-foot">© 2026 Saai Tech · Graphic Design Solution</div>
+  </aside>
+
+  <!-- RIGHT: form -->
+  <main class="pane">
+    <form class="card" id="loginForm" autocomplete="on">
+      <div class="mobrand"><div class="mark">G</div><div class="bt">Graphic Design<br>Solution</div></div>
+
+      <div class="head">
+        <h2>เข้าสู่ระบบ</h2>
+        <div class="sub">สำหรับสมาชิกเท่านั้น 🔐</div>
+      </div>
+
+      <div style="margin-top:22px"></div>
+
+      <label for="lu">ชื่อผู้ใช้ (Username)</label>
+      <div class="field">
+        <span class="ic">👤</span>
+        <input id="lu" name="username" type="text" autocomplete="username" placeholder="username" required>
+      </div>
+
+      <label for="lp">รหัสผ่าน (Password)</label>
+      <div class="field">
+        <span class="ic">🔑</span>
+        <input id="lp" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+
+      <div class="adv"><a id="advToggle">+ ยืนยันตัวตนเพิ่ม (มือถือ/อีเมล)</a></div>
+      <div class="extra" id="extra">
+        <div class="field"><input id="lm" name="mobile" type="tel" placeholder="มือถือ 08x-xxx-xxxx" style="padding-left:14px"></div>
+        <div class="field"><input id="le" name="email" type="email" placeholder="อีเมล" style="padding-left:14px"></div>
+      </div>
+
+      <button class="btn" id="loginBtn" type="submit">เข้าสู่ระบบ</button>
+      <div class="msg" id="msg"></div>
+
+      <div class="note">
+        <span class="ic">ℹ️</span>
+        <span>การสมัครสมาชิกใหม่ยังไม่เปิดให้บริการ — ติดต่อทีมงานเพื่อขอบัญชี</span>
+      </div>
+
+      <div class="foot">
+        ทีมงาน: เข้าด้วยรหัสเดียวกับ <b>CRM Hub</b> ได้เลย<br>
+        <a href="/welcome">ดูแพ็กเกจ / รายละเอียด</a>
+      </div>
+    </form>
+  </main>
 
 <script>
   var $=function(id){return document.getElementById(id);};
-  $('advToggle').onclick=function(){ var e=$('extra'); e.style.display=(e.style.display==='block')?'none':'block'; };
+  $('advToggle').onclick=function(){ $('extra').classList.toggle('on'); };
   $('loginForm').onsubmit=function(ev){
     ev.preventDefault();
     var btn=$('loginBtn'), m=$('msg'); m.className='msg'; m.textContent='';
     var u=$('lu').value.trim(), p=$('lp').value;
-    if(!u||!p){ m.className='msg err'; m.textContent='กรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
+    if(!u||!p){ m.className='msg err'; m.textContent='กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
     btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังเข้าสู่ระบบ...';
     var fd=new FormData();
     fd.append('username',u); fd.append('password',p);
