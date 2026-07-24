@@ -510,8 +510,12 @@ select.numin{cursor:pointer}
             </div>
             <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">งานพิมพ์ (ถ้ามี)</label>
             <input class="numin" id="pmPrint" type="text" placeholder="เช่น อะคริลิคโปร่งแสง 3mm P433" style="width:100%;padding:6px">
-            <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">วันที่ส่งมอบ</label>
+            <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">วันที่ส่งมอบ (ให้ลูกค้า)</label>
             <input class="numin" id="pmDelivery" type="date" style="width:100%;padding:6px">
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">เซลล์ (ผู้ดูแล)</label><input class="numin" id="pmSales" type="text" placeholder="ชื่อเซลล์" style="width:100%;padding:6px"></div>
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">กราฟิก (ผู้ออกแบบ)</label><input class="numin" id="pmGraphic" type="text" placeholder="ชื่อกราฟิก" style="width:100%;padding:6px"></div>
+            </div>
           </div>
           <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
@@ -5204,7 +5208,9 @@ $('goLayer').onclick=function(){
       var w=window.open('','_blank'); if(w)w.document.write('<p style="font-family:sans-serif;padding:24px">⏳ กำลังสร้างใบสั่งผลิต...</p>');
       var fd=new FormData();
       fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
-      fd.append('customer',cust);fd.append('sales',(($('adminName')&&$('adminName').textContent)||'')||'');
+      fd.append('customer',cust);
+      fd.append('sales',(($('pmSales')&&$('pmSales').value)||(($('adminName')&&$('adminName').textContent)||''))||'');
+      fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
       fd.append('return_depth_cm',String(RDEPTH||0));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
