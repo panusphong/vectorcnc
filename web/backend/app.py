@@ -913,11 +913,18 @@ SIGN_TYPES = {
           "layers": [{"name": "หน้าอะคริลิค", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบใน", "h": 2.0}, {"name": "ยกขอบอะคริลิค", "h": 7.0}]},
-    "4": {"name": "กล่องไฟฉลุหน้า", "depth_cm": 5.0,
-          "layers": [{"name": "คิ้ว", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "หน้าฉลุตัวอักษร", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
-                     {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
-          "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
+    # 🔦 กล่องไฟฉลุหน้า (สี่เหลี่ยม/วงกลม) — หน้ากล่องเป็นโลหะเต็มแผ่น "ฉลุโบ๋ทะลุเฉพาะรูป logo"
+    #    รองหลังด้วยอะคริลิคขาวนม 3mm (ตัดเป็นสี่เหลี่ยมตามพื้นที่ logo — ไม่ต้องตัดตามรูป) · ไฟด้านใน แสงลอดเฉพาะ logo
+    "4": {"name": "กล่องไฟสี่เหลี่ยม ฉลุหน้า", "depth_cm": 5.0, "box_shape": "rect", "box_pad_cm": 4.0, "punch_face": True,
+          "layers": [{"name": "หน้าโลหะฉลุ logo", "off": 0.0, "kind": "punch", "color": "#2563EB", "rgb": (37, 99, 235)},
+                     {"name": "อะคริลิคขาวนม 3mm (รองหลัง)", "off": 0.0, "kind": "backing", "color": "#dc2626", "rgb": (220, 38, 38)},
+                     {"name": "แผ่นพื้น", "off": 0.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+          "walls": [{"name": "ยกขอบ", "h": 5.0}]},
+    "21": {"name": "กล่องไฟวงกลม ฉลุหน้า", "depth_cm": 5.0, "box_shape": "circle", "box_pad_cm": 4.0, "punch_face": True,
+           "layers": [{"name": "หน้าโลหะฉลุ logo", "off": 0.0, "kind": "punch", "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "อะคริลิคขาวนม 3mm (รองหลัง)", "off": 0.0, "kind": "backing", "color": "#dc2626", "rgb": (220, 38, 38)},
+                      {"name": "แผ่นพื้น", "off": 0.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": [{"name": "ยกขอบ", "h": 5.0}]},
     "6": {"name": "งานยกขอบ", "depth_cm": 2.5,
           "layers": [{"name": "ซิ้งค์", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)}],
           "walls": [{"name": "ยกขอบ", "h": 2.5}, {"name": "ขากลางยกลอย", "h": 2.5}]},
@@ -1091,6 +1098,9 @@ _TYPE_EN = {
     "ไฟออกหน้า ไม่มีคิ้ว": "Front-lit · no Trim",
     "ตัวอักษรไฟออกรอบ": "Edge-lit Letters (light all around)",
     "กล่องไฟฉลุหน้า": "Light Box · Cut-out Face",
+    "กล่องไฟสี่เหลี่ยม ฉลุหน้า": "Rect Light Box · Punched Face",
+    "กล่องไฟวงกลม ฉลุหน้า": "Round Light Box · Punched Face",
+    "ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)": "Flat Letters/Logo (no return)",
     "อักษรยกขอบไฟออกหน้า + โครงแขวน": "Front-lit Raised Letters + Hanging Frame",
     "นีออนเฟล็กซ์": "Neon Flex + Clear Acrylic Backing",
     "กล่องไฟอะคริลิค ไฟออกรอบ": "Edge-lit Acrylic Light Box (glow all sides)",
@@ -1127,6 +1137,12 @@ def _dxf_layer(name):
 
 def _en_layer(n):
     n = str(n)
+    if "โลหะฉลุ" in n:
+        return "Punched Metal Face"
+    if "ขาวนม" in n:
+        return "Milky Acrylic 3mm Backing"
+    if "แผ่นแบน" in n:
+        return "Flat Face Plate"
     if "คิ้ว" in n:
         return "Contour Trim (Kim)" if "ล้อมทรง" in n else "Trim Face (Kim)"
     if "อะคริลิคขาว" in n and "พิมพ์" in n:
@@ -2268,6 +2284,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
         elif rec.get("box_shape"):
+            _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
@@ -2286,6 +2303,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
         TRIM_OUT = (str(trim_dir or "out").lower() != "in")
         bore_geom = None; frame_outer = None
+        try:
+            _punch_logo
+        except NameError:
+            _punch_logo = None
         out_layers = []
         warns = []
         for L in ([] if _neon else rec["layers"]):
@@ -2293,7 +2314,21 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
             if base is None or base.is_empty:
                 continue
-            if kind == "frame":
+            if kind == "punch" and _punch_logo is not None:
+                # 🔦 หน้าโลหะฉลุ: แผ่นเต็มทรงกล่อง 'เจาะโบ๋ทะลุ' ตามรูป logo — แสงลอดเฉพาะ logo
+                g = base.difference(_punch_logo)
+                if g.is_empty:
+                    g = base
+                if bore_geom is None:
+                    bore_geom = _punch_logo; frame_outer = base   # ให้ภาพ 3 มิติโชว์รูโบ๋ตาม logo
+            elif kind == "backing" and _punch_logo is not None:
+                # 🥛 อะคริลิคขาวนม 3mm รองหลัง: ตัดเป็น 'สี่เหลี่ยมตามพื้นที่ logo' (+เผื่อขอบ 2 ซม.) — ไม่ตัดตามรูป
+                from shapely.geometry import box as _bx2
+                lb = _punch_logo.bounds
+                g = _bx2(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(base)
+                if g.is_empty:
+                    g = base
+            elif kind == "frame":
                 band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
                 if TRIM_OUT:
                     o2 = _mbuf(full, off + band)    # ขอบนอกคิ้ว = ตัวต้น + ความหนาคิ้ว
@@ -2641,34 +2676,34 @@ _JOB_SHEET_CSS = '''<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px;font-size:12px}
+body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px;font-size:13.5px}
 /* 📄 A3 แนวนอน (420×297มม.) — จบหน้าเดียว */
 .sheet{width:1560px;max-width:100%;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 10px 40px rgba(30,41,59,.14)}
 .hd{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-.hd h1{font-size:19px;font-weight:800}.hd .sub{font-size:11.5px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:11.5px;line-height:1.7}
-.badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:11.5px}
+.hd h1{font-size:22px;font-weight:800}.hd .sub{font-size:13px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:13px;line-height:1.7}
+.badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:13px}
 .info{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#e2e8f0}
-.info .c{background:#f8fafc;padding:9px 16px}.info .k{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:13.5px;font-weight:700;color:#0f172a;margin-top:2px}
+.info .c{background:#f8fafc;padding:10px 16px}.info .k{font-size:11.5px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:15.5px;font-weight:700;color:#0f172a;margin-top:2px}
 .body{padding:14px 18px}
 .card{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;background:#fff}
-.ct{display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:700;font-size:12.5px;border-bottom:1px solid #eef2f7}
-.ct .no{width:20px;height:20px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}
+.ct{display:flex;align-items:center;gap:8px;padding:9px 12px;font-weight:700;font-size:14.5px;border-bottom:1px solid #eef2f7}
+.ct .no{width:22px;height:22px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none}
 .cbody{padding:10px 12px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:6px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:230px}.imgwrap.dark{background:#0f1522}
 .big3d{margin-bottom:12px}.big3d .imgwrap svg{max-height:300px}
-table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:10.5px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
-.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:7px;text-align:center}.kpi .b .n{font-size:15px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:9.5px;color:#64748b}
-.chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11px;margin:2px 3px 2px 0}.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:12px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:8px;text-align:center}.kpi .b .n{font-size:17px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:11px;color:#64748b}
+.chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:12.5px;margin:2px 3px 2px 0}.dot{width:11px;height:11px;border-radius:50%;display:inline-block}
 /* 🧱 กริด 3 คอลัมน์ — จัดการ์ดทุกใบให้แน่น จบหน้าเดียว (เรนเดอร์ชัวร์กว่า column-count) */
 .masonry{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
 .masonry .card{width:auto}
 .site{border:2px dashed #cbd5e1;border-radius:10px;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc;cursor:pointer}
 .site:hover{border-color:#22d3ee;color:#0891b2}
 #siteImg{max-width:100%;border-radius:8px;display:none;margin-top:2px}
-.editnote{min-height:88px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.7;outline:none;color:#1e293b;white-space:pre-wrap}
+.editnote{min-height:88px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13.5px;line-height:1.7;outline:none;color:#1e293b;white-space:pre-wrap}
 .editnote:empty:before{content:attr(data-ph);color:#94a3b8}
 .editnote:focus{border-color:#22d3ee;background:#f0fdff}
-.foot{border-top:2px solid #e2e8f0;padding:14px 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:28px 12px 6px}.sign .r{font-size:11px;color:#64748b}
-.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 12px;font-size:11px;margin:0 22px 14px}
+.foot{border-top:2px solid #e2e8f0;padding:14px 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:28px 12px 6px}.sign .r{font-size:12.5px;color:#64748b}
+.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:9px 12px;font-size:12.5px;margin:0 22px 14px}
 .expbar{position:fixed;top:12px;right:12px;display:flex;gap:8px;z-index:99}
 .pbtn{background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .pbtn.pdf{background:#dc2626}.pbtn.jpg{background:#0d9488}
@@ -2773,11 +2808,18 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         elif rec.get("box_shape"):
+            _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
+        try:
+            _punch_logo
+        except NameError:
+            _punch_logo = None
         b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
         # perspective 3D
         fo = None; bore = None
-        for L in rec["layers"]:
+        if _punch_logo is not None:
+            fo = full; bore = _punch_logo               # 🔦 กล่องฉลุ: ตัวกล่อง + รูโบ๋ตาม logo
+        for L in ([] if _punch_logo is not None else rec["layers"]):
             if L.get("kind") == "frame":
                 fo = _mbuf(full, float(L["off"]) + 10.0); bore = _mbuf(full, float(L["off"])); break
         body3d = fo if (fo is not None and not fo.is_empty) else full
@@ -2890,7 +2932,15 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             off = float(L["off"]); kind = L.get("kind", "solid")
             g = None
             try:
-                if kind == "frame":
+                if kind == "punch" and _punch_logo is not None:          # 🔦 หน้าโลหะฉลุโบ๋ logo
+                    g = full.difference(_punch_logo)
+                    if g.is_empty:
+                        g = full
+                elif kind == "backing" and _punch_logo is not None:      # 🥛 อะคริลิคสี่เหลี่ยมตามพื้นที่ logo
+                    from shapely.geometry import box as _bx3
+                    lb = _punch_logo.bounds
+                    g = _bx3(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(full)
+                elif kind == "frame":
                     g = _mbuf(full, off + float(L.get("band", 10.0)))   # ขอบนอกคิ้ว
                 else:
                     g = _mbuf(full, off)
