@@ -318,15 +318,24 @@ select.numin{cursor:pointer}
           <label><span data-i18n="lbl.colors">จำนวนสี / เลเยอร์</span> <span class="v" id="vC">6</span></label>
           <input type="range" id="nColors" min="2" max="12" value="6">
 
-          <label  data-i18n="lbl.sizefrom">กำหนดขนาดจาก</label>
-          <select class="numin" id="sizeBy" onchange="try{paintSizeLbl();}catch(_){}if(this.value!=='width'){try{MODE='cutout';paintMode();}catch(_){}}">
-            <option value="width"  data-i18n="opt.w">กว้างรวม (มม.)</option>
-            <option value="height" data-i18n="opt.h">สูงรวม (มม.)</option>
-            <option value="letter" data-i18n="opt.l">สูงตัวอักษร (มม.)</option>
-          </select>
-          <label id="sizeLbl" data-i18n="lbl.width" style="margin-top:6px">ค่าความกว้างรวม (มม.)</label>
-          <input class="numin" id="realW" type="number" value="1200" min="10" step="10">
-          <div class="hint" id="sizeHint" data-i18n="hint.size">⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน</div>
+          <label style="margin-top:2px">📐 ขนาดป้ายจริง (ซม.)</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <div style="flex:1">
+              <label style="font-size:10.5px;color:#64748b">กว้าง (ซม.)</label>
+              <input class="numin" id="realWcm" type="number" value="120" min="1" step="1" style="width:100%"
+                     oninput="var v=parseFloat(this.value)||0;var w=document.getElementById('realW');if(w)w.value=v>0?Math.round(v*10):'';">
+            </div>
+            <div style="flex:1">
+              <label style="font-size:10.5px;color:#64748b">สูง (ซม.) · เว้นว่าง=อัตโนมัติ</label>
+              <input class="numin" id="realHcm" type="number" placeholder="อัตโนมัติ" min="1" step="1" style="width:100%"
+                     oninput="var v=parseFloat(this.value)||0;var h=document.getElementById('realH');if(h)h.value=v>0?Math.round(v*10):'';var b=document.getElementById('bxH');if(b)b.value=v>0?v:'';">
+            </div>
+          </div>
+          <!-- ตัวจริงส่ง backend เป็น มม. (ซ่อนไว้ · sync จากช่อง ซม. ด้านบน) -->
+          <input type="hidden" id="realW" value="1200">
+          <input type="hidden" id="realH" value="">
+          <input type="hidden" id="sizeBy" value="width">
+          <div class="hint" id="sizeHint">⚠️ กรอกขนาดจริงเป็น <b>ซม.</b> ก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) — สูงเว้นว่างได้ ระบบคงสัดส่วนให้</div>
           <button class="btn ghost" id="mainClear" style="width:100%;margin-top:6px;font-size:13px">🧹 เคลียร์งาน (เริ่มใหม่)</button>
           <!-- 🅰️ พิมพ์ข้อความเป็นตัวป้าย (โชว์เมื่อเลือกอักษร+โครงแขวน) -->
           <div id="mfTextPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
@@ -4901,7 +4910,7 @@ var TRIMW=1, TRIMDIR='out';
     if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
-  if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0)$('realW').value=Math.round(parseFloat(this.value)*10); };
+  if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
   sel.addEventListener('change',function(){ toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
@@ -4936,6 +4945,8 @@ var TRIMW=1, TRIMDIR='out';
         if(!bl){btn.disabled=false;btn.textContent=old;alert('สร้างภาพข้อความไม่ได้');return;}
         fileObj=new File([bl],'text_sign.png',{type:'image/png'});
         if($('realW'))$('realW').value=Math.round(w*mmPerPx);   // กว้างรวม(มม.) ที่ทำให้สูงตรงเป๊ะ
+        if($('realWcm'))$('realWcm').value=Math.round(w*mmPerPx/10);   // sync ช่อง ซม. ให้ตรง
+        if($('realHcm'))$('realHcm').value=hcm;                        // สูงจากข้อความ -> โชว์ในช่องสูง(ซม.)
         if($('bxH'))$('bxH').value=hcm;                         // ✅ บังคับความสูงตัวอักษรฐาน = ค่าที่กรอก (คิ้ว/acrylic อิงจากนี้)
         btn.disabled=false; btn.textContent=old;
         try{ if($('goLayer'))$('goLayer').click(); }catch(_e){}
@@ -5059,7 +5070,7 @@ $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
-  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด (มม.) ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กรอกขนาด "กว้าง (ซม.)" ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');if($('realWcm'))$('realWcm').focus();return;}
   var st=$('layerStage');if(!st)return;
   if($('emptyStage'))$('emptyStage').style.display='none';
   if($('cmp'))$('cmp').style.display='none';
@@ -5275,7 +5286,7 @@ $('goLayer').onclick=function(){
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
 $('aiDraft').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพก่อน');return;}
-  if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับ');$('realW').focus();return;}
+  if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง (ซม.)" ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับ');if($('realWcm'))$('realWcm').focus();return;}
   var btn=$('aiDraft');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังดราฟท์เวกเตอร์...';
   $('aiOut').textContent='กำลังแปลงภาพเป็นเวกเตอร์ (อาจใช้เวลาสักครู่)...';
   var eng=$('aiEng').value||'auto';
@@ -5358,7 +5369,7 @@ $('srGo').onclick=function(){
 // ==================== 🔩 โครงแขวนตัวอักษร + เจาะรูยึด/สายไฟ ====================
 if($('mfGo'))$('mfGo').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพตัวอักษรก่อน');return;}
-  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน');$('realW').focus();return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง (ซม.)" ก่อน');if($('realWcm'))$('realWcm').focus();return;}
   var btn=$('mfGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังคำนวณรูเจาะ...';
   $('mfOut').textContent='กำลังแยกตัวอักษร + วางโครง + เจาะรู...';
   var fd=new FormData();
@@ -5381,7 +5392,7 @@ if($('mfGo'))$('mfGo').onclick=function(){
 // ==================== 💡 LED Ribbon + คำนวณหม้อแปลง ====================
 if($('ledGo'))$('ledGo').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพก่อน');return;}
-  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน');$('realW').focus();return;}
+  if(!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง (ซม.)" ก่อน');if($('realWcm'))$('realWcm').focus();return;}
   var btn=$('ledGo');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังวางเส้นไฟ...';
   $('ledOut').textContent='กำลังวางเส้นไฟ + คำนวณกระแส/หม้อแปลง...';
   var fd=new FormData();
@@ -5401,7 +5412,7 @@ function _dl3dSave(b64,name,mime){ var bin=atob(b64);var u=new Uint8Array(bin.le
   var b=new Blob([u],{type:mime||'application/octet-stream'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click(); }
 $('dl3d').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน');return;}
-  if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "ค่าความกว้างรวม (มม.)" ก่อน — ภาพไม่มีขนาดกำกับ');$('realW').focus();return;}
+  if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง (ซม.)" ก่อน — ภาพไม่มีขนาดกำกับ');if($('realWcm'))$('realWcm').focus();return;}
   var btn=$('dl3d');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ สร้าง 3D...';
   var layered=$('stl3dLayered')&&$('stl3dLayered').checked;
   var base=(lastName||'model');
