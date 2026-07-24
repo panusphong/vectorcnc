@@ -2651,6 +2651,9 @@ table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px
 .site{border:2px dashed #cbd5e1;border-radius:10px;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc;cursor:pointer}
 .site:hover{border-color:#22d3ee;color:#0891b2}
 #siteImg{max-width:100%;border-radius:8px;display:none;margin-top:2px}
+.editnote{min-height:88px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.7;outline:none;color:#1e293b;white-space:pre-wrap}
+.editnote:empty:before{content:attr(data-ph);color:#94a3b8}
+.editnote:focus{border-color:#22d3ee;background:#f0fdff}
 .foot{border-top:2px solid #e2e8f0;padding:14px 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:28px 12px 6px}.sign .r{font-size:11px;color:#64748b}
 .note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 12px;font-size:11px;margin:0 22px 14px}
 .expbar{position:fixed;top:12px;right:12px;display:flex;gap:8px;z-index:99}
@@ -2682,6 +2685,7 @@ table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px
       __PRINT__
       __NEST__
       <div class="card"><div class="ct"><span class="no">B</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
+      <div class="card"><div class="ct"><span class="no">✎</span>รายละเอียดเพิ่มเติม / หมายเหตุ (พิมพ์ได้)</div><div class="cbody"><div class="editnote" contenteditable="true" data-ph="คลิกเพื่อพิมพ์รายละเอียดเพิ่มเติม เช่น สี Pantone · วิธีติดตั้ง · เงื่อนไข/กำหนดพิเศษ ..."></div></div></div>
       <div class="card"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody">
         <label for="siteFile"><div class="site" id="siteBox"><div style="font-size:28px">📷</div><div>คลิกเพื่อแนบภาพหน้างาน (1 ภาพ)</div><div style="font-size:10px">แนะนำถ่ายจุดติดตั้งจริง</div></div></label>
         <input type="file" id="siteFile" accept="image/*" style="display:none">
@@ -2829,7 +2833,13 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🧱 วัสดุหลัก
         _MATN = {"acrylic": "อะคริลิค", "plaswood": "พลาสวูด (Plaswood)", "zinc": "ซิ้งค์ (สังกะสี)",
                  "stainless_silver": "สแตนเลสเงิน (เงา)", "stainless_gold": "สแตนเลสทอง (ไทเทเนียม)",
-                 "stainless_rose": "สแตนเลสโรสโกลด์"}
+                 "stainless_rose": "สแตนเลสโรสโกลด์",
+                 "acrylic_5mm": "อะคริลิค 5 มม.", "acrylic_8mm": "อะคริลิค 8 มม.", "acrylic_10mm": "อะคริลิค 10 มม.",
+                 "plaswood_5mm": "พลาสวูด 5 มม.", "plaswood_10mm": "พลาสวูด 10 มม.",
+                 "zinc_1mm": "ซิงค์ 1 มม.", "alu_07mm": "อลูมิเนียม 0.7 มม.",
+                 "stainless_silver_hairline": "สแตนเลสเงิน (แฮร์ไลน์)",
+                 "stainless_gold_mirror": "สแตนเลสทอง (เงา)", "stainless_gold_hairline": "สแตนเลสทอง (แฮร์ไลน์)",
+                 "stainless_rose_mirror": "สแตนเลสโรสโกลด์ (เงา)", "stainless_rose_hairline": "สแตนเลสโรสโกลด์ (แฮร์ไลน์)"}
         _matn = _MATN.get(str(material), str(material)) if material else "ตามสเปควัสดุ"
         _ledtypen = "LED Module 3030" if str(led_type) == "module" else "LED Ribbon (เส้นยืด)"
         _edge_cm = round(float(led_pitch_cm) / 2.0, 1)
