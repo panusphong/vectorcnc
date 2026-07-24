@@ -4935,6 +4935,7 @@ var TRIMW=1, TRIMDIR='out';
         if(!bl){btn.disabled=false;btn.textContent=old;alert('สร้างภาพข้อความไม่ได้');return;}
         fileObj=new File([bl],'text_sign.png',{type:'image/png'});
         if($('realW'))$('realW').value=Math.round(w*mmPerPx);   // กว้างรวม(มม.) ที่ทำให้สูงตรงเป๊ะ
+        if($('bxH'))$('bxH').value=hcm;                         // ✅ บังคับความสูงตัวอักษรฐาน = ค่าที่กรอก (คิ้ว/acrylic อิงจากนี้)
         btn.disabled=false; btn.textContent=old;
         try{ if($('goLayer'))$('goLayer').click(); }catch(_e){}
       },'image/png');
