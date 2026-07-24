@@ -1041,6 +1041,36 @@ def _geom_box_fit(full, shape, pad_mm, target_w_mm):
     return g
 
 
+def _punch_fit_in_box(logo, box_g, pad_mm):
+    """🔦 กล่องฉลุ: ย่อ/ขยาย + จัดกึ่งกลาง logo ให้อยู่ 'ในกล่องพอดี' เว้นขอบ pad_mm รอบด้าน
+       (กล่องถูกสเกลตามความกว้างที่ผู้ใช้ตั้ง — logo ต้องสเกลตามด้วย ไม่งั้นล้นขอบ)"""
+    try:
+        from shapely import affinity as _aff
+        bb = box_g.bounds; lb = logo.bounds
+        aw = (bb[2] - bb[0]) - 2.0 * pad_mm; ah = (bb[3] - bb[1]) - 2.0 * pad_mm
+        lw = lb[2] - lb[0]; lh = lb[3] - lb[1]
+        if aw <= 1 or ah <= 1 or lw <= 0 or lh <= 0:
+            return logo
+        s = min(aw / lw, ah / lh)
+        g = _aff.scale(logo, xfact=s, yfact=s, origin=(lb[0], lb[1]))
+        gb = g.bounds
+        g = _aff.translate(g, xoff=(bb[0] + bb[2]) / 2 - (gb[0] + gb[2]) / 2,
+                              yoff=(bb[1] + bb[3]) / 2 - (gb[1] + gb[3]) / 2)
+        # ทรงโค้ง (วงกลม/วงรี): มุม bbox อาจโผล่นอกทรง -> ย่อซ้ำจนอยู่ในกล่องจริง
+        try:
+            inner = box_g.buffer(-max(1.0, pad_mm * 0.6), join_style=1)
+            n = 0
+            while (not g.within(inner)) and n < 24:
+                gb = g.bounds; cx = (gb[0] + gb[2]) / 2; cy = (gb[1] + gb[3]) / 2
+                g = _aff.scale(g, xfact=0.96, yfact=0.96, origin=(cx, cy))
+                n += 1
+        except Exception:
+            pass
+        return g
+    except Exception:
+        return logo
+
+
 def _wrap_silhouette(full, bridge_mm):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
@@ -1364,9 +1394,42 @@ def _art_data_uri(path, max_px=1400):
     return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
 
 
+# 🪙 พื้นผิวสแตนเลส (gradient เมทัลลิก): (สีอ่อน, สีกลาง, สีเข้ม, แฮร์ไลน์?)
+_METAL_TEX = {
+    "silver_mirror":   ("#f4f7fa", "#c7cfd9", "#8d97a4", False),
+    "silver_hairline": ("#e4e9ee", "#c9d1d9", "#a4adb8", True),
+    "gold_mirror":     ("#fbe9a6", "#dcb44e", "#a57b1f", False),
+    "gold_hairline":   ("#f0d78b", "#d6b254", "#b08a30", True),
+    "rose_mirror":     ("#f8d3bd", "#e2a586", "#b97c5c", False),
+    "rose_hairline":   ("#efc7b0", "#dba283", "#bc8464", True),
+}
+
+
+def _metal_defs(tex, S):
+    """คืน (defs_svg, fill_url, hairline?) สำหรับพื้นผิวโลหะ · tex ไม่รู้จัก -> (None,None,False)"""
+    t = _METAL_TEX.get(str(tex or ""))
+    if not t:
+        return "", None, False
+    lo, mid, hi_dark, hairline = t
+    d = ('<defs><linearGradient id="mtxg" x1="0%" y1="0%" x2="100%" y2="100%">'
+         '<stop offset="0" stop-color="{lo}"/><stop offset="0.25" stop-color="{md}"/>'
+         '<stop offset="0.45" stop-color="{lo}"/><stop offset="0.62" stop-color="{dk}"/>'
+         '<stop offset="0.8" stop-color="{md}"/><stop offset="1" stop-color="{lo}"/>'
+         '</linearGradient>').format(lo=lo, md=mid, dk=hi_dark)
+    if hairline:                                       # แฮร์ไลน์ = เส้นขนแมวถี่ๆ แนวนอน
+        _lh = max(2.0, S * 0.004)
+        d += ('<pattern id="mtxh" width="4" height="%.1f" patternUnits="userSpaceOnUse">'
+              '<rect width="4" height="%.1f" fill="none"/>'
+              '<line x1="0" y1="%.2f" x2="4" y2="%.2f" stroke="rgba(255,255,255,0.35)" stroke-width="0.5"/>'
+              '<line x1="0" y1="%.2f" x2="4" y2="%.2f" stroke="rgba(0,0,0,0.14)" stroke-width="0.4"/>'
+              '</pattern>') % (_lh, _lh, _lh * 0.3, _lh * 0.3, _lh * 0.75, _lh * 0.75)
+    d += '</defs>'
+    return d, "url(#mtxg)", hairline
+
+
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
-               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0):
+               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex=""):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -1420,6 +1483,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             d += " " + ringd(list(h.coords), tf)
         return d
     parts = []
+    # 🪙 พื้นผิวสแตนเลส (เงา/แฮร์ไลน์) — ใช้กับ 'ผิวโลหะ' (หน้ากล่องฉลุ หรือหน้าป้ายปกติ)
+    _mtxd, _mtxfill, _mtxhair = _metal_defs(metal_tex, S)
+    if _mtxd:
+        parts.append(_mtxd)
     if _edgelit:                                       # 💡 แสงฟุ้งรอบทั้งกล่อง (ไฟออกทุกด้าน) — วาดไว้ 'หลังสุด'
         _gc = rec.get("glow_color", "#fff3c4")
         parts.append('<defs><filter id="w3dHalo" x="-60%%" y="-60%%" width="220%%" height="220%%"><feGaussianBlur stdDeviation="%.1f"/></filter>'
@@ -1474,6 +1541,13 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _shp = rec.get("box_shape")
             if _shp in ("circle", "oval"):             # วงกลม/วงรี -> วางในกรอบสี่เหลี่ยมที่อยู่ในวง (กันล้น)
                 _bw *= 0.68; _bh *= 0.68
+            if art_adj:                                # 🎯 ผู้ใช้ปรับ logo ในกล่อง: ย่อ/ขยาย + เลื่อนตำแหน่ง
+                try:
+                    _s = float(art_adj.get("s", 1.0)) or 1.0
+                    _bw *= _s; _bh *= _s
+                    _cx += float(art_adj.get("dx", 0.0)); _cy += float(art_adj.get("dy", 0.0))
+                except Exception:
+                    pass
             _x0 = _cx - _bw / 2.0; _y0 = _cy - _bh / 2.0
             _ix, _iy = F((_x0, _y0))
             parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
@@ -1482,13 +1556,36 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), edge, lw))
     else:
+        _punch = bool(rec.get("punch_face"))
+        # 🔦 กล่องฉลุ: หน้ากล่อง = แผ่นโลหะ (ย้อมด้วยสี 'ขอบ/คิ้ว' -> class w3d-kim) · รู logo = อะคริลิคเรืองแสง (สี 'หน้าอะคริลิค')
+        _faceCls = "w3d-kim" if _punch else "w3d-face"
+        _faceFillUse = (side_color or "#c9cdd4") if _punch else faceFill
+        if _mtxfill:                                   # 🪙 เลือกพื้นผิวสแตนเลส -> ผิวโลหะเป็น gradient เมทัลลิก
+            _faceFillUse = _mtxfill
         for pg in polys:                               # หน้าปกติ (ไม่มีรูปพิมพ์)
-            parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), faceFill, edge, lw))
+            parts.append('<path class="%s" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (_faceCls, faced(pg, F), _faceFillUse, edge, lw))
+        if _mtxfill and _mtxhair:                      # ✨ แฮร์ไลน์: เส้นขนแมวทับบนผิว
+            for pg in polys:
+                parts.append('<path d="%s" fill="url(#mtxh)" fill-rule="evenodd"/>' % faced(pg, F))
     if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
+        _punch2 = bool(rec.get("punch_face"))
         ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
-        for pg in ip:
-            if pg.geom_type == "Polygon" and not pg.is_empty:
-                parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), boreFill, edge, lw * 0.8))
+        if _punch2:
+            # 💡 แสงไฟออกหน้า 'เฉพาะโลโก้ที่ฉลุ' — ฮาโลฟุ้งรอบรู + เนื้อรูเรืองสว่าง (อะคริลิคขาวนม + ไฟด้านใน)
+            _pbF = face_color or "#fff3c4"
+            _pblur = max(5.0, S * 0.014)
+            parts.append('<defs><filter id="w3dPunchGlow" x="-60%%" y="-60%%" width="220%%" height="220%%">'
+                         '<feGaussianBlur stdDeviation="%.1f"/></filter></defs>' % _pblur)
+            for pg in ip:                              # ชั้นฮาโล (เบลอฟุ้งออกนอกรู)
+                if pg.geom_type == "Polygon" and not pg.is_empty:
+                    parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" opacity="0.9" filter="url(#w3dPunchGlow)"/>' % (faced(pg, F), _pbF))
+            for pg in ip:                              # เนื้อรู logo (สว่าง · ย้อมสีด้วย swatch หน้าอะคริลิค)
+                if pg.geom_type == "Polygon" and not pg.is_empty:
+                    parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), _pbF, edge, lw * 0.6))
+        else:
+            for pg in ip:
+                if pg.geom_type == "Polygon" and not pg.is_empty:
+                    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), boreFill, edge, lw * 0.8))
     if _edgelit:                                       # 💡 ไฟออกรอบ: เส้นขอบกล่องบางๆ (ไม่มีคิ้ว/ไม่มีกรอบในหน้า) — แสงฟุ้งอยู่ 'ด้านนอก' (ฮาโลหลังสุด)
         for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="#e6c672" stroke-width="%.2f" stroke-linejoin="round" opacity="0.55"/>' % (faced(pg, F), max(1.0, S * 0.004)))
@@ -1780,6 +1877,78 @@ def _layerset_cut_svg(out_layers, wall_strips):
     Wt = cursor + fs; Ht = topPad + maxH + fs
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="%.1fmm" height="%.1fmm" viewBox="0 0 %.1f %.1f">%s</svg>'
             % (Wt, Ht, Wt, Ht, "".join(parts)))
+
+
+def _ortho_views_svg(full, rec, depth_mm, inner_bore=None, face_color=None, side_color=None, metal_tex=""):
+    """📐 มุมมองมาตรฐานงานผลิต: Top View / Front View / Side View (orthographic)
+       ใช้คู่กับภาพ Perspective (3 มิติหลัก) — โชว์ในหน้าออกแบบ + ใบสั่งผลิต"""
+    b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; D = max(10.0, float(depth_mm or 50.0))
+    S = max(W, H, 1.0)
+    PW, PH, GAP, PAD, LBL = 380.0, 300.0, 34.0, 22.0, 30.0
+    _mtxd, _mtxfill, _mtxhair = _metal_defs(metal_tex, S)
+    _punch = bool(rec.get("punch_face"))
+    metal = _mtxfill or ((side_color or "#c9cdd4") if _punch else (face_color or "#c9cdd4"))
+    wall = side_color or "#9aa1ac"; glow = face_color or "#fff3c4"
+    edge = "#3f4753"; cd = "#dc2626"; fsL = 15.0; fsD = 12.5
+
+    def ring(coords, s, tx, ty):
+        return "M " + " L ".join("%.1f %.1f" % (x * s + tx, y * s + ty) for x, y in coords) + " Z"
+
+    def poly_d(g, s, tx, ty):
+        out = []
+        for p in (list(g.geoms) if g.geom_type == "MultiPolygon" else [g]):
+            if p.is_empty:
+                continue
+            d = ring(list(p.exterior.coords), s, tx, ty)
+            for h in p.interiors:
+                d += " " + ring(list(h.coords), s, tx, ty)
+            out.append(d)
+        return " ".join(out)
+
+    TW = PW * 3 + GAP * 2 + PAD * 2; TH = PH + PAD * 2 + LBL + 26
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">' % (TW, TH, TW, TH),
+             '<rect width="%.0f" height="%.0f" fill="#f8fafc"/>' % (TW, TH)]
+    if _mtxd:
+        parts.append(_mtxd)
+
+    def panel(i, title):
+        px = PAD + i * (PW + GAP); py = PAD + LBL
+        parts.append('<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="8" fill="#ffffff" stroke="#e2e8f0"/>' % (px, py, PW, PH))
+        parts.append('<text x="%.0f" y="%.0f" font-family="Prompt,Arial" font-size="%.0f" font-weight="800" fill="#0f172a">%s</text>' % (px + 4, py - 8, fsL, title))
+        return px, py
+
+    def dims(px, py, txt):
+        parts.append('<text x="%.0f" y="%.0f" font-family="Prompt,Arial" font-size="%.0f" font-weight="700" fill="%s" text-anchor="middle">%s</text>' % (px + PW / 2, py + PH + 18, fsD, cd, txt))
+
+    # ── Top View: กว้าง × ลึก ──
+    px, py = panel(0, "Top View (มองบน)")
+    s = min((PW - 70) / W, (PH - 80) / D)
+    rw = W * s; rd = D * s; rx = px + (PW - rw) / 2; ry = py + (PH - rd) / 2
+    parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="1.4"/>' % (rx, ry, rw, rd, wall, edge))
+    parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="1"/>' % (rx, ry, rw, max(3.0, rd * 0.18), metal, edge))
+    dims(px, py, "กว้าง %.0f × ลึก %.0f ซม." % (W / 10.0, D / 10.0))
+
+    # ── Front View: รูปทรงจริง (หน้าตรง) ──
+    px, py = panel(1, "Front View (หน้าตรง)")
+    s = min((PW - 70) / W, (PH - 80) / H)
+    tx = px + (PW - W * s) / 2 - b[0] * s; ty = py + (PH - H * s) / 2 - b[1] * s
+    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="1.4"/>' % (poly_d(full, s, tx, ty), metal, edge))
+    if _mtxfill and _mtxhair:
+        parts.append('<path d="%s" fill="url(#mtxh)" fill-rule="evenodd"/>' % poly_d(full, s, tx, ty))
+    if inner_bore is not None and not inner_bore.is_empty:
+        parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="0.9"/>' % (poly_d(inner_bore, s, tx, ty), glow, edge))
+    dims(px, py, "กว้าง %.0f × สูง %.0f ซม." % (W / 10.0, H / 10.0))
+
+    # ── Side View: ลึก × สูง ──
+    px, py = panel(2, "Side View (ด้านข้าง)")
+    s = min((PW - 70) / D, (PH - 80) / H)
+    rd = D * s; rh = H * s; rx = px + (PW - rd) / 2; ry = py + (PH - rh) / 2
+    parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="1.4"/>' % (rx, ry, rd, rh, wall, edge))
+    parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="1"/>' % (rx, ry, max(3.0, rd * 0.18), rh, metal, edge))
+    dims(px, py, "ลึก %.0f × สูง %.0f ซม." % (D / 10.0, H / 10.0))
+
+    parts.append('</svg>')
+    return "".join(parts)
 
 
 def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0):
@@ -2254,7 +2423,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
-                    led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0)):
+                    led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0),
+                    logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
+                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form("")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -2286,6 +2457,22 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
+            if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
+                _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
+        # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
+        _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
+        _laDX = float(logo_dx_cm or 0.0) * 10.0; _laDY = float(logo_dy_cm or 0.0) * 10.0
+        _art_adj = ({"s": _laS, "dx": _laDX, "dy": _laDY}
+                    if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5) else None)
+        try:
+            if _punch_logo is not None and _art_adj:
+                from shapely import affinity as _aff
+                _plb = _punch_logo.bounds
+                _pcx = (_plb[0] + _plb[2]) / 2.0; _pcy = (_plb[1] + _plb[3]) / 2.0
+                _punch_logo = _aff.translate(_aff.scale(_punch_logo, xfact=_laS, yfact=_laS, origin=(_pcx, _pcy)),
+                                             xoff=_laDX, yoff=_laDY)
+        except Exception:
+            pass
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
         if _neon:
@@ -2416,9 +2603,18 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    art_href=_art, mount=_m3d, arm_len_cm=float(arm_len_cm),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
-                                   arm_edge_cm=float(arm_edge_cm))
+                                   arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj,
+                                   metal_tex=str(metal_tex or ""))
         except Exception:
             svg3d = ""
+        # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
+        try:
+            _vd = (float(return_depth_cm) * 10.0) if float(return_depth_cm) > 0 else float(rec.get("depth_cm", 5.0)) * 10.0
+            svg_views = _ortho_views_svg(full, rec, _vd, inner_bore=bore_geom,
+                                         face_color=(face_color or None), side_color=(side_color or None),
+                                         metal_tex=str(metal_tex or ""))
+        except Exception:
+            svg_views = ""
         # 🔩 ไฟล์ตัดเพลทยึด 10cm (เจาะ 4 รู) — ส่งเข้าเลเซอร์/CNC ทำเพลทจริง
         mount_plate = {}
         if str(arm or "none").lower() in ("top2", "side1", "side2"):
@@ -2579,7 +2775,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"],
                             "junk": L.get("junk", 0)} for L in out_layers],
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
-                "svg_preview": svg, "svg_3d": svg3d, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
+                "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
                 "svg_face": svg_face, "led": led_info,
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
@@ -2588,7 +2784,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
-def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img=""):
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img="", views_svg=""):
     """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
     def esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -2650,6 +2846,11 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
     if cut_img:
         cutimg_card = ('<div class="card"><div class="ct"><span class="no">✂</span>ภาพไฟล์ตัด (Cut Lines · ทุกชั้น)</div>'
                        '<div class="cbody"><div class="imgwrap">%s</div></div></div>' % cut_img)
+    # 📐 มุมมอง Top / Front / Side (คู่กับ Perspective ด้านบน)
+    views_card = ""
+    if views_svg:
+        views_card = ('<div class="card big3d"><div class="ct"><span class="no">V</span>มุมมองมาตรฐาน — Top View · Front View · Side View</div>'
+                      '<div class="cbody"><div class="imgwrap">%s</div></div></div>' % views_svg)
     # จัดวันที่ส่งมอบให้อ่านง่าย (YYYY-MM-DD -> DD/MM/YYYY)
     _dv = str(meta.get("delivery") or "").strip()
     try:
@@ -2665,7 +2866,8 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                  "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
                  "__GRAPHIC__": esc(meta.get("graphic", "-")),
                  "__MATERIAL__": esc(meta.get("material", "-")),
-                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
+                 "__PERSP__": persp_svg, "__VIEWS__": views_card,
+                 "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
                  "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom}.items():
         html = html.replace(k, str(v))
     return html
@@ -2733,7 +2935,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
     <div class="c"><div class="k">กำหนดส่งมอบ</div><div class="v">__DELIV__</div></div>
     <div class="c"><div class="k">เซลล์ / กราฟิก</div><div class="v" style="font-size:12.5px">👤 __SALES__<br><span style="color:#475569">🎨 __GRAPHIC__</span></div></div></div>
   <div class="body">
-    <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+    <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective View) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+    __VIEWS__
     <div class="masonry">
       __CUTIMG__
       __FRAME__
@@ -2748,6 +2951,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
         <input type="file" id="siteFile" accept="image/*" style="display:none">
         <img id="siteImg" alt="ภาพหน้างาน">
       </div></div>
+      <div class="card"><div class="ct"><span class="no">8</span>ภาพอ้างอิง (แบบ/ตัวอย่างงาน)</div><div class="cbody">
+        <label for="refFile"><div class="site" id="refBox"><div style="font-size:28px">🖼️</div><div>คลิกเพื่อแนบภาพอ้างอิง (1 ภาพ)</div><div style="font-size:10px">เช่น แบบจากลูกค้า / ตัวอย่างงานเดิม</div></div></label>
+        <input type="file" id="refFile" accept="image/*" style="display:none">
+        <img id="refImg" alt="ภาพอ้างอิง" style="max-width:100%;border-radius:8px;display:none;margin-top:2px">
+      </div></div>
     </div>
   </div>
   <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
@@ -2757,11 +2965,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 var JOBNO="__JOBNO__";
-// 📷 แนบภาพหน้างาน 1 ภาพ (ฝั่ง client — ติดไปกับ PDF/JPG ด้วย)
-(function(){var sf=document.getElementById('siteFile');if(!sf)return;
-  sf.onchange=function(){var f=this.files&&this.files[0];if(!f)return;var r=new FileReader();
-    r.onload=function(){var im=document.getElementById('siteImg');im.src=r.result;im.style.display='block';
-      var b=document.getElementById('siteBox');if(b)b.style.display='none';};r.readAsDataURL(f);};})();
+// 📷 แนบภาพหน้างาน + 🖼️ ภาพอ้างอิง (ฝั่ง client — ติดไปกับ PDF/JPG/พิมพ์ ด้วย)
+(function(){
+  function hook(fid,iid,bid){var sf=document.getElementById(fid);if(!sf)return;
+    sf.onchange=function(){var f=this.files&&this.files[0];if(!f)return;var r=new FileReader();
+      r.onload=function(){var im=document.getElementById(iid);im.src=r.result;im.style.display='block';
+        var b=document.getElementById(bid);if(b)b.style.display='none';};r.readAsDataURL(f);};}
+  hook('siteFile','siteImg','siteBox'); hook('refFile','refImg','refBox');
+})();
 function _busy(b){var e=document.getElementById('expbar');if(e)e.style.opacity=b?.4:1;}
 function _cap(cb){_busy(true);
   var fr=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
@@ -2792,6 +3003,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     material: str = Form(""), led_type: str = Form("module"),
                     wire_type: str = Form("indoor"), print_spec: str = Form(""),
                     delivery_date: str = Form(""), nesting_b64: str = Form(""), graphic: str = Form(""),
+                    logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
+                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""),
+                    face_color: str = Form(""), side_color: str = Form(""),
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
@@ -2810,10 +3024,26 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
+            if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี
+                _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         try:
             _punch_logo
         except NameError:
             _punch_logo = None
+        # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง (ตรงกับหน้าออกแบบ)
+        _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
+        _laDX = float(logo_dx_cm or 0.0) * 10.0; _laDY = float(logo_dy_cm or 0.0) * 10.0
+        _art_adj = ({"s": _laS, "dx": _laDX, "dy": _laDY}
+                    if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5) else None)
+        if _punch_logo is not None and _art_adj:
+            try:
+                from shapely import affinity as _aff
+                _plb = _punch_logo.bounds
+                _pcx = (_plb[0] + _plb[2]) / 2.0; _pcy = (_plb[1] + _plb[3]) / 2.0
+                _punch_logo = _aff.translate(_aff.scale(_punch_logo, xfact=_laS, yfact=_laS, origin=(_pcx, _pcy)),
+                                             xoff=_laDX, yoff=_laDY)
+            except Exception:
+                pass
         b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
         # perspective 3D
         fo = None; bore = None
@@ -2848,7 +3078,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         else:
             try:
                 persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
-                                   mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0)
+                                   mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0,
+                                   art_adj=_art_adj, metal_tex=str(metal_tex or ""),
+                                   face_color=(face_color or None), side_color=(side_color or None))
             except Exception:
                 persp = ""
         # frame back (type ที่มีโครงแขวน)
@@ -2984,7 +3216,15 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "led_pitch_cm": led_pitch_cm, "led_edge_cm": _edge_cm, "wire": _wiren,
                 "print_spec": (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else "")),
                 "delivery": delivery_date, "nesting_b64": nesting_b64}
-        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img)
+        # 📐 มุมมอง Top / Front / Side ประกอบใบสั่งผลิต
+        try:
+            _vd2 = (float(return_depth_cm) * 10.0) if float(return_depth_cm) > 0 else float(rec.get("depth_cm", 5.0)) * 10.0
+            views_svg = _ortho_views_svg(full, rec, _vd2, inner_bore=bore,
+                                         face_color=(face_color or None), side_color=(side_color or None),
+                                         metal_tex=str(metal_tex or ""))
+        except Exception:
+            views_svg = ""
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
