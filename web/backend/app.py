@@ -4067,6 +4067,49 @@ async def extract_assets(file: UploadFile = File(...)):
                             status_code=400)
 
 
+@app.post("/api/compose-assets")
+async def compose_assets(request: Request):
+    """รวม 'ชิ้นย่อยที่เลือก + จัดวาง' จากไฟล์ .ai/PDF -> ภาพเดียว (PNG ความละเอียดสูง)
+       body: {token, items:[{page,bbox:[x0,y0,x1,y1], x_mm,y_mm,w_mm,h_mm}], dpi?}
+       -> {png_base64, width_mm, height_mm}  (เอาไปสร้างแบบตามประเภทป้ายต่อ)"""
+    body = await request.json()
+    tok = str(body.get("token", ""))
+    path = _ASSET_STORE.get(tok)
+    if not path or not os.path.exists(path):
+        return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาลากไฟล์ใหม่"}, status_code=400)
+    items = body.get("items", []) or []
+    if not items:
+        return JSONResponse({"error": "ยังไม่ได้เลือกชิ้น"}, status_code=400)
+    try:
+        from vectorcnc import assets as _as
+        from PIL import Image
+        import io, base64 as _b64
+        dpi = float(body.get("dpi", 300) or 300)
+        pxmm = dpi / 25.4
+        maxx = max(float(it["x_mm"]) + float(it["w_mm"]) for it in items)
+        maxy = max(float(it["y_mm"]) + float(it["h_mm"]) for it in items)
+        W = max(2, int(round(maxx * pxmm))); H = max(2, int(round(maxy * pxmm)))
+        if W * H > 60_000_000:                         # กันภาพใหญ่เกิน (server ล่ม)
+            _sc = (60_000_000 / (W * H)) ** 0.5; pxmm *= _sc; W = int(W * _sc); H = int(H * _sc)
+        canvas = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+        for it in items:
+            try:
+                png = _as.render_region_png(path, int(it.get("page", 0)), it["bbox"], dpi=int(dpi))
+                im = Image.open(io.BytesIO(png)).convert("RGBA")
+                tw = max(1, int(round(float(it["w_mm"]) * pxmm))); th = max(1, int(round(float(it["h_mm"]) * pxmm)))
+                im = im.resize((tw, th), Image.LANCZOS)
+                canvas.alpha_composite(im, (int(round(float(it["x_mm"]) * pxmm)), int(round(float(it["y_mm"]) * pxmm))))
+            except Exception:
+                continue
+        flat = Image.new("RGB", canvas.size, (255, 255, 255))
+        flat.paste(canvas, mask=canvas.split()[3])
+        buf = io.BytesIO(); flat.save(buf, "PNG")
+        return {"png_base64": _b64.b64encode(buf.getvalue()).decode(),
+                "width_mm": round(maxx, 1), "height_mm": round(maxy, 1)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+
+
 @app.post("/api/extract-asset")
 async def extract_asset(request: Request):
     """เลือก asset 1 ชิ้น -> คืนไฟล์ .ai (เวกเตอร์) หรือ PNG (ถ้าเป็นภาพ)
