@@ -519,6 +519,20 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10.5px;color:#64748b">กราฟิก (ผู้ออกแบบ)</label><input class="numin" id="pmGraphic" type="text" placeholder="ชื่อกราฟิก" style="width:100%;padding:6px"></div>
             </div>
           </div>
+          <!-- 🎯 ปรับ logo ในกล่องไฟ (โชว์เมื่อเลือกประเภทกล่องไฟ) -->
+          <div id="logoAdj" style="display:none;margin-top:8px;padding:10px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
+            <div style="font-size:12px;font-weight:700;color:#0f766e;margin-bottom:6px">🎯 ปรับ logo ในกล่อง (ขยับ + ย่อ/ขยาย)</div>
+            <label style="font-size:10.5px;color:#64748b">ขนาด logo <b id="laScaleV" style="color:#0d9488">100</b>%</label>
+            <input type="range" id="laScale" min="30" max="150" value="100" style="width:100%">
+            <div style="display:flex;gap:6px;margin-top:5px">
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ซ้าย−/ขวา+ (ซม.)</label><input class="numin" id="laDx" type="number" value="0" step="1" style="width:100%;padding:5px"></div>
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ขึ้น−/ลง+ (ซม.)</label><input class="numin" id="laDy" type="number" value="0" step="1" style="width:100%;padding:5px"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:7px">
+              <button type="button" class="btn ghost" id="laReset" style="flex:1;padding:6px;font-size:11.5px">↺ รีเซ็ต</button>
+              <button type="button" class="btn" id="laApply" style="flex:2;padding:6px;font-size:11.5px;background:#0d9488;color:#fff;border:none;font-weight:700">✅ ใช้กับแบบ (สร้างใหม่)</button>
+            </div>
+          </div>
           <label style="margin-top:6px" data-i18n="lbl.return">ความหนายกขอบ / ความลึกตัว (ซม.)</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" id="rdChips">
             <button type="button" class="chip on" data-d="0" data-i18n="chip.auto">อัตโนมัติ</button>
@@ -4786,7 +4800,8 @@ if($('ikBrGo'))$('ikBrGo').onclick=function(){
 if($('ikBrDl'))$('ikBrDl').onclick=function(){ikDlTxt(IK_BRTXT,'job_brief.txt');};
 
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
-var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#ffffff', SCOL='#9aa1ac';
+var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#ffffff', SCOL='#9aa1ac', MTEX='';
+window._setMTX=function(v){ MTEX=v||''; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
@@ -4925,7 +4940,12 @@ var TRIMW=1, TRIMDIR='out';
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   var _boxTypes=['8','9','10','11','12','13','14','15','18'];   // กล่องไฟทุกชนิด
+  var _adjTypes=_boxTypes.concat(['4','21']);                    // 🎯 ปรับ logo ในกล่องได้ (รวมกล่องฉลุ)
+  if($('laScale'))$('laScale').oninput=function(){ if($('laScaleV'))$('laScaleV').textContent=this.value; };
+  if($('laReset'))$('laReset').onclick=function(){ if($('laScale')){$('laScale').value=100;} if($('laScaleV'))$('laScaleV').textContent='100'; if($('laDx'))$('laDx').value=0; if($('laDy'))$('laDy').value=0; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
+  if($('laApply'))$('laApply').onclick=function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
   function toggle(){ var v=sel.value; var _isBox=_boxTypes.indexOf(v)>=0;
+    if($('logoAdj'))$('logoAdj').style.display=(_adjTypes.indexOf(v)>=0)?'block':'none';
     // 🅰️ ตัวอักษรทุกชนิด (ยกขอบ/ไม่ยกขอบ) = พิมพ์ text สร้างเป็นตัวป้ายได้เหมือนกันหมด — ไม่ใช่แค่ type16
     var _isLetter=(!_isBox && v!=='17' && v!=='0' && v!=='');
     if($('mfTextPanel'))$('mfTextPanel').style.display=_isLetter?'block':'none';
@@ -5105,11 +5125,12 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('real_height_mm',(($('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0'));fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
   fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
   fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
-  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
+  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('metal_tex',MTEX||'');
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
@@ -5172,11 +5193,23 @@ $('goLayer').onclick=function(){
         '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">หน้าอะคริลิค<input type="color" id="faceColor" value="'+FCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">ขอบ/คิ้ว<input type="color" id="sideColor" value="'+SCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b;margin-left:6px">🪙 พื้นผิวโลหะ'+
+          '<select id="metalTex" onchange="_setMTX(this.value)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
+            '<option value=""'+(MTEX===''?' selected':'')+'>— สีล้วน —</option>'+
+            '<option value="silver_mirror"'+(MTEX==='silver_mirror'?' selected':'')+'>สแตนเลสเงิน (เงา)</option>'+
+            '<option value="silver_hairline"'+(MTEX==='silver_hairline'?' selected':'')+'>สแตนเลสเงิน (แฮร์ไลน์)</option>'+
+            '<option value="gold_mirror"'+(MTEX==='gold_mirror'?' selected':'')+'>สแตนเลสทอง (เงา)</option>'+
+            '<option value="gold_hairline"'+(MTEX==='gold_hairline'?' selected':'')+'>สแตนเลสทอง (แฮร์ไลน์)</option>'+
+            '<option value="rose_mirror"'+(MTEX==='rose_mirror'?' selected':'')+'>โรสโกลด์ (เงา)</option>'+
+            '<option value="rose_hairline"'+(MTEX==='rose_hairline'?' selected':'')+'>โรสโกลด์ (แฮร์ไลน์)</option>'+
+          '</select></label>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 8px"><span style="font-size:11px;color:#7c3aed;font-weight:700">อะคริลิคนีออน (แสงตามสี):</span><span id="acrSwD" style="display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center"><button type="button" class="chip on" id="acrOffD" style="font-size:10.5px">⚪ ปกติ</button></span></div>'+
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
         '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
+      (j.svg_views?('<div style="font-size:13px;font-weight:700;color:#0d9488;margin:2px 0 5px">📐 มุมมองมาตรฐาน — Top View · Front View · Side View <span style="font-size:11px;color:#94a3b8">(Perspective = ภาพ 3 มิติด้านบน)</span></div>'+
+        '<div style="border:1px solid #99f6e4;border-radius:12px;padding:10px;background:#f0fdfa;margin-bottom:14px"><div style="max-width:900px;margin:0 auto">'+(j.svg_views||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'')+'</div></div>'):'')+
       (j.svg_back?('<div style="font-size:13px;font-weight:700;color:#e11d48;margin:10px 0 5px">🔩 มุมมองด้านหลัง — โครงแขวน + รูเจาะยึด/สายไฟ'+(j.frame_info?(' · '+(j.frame_info.letters||0)+' ตัวอักษร · น็อต Ø3 '+(j.frame_info.bolts||0)+' รู · สายไฟ Ø5 '+(j.frame_info.wires||0)+' รู'):'')+'</div>'+
         '<div style="border:1px solid #fecdd3;border-radius:12px;padding:14px;background:#fff5f7;text-align:center;margin-bottom:14px"><div style="max-width:600px;margin:0 auto">'+j.svg_back+'</div></div>'):'')+
       ((j.warns&&j.warns.length)?('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#92400e">'+
@@ -5213,6 +5246,8 @@ $('goLayer').onclick=function(){
       fd.append('customer',cust);
       fd.append('sales',(($('pmSales')&&$('pmSales').value)||(($('adminName')&&$('adminName').textContent)||''))||'');
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
+      fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
+      fd.append('metal_tex',MTEX||'');fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
       fd.append('return_depth_cm',String(RDEPTH||0));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
