@@ -272,6 +272,7 @@ select.numin{cursor:pointer}
           </div>
           <select class="numin" id="mainSignType" style="border:2px solid #4f46e5;font-weight:700;color:#312e81;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)">
             <option value=""  data-i18n="st.0">— เส้นตัดแบน (ปกติ) —</option>
+            <option value="20" data-i18n="st.20">◆ ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)</option>
             <option value="16" data-i18n="st.16">1 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
             <option value="19" data-i18n="st.19">2 · ตัวอักษรยกขอบไฟออกหลัง</option>
             <option value="1" data-i18n="st.1">3 · ไฟออกหน้า มีคิ้ว</option>
@@ -3108,7 +3109,7 @@ var I18N={
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
   'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'3 · ไฟออกหน้า มีคิ้ว','st.2':'4 · ไฟออกหน้า ไม่มีคิ้ว',
-  'st.3':'5 · ตัวอักษรไฟออกรอบ','st.4':'6 · กล่องไฟฉลุหน้า','st.5':'','st.16':'1 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ','st.19':'2 · ตัวอักษรยกขอบไฟออกหลัง',
+  'st.3':'5 · ตัวอักษรไฟออกรอบ','st.4':'6 · กล่องไฟฉลุหน้า','st.5':'','st.16':'1 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'17 · นีออนเฟล็กซ์','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ','st.19':'2 · ตัวอักษรยกขอบไฟออกหลัง','st.20':'◆ ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)',
   'st.6':'7 · งานยกขอบ','st.7':'8 · งานยกขอบ มีไส้',
   'st.8':'9 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'10 · กล่องไฟล้อมตามทรง 2 หน้า',
   'st.10':'11 · กล่องไฟทรงกลม 1 หน้า','st.11':'12 · กล่องไฟทรงกลม 2 หน้า',
@@ -3159,7 +3160,7 @@ var I18N={
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
   'st.0':'— Flat cut lines (normal) —','st.1':'3 · Front-lit, with trim','st.2':'4 · Front-lit, no trim',
-  'st.3':'5 · Edge-lit Letters (light all around)','st.4':'6 · Light box · Cut-out face','st.5':'','st.16':'1 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box','st.19':'2 · Halo-lit Raised Letters (back-lit)',
+  'st.3':'5 · Edge-lit Letters (light all around)','st.4':'6 · Light box · Cut-out face','st.5':'','st.16':'1 · Front-lit Raised Letters + Hanging Frame','st.17':'17 · Neon Flex + Clear Acrylic','st.18':'18 · Edge-lit Acrylic Light Box','st.19':'2 · Halo-lit Raised Letters (back-lit)','st.20':'◆ Flat Letters/Logo (no return)',
   'st.6':'7 · Raised (return) letters','st.7':'8 · Raised letters with insert',
   'st.8':'9 · Contour light box · 1-face','st.9':'10 · Contour light box · 2-face',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
