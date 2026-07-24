@@ -2504,9 +2504,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except Exception:
             ai_b64 = ""
         # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ) — 🌈 นีออน: เดินไฟตามเส้นนีออน
+        # 🔌 เฉพาะ 'งานมีไฟ' เท่านั้น — งานแบน/ยกขอบ (ไม่มีไฟ) ข้ามการเดินไฟ LED
+        #    งานมีไฟ = นีออน / edge-lit / back-lit / ชื่อประเภทมีคำว่า 'ไฟ' (ไฟออกหน้า·กล่องไฟ ฯลฯ)
+        _has_light = bool(_neon or rec.get("edge_lit") or rec.get("back_lit")
+                          or ("ไฟ" in str(rec.get("name", "")))) and not rec.get("no_light")
         led_info = {}
         try:
-            if _neon:
+            if not _has_light:
+                _led = None                              # งานไม่มีไฟ -> ไม่ทำแผนเดินไฟ
+            elif _neon:
                 _led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
                                       watt_per_m=8.0, volt=12.0)
             elif rec.get("back_lit"):
@@ -2525,9 +2531,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             else:
                 from vectorcnc import mount_frame as _MF3
                 _led = _MF3.led_layout(full, pitch_cm=float(led_pitch_cm), watt_per_m=12.0, volt=12.0)
-            led_info = {"total_m": _led["total_m"], "watts": _led["watts"], "amps": _led["amps"],
-                        "transformer_w": _led["transformer_w"], "pitch_cm": _led.get("pitch_cm", 6),
-                        "preview_svg": _led["preview_svg"]}
+            if _led:
+                led_info = {"total_m": _led["total_m"], "watts": _led["watts"], "amps": _led["amps"],
+                            "transformer_w": _led["transformer_w"], "pitch_cm": _led.get("pitch_cm", 6),
+                            "preview_svg": _led["preview_svg"]}
         except Exception:
             led_info = {}
 
@@ -2621,50 +2628,93 @@ _JOB_SHEET_CSS = '''<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Prompt,sans-serif;background:#eef1f6;color:#1e293b;padding:18px;font-size:13px}
-.sheet{max-width:1180px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(30,41,59,.12)}
-.hd{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
-.hd h1{font-size:20px;font-weight:800}.hd .sub{font-size:12px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:12px;line-height:1.7}
-.badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:12px}
-.info{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e2e8f0}
-.info .c{background:#f8fafc;padding:11px 16px}.info .k{font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:14px;font-weight:700;color:#0f172a;margin-top:2px}
-.body{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.card{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff}.card.full{grid-column:1/-1}
-.ct{display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:700;font-size:13.5px;border-bottom:1px solid #eef2f7}
-.ct .no{width:22px;height:22px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
-.cbody{padding:12px 14px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:8px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:360px}.imgwrap.dark{background:#0f1522}
-table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 9px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:11px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
-.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:9px;text-align:center}.kpi .b .n{font-size:17px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:10px;color:#64748b}
-.chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11.5px;margin:2px 3px 2px 0}.dot{width:11px;height:11px;border-radius:50%;display:inline-block}
-.site{border:2px dashed #cbd5e1;border-radius:10px;height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc}
-.foot{border-top:2px solid #e2e8f0;padding:16px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:32px 12px 6px}.sign .r{font-size:11px;color:#64748b}
-.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:9px 12px;font-size:11.5px;margin:0 24px 16px}
-.pbtn{position:fixed;top:14px;right:14px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
-@media print{body{background:#fff;padding:0}.sheet{box-shadow:none}.pbtn{display:none}}
+body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px;font-size:12px}
+/* 📄 A3 แนวนอน (420×297มม.) — จบหน้าเดียว */
+.sheet{width:1560px;max-width:100%;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 10px 40px rgba(30,41,59,.14)}
+.hd{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.hd h1{font-size:19px;font-weight:800}.hd .sub{font-size:11.5px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:11.5px;line-height:1.7}
+.badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:11.5px}
+.info{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#e2e8f0}
+.info .c{background:#f8fafc;padding:9px 16px}.info .k{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:13.5px;font-weight:700;color:#0f172a;margin-top:2px}
+.body{padding:14px 18px}
+.card{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;background:#fff}
+.ct{display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:700;font-size:12.5px;border-bottom:1px solid #eef2f7}
+.ct .no{width:20px;height:20px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}
+.cbody{padding:10px 12px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:6px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:230px}.imgwrap.dark{background:#0f1522}
+.big3d{margin-bottom:12px}.big3d .imgwrap svg{max-height:300px}
+table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:10.5px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:7px;text-align:center}.kpi .b .n{font-size:15px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:9.5px;color:#64748b}
+.chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11px;margin:2px 3px 2px 0}.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* 🧱 masonry — จัดการ์ดทุกใบให้แน่น จบหน้าเดียว */
+.masonry{column-count:3;column-gap:12px}
+.masonry .card{-webkit-column-break-inside:avoid;break-inside:avoid;margin:0 0 12px;width:100%;display:inline-block}
+.site{border:2px dashed #cbd5e1;border-radius:10px;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc;cursor:pointer}
+.site:hover{border-color:#22d3ee;color:#0891b2}
+#siteImg{max-width:100%;border-radius:8px;display:none;margin-top:2px}
+.foot{border-top:2px solid #e2e8f0;padding:14px 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.sign{text-align:center}.sign .line{border-top:1.5px solid #94a3b8;margin:28px 12px 6px}.sign .r{font-size:11px;color:#64748b}
+.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 12px;font-size:11px;margin:0 22px 14px}
+.expbar{position:fixed;top:12px;right:12px;display:flex;gap:8px;z-index:99}
+.pbtn{background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.pbtn.pdf{background:#dc2626}.pbtn.jpg{background:#0d9488}
+@media print{body{background:#fff;padding:0}.sheet{box-shadow:none;width:100%}.expbar{display:none}}
+@page{size:A3 landscape;margin:6mm}
 </style></head><body>
-<button class="pbtn" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>
+<div class="expbar" id="expbar">
+  <button class="pbtn pdf" onclick="savePDF()">📄 บันทึก PDF (A3)</button>
+  <button class="pbtn jpg" onclick="saveJPG()">🖼️ บันทึก JPG</button>
+  <button class="pbtn" onclick="window.print()">🖨️ พิมพ์</button>
+</div>
 <div class="sheet">
   <div class="hd"><div><h1>ใบสั่งผลิตป้าย / แบบยืนยันลูกค้า</h1><div class="sub">Production Spec Sheet &amp; Customer Confirmation · __TYPEEN__</div></div>
     <div class="meta"><span class="badge">DRAFT · รออนุมัติ</span><br>เลขที่งาน <b>__JOBNO__</b><br>วันที่ออกแบบ <b>__DATE__</b><br>กำหนดส่งมอบ <b>__DELIV__</b></div></div>
-  <div class="info" style="grid-template-columns:repeat(5,1fr)">
+  <div class="info">
     <div class="c"><div class="k">ลูกค้า</div><div class="v">__CUST__</div></div>
     <div class="c"><div class="k">ประเภทป้าย</div><div class="v">__TYPE__</div></div>
     <div class="c"><div class="k">ขนาดรวม</div><div class="v">__SIZE__</div></div>
     <div class="c"><div class="k">วัสดุหลัก</div><div class="v">__MATERIAL__</div></div>
     <div class="c"><div class="k">เซลล์ผู้ดูแล</div><div class="v">__SALES__</div></div></div>
   <div class="body">
-    <div class="card full"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
-    __FRAME__
-    __LED__
-    __PRINT__
-    __NEST__
-    __CUT__
-    <div class="card full"><div class="ct"><span class="no">6</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
-    <div class="card full"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody"><div class="site"><div style="font-size:30px">📷</div><div>แนบภาพหน้างาน + ทำเครื่องหมายจุดติดตั้ง</div></div></div></div>
+    <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+    <div class="masonry">
+      __FRAME__
+      __LED__
+      __CUT__
+      __PRINT__
+      __NEST__
+      <div class="card"><div class="ct"><span class="no">B</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
+      <div class="card"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody">
+        <label for="siteFile"><div class="site" id="siteBox"><div style="font-size:28px">📷</div><div>คลิกเพื่อแนบภาพหน้างาน (1 ภาพ)</div><div style="font-size:10px">แนะนำถ่ายจุดติดตั้งจริง</div></div></label>
+        <input type="file" id="siteFile" accept="image/*" style="display:none">
+        <img id="siteImg" alt="ภาพหน้างาน">
+      </div></div>
+    </div>
   </div>
   <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
   <div class="foot"><div class="sign"><div class="line"></div><div class="r">ผู้ออกแบบ / เซลล์</div></div><div class="sign"><div class="line"></div><div class="r">ผู้อนุมัติผลิต (โรงงาน)</div></div><div class="sign"><div class="line"></div><div class="r">ลูกค้าอนุมัติแบบ · วันที่</div></div></div>
-</div></body></html>'''
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+var JOBNO="__JOBNO__";
+// 📷 แนบภาพหน้างาน 1 ภาพ (ฝั่ง client — ติดไปกับ PDF/JPG ด้วย)
+(function(){var sf=document.getElementById('siteFile');if(!sf)return;
+  sf.onchange=function(){var f=this.files&&this.files[0];if(!f)return;var r=new FileReader();
+    r.onload=function(){var im=document.getElementById('siteImg');im.src=r.result;im.style.display='block';
+      var b=document.getElementById('siteBox');if(b)b.style.display='none';};r.readAsDataURL(f);};})();
+function _busy(b){var e=document.getElementById('expbar');if(e)e.style.opacity=b?.4:1;}
+function _cap(cb){_busy(true);
+  var fr=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
+  fr.then(function(){return new Promise(function(r){setTimeout(r,150);});}).then(function(){
+    html2canvas(document.querySelector('.sheet'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false})
+      .then(function(cv){_busy(false);cb(cv);})
+      .catch(function(e){_busy(false);alert('สร้างภาพไม่ได้: '+e);});});}
+function saveJPG(){_cap(function(cv){var a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',.92);a.download='JobSheet_'+JOBNO+'.jpg';a.click();});}
+function savePDF(){_cap(function(cv){var J=(window.jspdf||{}).jsPDF;if(!J){alert('โหลดตัวสร้าง PDF ไม่ได้ — ลองใช้ปุ่มพิมพ์แทน');return;}
+  var pdf=new J({orientation:'landscape',unit:'mm',format:'a3'});var pw=420,ph=297,m=6;
+  var iw=cv.width,ih=cv.height;var r=Math.min((pw-2*m)/iw,(ph-2*m)/ih);var w=iw*r,h=ih*r;
+  pdf.addImage(cv.toDataURL('image/jpeg',.94),'JPEG',(pw-w)/2,(ph-h)/2,w,h);pdf.save('JobSheet_'+JOBNO+'.pdf');});}
+</script>
+</body></html>'''
 
 
 @app.post("/api/job-sheet")
@@ -2748,9 +2798,14 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 back_svg = ""
         # LED layout — 🌈 นีออน: เดินไฟตามเส้นนีออน (ตรงกับ Perspective) · อื่นๆ: วางตามขอบอักษร
+        # 🔌 เฉพาะงานมีไฟ — งานแบน/ยกขอบ (ไม่มีไฟ) ไม่ต้องเดินไฟ LED ในใบสั่งผลิต
+        _has_light = bool(rec.get("neon") or rec.get("edge_lit") or rec.get("back_lit")
+                          or ("ไฟ" in str(rec.get("name", "")))) and not rec.get("no_light")
         led = None
         try:
-            if rec.get("neon"):
+            if not _has_light:
+                led = None
+            elif rec.get("neon"):
                 led = _neon_led_info(full, color=str(neon_color or "#00e5ff"), neon_subs=_nsub,
                                      watt_per_m=float(led_watt_per_m), volt=float(led_volt))
             elif rec.get("back_lit"):
