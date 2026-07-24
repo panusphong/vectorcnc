@@ -2553,7 +2553,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
 
-def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None):
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img=""):
     """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
     def esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -2610,14 +2610,27 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
         cut_card = ('<div class="card full"><div class="ct"><span class="no">C</span>ชิ้นตัดแยกชั้น (Cut Layers) · allowance + ขนาดตัดต่อชิ้น</div>'
                     '<div class="cbody"><table><tr><th>Layer</th><th class="r">Allowance</th><th class="r">ขนาดตัด (W&#215;H)</th><th>วัสดุ</th></tr>%s</table>'
                     '<div style="font-size:11px;color:#64748b;margin-top:6px">* allowance = ค่าเผื่อขอบต่อชั้น (+ ขยายออก / &#8722; หดเข้า) · ขนาดตัด = กรอบนอกของชิ้นนั้น สำหรับสั่งตัด/Nesting</div></div></div>' % crows)
+    # 📐 ภาพไฟล์ตัด (เส้นตัดทุกชั้นรวม) — โชว์ในใบสั่งผลิต
+    cutimg_card = ""
+    if cut_img:
+        cutimg_card = ('<div class="card"><div class="ct"><span class="no">✂</span>ภาพไฟล์ตัด (Cut Lines · ทุกชั้น)</div>'
+                       '<div class="cbody"><div class="imgwrap">%s</div></div></div>' % cut_img)
+    # จัดวันที่ส่งมอบให้อ่านง่าย (YYYY-MM-DD -> DD/MM/YYYY)
+    _dv = str(meta.get("delivery") or "").strip()
+    try:
+        if _dv and len(_dv) >= 10 and _dv[4] == "-" and _dv[7] == "-":
+            _dv = "%s/%s/%s" % (_dv[8:10], _dv[5:7], _dv[0:4])
+    except Exception:
+        pass
     html = _JOB_SHEET_CSS
     html = html.replace("__TITLE__", esc(type_name))
     for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
-                 "__DELIV__": esc(meta.get("delivery") or "— ยังไม่ระบุ —"),
+                 "__DELIV__": esc(_dv or "— ยังไม่ระบุ —"),
                  "__CUST__": esc(meta.get("customer", "-")), "__TYPE__": esc(type_name), "__TYPEEN__": esc(type_name_en),
                  "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
+                 "__GRAPHIC__": esc(meta.get("graphic", "-")),
                  "__MATERIAL__": esc(meta.get("material", "-")),
-                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card,
+                 "__PERSP__": persp_svg, "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
                  "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom}.items():
         html = html.replace(k, str(v))
     return html
@@ -2634,7 +2647,7 @@ body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px
 .hd{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .hd h1{font-size:19px;font-weight:800}.hd .sub{font-size:11.5px;opacity:.8;margin-top:2px}.hd .meta{text-align:right;font-size:11.5px;line-height:1.7}
 .badge{display:inline-block;background:#22d3ee;color:#083344;font-weight:700;padding:3px 12px;border-radius:20px;font-size:11.5px}
-.info{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#e2e8f0}
+.info{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#e2e8f0}
 .info .c{background:#f8fafc;padding:9px 16px}.info .k{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.info .v{font-size:13.5px;font-weight:700;color:#0f172a;margin-top:2px}
 .body{padding:14px 18px}
 .card{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;background:#fff}
@@ -2645,9 +2658,9 @@ body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px
 table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:10.5px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
 .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:7px;text-align:center}.kpi .b .n{font-size:15px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:9.5px;color:#64748b}
 .chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:11px;margin:2px 3px 2px 0}.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
-/* 🧱 masonry — จัดการ์ดทุกใบให้แน่น จบหน้าเดียว */
-.masonry{column-count:3;column-gap:12px}
-.masonry .card{-webkit-column-break-inside:avoid;break-inside:avoid;margin:0 0 12px;width:100%;display:inline-block}
+/* 🧱 กริด 3 คอลัมน์ — จัดการ์ดทุกใบให้แน่น จบหน้าเดียว (เรนเดอร์ชัวร์กว่า column-count) */
+.masonry{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
+.masonry .card{width:auto}
 .site{border:2px dashed #cbd5e1;border-radius:10px;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc;cursor:pointer}
 .site:hover{border-color:#22d3ee;color:#0891b2}
 #siteImg{max-width:100%;border-radius:8px;display:none;margin-top:2px}
@@ -2659,7 +2672,14 @@ table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px
 .expbar{position:fixed;top:12px;right:12px;display:flex;gap:8px;z-index:99}
 .pbtn{background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .pbtn.pdf{background:#dc2626}.pbtn.jpg{background:#0d9488}
-@media print{body{background:#fff;padding:0}.sheet{box-shadow:none;width:100%}.expbar{display:none}}
+@media print{
+  html,body{background:#fff;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sheet{box-shadow:none;width:100%;border-radius:0}
+  .expbar{display:none}
+  .big3d .imgwrap svg{max-height:210px}.imgwrap svg{max-height:170px}
+  .card,.big3d{break-inside:avoid;page-break-inside:avoid}
+  .masonry{gap:9px}
+}
 @page{size:A3 landscape;margin:6mm}
 </style></head><body>
 <div class="expbar" id="expbar">
@@ -2675,10 +2695,12 @@ table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:5px 8px
     <div class="c"><div class="k">ประเภทป้าย</div><div class="v">__TYPE__</div></div>
     <div class="c"><div class="k">ขนาดรวม</div><div class="v">__SIZE__</div></div>
     <div class="c"><div class="k">วัสดุหลัก</div><div class="v">__MATERIAL__</div></div>
-    <div class="c"><div class="k">เซลล์ผู้ดูแล</div><div class="v">__SALES__</div></div></div>
+    <div class="c"><div class="k">กำหนดส่งมอบ</div><div class="v">__DELIV__</div></div>
+    <div class="c"><div class="k">เซลล์ / กราฟิก</div><div class="v" style="font-size:12.5px">👤 __SALES__<br><span style="color:#475569">🎨 __GRAPHIC__</span></div></div></div>
   <div class="body">
     <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
     <div class="masonry">
+      __CUTIMG__
       __FRAME__
       __LED__
       __CUT__
@@ -2734,7 +2756,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
                     material: str = Form(""), led_type: str = Form("module"),
                     wire_type: str = Form("indoor"), print_spec: str = Form(""),
-                    delivery_date: str = Form(""), nesting_b64: str = Form(""),
+                    delivery_date: str = Form(""), nesting_b64: str = Form(""), graphic: str = Form(""),
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
@@ -2862,9 +2884,11 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff %s ซม." % frame_standoff_cm, "เจาะรูน็อต/สายไฟ"))
         # 📐 Cut layers — ชิ้นตัดแยกชั้น + allowance + ขนาดตัดต่อชิ้น (ให้ตรงกับพรีวิวหน้าออกแบบ)
         cut_rows = []
+        _cut_layers = []     # เก็บ geometry แต่ละชั้นไว้วาด 'ภาพไฟล์ตัด' รวม
         _neon_js = bool(rec.get("neon"))
         for L in ([] if _neon_js else rec["layers"]):
             off = float(L["off"]); kind = L.get("kind", "solid")
+            g = None
             try:
                 if kind == "frame":
                     g = _mbuf(full, off + float(L.get("band", 10.0)))   # ขอบนอกคิ้ว
@@ -2880,6 +2904,20 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             _isface = (kind != "frame" and "แผ่นพื้น" not in L["name"])
             _mmn = _matn if _isface else "ตามสเปควัสดุ"
             cut_rows.append((_en_layer(L["name"]), L["name"], _al, "%.1f × %.1f ซม." % (_cw, _ch), _mmn, L.get("color", "#64748b")))
+            try:                                                     # 📐 เก็บเส้นตัดชั้นนี้ไว้ทำภาพ
+                if g is not None and not g.is_empty:
+                    _subs = _poly_to_subs(g, tol=0.05)
+                    if _subs:
+                        gb = g.bounds
+                        _cut_layers.append({"name": L["name"], "off": off, "kind": kind,
+                                            "color": L.get("color", "#64748b"), "rgb": L.get("rgb", (100, 116, 139)),
+                                            "subs": _subs, "w_mm": round(gb[2]-gb[0], 1), "h_mm": round(gb[3]-gb[1], 1)})
+            except Exception:
+                pass
+        try:
+            cut_img = _spec_sheet_svg(_cut_layers) if _cut_layers else ""
+        except Exception:
+            cut_img = ""
         if _neon_js:                                            # 🌈 นีออน: เส้นไฟ + ร่องเซาะ CNC + อะคริลิคใสรองหลัง
             nb = full.bounds; _nw = round((nb[2]-nb[0])/10.0, 1); _nh = round((nb[3]-nb[1])/10.0, 1)
             cut_rows.append(("Neon Flex (line)", "นีออนเฟล็กซ์ (เส้นไฟ)", "แนวเส้น", "%.1f × %.1f ซม." % (_nw, _nh), "LED Neon Flex 12V", "#00e5ff"))
@@ -2891,12 +2929,12 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 pass
         meta = {"customer": customer or "-", "job_no": job_no or ("JOB-%s" % _dt.datetime.now().strftime("%Y%m%d-%H%M")),
-                "sales": sales or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color,
+                "sales": sales or "-", "graphic": graphic or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color,
                 "material": _matn, "led_type": ("Module" if str(led_type) == "module" else "Ribbon"),
                 "led_pitch_cm": led_pitch_cm, "led_edge_cm": _edge_cm, "wire": _wiren,
                 "print_spec": (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else "")),
                 "delivery": delivery_date, "nesting_b64": nesting_b64}
-        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows)
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
