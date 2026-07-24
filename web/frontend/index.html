@@ -471,12 +471,32 @@ select.numin{cursor:pointer}
             <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px">📋 รายละเอียดสั่งผลิต (ใบสั่งผลิต)</div>
             <label style="font-size:10.5px;color:#64748b">วัสดุหลัก</label>
             <select class="numin" id="pmMaterial" style="width:100%;padding:6px">
-              <option value="acrylic">อะคริลิค</option>
-              <option value="plaswood">พลาสวูด</option>
-              <option value="zinc">ซิ้งค์ (สังกะสี)</option>
-              <option value="stainless_silver">สแตนเลสเงิน (เงา)</option>
-              <option value="stainless_gold">สแตนเลสทอง (ไทเทเนียม)</option>
-              <option value="stainless_rose">สแตนเลสโรสโกลด์</option>
+              <optgroup label="อะคริลิค">
+                <option value="acrylic">อะคริลิค</option>
+                <option value="acrylic_5mm">อะคริลิค 5 มม.</option>
+                <option value="acrylic_8mm">อะคริลิค 8 มม.</option>
+                <option value="acrylic_10mm">อะคริลิค 10 มม.</option>
+              </optgroup>
+              <optgroup label="พลาสวูด">
+                <option value="plaswood">พลาสวูด</option>
+                <option value="plaswood_5mm">พลาสวูด 5 มม.</option>
+                <option value="plaswood_10mm">พลาสวูด 10 มม.</option>
+              </optgroup>
+              <optgroup label="โลหะแผ่น">
+                <option value="zinc">ซิ้งค์ (สังกะสี)</option>
+                <option value="zinc_1mm">ซิงค์ 1 มม.</option>
+                <option value="alu_07mm">อลูมิเนียม 0.7 มม.</option>
+              </optgroup>
+              <optgroup label="สแตนเลส">
+                <option value="stainless_silver">สแตนเลสเงิน (เงา)</option>
+                <option value="stainless_silver_hairline">สแตนเลสเงิน (แฮร์ไลน์)</option>
+                <option value="stainless_gold">สแตนเลสทอง (ไทเทเนียม)</option>
+                <option value="stainless_gold_mirror">สแตนเลสทอง (เงา)</option>
+                <option value="stainless_gold_hairline">สแตนเลสทอง (แฮร์ไลน์)</option>
+                <option value="stainless_rose">สแตนเลสโรสโกลด์</option>
+                <option value="stainless_rose_mirror">สแตนเลสโรสโกลด์ (เงา)</option>
+                <option value="stainless_rose_hairline">สแตนเลสโรสโกลด์ (แฮร์ไลน์)</option>
+              </optgroup>
             </select>
             <div style="display:flex;gap:6px;margin-top:6px">
               <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ชนิดไฟ LED</label>
