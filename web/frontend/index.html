@@ -508,7 +508,14 @@ select.numin{cursor:pointer}
             </div>
             <div style="display:flex;gap:6px;margin-top:6px">
               <div style="flex:1"><label style="font-size:10.5px;color:#64748b">ระยะช่องไฟ (ซม.)</label><input class="numin" id="pmLedPitch" type="number" value="6" style="width:100%;padding:6px"></div>
-              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">สีไฟ</label><input class="numin" id="pmLedColor" type="text" value="Warm White 3000K" style="width:100%;padding:6px"></div>
+              <div style="flex:1"><label style="font-size:10.5px;color:#64748b">สีไฟ (อุณหภูมิสี)</label>
+                <select class="numin" id="pmLedColor" style="width:100%;padding:6px">
+                  <option value="Warm White 2700K">Warm White 2700K (วอร์มจัด)</option>
+                  <option value="Warm White 3000K" selected>Warm White 3000K (วอร์มไวท์)</option>
+                  <option value="Cool White 4000K">Cool White 4000K (คูลไวท์)</option>
+                  <option value="Daylight 6500K">Daylight 6500K (ขาวเดย์ไลท์)</option>
+                  <option value="RGB (เปลี่ยนสีได้)">RGB (เปลี่ยนสีได้)</option>
+                </select></div>
             </div>
             <label style="font-size:10.5px;color:#64748b;margin-top:6px;display:block">งานพิมพ์ (ถ้ามี)</label>
             <input class="numin" id="pmPrint" type="text" placeholder="เช่น อะคริลิคโปร่งแสง 3mm P433" style="width:100%;padding:6px">
@@ -1602,7 +1609,7 @@ select.numin{cursor:pointer}
           <div class="csm-sec-h"><i>4</i> ไฟ · ติดตั้ง</div>
           <div class="csm-2 csm-fld">
             <div><label class="cslab">สีไฟ LED</label><select class="numin" id="csLed">
-              <option>วอร์มไวท์ 3000K</option><option>เดย์ไลท์ 6500K</option><option>คูลไวท์</option>
+              <option>วอร์มไวท์ 2700K</option><option>วอร์มไวท์ 3000K</option><option>คูลไวท์ 4000K</option><option>เดย์ไลท์ 6500K</option>
               <option>แดง</option><option>น้ำเงิน</option><option>เขียว</option><option>RGB</option></select></div>
             <div><label class="cslab">ติดตั้ง</label><select class="numin" id="csInstall">
               <option value="indoor">Indoor (ในร่ม)</option><option value="outdoor">Outdoor (กลางแจ้ง)</option></select></div>
@@ -4834,12 +4841,37 @@ window._setACOL=function(v){ ACOL=v||''; try{ if($('goLayer'))$('goLayer').click
 window.restoreDesignJob=function(d,job){
   try{
     var wo=document.getElementById('wallOverlay'); if(wo)wo.classList.remove('show');   // ปิดจำลองผนังถ้าเปิดค้าง
+    var _sv=function(id,v){ var e=$(id); if(e&&v!=null&&v!=='')e.value=v; };
     MTEX=(d.mtex!=null?String(d.mtex):MTEX)||''; if(d.fcol)FCOL=d.fcol; if(d.scol)SCOL=d.scol; if(d.acol!=null)ACOL=String(d.acol||'');
     try{ if(d.rdepth!=null)RDEPTH=parseFloat(d.rdepth)||0; }catch(_e){}
+    try{ if(d.trimw!=null)TRIMW=parseFloat(d.trimw)||TRIMW; if(d.trimdir)TRIMDIR=String(d.trimdir); }catch(_e){}
+    try{ if(d.glow&&typeof GLOW!=='undefined'){ GLOW.mode=d.glow.mode||GLOW.mode; GLOW.temp=d.glow.temp||GLOW.temp; GLOW.acr=d.glow.acr||null; } }catch(_e){}
+    // 📐 ตั้งขนาด 'ก่อน' เปลี่ยนประเภท — toggle() ของประเภทป้ายใช้ realW ไปเติมช่องกล่อง (เดิมสลับลำดับ -> กล่องได้ค่าเก่า)
+    if(parseFloat(d.wcm)>0){ _sv('realWcm',Math.round(parseFloat(d.wcm))); _sv('realW',Math.round(parseFloat(d.wcm)*10)); }
+    if(parseFloat(d.hcm)>0){ _sv('realHcm',Math.round(parseFloat(d.hcm))); _sv('realH',Math.round(parseFloat(d.hcm)*10)); }
     if($('mainSignType')&&d.signType){ $('mainSignType').value=String(d.signType);
       try{ $('mainSignType').dispatchEvent(new Event('change')); }catch(_e){} }
-    if(parseFloat(d.wcm)>0){ if($('realWcm'))$('realWcm').value=Math.round(parseFloat(d.wcm)); if($('realW'))$('realW').value=Math.round(parseFloat(d.wcm)*10); }
-    if(parseFloat(d.hcm)>0){ if($('realHcm'))$('realHcm').value=Math.round(parseFloat(d.hcm)); if($('realH'))$('realH').value=Math.round(parseFloat(d.hcm)*10); if($('bxH'))$('bxH').value=parseFloat(d.hcm); }
+    // 📦 บังคับค่าแผงกล่อง 'ทับ' ค่า default ที่ toggle เติม (จุดที่ทำให้ความลึก/ความหนาเพี้ยน)
+    if(d.bxw!=null&&d.bxw!=='')_sv('bxW',d.bxw);
+    if(d.bxh!=null&&d.bxh!=='')_sv('bxH',d.bxh); else if(parseFloat(d.hcm)>0)_sv('bxH',parseFloat(d.hcm));
+    if(d.bxd!=null&&d.bxd!=='')_sv('bxD',d.bxd); else if(RDEPTH>0)_sv('bxD',RDEPTH);
+    try{ window._bxDrawPrev&&window._bxDrawPrev(); }catch(_e){}
+    // ⛓️ ซิงก์ UI ความหนายกขอบ/ความลึก + คิ้ว ให้ตรงค่าที่คืนมา (เดิมหน้าจอโชว์ค่าเก่า)
+    try{ var rc=document.querySelectorAll('#rdChips .chip'),_rh=false;
+      for(var i=0;i<rc.length;i++){ var _on=(parseFloat(rc[i].getAttribute('data-d'))===RDEPTH); rc[i].classList.toggle('on',_on); if(_on)_rh=true; }
+      if($('rdCustom'))$('rdCustom').value=(_rh||!RDEPTH)?'':RDEPTH;
+    }catch(_e){}
+    try{ var tc=document.querySelectorAll('#twChips .chip'),_th=false;
+      for(var i2=0;i2<tc.length;i2++){ var _o2=(parseFloat(tc[i2].getAttribute('data-w'))===TRIMW); tc[i2].classList.toggle('on',_o2); if(_o2)_th=true; }
+      if($('twCustom'))$('twCustom').value=_th?'':(TRIMW||'');
+      var _td=document.querySelectorAll('#twDir .chip');
+      for(var i3=0;i3<_td.length;i3++)_td[i3].classList.toggle('on',_td[i3].getAttribute('data-d')===TRIMDIR);
+    }catch(_e){}
+    // 🦾 แขน / โครงแขวน / จำนวนสี / ข้อมูลผลิต (วัสดุ·ไฟ·สายไฟ·พิมพ์·เซล·กราฟิก·ส่งมอบ)
+    if(d.arm&&typeof d.arm==='object'){ _sv('mainArm',d.arm.m); _sv('mainArmLen',d.arm.len); _sv('mainArmSide',d.arm.side); _sv('mainArmAdjust',d.arm.adj); _sv('mainArmTravel',d.arm.trv); }
+    if(d.frame){ _sv('fBars',d.frame.bars); _sv('fLevel',d.frame.level); _sv('fGap',d.frame.gap); _sv('fXshift',d.frame.x); _sv('fStand',d.frame.stand); _sv('fWire',d.frame.wire); _sv('fArmEdge',d.frame.edge); _sv('fArmLen',d.frame.alen); }
+    if(d.ncolors)_sv('nColors',d.ncolors);
+    if(d.pm){ _sv('pmMaterial',d.pm.mat); _sv('pmLedType',d.pm.ledt); _sv('pmLedPitch',d.pm.pitch); _sv('pmLedColor',d.pm.ledc); _sv('pmWire',d.pm.wire); _sv('pmPrint',d.pm.print); _sv('pmSales',d.pm.sales); _sv('pmGraphic',d.pm.graphic); _sv('pmDelivery',d.pm.deliv); }
     if(d.la){ if($('laScale')){ $('laScale').value=d.la.s||100; if($('laScaleV'))$('laScaleV').textContent=String(d.la.s||100); }
       if($('laDx'))$('laDx').value=d.la.dx||0; if($('laDy'))$('laDy').value=d.la.dy||0; }
     var fin=function(){ setTimeout(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} },300); };
@@ -5172,7 +5204,7 @@ $('goLayer').onclick=function(){
   st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">กำลังแตกชั้น + สร้างภาพ 3 มิติ...</div></div>';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
-  fd.append('real_height_mm',(($('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0'));fd.append('return_depth_cm',String(RDEPTH||0));fd.append('n_colors',$('nColors')?$('nColors').value:'6');
+  fd.append('real_height_mm',(($('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0'));fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
   fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
@@ -5299,7 +5331,7 @@ $('goLayer').onclick=function(){
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
       fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
       fd.append('metal_tex',MTEX||'');fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('arm_color',ACOL||'');
-      fd.append('return_depth_cm',String(RDEPTH||0));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
+      fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -5328,10 +5360,18 @@ $('goLayer').onclick=function(){
       var cust=prompt('ชื่อลูกค้า','')||'';
       var wcm=Math.round((j.w_mm||(+($('realW').value)||600))/10);
       // 💾 เก็บ 'สถานะออกแบบครบชุด' -> เปิดกลับมาแก้ไขต่อได้ (เหมือนจำลองผนัง)
+      var _gv=function(id){var e=$(id);return e?(e.value||''):'';};
       var st8={source:'design',signType:t,signName:(j.type_name||''),wcm:wcm,
-        hcm:(parseFloat($('bxH')&&$('bxH').value)||0),
+        hcm:(parseFloat(_gv('realHcm'))||parseFloat(_gv('bxH'))||0),
+        bxw:_gv('bxW'),bxh:_gv('bxH'),bxd:_gv('bxD'),                      // 📦 ขนาดกล่องจริงจากแผงกล่อง (แก้ความลึกเพี้ยน)
         mtex:(typeof MTEX!=='undefined'?MTEX:'')||'',fcol:(typeof FCOL!=='undefined'?FCOL:'')||'',scol:(typeof SCOL!=='undefined'?SCOL:'')||'',acol:(typeof ACOL!=='undefined'?ACOL:'')||'',
-        rdepth:(typeof RDEPTH!=='undefined'?RDEPTH:0)||0,
+        rdepth:(((typeof RDEPTH!=='undefined')?RDEPTH:0)||parseFloat(_gv('bxD'))||0),   // ⚠️ RDEPTH=0 แต่ช่องลึกมีค่า -> ใช้ค่าช่องลึก
+        trimw:(typeof TRIMW!=='undefined'?TRIMW:1)||1,trimdir:(typeof TRIMDIR!=='undefined'?TRIMDIR:'out')||'out',
+        ncolors:_gv('nColors')||'6',
+        arm:{m:_gv('mainArm'),len:_gv('mainArmLen'),side:_gv('mainArmSide'),adj:_gv('mainArmAdjust'),trv:_gv('mainArmTravel')},
+        frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen')},
+        glow:(typeof GLOW!=='undefined'?{mode:GLOW.mode,temp:GLOW.temp,acr:GLOW.acr||null}:null),
+        pm:{mat:_gv('pmMaterial'),ledt:_gv('pmLedType'),pitch:_gv('pmLedPitch'),ledc:_gv('pmLedColor'),wire:_gv('pmWire'),print:_gv('pmPrint'),sales:_gv('pmSales'),graphic:_gv('pmGraphic'),deliv:_gv('pmDelivery')},
         la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0}};
       var doSave=function(img,src){ st8.src=src||'';
         window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:st8.hcm,image:img||'',signType:t,signName:st8.signName,design:JSON.stringify(st8)}); };
