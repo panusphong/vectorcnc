@@ -5370,6 +5370,16 @@ async def compose_vector(request: Request):
         n_ok = 0; fails = []
         for it in items:
             try:
+                # 🖼️ ชิ้นภาพ (เช่น ตัวหนังสือไทย PNG) -> ฝังเป็นภาพใน PDF ตรงตำแหน่ง (ไม่ทำให้ชิ้นเวกเตอร์อื่นเสียความคม)
+                if it.get("png"):
+                    import base64 as _b642
+                    _dat = str(it["png"]).split(",", 1)[1]
+                    _r2 = fitz.Rect(float(it["x_mm"]) * MMPT, float(it["y_mm"]) * MMPT,
+                                    (float(it["x_mm"]) + float(it["w_mm"])) * MMPT,
+                                    (float(it["y_mm"]) + float(it["h_mm"])) * MMPT)
+                    pg.insert_image(_r2, stream=_b642.b64decode(_dat), keep_proportion=False)
+                    n_ok += 1
+                    continue
                 # 🧩 รองรับชิ้นจาก 'หลายไฟล์' — แต่ละชิ้นพก token ของไฟล์ตัวเอง (ไม่มีก็ใช้ token กลาง)
                 _tk = str(it.get("token") or tok)
                 path = _ASSET_STORE.get(_tk)
