@@ -1530,7 +1530,7 @@ def _vtrace_full_mm(img_path, real_width_mm):
     if _u is None or _u.is_empty:
         return None
     # 🧈 รีดคลื่นพิกเซล — เฉพาะภาพ raster เท่านั้น (เวกเตอร์แท้ไม่ต้องรีด · เส้นดิบคมอยู่แล้ว)
-    _sm = float(_CUT_SMOOTH.get("mm", 0.8))
+    _sm = float(_CUT_SMOOTH.get("mm", 0.0))
     if _sm > 0:
         _u2 = _smooth_cut(_u, _sm)
         if _u2 is not None and not _u2.is_empty:
@@ -1556,7 +1556,7 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             _zv = max(1.0, min(12.0, 3600.0 / max(1.0, _pgv.rect.width)))
             _pixv = _pgv.get_pixmap(matrix=_fzv.Matrix(_zv, _zv), alpha=False)
             _vpng = inp + ".vtrace.png"; _pixv.save(_vpng); _dv.close()
-            _sv0 = _CUT_SMOOTH.get("mm", 0.8)
+            _sv0 = _CUT_SMOOTH.get("mm", 0.0)
             _CUT_SMOOTH["mm"] = 0.0            # 📐 ต้นทางเป็นเวกเตอร์ -> ไม่มีคลื่นพิกเซล ไม่ต้องรีด (คงเส้นดิบไว้ใช้)
             try:
                 full = _vtrace_full_mm(_vpng, float(real_width_mm))
@@ -1855,7 +1855,7 @@ _METAL_TEX = {
 
 _TEXIMG_CACHE = {}
 _TRACE_ENG = {"mode": ""}   # 🧭 บอกว่าไฟล์ตัดล่าสุดใช้เอนจิ้นตัวไหน (โชว์ในกล่องเตือนหน้าเว็บ)
-_CUT_SMOOTH = {"mm": 0.8}   # 🧈 ความแรงรีดคลื่นพิกเซลของเส้นตัด (มม.) — ผู้ใช้ปรับได้จากหน้าเว็บ
+_CUT_SMOOTH = {"mm": 0.0}   # 🧈 รีดคลื่นเส้นตัด (มม.) — ค่าเริ่มต้น 0 = 'เหมือนปุ่มแปลงเป็นเส้นตัดเป๊ะ' (ผู้ใช้เปิดเองได้)
 # 🏆 เส้นโค้ง Bézier 'ดิบ' จากเอนจิ้น (หน่วย มม. · พิกัดเดียวกับ polygon ที่ trace ได้)
 #    ใช้ส่งเข้าไฟล์ตัดโดยตรงเหมือนปุ่ม 'แปลงเป็นเส้นตัด' — ไม่ผ่านการแตกจุด+ฟิตใหม่ (ซึ่งทำให้เส้นเละ)
 _RAW_SUBS = {"subs": None}
@@ -3103,7 +3103,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.8)):
+                    cut_smooth_mm: float = Form(0.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -3495,12 +3495,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 pass
             wall_pieces.append({"name": nm, "name_en": _en_wall(nm), "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
             cursor += Lmm + gap
-        dxf_path = os.path.join(tmp, "layerset.dxf")
-        doc.saveas(dxf_path)
-        with open(dxf_path, "rb") as fo:
-            dxf_b64 = base64.b64encode(fo.read()).decode()
-        # SVG 'ไฟล์ตัดแยก layer' — เฉพาะแผ่นตัด (ไม่รวมแถบยกขอบยาวๆ ที่ทำให้ไฟล์กว้างเป็นสิบเมตร)
-        svg_cut = _layerset_cut_svg(out_layers, [])
+        # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
+        dxf_b64 = ""
+        svg_cut = ""
         # 🖼️ ภาพหน้าตรง (3D เบา ๆ พื้นโปร่ง) — เอาไปวางบนผนังในหน้าจำลองผนัง
         svg_face = ""
         try:
@@ -3821,7 +3818,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.8)):
+                    cut_smooth_mm: float = Form(0.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
