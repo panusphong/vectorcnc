@@ -576,8 +576,9 @@ select.numin{cursor:pointer}
           <label class="chk"><input type="checkbox" id="tabs"> <span data-i18n="lbl.tabs">ใส่ tabs (สะพานกันชิ้นหล่น)</span></label>
           <label class="chk"><input type="checkbox" id="enhance"> <span data-i18n="lbl.enhance">✨ ปรับคุณภาพภาพก่อนแปลง (รูปเบลอ/เล็ก/มี noise)</span></label>
         </div>
-        <button class="btn primary" id="go" data-i18n="btn.convert" disabled>⚡ แปลงเป็นเส้นตัด</button>
-        <button class="btn" id="goLayer" data-i18n="btn.layerset" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
+        <button class="btn primary" id="go" data-i18n="btn.convert" disabled>🏭 สร้างไฟล์สั่งผลิต (.ai + ชุดชั้นตัด + 3 มิติ)</button>
+        <!-- 🔗 รวมเป็นปุ่มเดียว: เส้นตัดต้องออกตามแบบป้ายเสมอ · ปุ่มนี้ซ่อนไว้ (โค้ดเดิมเรียกผ่าน .click()) -->
+        <button class="btn" id="goLayer" data-i18n="btn.layerset" style="display:none">🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)</button>
       </div>
 
       <div class="stage" style="position:relative">
@@ -3156,7 +3157,7 @@ var I18N={
   'lbl.colors':'จำนวนสี / เลเยอร์','lbl.sizefrom':'กำหนดขนาดจาก','lbl.signtype':'ประเภทป้าย (โครงสร้าง 3 มิติ + ชุดชั้นตัด)',
   'lbl.return':'ความหนายกขอบ / ความลึกตัว (ซม.)','lbl.trimw':'ความหนาคิ้ว (ซม.)',
   'lbl.kerf':'Kerf ชดเชยลำ/ดอก','lbl.tool':'ขนาดดอกกัด / ปัดมุม',
-  'btn.convert':'⚡ แปลงเป็นเส้นตัด','btn.layerset':'🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)',
+  'btn.convert':'🏭 สร้างไฟล์สั่งผลิต (.ai + ชุดชั้นตัด + 3 มิติ)','btn.layerset':'🏭 ชุดชั้นตัด + 3 มิติ (ตามแบบป้าย)',
   'res.title':'ผลลัพธ์','res.none':'ยังไม่มีผล','res.cutfile':'ไฟล์ตัด',
   'dl.svg':'⬇ ดาวน์โหลด SVG (มม.)','dl.dxf':'⬇ DXF','dl.copy':'คัดลอก',
   'dl.ai':'🎨 ดาวน์โหลด .ai (ให้กราฟิค)','dl.stl':'🧊 ดาวน์โหลด STL',
@@ -3209,7 +3210,7 @@ var I18N={
   'lbl.colors':'Colours / layers','lbl.sizefrom':'Set size by','lbl.signtype':'Sign type (3D structure + cut layers)',
   'lbl.return':'Return depth (cm)','lbl.trimw':'Trim width (cm)',
   'lbl.kerf':'Kerf compensation','lbl.tool':'Tool diameter / corner radius',
-  'btn.convert':'⚡ Convert to cut lines','btn.layerset':'🏭 Cut Layers + 3D (by sign type)',
+  'btn.convert':'🏭 Build production files (.ai + cut layers + 3D)','btn.layerset':'🏭 Cut Layers + 3D (by sign type)',
   'res.title':'Result','res.none':'No result yet','res.cutfile':'Cut file',
   'dl.svg':'⬇ Download SVG (mm)','dl.dxf':'⬇ DXF','dl.copy':'Copy',
   'dl.ai':'🎨 Download .ai (for designer)','dl.stl':'🧊 Download STL',
@@ -5339,7 +5340,8 @@ $('goLayer').onclick=function(){
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
         '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
         '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
-        (j.ai_base64?'<button id="lsDlAi" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ .ai (โครงสร้าง+งานพิมพ์ แยกเลเยอร์)</button>':'')+
+        (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
+        '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ผลิตทั้งชุด (.ai + SVG + DXF)</button>'+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         '<button id="lsPresent" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 แผ่นนำเสนอแบบ</button>'+
         '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
@@ -5515,6 +5517,24 @@ $('goLayer').onclick=function(){
       mkThumb(function(img){ mkSrc(function(src){ doSave(img,src); }); });
     };
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
+    // ⬇ โหลด 'ไฟล์ผลิตทั้งชุด' ในคลิกเดียว: .ai (แยกเลเยอร์ทุกชิ้น) + SVG ชุดชั้นตัด + DXF แยก layer
+    window._dlAllProd=function(silent){
+      var nm=(lastName||'sign')+'_'+t, n=0;
+      var _go=function(blob,fn,ms){ setTimeout(function(){ var a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click();
+        setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400); }, ms); };
+      if(j.ai_base64){ var bi=atob(j.ai_base64),ua=new Uint8Array(bi.length);
+        for(var i=0;i<bi.length;i++)ua[i]=bi.charCodeAt(i);
+        _go(new Blob([ua],{type:'application/postscript'}), nm+'.ai', 0); n++; }
+      if(LS_SVGCUT){ _go(new Blob([LS_SVGCUT],{type:'image/svg+xml'}), nm+'_cut.svg', 500); n++; }
+      if(LSDXF_MAIN){ var b2=atob(LSDXF_MAIN),u2=new Uint8Array(b2.length);
+        for(var k=0;k<b2.length;k++)u2[k]=b2.charCodeAt(k);
+        _go(new Blob([u2],{type:'application/dxf'}), nm+'_cut.dxf', 1000); n++; }
+      if(!silent&&!n)alert('ยังไม่มีไฟล์ผลิต — กด "สร้างไฟล์สั่งผลิต" ใหม่อีกครั้งค่ะ');
+      return n; };
+    if($('lsDlAll'))$('lsDlAll').onclick=function(){ window._dlAllProd(false); };
+    // 🏭 ปุ่มเดียวจบ: สร้างเสร็จ -> โหลดไฟล์ผลิตให้อัตโนมัติ (ครั้งเดียวต่อการกด 1 ครั้ง)
+    if(window._autoDL){ window._autoDL=false; setTimeout(function(){ try{ window._dlAllProd(true); }catch(_e){} }, 350); }
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
     if($('lsDlPlate')&&j.mount_plate)$('lsDlPlate').onclick=function(){
       var mp=j.mount_plate;
@@ -5905,6 +5925,11 @@ function pick(f){
 // ---- vectorize ----
 $('go').onclick=function(){
   if(!fileObj)return;
+  // 🔗 เส้นตัดต้องออก 'ตามแบบป้าย' เสมอ — เลือกประเภทป้ายไว้ = วิ่งเข้าชุดชั้นตัด + 3 มิติ (เอนจิ้นเส้นเดียวกัน)
+  var _t9=($('mainSignType')&&$('mainSignType').value)||'';
+  if(_t9){ window._autoDL=true; try{ $('goLayer').click(); }catch(_e){} return; }   // 🏭 สร้าง + โหลดไฟล์ผลิตให้เลย
+  if(!confirm('ยังไม่ได้เลือก "ประเภทป้าย" — จะได้เส้นตัดแบนตามรูปเท่านั้น (ไม่มีชั้นตัด/ยกขอบ/3 มิติ)\n\nกด OK เพื่อทำต่อ · Cancel เพื่อไปเลือกประเภทป้ายก่อน')){
+    if($('mainSignType'))$('mainSignType').focus(); return; }
   $('after').innerHTML='<div style="text-align:center"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังแปลง...</div></div>';
   $('go').disabled=true;$('go').textContent='⏳ กำลังแปลง...';
   var fd=new FormData();
@@ -6943,7 +6968,9 @@ function _wallPickPieces(pieces, f){
       var fd2=new FormData(); fd2.append('file',f);
       fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
         var as=(j&&j.assets)?j.assets.filter(function(a){return a.kind!=='page'&&a.thumb;}):[];
-        if(j&&j.token&&as.length){ cb(as.map(function(a){return {png:a.thumb,w:a.w_mm,h:a.h_mm,
+        if(j&&j.token&&as.length){
+          window._asmFiles=window._asmFiles||{}; window._asmFiles[j.token]=f;   // 🔁 จำไฟล์ต้นทางไว้ อัปใหม่เองได้ถ้าเซิร์ฟเวอร์รีสตาร์ต
+          cb(as.map(function(a){return {png:a.thumb,w:a.w_mm,h:a.h_mm,
             meta:{token:j.token,page:a.page||0,bbox:a.bbox,w_mm:a.w_mm,h_mm:a.h_mm}};})); }
         else procRaster(f,cb);
       }).catch(function(){ procRaster(f,cb); });
@@ -7046,7 +7073,24 @@ function _wallPickPieces(pieces, f){
     rz.addEventListener('pointerup',function(e){ rs=null; });
     el.querySelector('.asmDel').onclick=function(){ var idx=_items.indexOf(it); if(idx>=0)_items.splice(idx,1); el.remove(); };
   }
-  function compose(ov){
+  // 🔁 กู้โทเคนอัตโนมัติ: เซิร์ฟเวอร์รีสตาร์ต (deploy ใหม่) -> ไฟล์ต้นทางหาย -> อัปไฟล์เดิมใหม่ให้เอง แล้วรวมต่อ
+  function _refreshTokens(cb){
+    var toks={}; _items.forEach(function(it){ if(it.meta&&it.meta.token)toks[it.meta.token]=1; });
+    var list=Object.keys(toks).filter(function(t){ return window._asmFiles&&window._asmFiles[t]; });
+    if(!list.length){ cb(false); return; }
+    var pend=list.length, any=false;
+    list.forEach(function(oldTok){
+      var fd=new FormData(); fd.append('file',window._asmFiles[oldTok]);
+      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+        if(j&&j.token){ any=true;
+          window._asmFiles[j.token]=window._asmFiles[oldTok];
+          _items.forEach(function(it){ if(it.meta&&it.meta.token===oldTok)it.meta.token=j.token; });   // bbox เดิมใช้ได้ (ไฟล์เดียวกัน)
+        }
+        if(--pend<=0)cb(any);
+      }).catch(function(){ if(--pend<=0)cb(any); });
+    });
+  }
+  function compose(ov,_retried){
     var minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
     _items.forEach(function(it){ var e=it.el; minx=Math.min(minx,e.offsetLeft); miny=Math.min(miny,e.offsetTop); maxx=Math.max(maxx,e.offsetLeft+e.offsetWidth); maxy=Math.max(maxy,e.offsetTop+e.offsetHeight); });
     // 🎯 โหมดเวกเตอร์: รวมฝั่ง server เป็น PDF เวกเตอร์แท้ (ไม่ raster) -> เส้นตัดคมเท่าต้นฉบับ
@@ -7057,22 +7101,38 @@ function _wallPickPieces(pieces, f){
       fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({token:_items[0].meta.token,items:items})})
       .then(function(r){return r.json();}).then(function(j){
+        // 🔁 ไฟล์ต้นทางหมดอายุ (deploy ใหม่ = เซิร์ฟเวอร์รีสตาร์ต) -> อัปไฟล์เดิมใหม่เงียบ ๆ แล้วรวมซ้ำ 1 รอบ
+        var _stale = (!j || !j.ai_base64 || (j.requested && j.count < j.requested));
+        if(_stale && !_retried){
+          if(dbtn)dbtn.textContent='⏳ กู้ไฟล์ต้นทาง...';
+          _refreshTokens(function(ok){
+            if(ok){ compose(ov,true); }
+            else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
+                   alert('รวมชิ้นไม่สำเร็จ — ลากไฟล์ .ai เข้ามาใหม่แล้วแตกชิ้นอีกครั้งค่ะ'); }
+          });
+          return;
+        }
         if(j&&j.ai_base64){
           var bin=atob(j.ai_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
           var f=new File([u],'composed_vector.pdf',{type:'application/pdf'});
-          // 🖼️ วาด preview เล็กจากชิ้นที่จัดวาง (ไฟล์ .pdf โชว์ thumbnail ตรงๆ ไม่ได้)
+          // 🖼️ preview: วาด 'ทันที' จาก <img> ที่โหลดอยู่บนกระดานแล้ว (ไม่ต้องรอ onload -> ไม่ชนกับ pick())
+          var _pvURL='';
           try{
             var pw=(maxx-minx)||1, ph2=(maxy-miny)||1, psc=Math.min(1, 560/pw);
             var pv=document.createElement('canvas'); pv.width=Math.max(2,Math.round(pw*psc)); pv.height=Math.max(2,Math.round(ph2*psc));
             var pgc=pv.getContext('2d'); pgc.fillStyle='#ffffff'; pgc.fillRect(0,0,pv.width,pv.height);
-            var pend=_items.length;
-            _items.forEach(function(it){ var im=new Image(); im.onload=function(){ var e=it.el;
-                pgc.drawImage(im,(e.offsetLeft-minx)*psc,(e.offsetTop-miny)*psc,e.offsetWidth*psc,e.offsetHeight*psc);
-                if(--pend<=0){ try{ if($('thumbImg')){$('thumbImg').src=pv.toDataURL('image/png');} if($('thumb'))$('thumb').style.display=''; }catch(_e){} } };
-              im.onerror=function(){ if(--pend<=0){ try{ if($('thumbImg')){$('thumbImg').src=pv.toDataURL('image/png');} if($('thumb'))$('thumb').style.display=''; }catch(_e){} } }; im.src=it.png; });
+            _items.forEach(function(it){ var e=it.el, im=e&&e.querySelector('img');
+              if(im&&im.complete&&im.naturalWidth){ try{ pgc.drawImage(im,(e.offsetLeft-minx)*psc,(e.offsetTop-miny)*psc,e.offsetWidth*psc,e.offsetHeight*psc); }catch(_x){} } });
+            _pvURL=pv.toDataURL('image/png');
           }catch(_e){}
+          // ⚠️ แจ้งทันทีถ้าบางชิ้นรวมไม่สำเร็จ (เดิมเงียบ -> เห็นแค่ชิ้นเดียวแล้วงง)
+          if(j.requested&&j.count&&j.count<j.requested){
+            alert('⚠️ รวมได้ '+j.count+' จาก '+j.requested+' ชิ้น\n'+((j.fails||[]).join('\n')||'')+'\n\nถ้าขึ้นว่า "ไฟล์ต้นทางหมดอายุ" ให้ลากไฟล์เข้ามาใหม่แล้วแตกชิ้นอีกรอบค่ะ');
+          }
           ov.remove();
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
+          // ตั้งภาพพรีวิว 'หลัง' pick() เสมอ (pick จะซ่อน thumb ของไฟล์เวกเตอร์)
+          try{ if(_pvURL&&$('thumbImg')){ $('thumbImg').src=_pvURL; if($('thumb')){$('thumb').style.display='block';} } }catch(_e){}
           if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
           setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\nกรอกขนาด "กว้าง (ซม.)" ตามที่ต้องการ → เลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย'); },100);
         } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
