@@ -1550,11 +1550,26 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
         #    (ไฟล์ AI ใช้สีขาวทาทับเป็น knockout บ่อย — geometry ล้วนอ่านสีไม่ได้ จะได้ก้อนตัน/เพี้ยน)
         #    เวกเตอร์คุม DPI ได้เอง -> 4000px = คมระดับผลิตจริง (±0.3 มม.)
         full = None
+        # 🥇 เส้นทางที่ 1 (ดีที่สุด): ไฟล์เวกเตอร์ -> ดึง 'เส้นโค้งจริงในไฟล์' มาใช้เป็นเส้นตัดตรง ๆ
+        #    (แบบเดียวกับที่ปุ่มแปลงเป็นเส้นตัดทำกับไฟล์ .ai — ไม่ trace เลย ตัวหนังสือเล็กจึงโค้งเนียน 100%)
+        _file_subs = None
+        try:
+            _fp = vector_import.full_pieces_mm(inp, float(real_width_mm))
+            _fs2 = []
+            for _pc in (_fp or []):
+                for _sp in (_pc.get("subs") or []):
+                    if _sp.get("segs"):
+                        _fs2.append({"start": _sp["start"], "closed": _sp.get("closed", True), "segs": _sp["segs"]})
+            if len(_fs2) >= 3:
+                _file_subs = _fs2
+        except Exception:
+            _file_subs = None
         # 🏆 เส้นทางหลัก: เอนจิ้นเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' (vtracer Bézier) — เนียน/คม/มุมชัด ตามที่พิสูจน์แล้วหน้างาน
         try:
             import fitz as _fzv
             _dv = _fzv.open(inp); _pgv = _dv[0]
-            _zv = max(1.0, min(12.0, 3600.0 / max(1.0, _pgv.rect.width)))
+            # 🔍 7200px: เส้นขนแมวในโลโก้ (เช่น เกลียวเขาแพะ กว้าง ~0.08 มม.) ได้ 2-3 พิกเซล -> ไม่ขาดเป็นท่อน
+            _zv = max(1.0, min(20.0, 7200.0 / max(1.0, _pgv.rect.width)))
             _pixv = _pgv.get_pixmap(matrix=_fzv.Matrix(_zv, _zv), alpha=False)
             _vpng = inp + ".vtrace.png"; _pixv.save(_vpng); _dv.close()
             _sv0 = _CUT_SMOOTH.get("mm", 0.0)
@@ -1655,6 +1670,25 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             pass                                        # ✅ vtracer สำเร็จ — ใช้ผลนั้นเลย
         except Exception:
             full = None
+        # 🥇 ถ้าอ่านเส้นจากไฟล์ได้ -> ใช้ 'เส้นในไฟล์' เป็นเส้นตัด (คมกว่า trace ทุกกรณี)
+        #    จัดพิกัดให้ตรงกับรูปทรงที่ใช้คำนวณ (bbox เดียวกัน) แล้วแทนที่เส้นดิบของ vtracer
+        if _file_subs and full is not None and not full.is_empty:
+            try:
+                _xs3 = []; _ys3 = []
+                for _sp in _file_subs:
+                    _xs3.append(_sp["start"][0]); _ys3.append(_sp["start"][1])
+                    for _sg in _sp["segs"]:
+                        _xs3.append(_sg[-1][0]); _ys3.append(_sg[-1][1])
+                _fb = (min(_xs3), min(_ys3), max(_xs3), max(_ys3))
+                _gb = full.bounds
+                _sc3 = (_gb[2] - _gb[0]) / max(1e-6, (_fb[2] - _fb[0]))
+                _sc3y = (_gb[3] - _gb[1]) / max(1e-6, (_fb[3] - _fb[1]))
+                if abs(_sc3y - _sc3) / max(1e-6, _sc3) < 0.05:          # สัดส่วนตรงกัน -> ใช้ได้
+                    _RAW_SUBS["subs"] = _subs_affine(_file_subs, _sc3,
+                                                     _gb[0] - _fb[0] * _sc3, _gb[1] - _fb[1] * _sc3)
+                    _TRACE_ENG["mode"] = "file-vector"
+            except Exception:
+                pass
         if full is None or full.is_empty:               # fallback: เส้นทางเวกเตอร์ตรง (แบบเดิม)
             pcs = vector_import.full_pieces_mm(inp, real_width_mm)
             pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
@@ -2186,6 +2220,36 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in (sticker_geom.geoms if sticker_geom.geom_type == "MultiPolygon" else [sticker_geom]):
             if pg.geom_type == "Polygon" and not pg.is_empty:
                 parts.append('<path class="w3d-stick" d="%s" fill="#15181d" fill-rule="evenodd" opacity="0.92"/>' % faced(pg, F))
+        # 📍 ชี้ตำแหน่งสติ๊กเกอร์บนตัวป้าย: กรอบประ + เส้นชี้ + ป้ายบอกขนาด/ตำแหน่งจริง (ซม.)
+        try:
+            _sb = sticker_geom.bounds
+            _p0 = F((_sb[0], _sb[1])); _p1 = F((_sb[2], _sb[3]))
+            _bw = _p1[0] - _p0[0]; _bh = _p1[1] - _p0[1]
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#ef4444" '
+                         'stroke-width="%.2f" stroke-dasharray="%.1f %.1f" rx="%.1f"/>'
+                         % (_p0[0] - fs * 0.25, _p0[1] - fs * 0.25, _bw + fs * 0.5, _bh + fs * 0.5,
+                            lw * 1.4, fs * 0.35, fs * 0.25, fs * 0.2))
+            _lx = _p1[0] + fs * 1.2; _ly = max(fs * 2.6, _p0[1] - fs * 1.0)
+            # ตำแหน่งจริงบนป้าย: วัดจากมุมซ้าย-บนของตัวป้าย (ซม.)
+            _fx = (_sb[0] - b[0]) / 10.0; _fy = (_sb[1] - b[1]) / 10.0
+            _txt = ("Sticker (ไม่ตัด) %.1f×%.1f ซม. · จากซ้าย %.1f ซม. · จากบน %.1f ซม."
+                    % ((_sb[2] - _sb[0]) / 10.0, (_sb[3] - _sb[1]) / 10.0, _fx, _fy))
+            _tw2 = len(_txt) * fs * 0.42 + fs
+            _Wt0 = padL + W + dvx + padR                  # กว้างภาพรวม -> กันป้ายล้นขอบขวา
+            if _lx + _tw2 > _Wt0 - fs * 0.5:
+                _lx = max(fs * 0.5, _Wt0 - fs * 0.5 - _tw2)
+                _ly = max(fs * 2.4, _p0[1] - fs * 2.2)
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#fff1f2" stroke="#ef4444" stroke-width="%.2f"/>'
+                         % (_lx, _ly - fs * 1.05, _tw2, fs * 1.5, fs * 0.25, lw))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#b91c1c">%s</text>'
+                         % (_lx + fs * 0.4, _ly + fs * 0.1, fs * 0.78, _esc(_txt)))
+            # เส้นชี้ + จุดแดง วาดหลังป้าย -> ชี้จากป้ายไปยังตำแหน่งสติ๊กเกอร์จริงเสมอ
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#ef4444" stroke-width="%.2f"/>'
+                         % (min(_lx + _tw2 * 0.5, _p1[0] + fs * 1.2), _ly + fs * 0.45,
+                            (_p0[0] + _p1[0]) / 2.0, _p0[1], lw * 1.2))
+            parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#ef4444"/>' % ((_p0[0] + _p1[0]) / 2.0, _p0[1], lw * 2.2))
+        except Exception:
+            pass
     # 🔦 รูฉลุจาก 'เส้นตัดจริง' (subs) — ตรงกับไฟล์ .ai 100% (เขาเกลียว/เส้นบางไม่หาย)
     _bore_d = ""
     if bore_subs:
@@ -3235,7 +3299,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🧭 รายงานเอนจิ้นที่ใช้จริง (จะได้รู้ทันทีว่าไฟล์เอนจิ้นบนเซิร์ฟเวอร์เป็นรุ่นไหน)
         try:
             _eng9 = _TRACE_ENG.get("mode", "")
-            if _eng9 == "vtracer-button":
+            if _eng9 == "file-vector":
+                warns.append("🥇 เส้นตัด = เส้นโค้งจริงในไฟล์ .ai/.pdf (ไม่ผ่านการ trace) — คมที่สุด")
+            elif _eng9 == "vtracer-button":
                 warns.append("🧭 เอนจิ้นเส้นตัด: vtracer ค่าเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' 100%")
             _TRACE_ENG["mode"] = ""
         except Exception:
@@ -3781,10 +3847,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
 .pbtn{background:#1e3a5f;color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:Prompt;font-weight:700;cursor:pointer;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .pbtn.pdf{background:#dc2626}.pbtn.jpg{background:#0d9488}
 @media print{
-  html,body{background:#fff;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .sheet{box-shadow:none;width:100%;border-radius:0}
+  html,body{background:#fff;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;height:auto;overflow:hidden}
+  .sheet{box-shadow:none;border-radius:0;
+    /* 📄 บังคับ 1 หน้า A3 แนวนอน เสมอ: กว้างเต็มพื้นที่พิมพ์ · ย่อทั้งแผ่นด้วย --fit (คำนวณจาก JS) */
+    width:1560px;transform:scale(var(--fit,1));transform-origin:top left}
   .expbar{display:none}
-  .big3d .imgwrap svg{max-height:210px}.imgwrap svg{max-height:170px}
   .card,.big3d{break-inside:avoid;page-break-inside:avoid}
   .masonry{gap:9px}
 }
@@ -3845,6 +3912,18 @@ var JOBNO="__JOBNO__";
   hook('siteFile','siteImg','siteBox'); hook('refFile','refImg','refBox');
 })();
 function _busy(b){var e=document.getElementById('expbar');if(e)e.style.opacity=b?.4:1;}
+// 📄 บังคับ A3 แนวนอน '1 แผ่นเสมอ' — พื้นที่พิมพ์ 408×285มม. : ถ้าเนื้อหาสูงเกินสัดส่วน ให้ย่อทั้งแผ่นพอดีหน้า
+function _fitOnePage(){
+  try{
+    var sh=document.querySelector('.sheet'); if(!sh)return;
+    var W=1560.0, targetH=W*(285.0/408.0);            // สูงสุดที่ 1 หน้า A3 รับได้ (ตามสัดส่วนพื้นที่พิมพ์ 408×285มม.)
+    var h=sh.scrollHeight||sh.offsetHeight||1;
+    var fit=Math.min(1.0, targetH/h);
+    document.documentElement.style.setProperty('--fit', String(fit));
+  }catch(e){}
+}
+window.addEventListener('beforeprint', _fitOnePage);
+window.addEventListener('load', _fitOnePage);
 function _cap(cb){_busy(true);
   var fr=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
   fr.then(function(){return new Promise(function(r){setTimeout(r,150);});}).then(function(){
