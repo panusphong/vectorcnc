@@ -1365,7 +1365,7 @@ select.numin{cursor:pointer}
       <div class="step">3) เลือกโหมด (อัตโนมัติ/ตัดชิ้น/เส้น) + จำนวนสี</div>
       <div class="step">4) <b>กำหนดขนาด</b> (กว้าง/สูง/สูงตัวอักษร มม.) — สำคัญมากกับภาพ JPG</div>
       <div class="step">5) ตั้ง Kerf (ชดเชยลำ/ดอก) + ดอกกัด/ปัดมุม ถ้าต้องการ</div>
-      <div class="step">6) กด "⚡ แปลงเป็นเส้นตัด" → ดาวน์โหลด SVG/DXF</div>
+      <div class="step">6) กด "🏭 สร้างไฟล์สั่งผลิต" → ได้ .ai + ชุดชั้นตัด (SVG) + DXF อัตโนมัติ</div>
       <div class="tip">💡 DXF → CypCut/fiber · SVG → LightBurn · Fusion 360: Insert DXF · ดูไฟล์ให้เนียนสุดใน LibreCAD/Inkscape/LightBurn</div>
     </div>
 
@@ -3918,7 +3918,8 @@ var MODE='auto';
 function paintMode(){
   var btns=document.querySelectorAll('#modeSeg .sbtn');
   for(var i=0;i<btns.length;i++){var on=btns[i].getAttribute('data-mode')===MODE;btns[i].classList.toggle('on',on);}
-  $('go').textContent=MODE==='lineart'?'⚡ ลากเส้นตัวอักษร':'⚡ แปลงเป็นเส้นตัด';
+  // 🏭 ปุ่มเดียวจบ — ชื่อคงที่เสมอ (เดิมโหมด lineart/auto เขียนทับชื่อปุ่มกลับไปเป็นของเก่า)
+  $('go').textContent=MODE==='lineart'?'🏭 สร้างไฟล์สั่งผลิต (ลากเส้นตัวอักษร)':'🏭 สร้างไฟล์สั่งผลิต (.ai + ชุดชั้นตัด + 3 มิติ)';
 }
 (function(){var btns=document.querySelectorAll('#modeSeg .sbtn');
   for(var i=0;i<btns.length;i++){btns[i].onclick=function(){MODE=this.getAttribute('data-mode');paintMode();};}
@@ -5285,7 +5286,7 @@ $('goLayer').onclick=function(){
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
-  fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0.8'));
+  fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
   fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
@@ -5338,10 +5339,10 @@ $('goLayer').onclick=function(){
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'+
         '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
-        '<button id="lsDlSvg" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ SVG</button>'+
-        '<button id="lsDlMain" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ DXF (แยก layer)</button>'+
+        '<button id="lsDlSvg" style="display:none">SVG</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
+        '<button id="lsDlMain" style="display:none">DXF</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
         (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
-        '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ผลิตทั้งชุด (.ai + SVG + DXF)</button>'+
+        '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ .ai (ชุดชั้นตัด แยกเลเยอร์)</button>'+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         '<button id="lsPresent" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 แผ่นนำเสนอแบบ</button>'+
         '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
@@ -5356,8 +5357,8 @@ $('goLayer').onclick=function(){
           '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#0f766e;font-weight:700" title="รีดคลื่นพิกเซลจากภาพต้นฉบับ — ยิ่งมากยิ่งเนียน (มุมคมยังคงอยู่)">🧈 เนียนเส้นตัด'+
           '<select id="cutSmooth" onchange="window.CUTSM=this.value;try{$(\'goLayer\').click();}catch(_e){}" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #5eead4;border-radius:6px">'+
-            ['0','0.4','0.8','1.2','1.6'].map(function(v){var lb={'0':'ปิด (ตามภาพเป๊ะ)','0.4':'เบา 0.4 มม.','0.8':'ปกติ 0.8 มม.','1.2':'มาก 1.2 มม.','1.6':'สูงสุด 1.6 มม.'}[v];
-              return '<option value="'+v+'"'+(String(window.CUTSM||'0.8')===v?' selected':'')+'>'+lb+'</option>';}).join('')+
+            ['0','0.4','0.8','1.2','1.6'].map(function(v){var lb={'0':'ปิด (เหมือนปุ่มเป๊ะ)','0.4':'เบา 0.4 มม.','0.8':'ปกติ 0.8 มม.','1.2':'มาก 1.2 มม.','1.6':'สูงสุด 1.6 มม.'}[v];
+              return '<option value="'+v+'"'+(String(window.CUTSM!=null?window.CUTSM:'0')===v?' selected':'')+'>'+lb+'</option>';}).join('')+
           '</select></label>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">🌡️'+
           '<select id="glowK" onchange="_setGLK(this.value)" title="อุณหภูมิสีแสง (Kelvin)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
@@ -5446,7 +5447,7 @@ $('goLayer').onclick=function(){
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
       fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
-      fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0.8'));
+      fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -5518,20 +5519,17 @@ $('goLayer').onclick=function(){
     };
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
     // ⬇ โหลด 'ไฟล์ผลิตทั้งชุด' ในคลิกเดียว: .ai (แยกเลเยอร์ทุกชิ้น) + SVG ชุดชั้นตัด + DXF แยก layer
+    // ⬇ โหลดไฟล์ผลิต = '.ai ชุดชั้นตัด แยกเลเยอร์' อย่างเดียว (พี่ไม่ใช้ SVG/DXF แล้ว)
     window._dlAllProd=function(silent){
-      var nm=(lastName||'sign')+'_'+t, n=0;
-      var _go=function(blob,fn,ms){ setTimeout(function(){ var a=document.createElement('a');
-        a.href=URL.createObjectURL(blob); a.download=fn; document.body.appendChild(a); a.click();
-        setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400); }, ms); };
-      if(j.ai_base64){ var bi=atob(j.ai_base64),ua=new Uint8Array(bi.length);
-        for(var i=0;i<bi.length;i++)ua[i]=bi.charCodeAt(i);
-        _go(new Blob([ua],{type:'application/postscript'}), nm+'.ai', 0); n++; }
-      if(LS_SVGCUT){ _go(new Blob([LS_SVGCUT],{type:'image/svg+xml'}), nm+'_cut.svg', 500); n++; }
-      if(LSDXF_MAIN){ var b2=atob(LSDXF_MAIN),u2=new Uint8Array(b2.length);
-        for(var k=0;k<b2.length;k++)u2[k]=b2.charCodeAt(k);
-        _go(new Blob([u2],{type:'application/dxf'}), nm+'_cut.dxf', 1000); n++; }
-      if(!silent&&!n)alert('ยังไม่มีไฟล์ผลิต — กด "สร้างไฟล์สั่งผลิต" ใหม่อีกครั้งค่ะ');
-      return n; };
+      if(!j.ai_base64){ if(!silent)alert('ยังไม่มีไฟล์ .ai — กด "สร้างไฟล์สั่งผลิต" ใหม่อีกครั้งค่ะ'); return 0; }
+      var bi=atob(j.ai_base64),ua=new Uint8Array(bi.length);
+      for(var i=0;i<bi.length;i++)ua[i]=bi.charCodeAt(i);
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([ua],{type:'application/postscript'}));
+      a.download=(lastName||'sign')+'_'+t+'.ai';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400);
+      return 1; };
     if($('lsDlAll'))$('lsDlAll').onclick=function(){ window._dlAllProd(false); };
     // 🏭 ปุ่มเดียวจบ: สร้างเสร็จ -> โหลดไฟล์ผลิตให้อัตโนมัติ (ครั้งเดียวต่อการกด 1 ครั้ง)
     if(window._autoDL){ window._autoDL=false; setTimeout(function(){ try{ window._dlAllProd(true); }catch(_e){} }, 350); }
