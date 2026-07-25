@@ -1771,14 +1771,76 @@ _METAL_TEX = {
 }
 
 
+_TEXIMG_CACHE = {}
+
+
+def _tex_swatch_clean(uri):
+    """🪵 ครอป swatch วัสดุอัตโนมัติที่ 'ฝั่งเซิร์ฟเวอร์': ตัดหัวข้อ/ฉลาก/พื้นเทาในรูปแค็ตตาล็อกออก
+       เหลือเฉพาะ 'เนื้อวัสดุ' (บริเวณที่มีสีจัด เช่น ลายไม้/ทอง) — ตัวหนังสือขาว-ดำ + พื้นเทา sat ต่ำ จึงถูกตัด
+       ทำงานกับพื้นผิวที่ผู้ใช้บันทึกไว้แล้วด้วย (ไม่ต้องอัปโหลดใหม่)"""
+    if not uri or not str(uri).startswith("data:image"):
+        return uri, 1.0
+    _k = hash(uri)
+    if _k in _TEXIMG_CACHE:
+        return _TEXIMG_CACHE[_k]
+    out = uri; _aspect = 1.0
+    try:
+        import base64 as _b64, io as _io, numpy as _np
+        from PIL import Image as _Im
+        _b = str(uri).split(",", 1)[1]
+        im = _Im.open(_io.BytesIO(_b64.b64decode(_b))).convert("RGB")
+        a = _np.asarray(im).astype(_np.int16)
+        sat = a.max(2) - a.min(2)                      # ความจัดของสี: เนื้อไม้/ทอง สูง · เทา/ขาว/ดำ ต่ำ
+        m = (sat > 20).astype(_np.float32)
+        H, W = m.shape
+
+        def _run(prof):
+            """ช่วงต่อเนื่องที่ยาวสุดซึ่ง 'มีเนื้อวัสดุ' (เทียบกับค่าสูงสุดของโปรไฟล์เอง -> ยืดหยุ่นทุกรูป)"""
+            thr = max(0.12, float(prof.max()) * 0.55)
+            on = prof >= thr
+            best = (0, -1); s = None
+            for i, v in enumerate(on):
+                if v and s is None:
+                    s = i
+                elif (not v) and s is not None:
+                    if i - s > best[1] - best[0]:
+                        best = (s, i - 1)
+                    s = None
+            if s is not None and len(on) - s > best[1] - best[0]:
+                best = (s, len(on) - 1)
+            return best
+        y0, y1 = _run(m.mean(1)); x0, x1 = _run(m.mean(0))
+        if not (y1 - y0 > H * 0.06 and x1 - x0 > W * 0.06):
+            x0 = int(W * 0.20); x1 = int(W * 0.80); y0 = int(H * 0.20); y1 = int(H * 0.80)
+        iy = max(1, int((y1 - y0) * 0.06)); ix = max(1, int((x1 - x0) * 0.06))   # หดขอบกันเส้นกรอบ/เงา
+        y0 += iy; y1 -= iy; x0 += ix; x1 -= ix
+        if x1 - x0 > 12 and y1 - y0 > 12:
+            im = im.crop((x0, y0, x1, y1))
+        w2, h2 = im.size                               # ⚠️ ไม่บังคับจัตุรัส (แถบวัสดุมักเตี้ย) — คงสัดส่วนไว้ปูเป็น tile
+        if max(w2, h2) > 460:
+            _s3 = 460.0 / max(w2, h2)
+            im = im.resize((max(8, int(w2 * _s3)), max(8, int(h2 * _s3))), _Im.LANCZOS)
+        _bo = _io.BytesIO(); im.save(_bo, "JPEG", quality=88)
+        out = "data:image/jpeg;base64," + _b64.b64encode(_bo.getvalue()).decode()
+        _aspect = float(im.size[1]) / max(1.0, float(im.size[0]))
+    except Exception:
+        out = uri; _aspect = 1.0
+    _TEXIMG_CACHE[_k] = (out, _aspect)
+    if len(_TEXIMG_CACHE) > 24:
+        _TEXIMG_CACHE.pop(next(iter(_TEXIMG_CACHE)))
+    return out, _aspect
+
+
 def _metal_defs(tex, S, tex_img=""):
     """คืน (defs_svg, fill_url, hairline?) สำหรับพื้นผิวโลหะ · tex ไม่รู้จัก -> (None,None,False)
        tex_img: data URI รูป swatch วัสดุ (พื้นผิวที่ผู้ใช้เพิ่มเอง เช่น ลายไม้) -> ปูเป็น pattern เต็มหน้า"""
     if tex_img and str(tex_img).startswith("data:image"):
-        _t = max(180.0, S * 0.5)                       # 🔁 tile ซ้ำขนาดสมจริง (~ครึ่งป้าย) — ไม่ยืดรูปยักษ์จนตัวหนังสือ/ฉลากในภาพโผล่
+        tex_img, _ar = _tex_swatch_clean(tex_img)       # 🪵 ตัดหัวข้อ/ฉลากในรูปแค็ตตาล็อกออกก่อนปูลาย (+ สัดส่วน h/w)
+        _tw = max(240.0, S * 0.95)                     # 🔁 tile ใหญ่พอไม่เห็นรอยต่อ แต่ยังเป็นลายซ้ำ (ไม่ยืดรูปยักษ์)
+        _th = max(40.0, _tw * float(_ar or 1.0))       # คงสัดส่วนรูปจริง -> ลายไม้ไม่ยืดบิด
         d = ('<defs><pattern id="mtxg" patternUnits="userSpaceOnUse" width="%.1f" height="%.1f">'
-             '<image href="%s" xlink:href="%s" x="0" y="0" width="%.1f" height="%.1f" preserveAspectRatio="xMidYMid slice"/>'
-             '</pattern></defs>' % (_t, _t, tex_img, tex_img, _t, _t))
+             '<image href="%s" xlink:href="%s" x="0" y="0" width="%.1f" height="%.1f" preserveAspectRatio="none"/>'
+             '</pattern></defs>' % (_tw, _th, tex_img, tex_img, _tw, _th))
         return d, "url(#mtxg)", False
     t = _METAL_TEX.get(str(tex or ""))
     if not t:
