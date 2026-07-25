@@ -1366,15 +1366,40 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             _amin_px = max(8.0, 0.8 / (_mmpp * _mmpp))   # เกณฑ์เศษ = 0.8 ตร.มม. จริง (ไม่ผูกกับ DPI)
 
             def _ring_mm(_c):
-                """contour px -> วงแหวน มม. ผ่านตัว fit เส้นโค้ง (คงมุมจริง เบี่ยง < ~0.06มม.) -> เส้นเนียนแบบเวกเตอร์"""
-                _pts = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _c[::max(1, len(_c) // 1200)]]
+                """contour px -> วงแหวน มม. เนียนแบบเวกเตอร์:
+                   1) Gaussian วนปิดที่ความละเอียดเต็ม -> ลบรอยบันไดพิกเซล (σ~1.3px เล็กกว่าดีเทลจริงมาก)
+                   2) ลดจุด -> fit Bézier (smooth_ring) -> sample กลับเป็นจุดถี่ ~0.25มม.
+                   ⚠️ เดิมคืน dict ของ smooth_ring ตรงๆ -> Polygon ใช้ไม่ได้ -> ระบบหล่นไปใช้จุดพิกเซลดิบ = เส้นยึกยัก"""
+                _arr = _c[:, 0, :].astype(float)
+                if len(_arr) < 3:
+                    return None
+                if len(_arr) >= 11:
+                    _k = 4; _sig = 1.3
+                    _w = _np.exp(-0.5 * (_np.arange(-_k, _k + 1) / _sig) ** 2); _w = _w / _w.sum()
+                    _xx = _np.convolve(_np.r_[_arr[-_k:, 0], _arr[:, 0], _arr[:_k, 0]], _w, 'valid')
+                    _yy = _np.convolve(_np.r_[_arr[-_k:, 1], _arr[:, 1], _arr[:_k, 1]], _w, 'valid')
+                    _arr = _np.c_[_xx, _yy]
+                _st = max(1, len(_arr) // 1200); _arr = _arr[::_st]
+                _pts = [(float(_x) * _mmpp, float(_y) * _mmpp) for _x, _y in _arr]
                 if len(_pts) < 3:
                     return None
                 try:
                     from vectorcnc import curvefit as _cf
-                    _r = _cf.smooth_ring(_pts, err=0.06, corner_deg=20, dedup=0.02)
-                    if _r and len(_r) >= 3:
-                        return _r
+                    _r = _cf.smooth_ring(_pts, err=0.10, corner_deg=26, dedup=0.02)
+                    if _r and isinstance(_r, dict) and _r.get("segs"):
+                        _out = [_r["start"]]; _c0 = _r["start"]
+                        for _sg in _r["segs"]:
+                            _p1, _p2, _p3 = _sg[1], _sg[2], _sg[3]
+                            _ln = (_np.hypot(_p1[0] - _c0[0], _p1[1] - _c0[1]) + _np.hypot(_p2[0] - _p1[0], _p2[1] - _p1[1])
+                                   + _np.hypot(_p3[0] - _p2[0], _p3[1] - _p2[1]))
+                            _ns = max(6, min(48, int(_ln / 0.25) + 2))
+                            for _ii in range(1, _ns + 1):
+                                _t = _ii / _ns; _mt = 1.0 - _t
+                                _out.append((_mt**3 * _c0[0] + 3 * _mt * _mt * _t * _p1[0] + 3 * _mt * _t * _t * _p2[0] + _t**3 * _p3[0],
+                                             _mt**3 * _c0[1] + 3 * _mt * _mt * _t * _p1[1] + 3 * _mt * _t * _t * _p2[1] + _t**3 * _p3[1]))
+                            _c0 = _p3
+                        if len(_out) >= 4:
+                            return _out
                 except Exception:
                     pass
                 return _pts
