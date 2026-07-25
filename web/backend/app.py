@@ -1071,6 +1071,29 @@ def _punch_fit_in_box(logo, box_g, pad_mm):
         return logo
 
 
+def _punch_logo_clean(logo, min_area_mm2=20.0, min_width_mm=1.0, smooth_mm=0.15):
+    """🔦 ทำความสะอาด logo สำหรับ 'ฉลุโบ๋' บนหน้าโลหะ — คุณภาพไฟล์ตัดต้องผลิตได้จริง
+       - ทิ้งเศษจิ๋ว (< min_area) และชิ้นบางเกินฉลุ (< min_width) ที่เครื่องตัดทำไม่ได้/หลุดร่วง
+       - simplify เบา ๆ ลบจุดหยักจากการ trace ภาพ -> เส้น CNC วิ่งลื่น ขอบเนียน
+       คืน (logo_สะอาด, จำนวนเศษที่ทิ้ง)"""
+    if logo is None or logo.is_empty:
+        return logo, 0
+    g, drop = _clean_layer(logo, min_area_mm2=min_area_mm2, min_width_mm=min_width_mm)
+    if g is None or g.is_empty:
+        return logo, 0                                # เศษทั้งหมด? -> คงของเดิมไว้ (กันไฟล์ว่าง)
+    try:
+        g2 = g.simplify(float(smooth_mm), preserve_topology=True)
+        if g2 is not None and not g2.is_empty:
+            g = g2
+    except Exception:
+        pass
+    try:
+        g = g.buffer(0)                                # ซ่อม self-intersection ที่อาจเกิดจาก simplify
+    except Exception:
+        pass
+    return g, drop
+
+
 def _wrap_silhouette(full, bridge_mm):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
@@ -2524,6 +2547,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             _punch_logo = None
         out_layers = []
         warns = []
+        # 🔦 คุณภาพไฟล์ตัดกล่องฉลุ: ล้างเศษจิ๋ว/ชิ้นบางเกินฉลุ + ลบขอบหยักจาก trace ก่อนเจาะ
+        if _punch_logo is not None:
+            _punch_logo, _pdrop = _punch_logo_clean(_punch_logo)
+            if _pdrop:
+                warns.append("หน้าโลหะฉลุ: ตัดเศษ logo จิ๋ว/บางเกินฉลุ %d ชิ้นออกจากไฟล์ตัด (เครื่องตัดทำไม่ได้จริง)" % _pdrop)
+            try:                                        # ⚠️ รูในตัวอักษร (counter เช่น a o ฿) = เหล็กก้อนกลางจะหลุดตอนฉลุ
+                _pl = list(_punch_logo.geoms) if _punch_logo.geom_type == "MultiPolygon" else [_punch_logo]
+                _nctr = sum(len(p.interiors) for p in _pl if p.geom_type == "Polygon")
+                if _nctr:
+                    warns.append("พบ 'รูในตัวอักษร' %d จุด (เช่น ช่องใน a/o) — เหล็กก้อนกลางจะหลุดตอนฉลุ "
+                                 "ต้องเพิ่มสะพานเชื่อม (stencil bridge) ในไฟล์ก่อนตัด หรือยึดด้วยอะคริลิคด้านหลัง" % _nctr)
+            except Exception:
+                pass
         for L in ([] if _neon else rec["layers"]):
             off = float(L["off"]); kind = L.get("kind", "solid")
             base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
@@ -3073,6 +3109,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                                              xoff=_laDX, yoff=_laDY)
             except Exception:
                 pass
+        if _punch_logo is not None:                    # 🔦 ล้างเศษจิ๋ว + ขอบหยัก ให้ตรงกับไฟล์ตัดหน้าออกแบบ
+            _punch_logo, _ = _punch_logo_clean(_punch_logo)
         b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
         # perspective 3D
         fo = None; bore = None
