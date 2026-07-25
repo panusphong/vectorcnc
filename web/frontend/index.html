@@ -6860,6 +6860,17 @@ function _wallPickPieces(pieces, f){
         if(j&&j.ai_base64){
           var bin=atob(j.ai_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
           var f=new File([u],'composed_vector.pdf',{type:'application/pdf'});
+          // 🖼️ วาด preview เล็กจากชิ้นที่จัดวาง (ไฟล์ .pdf โชว์ thumbnail ตรงๆ ไม่ได้)
+          try{
+            var pw=(maxx-minx)||1, ph2=(maxy-miny)||1, psc=Math.min(1, 560/pw);
+            var pv=document.createElement('canvas'); pv.width=Math.max(2,Math.round(pw*psc)); pv.height=Math.max(2,Math.round(ph2*psc));
+            var pgc=pv.getContext('2d'); pgc.fillStyle='#ffffff'; pgc.fillRect(0,0,pv.width,pv.height);
+            var pend=_items.length;
+            _items.forEach(function(it){ var im=new Image(); im.onload=function(){ var e=it.el;
+                pgc.drawImage(im,(e.offsetLeft-minx)*psc,(e.offsetTop-miny)*psc,e.offsetWidth*psc,e.offsetHeight*psc);
+                if(--pend<=0){ try{ if($('thumbImg')){$('thumbImg').src=pv.toDataURL('image/png');} if($('thumb'))$('thumb').style.display=''; }catch(_e){} } };
+              im.onerror=function(){ if(--pend<=0){ try{ if($('thumbImg')){$('thumbImg').src=pv.toDataURL('image/png');} if($('thumb'))$('thumb').style.display=''; }catch(_e){} } }; im.src=it.png; });
+          }catch(_e){}
           ov.remove();
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
           if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
