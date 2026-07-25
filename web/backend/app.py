@@ -1144,7 +1144,7 @@ def _smooth_cut(geom, r_mm=0.45):
         return geom
 
 
-def _punch_logo_clean(logo, min_area_mm2=8.0, min_width_mm=0.5, smooth_mm=0.12):
+def _punch_logo_clean(logo, min_area_mm2=1.0, min_width_mm=0.15, smooth_mm=0.0):
     """🔦 ทำความสะอาด logo สำหรับ 'ฉลุโบ๋' บนหน้าโลหะ — คุณภาพไฟล์ตัดต้องผลิตได้จริง
        - ทิ้งเศษจิ๋ว (< min_area) และชิ้นบางเกินฉลุ (< min_width) ที่เครื่องตัดทำไม่ได้/หลุดร่วง
        - simplify เบา ๆ ลบจุดหยักจากการ trace ภาพ -> เส้น CNC วิ่งลื่น ขอบเนียน
@@ -1154,12 +1154,13 @@ def _punch_logo_clean(logo, min_area_mm2=8.0, min_width_mm=0.5, smooth_mm=0.12):
     g, drop = _clean_layer(logo, min_area_mm2=min_area_mm2, min_width_mm=min_width_mm)
     if g is None or g.is_empty:
         return logo, 0                                # เศษทั้งหมด? -> คงของเดิมไว้ (กันไฟล์ว่าง)
-    try:
-        g2 = g.simplify(float(smooth_mm), preserve_topology=True)
-        if g2 is not None and not g2.is_empty:
-            g = g2
-    except Exception:
-        pass
+    if float(smooth_mm) > 0:            # ⚠️ ปิดเป็นค่าเริ่มต้น — simplify ทำให้รูปคลาดจากเส้นดิบ (รายละเอียดหาย)
+        try:
+            g2 = g.simplify(float(smooth_mm), preserve_topology=True)
+            if g2 is not None and not g2.is_empty:
+                g = g2
+        except Exception:
+            pass
     try:
         g = g.buffer(0)                                # ซ่อม self-intersection ที่อาจเกิดจาก simplify
     except Exception:
