@@ -5283,6 +5283,8 @@ $('goLayer').onclick=function(){
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   var _isPunch=(t==='4'||t==='21');   // 🔦 กล่องฉลุ: สูงกล่องส่งแยก (box_h_cm) — ไม่บีบสัดส่วนโลโก้
   var _isBoxT=(['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0);   // กล่องไฟ = backend คุมขนาดตรงเป๊ะ
+  // 📐 กล่องไฟ: ใช้ค่า 'กว้าง' จากแผงกล่องเสมอ (กันเคสค่าไม่ซิงก์เพราะไม่ได้พิมพ์ใหม่)
+  if(_isBoxT&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
@@ -5446,6 +5448,7 @@ $('goLayer').onclick=function(){
       try{ fd.append('design_notes',JSON.stringify(window._ls3dNoteData||[])); }catch(_e){}
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
+      if((['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0)&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
       fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
       fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
@@ -7091,10 +7094,14 @@ function _wallPickPieces(pieces, f){
   function compose(ov,_retried){
     var minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
     _items.forEach(function(it){ var e=it.el; minx=Math.min(minx,e.offsetLeft); miny=Math.min(miny,e.offsetTop); maxx=Math.max(maxx,e.offsetLeft+e.offsetWidth); maxy=Math.max(maxy,e.offsetTop+e.offsetHeight); });
-    // 🎯 โหมดเวกเตอร์: รวมฝั่ง server เป็น PDF เวกเตอร์แท้ (ไม่ raster) -> เส้นตัดคมเท่าต้นฉบับ
-    if(_K>0&&_items.length&&_items.every(function(it){return !!(it.meta&&it.meta.token);})){
-      var items=_items.map(function(it){ var e=it.el; return {token:it.meta.token,page:it.meta.page,bbox:it.meta.bbox,
-        x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K}; });
+    // 🎯 โหมดเวกเตอร์ผสม: มีชิ้นเวกเตอร์อย่างน้อย 1 ชิ้น -> รวมเป็น PDF เวกเตอร์ (ชิ้น PNG เช่นตัวหนังสือไทย ฝังเป็นภาพ)
+    //    เส้นเวกเตอร์คมเท่าต้นฉบับ 100% · ชิ้นภาพไม่ทำให้ทั้งงานกลายเป็น raster อีกต่อไป!
+    if(_K>0&&_items.length&&_items.some(function(it){return !!(it.meta&&it.meta.token);})){
+      var items=_items.map(function(it){ var e=it.el;
+        var base={x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K};
+        if(it.meta&&it.meta.token){ base.token=it.meta.token; base.page=it.meta.page; base.bbox=it.meta.bbox; }
+        else { base.png=it.png; }
+        return base; });
       var dbtn=ov.querySelector('#asmDone'); if(dbtn){dbtn.disabled=true;dbtn.textContent='⏳ กำลังรวมเวกเตอร์...';}
       fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({token:_items[0].meta.token,items:items})})
