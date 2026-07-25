@@ -1071,7 +1071,7 @@ def _punch_fit_in_box(logo, box_g, pad_mm):
         return logo
 
 
-def _punch_logo_clean(logo, min_area_mm2=20.0, min_width_mm=1.0, smooth_mm=0.15):
+def _punch_logo_clean(logo, min_area_mm2=8.0, min_width_mm=0.5, smooth_mm=0.12):
     """🔦 ทำความสะอาด logo สำหรับ 'ฉลุโบ๋' บนหน้าโลหะ — คุณภาพไฟล์ตัดต้องผลิตได้จริง
        - ทิ้งเศษจิ๋ว (< min_area) และชิ้นบางเกินฉลุ (< min_width) ที่เครื่องตัดทำไม่ได้/หลุดร่วง
        - simplify เบา ๆ ลบจุดหยักจากการ trace ภาพ -> เส้น CNC วิ่งลื่น ขอบเนียน
@@ -1295,36 +1295,59 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             import fitz as _fz, cv2 as _cv, numpy as _np
             from shapely.geometry import Polygon as _Pg
             _d = _fz.open(inp); _pg0 = _d[0]
-            _z = 4000.0 / max(1.0, _pg0.rect.width)
-            _z = max(1.0, min(_z, 12.0))
+            _z = 8000.0 / max(1.0, _pg0.rect.width)      # 🔍 8000px (2 เท่าเดิม) — เส้นบาง/แยกชิ้นชัด ไม่ขาดเป็นช่วง
+            _z = max(1.5, min(_z, 24.0))
             _pixhi = _pg0.get_pixmap(matrix=_fz.Matrix(_z, _z), alpha=False)
             _im = _np.frombuffer(_pixhi.samples, dtype=_np.uint8).reshape(_pixhi.height, _pixhi.width, _pixhi.n)
             _d.close()
             _gray = _cv.cvtColor(_im[:, :, :3], _cv.COLOR_RGB2GRAY)
-            _mask = ((_gray < 200) * 255).astype(_np.uint8)
+            _mask = ((_gray < 165) * 255).astype(_np.uint8)   # เกณฑ์กลาง anti-alias -> เส้นคั่นบางไม่ละลายหาย
             # 🌳 CCOMP hierarchy = รองรับชิ้นซ้อนในรูกี่ชั้นก็ได้ (หัวแพะในรูวงหยัก ฯลฯ) — engine เดิมทิ้งชั้นใน
-            _cnts, _hier = _cv.findContours(_mask, _cv.RETR_CCOMP, _cv.CHAIN_APPROX_TC89_KCOS)
+            _cnts, _hier = _cv.findContours(_mask, _cv.RETR_CCOMP, _cv.CHAIN_APPROX_NONE)
             _mmpp = float(real_width_mm) / max(1, _pixhi.width)
+            _amin_px = max(8.0, 0.8 / (_mmpp * _mmpp))   # เกณฑ์เศษ = 0.8 ตร.มม. จริง (ไม่ผูกกับ DPI)
+
+            def _ring_mm(_c):
+                """contour px -> วงแหวน มม. ผ่านตัว fit เส้นโค้ง (คงมุมจริง เบี่ยง < ~0.06มม.) -> เส้นเนียนแบบเวกเตอร์"""
+                _pts = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _c[::max(1, len(_c) // 1200)]]
+                if len(_pts) < 3:
+                    return None
+                try:
+                    from vectorcnc import curvefit as _cf
+                    _r = _cf.smooth_ring(_pts, err=0.06, corner_deg=20, dedup=0.02)
+                    if _r and len(_r) >= 3:
+                        return _r
+                except Exception:
+                    pass
+                return _pts
+
             _polys = []
             if _hier is not None:
                 _hier = _hier[0]
                 for _i, _c in enumerate(_cnts):
-                    if _hier[_i][3] != -1 or _cv.contourArea(_c) < 60:
-                        continue                          # เอาเฉพาะขอบนอก (ลูก = รู)
-                    _ext = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _cv.approxPolyDP(_c, 1.1, True)]
-                    if len(_ext) < 3:
+                    if _hier[_i][3] != -1 or _cv.contourArea(_c) < _amin_px:
+                        continue                          # เอาเฉพาะขอบนอก (ลูก = รู) · เก็บชิ้นเล็ก เช่นตัวอักษรจิ๋ว
+                    _ext = _ring_mm(_c)
+                    if not _ext:
                         continue
                     _holes = []
                     _j = _hier[_i][2]
                     while _j != -1:
-                        if _cv.contourArea(_cnts[_j]) >= 60:
-                            _hh = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _cv.approxPolyDP(_cnts[_j], 1.1, True)]
-                            if len(_hh) >= 3:
+                        if _cv.contourArea(_cnts[_j]) >= _amin_px:
+                            _hh = _ring_mm(_cnts[_j])
+                            if _hh:
                                 _holes.append(_hh)
                         _j = _hier[_j][0]
                     _pg = _Pg(_ext, _holes).buffer(0)
-                    if _pg is not None and not _pg.is_empty and _pg.area > 4.0:
-                        _polys.append(_pg)
+                    if _pg is None or _pg.is_empty or _pg.area <= 3.0:
+                        continue
+                    if _pg.area < 12.0:                  # 🧹 เศษเส้นบางจิ๋ว (เกิดจากเส้นคั่นในแบบ) -> ทิ้ง
+                        try:
+                            if _pg.buffer(-0.18).is_empty:
+                                continue
+                        except Exception:
+                            pass
+                    _polys.append(_pg)
             if _polys:
                 full = unary_union(_polys)
         except Exception:
