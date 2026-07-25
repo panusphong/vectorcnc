@@ -3667,7 +3667,7 @@ window.setLang=setLang; window.t=t;
     var payload={ action:'save', user:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER)||'',
       jobName:meta.jobName||'', customer:meta.customer||'', wCm:meta.wCm||0, hCm:meta.hCm||0,
       price:0, image:meta.image||'', thumb:meta.thumb||meta.image||'',
-      design:JSON.stringify({source:'design', signType:meta.signType||'', signName:meta.signName||''}) };
+      design:(meta.design||JSON.stringify({source:'design', signType:meta.signType||'', signName:meta.signName||''})) };
     fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
       .then(function(){ alert('บันทึกงานออกแบบแล้ว ✓\nดูได้ที่แท็บ "ค้นหางาน"'); try{if(typeof vcLogSim==='function')vcLogSim('บันทึกงานออกแบบ: '+(meta.jobName||''));}catch(e){} if(cb)cb(true); })
       .catch(function(){ alert('ส่งข้อมูลแล้ว — ลองค้นหาเพื่อยืนยันค่ะ'); if(cb)cb(true); });
@@ -3766,6 +3766,12 @@ window.setLang=setLang; window.t=t;
     jobsJsonp(url+(url.indexOf('?')<0?'?':'&')+'action=get&id='+encodeURIComponent(id),function(r){
       fin();
       if(r&&r.ok&&r.design){
+        // 🎨 งานจาก 'หน้าออกแบบ' -> เปิดกลับเข้าหน้าออกแบบ แก้ไขต่อได้ (ไม่ใช่จำลองผนัง)
+        try{ var _dd=(typeof r.design==='string')?JSON.parse(r.design):r.design;
+          if(_dd&&_dd.source==='design'&&typeof window.restoreDesignJob==='function'){
+            var ov0=q('jobsOverlay'); if(ov0)ov0.classList.remove('show');
+            window.restoreDesignJob(_dd, r.job||{}); return; }
+        }catch(_e){}
         // ✅ เปิดหน้า "จำลองผนัง" ก่อนเสมอ (กันเคสกดเปิดงานจากหน้าออกแบบ แล้วดีไซน์ลงหน้าที่ยังปิดอยู่ → เงียบ)
         var wo=q('wallOverlay'); if(wo&&!wo.classList.contains('show')){ wo.classList.add('show'); try{wallInitSwatch();}catch(e){} }
         applyDesign(r.design);
@@ -4801,12 +4807,34 @@ if($('ikBrDl'))$('ikBrDl').onclick=function(){ikDlTxt(IK_BRTXT,'job_brief.txt');
 
 // เรียกชุดชั้นตัด+3มิติ จากหน้าหลัก → แสดงในพื้นที่กลาง (main stage) พร้อมชื่ออังกฤษ
 var LSDXF_MAIN='', RDEPTH=0, LS_SVGCUT='', LS_ACTIVE=false, GLOW={mode:'off',temp:'warm',acr:null}, FCOL='#ffffff', SCOL='#9aa1ac', MTEX='';
+var ACOL='';   // 🦾 สีแขนยึด: ''=วิ่งตามพื้นผิว/สีกล่องไฟ · เลือกเอง=ใช้สีนั้น
 window._setMTX=function(v){ MTEX=v||''; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
+window._setACOL=function(v){ ACOL=v||''; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
+// 💾 เปิดงานออกแบบที่บันทึกไว้ กลับเข้าหน้าออกแบบ (แก้ไขต่อได้) — คู่กับ lsSaveJob
+window.restoreDesignJob=function(d,job){
+  try{
+    var wo=document.getElementById('wallOverlay'); if(wo)wo.classList.remove('show');   // ปิดจำลองผนังถ้าเปิดค้าง
+    MTEX=(d.mtex!=null?String(d.mtex):MTEX)||''; if(d.fcol)FCOL=d.fcol; if(d.scol)SCOL=d.scol; if(d.acol!=null)ACOL=String(d.acol||'');
+    try{ if(d.rdepth!=null)RDEPTH=parseFloat(d.rdepth)||0; }catch(_e){}
+    if($('mainSignType')&&d.signType){ $('mainSignType').value=String(d.signType);
+      try{ $('mainSignType').dispatchEvent(new Event('change')); }catch(_e){} }
+    if(parseFloat(d.wcm)>0){ if($('realWcm'))$('realWcm').value=Math.round(parseFloat(d.wcm)); if($('realW'))$('realW').value=Math.round(parseFloat(d.wcm)*10); }
+    if(parseFloat(d.hcm)>0){ if($('realHcm'))$('realHcm').value=Math.round(parseFloat(d.hcm)); if($('realH'))$('realH').value=Math.round(parseFloat(d.hcm)*10); if($('bxH'))$('bxH').value=parseFloat(d.hcm); }
+    if(d.la){ if($('laScale')){ $('laScale').value=d.la.s||100; if($('laScaleV'))$('laScaleV').textContent=String(d.la.s||100); }
+      if($('laDx'))$('laDx').value=d.la.dx||0; if($('laDy'))$('laDy').value=d.la.dy||0; }
+    var fin=function(){ setTimeout(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} },300); };
+    if(d.src){ fetch(d.src).then(function(r){return r.blob();}).then(function(bl){
+        var f=new File([bl],((job&&job.jobName)||'design')+'.jpg',{type:bl.type||'image/jpeg'});
+        try{ if(typeof pick==='function')pick(f); else fileObj=f; }catch(_e){ fileObj=f; } fin(); }).catch(fin); }
+    else fin();
+    try{ vcLogSim&&vcLogSim('เปิดงานออกแบบ: '+((job&&job.jobName)||'')); }catch(_e){}
+  }catch(e){ alert('เปิดงานออกแบบไม่สำเร็จ: '+e); }
+};
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
-  function setFill(p,col){ try{ p.setAttribute('fill',col); if(p.style){ p.style.fill=col; } }catch(e){} }   // ⚠️ style ทับ attribute ได้ -> ตั้งทั้งคู่
+  function setFill(p,col){ try{ var cf=(p.getAttribute('fill')||''); if(cf.indexOf('url(#mtx')===0)return; p.setAttribute('fill',col); if(p.style){ p.style.fill=col; } }catch(e){} }   // ⚠️ style ทับ attribute ได้ -> ตั้งทั้งคู่ · 🪙 ห้ามทับพื้นผิวโลหะ (gradient)
   function paint(sel, cands, newCol){
     var els=img.querySelectorAll(sel);
     if(els.length){ els.forEach(function(p){setFill(p,newCol);}); return true; }
@@ -5130,7 +5158,7 @@ $('goLayer').onclick=function(){
   fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
   fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
-  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('metal_tex',MTEX||'');
+  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('metal_tex',MTEX||'');fd.append('arm_color',ACOL||'');
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
@@ -5203,6 +5231,9 @@ $('goLayer').onclick=function(){
             '<option value="rose_mirror"'+(MTEX==='rose_mirror'?' selected':'')+'>โรสโกลด์ (เงา)</option>'+
             '<option value="rose_hairline"'+(MTEX==='rose_hairline'?' selected':'')+'>โรสโกลด์ (แฮร์ไลน์)</option>'+
           '</select></label>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b;margin-left:6px">🦾 สีแขน'+
+          '<input type="color" id="armColor" value="'+(ACOL||'#8b93a0')+'" onchange="_setACOL(this.value)" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0">'+
+          '<a onclick="_setACOL(\'\')" style="font-size:10px;color:#0d9488;cursor:pointer;text-decoration:underline" title="กลับไปใช้พื้นผิว/สีตามกล่องไฟ">ตามกล่อง</a></label>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 8px"><span style="font-size:11px;color:#7c3aed;font-weight:700">อะคริลิคนีออน (แสงตามสี):</span><span id="acrSwD" style="display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center"><button type="button" class="chip on" id="acrOffD" style="font-size:10.5px">⚪ ปกติ</button></span></div>'+
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
@@ -5247,7 +5278,7 @@ $('goLayer').onclick=function(){
       fd.append('sales',(($('pmSales')&&$('pmSales').value)||(($('adminName')&&$('adminName').textContent)||''))||'');
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
       fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
-      fd.append('metal_tex',MTEX||'');fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');
+      fd.append('metal_tex',MTEX||'');fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('arm_color',ACOL||'');
       fd.append('return_depth_cm',String(RDEPTH||0));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
@@ -5275,13 +5306,28 @@ $('goLayer').onclick=function(){
       if(typeof window.saveDesignJob!=='function'){alert('ระบบบันทึกงานยังไม่พร้อม');return;}
       var nm=prompt('ชื่องาน (สำหรับบันทึก)',(lastName||'งานออกแบบ'))||''; if(!nm)return;
       var cust=prompt('ชื่อลูกค้า','')||'';
-      var wcm=Math.round((j.w_mm||(+($('realW').value)||600))/10), hcm=0;
-      var doSave=function(img){ window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:hcm,image:img||'',signType:t,signName:(j.type_name||'')}); };
-      // ภาพหน้าตรง 3D เป็น thumbnail
-      if(window._lsFaceSvg){ try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(window._lsFaceSvg)));
-        var im=new Image(); im.onload=function(){ var c=document.createElement('canvas'); c.width=Math.min(700,im.naturalWidth||600); c.height=c.width*((im.naturalHeight||600)/(im.naturalWidth||600)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); doSave(c.toDataURL('image/jpeg',0.82)); };
-        im.onerror=function(){doSave('');}; im.src=url; }catch(e){doSave('');} }
-      else doSave('');
+      var wcm=Math.round((j.w_mm||(+($('realW').value)||600))/10);
+      // 💾 เก็บ 'สถานะออกแบบครบชุด' -> เปิดกลับมาแก้ไขต่อได้ (เหมือนจำลองผนัง)
+      var st8={source:'design',signType:t,signName:(j.type_name||''),wcm:wcm,
+        hcm:(parseFloat($('bxH')&&$('bxH').value)||0),
+        mtex:(typeof MTEX!=='undefined'?MTEX:'')||'',fcol:(typeof FCOL!=='undefined'?FCOL:'')||'',scol:(typeof SCOL!=='undefined'?SCOL:'')||'',acol:(typeof ACOL!=='undefined'?ACOL:'')||'',
+        rdepth:(typeof RDEPTH!=='undefined'?RDEPTH:0)||0,
+        la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0}};
+      var doSave=function(img,src){ st8.src=src||'';
+        window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:st8.hcm,image:img||'',signType:t,signName:st8.signName,design:JSON.stringify(st8)}); };
+      var mkSrc=function(cb){ if(typeof fileObj==='undefined'||!fileObj){cb('');return;}
+        try{ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){
+            var mx=800,sc=Math.min(1,mx/Math.max(im.width||1,im.height||1));
+            var c=document.createElement('canvas'); c.width=Math.max(1,Math.round((im.width||1)*sc)); c.height=Math.max(1,Math.round((im.height||1)*sc));
+            var g=c.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,c.width,c.height); g.drawImage(im,0,0,c.width,c.height);
+            cb(c.toDataURL('image/jpeg',0.8)); };
+          im.onerror=function(){cb('');}; im.src=r.result; };
+          r.onerror=function(){cb('');}; r.readAsDataURL(fileObj); }catch(_e){cb('');} };
+      var mkThumb=function(cb){ if(!window._lsFaceSvg){cb('');return;}
+        try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(window._lsFaceSvg)));
+          var im=new Image(); im.onload=function(){ var c=document.createElement('canvas'); c.width=Math.min(700,im.naturalWidth||600); c.height=c.width*((im.naturalHeight||600)/(im.naturalWidth||600)); c.getContext('2d').drawImage(im,0,0,c.width,c.height); cb(c.toDataURL('image/jpeg',0.82)); };
+          im.onerror=function(){cb('');}; im.src=url; }catch(e){cb('');} };
+      mkThumb(function(img){ mkSrc(function(src){ doSave(img,src); }); });
     };
     if($('lsDlSvg'))$('lsDlSvg').onclick=function(){if(!LS_SVGCUT)return;var b=new Blob([LS_SVGCUT],{type:'image/svg+xml'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='layerset_'+t+'.svg';a.click();};
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
@@ -6216,20 +6262,25 @@ function _wSignSideAt(ay, side, sx, sy, sw, sh){
   }catch(e){ return def; }
 }
 function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
-  var col='#141414'; mode=mode||'top2';
+  var col='#475569'; mode=mode||'top2';
   var armW=Math.max(3,Math.round(sw*0.014));
+  // 🪙 แขนยึด = สแตนเลส (ไล่เฉดเมทัลลิก) — แนวตั้ง=ไล่ซ้ายขวา · แนวนอน=ไล่บนล่าง
+  function _stV(x,w){ var gr=g.createLinearGradient(x,0,x+w,0); gr.addColorStop(0,'#6d7681'); gr.addColorStop(0.3,'#eef2f6'); gr.addColorStop(0.55,'#aab3bd'); gr.addColorStop(1,'#5f6873'); return gr; }
+  function _stH(y,h){ var gr=g.createLinearGradient(0,y,0,y+h); gr.addColorStop(0,'#6d7681'); gr.addColorStop(0.3,'#eef2f6'); gr.addColorStop(0.55,'#aab3bd'); gr.addColorStop(1,'#5f6873'); return gr; }
   var armEdgeCm=parseFloat(($('wArmEdge')&&$('wArmEdge').value))||parseFloat(($('fArmEdge')&&$('fArmEdge').value))||25;
   var armLenCm=parseFloat(($('wArmLen')&&$('wArmLen').value))||30;
   g.save(); g.fillStyle=col; g.strokeStyle=col;
   if(mode==='side1'||mode==='side2'){
-    // 🦾 แขนข้าง: ยื่นจากขอบข้างป้ายออกไปเสา/ผนัง (แนวนอน)
+    // 🦾 แขนข้าง: ยื่นจากขอบข้างป้ายออกไปเสา/ผนัง (แนวนอน) — สแตนเลส
     var side=($('wArmSide')&&$('wArmSide').value)||'right';
     var aLen=Math.max(armW*2, armLenCm*ppm);
     var ex=(side==='left')?sx:sx+sw, dir=(side==='left')?-1:1;
     var wallX=ex+dir*aLen;
     var ys=(mode==='side1')?[sy+sh/2]:[sy+sh*0.26, sy+sh*0.74];
-    ys.forEach(function(ay){ var innerX=_wSignSideAt(ay, side, sx,sy,sw,sh); var x0=Math.min(wallX,innerX); g.fillRect(x0, ay-armW/2, Math.max(3,Math.abs(innerX-wallX)), armW); });  // แขนจากเสาถึงขอบกล่องจริง (ต่อ y)
+    ys.forEach(function(ay){ var innerX=_wSignSideAt(ay, side, sx,sy,sw,sh); var x0=Math.min(wallX,innerX); g.fillStyle=_stH(ay-armW/2,armW); g.fillRect(x0, ay-armW/2, Math.max(3,Math.abs(innerX-wallX)), armW); });  // แขนจากเสาถึงขอบกล่องจริง (ต่อ y)
+    g.fillStyle=_stV((dir>0?wallX-armW*0.9:wallX),armW*0.9);
     g.fillRect((dir>0?wallX-armW*0.9:wallX), ys[0]-armW*1.2, armW*0.9, (ys[ys.length-1]-ys[0])+2.4*armW); // เพลท/เสาปลายแขน
+    g.fillStyle=col;
     window._armHandle=null;
     if($('wLabels')&&$('wLabels').checked){ _wDimH(g, Math.min(ex,wallX), Math.max(ex,wallX), ys[0]-armW*2.2, armLenCm.toFixed(0)+' cm', col, 'arm'); }
     g.restore(); return;
@@ -6243,7 +6294,8 @@ function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
     var edgePx=Math.max(armW*0.5, Math.min(sw*0.44, armEdgeCm*ppm));
     var axL=sx+edgePx-armW/2, axR=sx+sw-edgePx-armW/2;
     var railY=sy;                                              // ต่ำสุดของขอบบนที่แขนแตะ -> วางคานบนตรงนั้น
-    [axL,axR].forEach(function(ax){ var ey=_wSignTopAt(ax+armW/2, sx,sy,sw,sh); if(ey<railY)railY=ey; g.fillRect(ax, top, armW, Math.max(3, ey-top)); });  // แขนจากเพดานถึงขอบกล่อง
+    [axL,axR].forEach(function(ax){ var ey=_wSignTopAt(ax+armW/2, sx,sy,sw,sh); if(ey<railY)railY=ey; g.fillStyle=_stV(ax,armW); g.fillRect(ax, top, armW, Math.max(3, ey-top)); });  // แขนสแตนเลส จากเพดานถึงขอบกล่อง
+    g.fillStyle=col;
     // ❌ ไม่มีคานเหล็กด้านบน (เอาออกตามที่พี่สั่ง) — เหลือแค่ 2 แขนยื่นจากฝ้าลงมาชนกล่อง · ไม่มีคานล่าง
     var hx=sx+sw/2;
     window._armHandle={x:hx-9,y:top-9,w:18,h:18};
