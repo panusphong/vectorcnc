@@ -1094,6 +1094,39 @@ def _punch_logo_clean(logo, min_area_mm2=8.0, min_width_mm=0.5, smooth_mm=0.12):
     return g, drop
 
 
+def _punch_min_stroke(logo, min_w_mm=1.2):
+    """💪 เพิ่มความหนาชิ้นบาง (เช่นตัวอักษรจิ๋ว) ให้ถึงขั้นต่ำที่ฉลุได้จริง — รูปทรงแทบไม่เปลี่ยน
+       คืน (logo_ปรับแล้ว, จำนวนชิ้นที่ถูกเพิ่มความหนา)"""
+    try:
+        from shapely.ops import unary_union as _uu
+        gs = list(logo.geoms) if logo.geom_type == "MultiPolygon" else [logo]
+        out = []; nfix = 0
+        for g in gs:
+            if g.is_empty:
+                continue
+            _w = 0.1                                    # วัดความหนาต่ำสุดโดยกัดเข้า (พอถึง min ก็หยุด)
+            while _w < float(min_w_mm):
+                try:
+                    if g.buffer(-_w / 2.0).is_empty:
+                        break
+                except Exception:
+                    break
+                _w += 0.1
+            if _w < float(min_w_mm):                    # บางกว่าขั้นต่ำ -> พองออกให้ถึง (ขอบมน = เส้นเนียนขึ้นด้วย)
+                try:
+                    g2 = g.buffer((float(min_w_mm) - _w) / 2.0, join_style=1).buffer(0)
+                    if g2 is not None and not g2.is_empty:
+                        g = g2; nfix += 1
+                except Exception:
+                    pass
+            out.append(g)
+        if not out:
+            return logo, 0
+        return _uu(out), nfix
+    except Exception:
+        return logo, 0
+
+
 def _wrap_silhouette(full, bridge_mm):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
@@ -2668,6 +2701,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             _punch_logo, _pdrop = _punch_logo_clean(_punch_logo)
             if _pdrop:
                 warns.append("หน้าโลหะฉลุ: ตัดเศษ logo จิ๋ว/บางเกินฉลุ %d ชิ้นออกจากไฟล์ตัด (เครื่องตัดทำไม่ได้จริง)" % _pdrop)
+            _punch_logo, _nthick = _punch_min_stroke(_punch_logo, min_w_mm=1.2)
+            if _nthick:
+                warns.append("ตัวอักษร/ชิ้นเล็ก %d ชิ้น เส้นบางกว่า 1.2 มม. — เพิ่มความหนาให้ถึงขั้นต่ำฉลุได้จริงแล้ว (รูปทรงแทบไม่เปลี่ยน)" % _nthick)
             try:                                        # ⚠️ รูในตัวอักษร (counter เช่น a o ฿) = เหล็กก้อนกลางจะหลุดตอนฉลุ
                 _pl = list(_punch_logo.geoms) if _punch_logo.geom_type == "MultiPolygon" else [_punch_logo]
                 _nctr = sum(len(p.interiors) for p in _pl if p.geom_type == "Polygon")
@@ -3238,8 +3274,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                                              xoff=_laDX, yoff=_laDY)
             except Exception:
                 pass
-        if _punch_logo is not None:                    # 🔦 ล้างเศษจิ๋ว + ขอบหยัก ให้ตรงกับไฟล์ตัดหน้าออกแบบ
+        if _punch_logo is not None:                    # 🔦 ล้างเศษจิ๋ว + ขอบหยัก + เพิ่มความหนาขั้นต่ำ ให้ตรงกับหน้าออกแบบ
             _punch_logo, _ = _punch_logo_clean(_punch_logo)
+            _punch_logo, _ = _punch_min_stroke(_punch_logo, min_w_mm=1.2)
         b = full.bounds; Wcm = round((b[2] - b[0]) / 10.0); Hcm = round((b[3] - b[1]) / 10.0)
         # perspective 3D
         fo = None; bore = None
