@@ -4865,9 +4865,11 @@ window._ctexAdd=function(){
     var nm=prompt('ตั้งชื่อพื้นผิว (เช่น ไม้สัก Natural Teak)',(f.name||'').replace(/\.[^.]+$/,''))||'';
     if(!nm)return;
     var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){
-        var mx=360,sc=Math.min(1,mx/Math.max(im.width||1,im.height||1));
-        var c=document.createElement('canvas'); c.width=Math.max(1,Math.round((im.width||1)*sc)); c.height=Math.max(1,Math.round((im.height||1)*sc));
-        c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+        // ✂️ ครอปกลางภาพเป็นสี่เหลี่ยมจัตุรัส + หดขอบ 12% — ตัดหัวข้อ/ฉลากในรูปแค็ตตาล็อกออก เหลือแต่เนื้อวัสดุ
+        var iw=im.width||1, ih=im.height||1, s0=Math.min(iw,ih), ins=Math.round(s0*0.12);
+        var sx=Math.round((iw-s0)/2)+ins, sy=Math.round((ih-s0)/2)+ins, sw=Math.max(8,s0-ins*2);
+        var c=document.createElement('canvas'); c.width=c.height=Math.min(512,sw);
+        c.getContext('2d').drawImage(im,sx,sy,sw,sw,0,0,c.width,c.height);
         var id='cust_'+Date.now(); var a=window._ctexAll();
         a.push({id:id,name:nm,img:c.toDataURL('image/jpeg',0.85)});
         window._ctexSave(a); window._setMTX(id);   // ใช้ทันที + สร้างภาพใหม่ (เมนูจะอัปเดตตอน render)
@@ -4894,6 +4896,7 @@ window.restoreDesignJob=function(d,job){
       var _ca=window._ctexAll(); _ca.push({id:d.mtex,name:(d.mtname||'พื้นผิวจากงานบันทึก'),img:d.mtimg}); window._ctexSave(_ca); } }catch(_e){}
     try{ if(d.mtscope)window.MTSCOPE=String(d.mtscope); }catch(_e){}
     try{ window._ls3dNoteData=(d.notes&&d.notes.slice)?d.notes.slice():(window._ls3dNoteData||[]); }catch(_e){}
+    try{ window._stickerIdx=(d.sticker&&d.sticker.slice)?d.sticker.slice():[]; }catch(_e){}
     try{ if(d.rdepth!=null)RDEPTH=parseFloat(d.rdepth)||0; }catch(_e){}
     try{ if(d.trimw!=null)TRIMW=parseFloat(d.trimw)||TRIMW; if(d.trimdir)TRIMDIR=String(d.trimdir); }catch(_e){}
     try{ if(d.glow&&typeof GLOW!=='undefined'){ GLOW.mode=d.glow.mode||GLOW.mode; GLOW.temp=d.glow.temp||GLOW.temp; GLOW.acr=d.glow.acr||null; GLOW.kelvin=d.glow.kelvin||''; } }catch(_e){}
@@ -4928,13 +4931,15 @@ window.restoreDesignJob=function(d,job){
     var fin=function(){ setTimeout(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} },300); };
     if(d.src){ fetch(d.src).then(function(r){return r.blob();}).then(function(bl){
         var f=new File([bl],((job&&job.jobName)||'design')+'.jpg',{type:bl.type||'image/jpeg'});
-        try{ if(typeof pick==='function')pick(f); else fileObj=f; }catch(_e){ fileObj=f; } fin(); }).catch(fin); }
+        try{ if(typeof pick==='function')pick(f); else fileObj=f; }catch(_e){ fileObj=f; }
+        try{ window._stickerIdx=(d.sticker&&d.sticker.slice)?d.sticker.slice():[]; }catch(_e){}   // pick() ล้างไป -> ตั้งกลับ
+        fin(); }).catch(fin); }
     else fin();
     try{ vcLogSim&&vcLogSim('เปิดงานออกแบบ: '+((job&&job.jobName)||'')); }catch(_e){}
   }catch(e){ alert('เปิดงานออกแบบไม่สำเร็จ: '+e); }
 };
 // 🌡️ สีแสงตามอุณหภูมิสี (Kelvin) — เทียบสีหลอด LED จริง (blackbody โดยประมาณ)
-function _kelvinHex(k){ var m={'2700':'#ffd6a0','3000':'#ffdfb5','4000':'#fff1da','5000':'#fff9f0','6500':'#f2f6ff','8000':'#dfe9ff','11000':'#c9dcff'}; return m[String(k)]||''; }
+function _kelvinHex(k){ var m={'2700':'#ff9e3d','3000':'#ffb45e','4000':'#ffd9a0','5000':'#fff3dc','6500':'#dfeaff','8000':'#b9d4ff','11000':'#93bbff'}; return m[String(k)]||''; }
 function _glowColor(t){ if(GLOW.acr) return GLOW.acr;
   if(GLOW.kelvin){ var kh=_kelvinHex(GLOW.kelvin); if(kh)return kh; }
   return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
@@ -4947,6 +4952,11 @@ window._setGLK=function(v){ GLOW.kelvin=v||'';
   // 🔗 ซิงก์สเปคไฟในใบสั่งผลิตอัตโนมัติ (ถ้ามีตัวเลือกตรงกัน)
   try{ var lm={'2700':'Warm White 2700K','3000':'Warm White 3000K','4000':'Cool White 4000K','6500':'Daylight 6500K','8000':'Cool Daylight 8000K','11000':'Super Cool White 11000K'};
     var pl=$('pmLedColor'); if(pl&&v&&lm[v]){ for(var q=0;q<pl.options.length;q++)if(pl.options[q].value===lm[v]){pl.value=lm[v];break;} } }catch(_e){}
+  // 💡 ย้อม 'ตัวโลโก้เรืองแสง' (หน้าอะคริลิค) เป็นสีอุณหภูมินั้นจริง -> เห็นสีไฟชัดในตัวป้าย ไม่ใช่แค่แสงฟุ้งรอบ
+  if(v){ var kh=_kelvinHex(v); if(kh){ FCOL=kh; GLOW.acr=null;
+    if($('faceColor'))$('faceColor').value=kh;
+    var od=$('acrOffD'); if(od)od.classList.add('on');
+    try{ recolor3d(); }catch(_e){} } }
   applyGlow(); };
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
@@ -5084,8 +5094,8 @@ var TRIMW=1, TRIMDIR='out';
     for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; }
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
-  var _boxTypes=['8','9','10','11','12','13','14','15','18'];   // กล่องไฟทุกชนิด
-  var _adjTypes=_boxTypes.concat(['4','21']);                    // 🎯 ปรับ logo ในกล่องได้ (รวมกล่องฉลุ)
+  var _boxTypes=['8','9','10','11','12','13','14','15','18','4','21'];   // กล่องไฟทุกชนิด (รวมกล่องฉลุ -> ตั้ง กว้าง×สูง×ลึก เองได้)
+  var _adjTypes=_boxTypes.slice();                                        // 🎯 ปรับ logo ในกล่องได้ทุกแบบ
   if($('laScale'))$('laScale').oninput=function(){ if($('laScaleV'))$('laScaleV').textContent=this.value; };
   if($('laReset'))$('laReset').onclick=function(){ if($('laScale')){$('laScale').value=100;} if($('laScaleV'))$('laScaleV').textContent='100'; if($('laDx'))$('laDx').value=0; if($('laDy'))$('laDy').value=0; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
   if($('laApply'))$('laApply').onclick=function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
@@ -5172,7 +5182,7 @@ var TRIMW=1, TRIMDIR='out';
       else { if(lg[i])window._bxItems.push({kind:'logo',ref:i,cx:cx,cy:0.40}); if(sg[i]!=null&&sg[i]!=='')window._bxItems.push({kind:'text',ref:i,cx:cx,cy:0.76}); } }
     window._bxSig=sig(); }
   function sync(){ if(window._bxSig!==sig()) layout(); }
-  function _bxShape(){ var v=($('mainSignType')&&$('mainSignType').value)||''; return (v==='10'||v==='11')?'round':'rect'; }
+  function _bxShape(){ var v=($('mainSignType')&&$('mainSignType').value)||''; return (v==='10'||v==='11'||v==='21')?'round':'rect'; }
   function aspect(){ if(_bxShape()==='round')return 1;   // กล่องกลม = หน้าจตุรัส (คลิปเป็นวงกลม)
     var w=parseFloat(($('bxW')&&$('bxW').value))||0, h=parseFloat(($('bxH')&&$('bxH').value))||0; if(w>0&&h>0)return Math.max(0.45,Math.min(8,w/h)); return 3.0; }
   function tinted(im,color){ if(im._tc===color && im._tcv)return im._tcv;   // ทับสีไอคอน (คงรูปทรงตาม alpha)
@@ -5269,7 +5279,11 @@ $('goLayer').onclick=function(){
   st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">กำลังแตกชั้น + สร้างภาพ 3 มิติ...</div></div>';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
-  fd.append('real_height_mm',(($('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0'));fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
+  var _isPunch=(t==='4'||t==='21');   // 🔦 กล่องฉลุ: สูงกล่องส่งแยก (box_h_cm) — ไม่บีบสัดส่วนโลโก้
+  fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
+  fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
+  fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
+  fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
   fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
@@ -5338,13 +5352,13 @@ $('goLayer').onclick=function(){
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">🌡️'+
           '<select id="glowK" onchange="_setGLK(this.value)" title="อุณหภูมิสีแสง (Kelvin)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
             '<option value=""'+(!GLOW.kelvin?' selected':'')+'>— K —</option>'+
-            '<option value="2700" style="background:#ffd6a0"'+(GLOW.kelvin==='2700'?' selected':'')+'>2700K วอร์มจัด</option>'+
-            '<option value="3000" style="background:#ffdfb5"'+(GLOW.kelvin==='3000'?' selected':'')+'>3000K วอร์มไวท์</option>'+
-            '<option value="4000" style="background:#fff1da"'+(GLOW.kelvin==='4000'?' selected':'')+'>4000K คูลไวท์</option>'+
-            '<option value="5000" style="background:#fff9f0"'+(GLOW.kelvin==='5000'?' selected':'')+'>5000K เดย์ไลท์นวล</option>'+
-            '<option value="6500" style="background:#f2f6ff"'+(GLOW.kelvin==='6500'?' selected':'')+'>6500K เดย์ไลท์</option>'+
-            '<option value="8000" style="background:#dfe9ff"'+(GLOW.kelvin==='8000'?' selected':'')+'>8000K ขาวอมฟ้า</option>'+
-            '<option value="11000" style="background:#c9dcff"'+(GLOW.kelvin==='11000'?' selected':'')+'>11000K ฟ้าเย็นจัด</option>'+
+            '<option value="2700" style="background:#ff9e3d"'+(GLOW.kelvin==='2700'?' selected':'')+'>2700K วอร์มจัด</option>'+
+            '<option value="3000" style="background:#ffb45e"'+(GLOW.kelvin==='3000'?' selected':'')+'>3000K วอร์มไวท์</option>'+
+            '<option value="4000" style="background:#ffd9a0"'+(GLOW.kelvin==='4000'?' selected':'')+'>4000K คูลไวท์</option>'+
+            '<option value="5000" style="background:#fff3dc"'+(GLOW.kelvin==='5000'?' selected':'')+'>5000K เดย์ไลท์นวล</option>'+
+            '<option value="6500" style="background:#dfeaff"'+(GLOW.kelvin==='6500'?' selected':'')+'>6500K เดย์ไลท์</option>'+
+            '<option value="8000" style="background:#b9d4ff"'+(GLOW.kelvin==='8000'?' selected':'')+'>8000K ขาวอมฟ้า</option>'+
+            '<option value="11000" style="background:#93bbff"'+(GLOW.kelvin==='11000'?' selected':'')+'>11000K ฟ้าเย็นจัด</option>'+
           '</select></label>'+
         '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">หน้าอะคริลิค<input type="color" id="faceColor" value="'+FCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
@@ -5375,6 +5389,9 @@ $('goLayer').onclick=function(){
       '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
         '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
+      (j.sticker_map_svg?('<div style="font-size:13px;font-weight:700;color:#b91c1c;margin:2px 0 5px">🏷️ แยกชิ้นเป็นสติ๊กเกอร์ — คลิกชิ้นที่ "ไม่ต้องตัด" (เช่น ตัวหนังสือไทยติดสติ๊กเกอร์ดำแทน)</div>'+
+        '<div id="stickMap" style="border:1px solid #fecaca;border-radius:12px;padding:10px;background:#fff7f7;margin-bottom:14px"><div style="max-width:900px;margin:0 auto">'+j.sticker_map_svg+'</div>'+
+        '<div style="font-size:11.5px;color:#64748b;margin-top:5px">ชิ้นสีแดง = สติ๊กเกอร์ (ไม่อยู่ในไฟล์ตัด แต่โชว์บนหน้ากล่อง) · คลิกซ้ำ = กลับไปตัด · <a id="stickClr" style="color:#0d9488;cursor:pointer;text-decoration:underline">ล้างทั้งหมด</a></div></div>'):'')+
       (j.svg_views?('<div style="font-size:13px;font-weight:700;color:#0d9488;margin:2px 0 5px">📐 มุมมองมาตรฐาน — Top View · Front View · Side View <span style="font-size:11px;color:#94a3b8">(Perspective = ภาพ 3 มิติด้านบน)</span></div>'+
         '<div style="border:1px solid #99f6e4;border-radius:12px;padding:10px;background:#f0fdfa;margin-bottom:14px"><div style="max-width:900px;margin:0 auto">'+(j.svg_views||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'')+'</div></div>'):'')+
       (j.svg_back?('<div style="font-size:13px;font-weight:700;color:#e11d48;margin:10px 0 5px">🔩 มุมมองด้านหลัง — โครงแขวน + รูเจาะยึด/สายไฟ'+(j.frame_info?(' · '+(j.frame_info.letters||0)+' ตัวอักษร · น็อต Ø3 '+(j.frame_info.bolts||0)+' รู · สายไฟ Ø5 '+(j.frame_info.wires||0)+' รู'):'')+'</div>'+
@@ -5417,6 +5434,8 @@ $('goLayer').onclick=function(){
       window._mtxAppend(fd);fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('arm_color',ACOL||'');
       try{ fd.append('design_notes',JSON.stringify(window._ls3dNoteData||[])); }catch(_e){}
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
+      fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
+      fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -5439,6 +5458,13 @@ $('goLayer').onclick=function(){
     };
     if($('lsDlAi')&&j.ai_base64)$('lsDlAi').onclick=function(){var bin=atob(j.ai_base64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='layerset_'+t+'.ai';a.click();};
     if($('lsFindJob'))$('lsFindJob').onclick=function(){ if(typeof window.openJobsDlg==='function')window.openJobsDlg('find'); else alert('เปิดหน้าจำลองผนังเพื่อค้นหางาน'); };
+    // 🏷️ คลิกชิ้นบนแผนที่ -> สลับ ตัด/สติ๊กเกอร์ แล้วสร้างใหม่ทันที
+    if($('stickMap')){ $('stickMap').onclick=function(e){ var p=e.target.closest('[data-pi]'); if(!p)return;
+        var i=parseInt(p.getAttribute('data-pi'),10); if(isNaN(i))return;
+        window._stickerIdx=window._stickerIdx||[];
+        var k=window._stickerIdx.indexOf(i); if(k>=0)window._stickerIdx.splice(k,1); else window._stickerIdx.push(i);
+        try{ $('goLayer').click(); }catch(_e){} };
+      var _sc=$('stickClr'); if(_sc)_sc.onclick=function(ev){ ev.stopPropagation(); window._stickerIdx=[]; try{ $('goLayer').click(); }catch(_e){} }; }
     if($('lsSaveJob'))$('lsSaveJob').onclick=function(){
       if(typeof window.saveDesignJob!=='function'){alert('ระบบบันทึกงานยังไม่พร้อม');return;}
       var nm=prompt('ชื่องาน (สำหรับบันทึก)',(lastName||'งานออกแบบ'))||''; if(!nm)return;
@@ -5454,6 +5480,7 @@ $('goLayer').onclick=function(){
         mtname:(function(){try{var _c=(MTEX&&MTEX.indexOf('cust_')===0&&window._ctexGet)?window._ctexGet(MTEX):null;return _c?_c.name:'';}catch(_e){return '';}})(),
         mtscope:(window.MTSCOPE||'face'),
         notes:(window._ls3dNoteData||[]).slice(),
+        sticker:(window._stickerIdx||[]).slice(),
         rdepth:(((typeof RDEPTH!=='undefined')?RDEPTH:0)||parseFloat(_gv('bxD'))||0),   // ⚠️ RDEPTH=0 แต่ช่องลึกมีค่า -> ใช้ค่าช่องลึก
         trimw:(typeof TRIMW!=='undefined'?TRIMW:1)||1,trimdir:(typeof TRIMDIR!=='undefined'?TRIMDIR:'out')||'out',
         ncolors:_gv('nColors')||'6',
@@ -5825,6 +5852,7 @@ function _measureBlur(img){
 function pick(f){
   fileObj=f;lastName=(f.name||'image').replace(/\.[^.]+$/,'');
   IMG_W=0; IMG_H=0; IMG_BLUR=-1;
+  window._stickerIdx=[];   // 🏷️ ไฟล์ใหม่ = ล้างรายการชิ้นสติ๊กเกอร์ของงานเก่า
   if($('resBox'))$('resBox').style.display='none';
   $('fname').removeAttribute('data-i18n');   /* มีชื่อไฟล์จริงแล้ว อย่าให้ applyLang เขียนทับ */
   $('fname').textContent=f.name;
