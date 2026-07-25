@@ -4375,7 +4375,7 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
     try:
         import numpy as np, cv2, base64 as _b64
         ext = os.path.splitext(inp)[1].lower()
-        mpx = max(500, min(2600, int(max_px)))
+        mpx = max(500, min(3200, int(max_px)))
         fr = max(0.006, min(0.06, float(frac)))
         rasters = []                                    # [(page_index, BGRA image)]
         pieces = []
@@ -4477,7 +4477,8 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
                 mask = (cv2.cvtColor(img[:, :, :3], cv2.COLOR_BGR2GRAY) < 245).astype(np.uint8)
                 img[:, :, 3] = mask * 255
             k = max(3, int(min(H, W) * fr))
-            ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+            ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))       # ใหญ่ = ใช้ 'จับกลุ่ม' ตัวอักษรเป็นก้อนเดียว
+            kerS = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))      # เล็ก = ใช้ทำ mask ชิ้น (ไม่กวาดของข้างเคียง)
             dil = cv2.dilate(mask, ker)
             n, lab, st, ce = cv2.connectedComponentsWithStats(dil, 8)
             for i in range(1, n):
@@ -4488,7 +4489,8 @@ async def api_ai_split(file: UploadFile = File(...), max_px: int = Form(1600), f
                 x0 = max(0, x - pad); y0 = max(0, y - pad)
                 x1 = min(W, x + w + pad); y1 = min(H, y + h + pad)
                 crop = img[y0:y1, x0:x1].copy()
-                lm = cv2.dilate((lab[y0:y1, x0:x1] == i).astype(np.uint8), ker)
+                # ✂ mask ด้วยกลุ่มจริงของชิ้น (dilate เล็ก 5px กัน halo เท่านั้น) — ของข้างเคียงไม่ติดมาอีก
+                lm = cv2.dilate((lab[y0:y1, x0:x1] == i).astype(np.uint8), kerS)
                 crop[:, :, 3] = (crop[:, :, 3] * (lm > 0)).astype(np.uint8)
                 ok, buf = cv2.imencode(".png", crop)
                 if ok:
