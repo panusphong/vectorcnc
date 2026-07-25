@@ -4438,72 +4438,38 @@ async def extract_assets(file: UploadFile = File(...)):
                             status_code=400)
 
 
-def _crop_clean_strict(path, page_no, bbox, pad_pt=1.0, inside_frac=0.6):
-    """✂ ครอปเวกเตอร์แบบ 'เข้มงวด' สำหรับรวมชิ้น — วาดใหม่เฉพาะ drawing ที่อยู่ในกรอบ ≥ inside_frac
-       (ต่างจาก crop_vector ที่เอาทุกชิ้นที่ 'แตะ' กรอบ -> ของข้างเคียงติดมา) คืน (pdf_bytes|None)"""
+def _crop_clean_strict(path, page_no, bbox, pad_pt=1.0):
+    """✂ ครอปชิ้นเวกเตอร์แบบ 'ต้นฉบับ 100%' — ใช้ redaction ลบเฉพาะของนอกกรอบ (เส้น/ข้อความ/ภาพข้างเคียง)
+       ชิ้นในกรอบไม่ถูกแตะเลย: path เดิม · รูโบ๋ (even-odd) เดิม · ฟอนต์เดิม · ความคมเท่าไฟล์ลูกค้า
+       คืน (pdf_bytes|None)"""
     import fitz
-    src = fitz.open(path)
+    doc = fitz.open(path)
     try:
-        page = src[page_no]
+        page = doc[page_no]
         r = fitz.Rect(*bbox)
         r.x0 -= pad_pt; r.y0 -= pad_pt; r.x1 += pad_pt; r.y1 += pad_pt
         r = r & page.rect
-        try:
-            draws = []
-            for d in page.get_drawings():
-                dr = d.get("rect")
-                if dr is None or dr.is_empty:
-                    continue
-                inter = dr & r
-                if (not inter.is_valid) or inter.is_empty:
-                    continue
-                da = max(1e-9, abs(dr.width * dr.height))
-                if (abs(inter.width * inter.height) / da) < float(inside_frac):
-                    continue                            # แตะกรอบแค่ขอบ -> ไม่ใช่ชิ้นนี้ ตัดทิ้ง
-                draws.append(d)
-        except Exception:
-            draws = []
-        if not draws:
+        if r.is_empty:
             return None
-        out = fitz.open()
-        np_ = out.new_page(width=page.rect.width, height=page.rect.height)
-        sh = np_.new_shape()
-        for d in draws:
-            drew = False
-            for it in d.get("items", []):
-                try:
-                    op = it[0]
-                    if op == "l":
-                        sh.draw_line(it[1], it[2]); drew = True
-                    elif op == "c":
-                        sh.draw_bezier(it[1], it[2], it[3], it[4]); drew = True
-                    elif op == "re":
-                        sh.draw_rect(it[1]); drew = True
-                    elif op == "qu":
-                        sh.draw_quad(it[1]); drew = True
-                except Exception:
-                    continue
-            if not drew:
-                continue
+        pr = page.rect
+        for a in [fitz.Rect(pr.x0, pr.y0, pr.x1, r.y0), fitz.Rect(pr.x0, r.y1, pr.x1, pr.y1),
+                  fitz.Rect(pr.x0, r.y0, r.x0, r.y1), fitz.Rect(r.x1, r.y0, pr.x1, r.y1)]:
+            if a.is_valid and not a.is_empty and a.width > 0.5 and a.height > 0.5:
+                page.add_redact_annot(a)
+        try:
+            # ⚠️ ต้องเป็น IF_COVERED (ลบเฉพาะชิ้นที่อยู่นอกกรอบทั้งชิ้น) — IF_TOUCHED จะ rewrite เส้นจนรูโบ๋/fill rule เสีย
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                                  graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED)
+        except Exception:
             try:
-                sh.finish(color=d.get("color"), fill=d.get("fill"),
-                          width=float(d.get("width") or 0),
-                          closePath=bool(d.get("closePath", True)),
-                          even_odd=bool(d.get("even_odd", False)),
-                          fill_opacity=float(d.get("fill_opacity", 1) or 1),
-                          stroke_opacity=float(d.get("stroke_opacity", 1) or 1))
+                page.apply_redactions()                 # pymupdf เก่า: ลบ text/ภาพนอกกรอบ (เส้นถูกซ่อนด้วย cropbox)
             except Exception:
-                try:
-                    sh.finish(color=d.get("color"), fill=d.get("fill"))
-                except Exception:
-                    pass
-        sh.commit()
-        np_.set_cropbox(r)
-        buf = out.tobytes(garbage=4, deflate=True, clean=True)
-        out.close()
+                pass
+        page.set_cropbox(r)
+        buf = doc.tobytes(garbage=4, deflate=True, clean=True)
         return buf
     finally:
-        src.close()
+        doc.close()
 
 
 @app.post("/api/compose-vector")
@@ -4531,7 +4497,7 @@ async def compose_vector(request: Request):
         n_ok = 0
         for it in items:
             try:
-                # ✂ ครอปชิ้นแบบ 'เข้มงวด' (เฉพาะ drawing ที่อยู่ในกรอบจริง ≥60% — ของข้างเคียงไม่ติดมา)
+                # ✂ ครอปชิ้นแบบ redaction (ลบของนอกกรอบ · ชิ้นในกรอบ = ต้นฉบับ 100% ทั้ง path/รูโบ๋/ฟอนต์)
                 pbytes = _crop_clean_strict(path, int(it.get("page", 0)),
                                             [float(v) for v in it["bbox"]], pad_pt=1.0)
                 if not pbytes:                          # ไม่มีเส้นเวกเตอร์ (เช่นชิ้นภาพฝังใน) -> ครอปแบบ exact
