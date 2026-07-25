@@ -518,6 +518,8 @@ select.numin{cursor:pointer}
                   <option value="Warm White 3000K" selected>Warm White 3000K (วอร์มไวท์)</option>
                   <option value="Cool White 4000K">Cool White 4000K (คูลไวท์)</option>
                   <option value="Daylight 6500K">Daylight 6500K (ขาวเดย์ไลท์)</option>
+                  <option value="Cool Daylight 8000K">Cool Daylight 8000K (ขาวอมฟ้า)</option>
+                  <option value="Super Cool White 11000K">Super Cool White 11000K (ฟ้าเย็นจัด)</option>
                   <option value="RGB (เปลี่ยนสีได้)">RGB (เปลี่ยนสีได้)</option>
                 </select></div>
             </div>
@@ -4894,7 +4896,7 @@ window.restoreDesignJob=function(d,job){
     try{ window._ls3dNoteData=(d.notes&&d.notes.slice)?d.notes.slice():(window._ls3dNoteData||[]); }catch(_e){}
     try{ if(d.rdepth!=null)RDEPTH=parseFloat(d.rdepth)||0; }catch(_e){}
     try{ if(d.trimw!=null)TRIMW=parseFloat(d.trimw)||TRIMW; if(d.trimdir)TRIMDIR=String(d.trimdir); }catch(_e){}
-    try{ if(d.glow&&typeof GLOW!=='undefined'){ GLOW.mode=d.glow.mode||GLOW.mode; GLOW.temp=d.glow.temp||GLOW.temp; GLOW.acr=d.glow.acr||null; } }catch(_e){}
+    try{ if(d.glow&&typeof GLOW!=='undefined'){ GLOW.mode=d.glow.mode||GLOW.mode; GLOW.temp=d.glow.temp||GLOW.temp; GLOW.acr=d.glow.acr||null; GLOW.kelvin=d.glow.kelvin||''; } }catch(_e){}
     // 📐 ตั้งขนาด 'ก่อน' เปลี่ยนประเภท — toggle() ของประเภทป้ายใช้ realW ไปเติมช่องกล่อง (เดิมสลับลำดับ -> กล่องได้ค่าเก่า)
     if(parseFloat(d.wcm)>0){ _sv('realWcm',Math.round(parseFloat(d.wcm))); _sv('realW',Math.round(parseFloat(d.wcm)*10)); }
     if(parseFloat(d.hcm)>0){ _sv('realHcm',Math.round(parseFloat(d.hcm))); _sv('realH',Math.round(parseFloat(d.hcm)*10)); }
@@ -4931,7 +4933,21 @@ window.restoreDesignJob=function(d,job){
     try{ vcLogSim&&vcLogSim('เปิดงานออกแบบ: '+((job&&job.jobName)||'')); }catch(_e){}
   }catch(e){ alert('เปิดงานออกแบบไม่สำเร็จ: '+e); }
 };
-function _glowColor(t){ if(GLOW.acr) return GLOW.acr; return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
+// 🌡️ สีแสงตามอุณหภูมิสี (Kelvin) — เทียบสีหลอด LED จริง (blackbody โดยประมาณ)
+function _kelvinHex(k){ var m={'2700':'#ffd6a0','3000':'#ffdfb5','4000':'#fff1da','5000':'#fff9f0','6500':'#f2f6ff','8000':'#dfe9ff','11000':'#c9dcff'}; return m[String(k)]||''; }
+function _glowColor(t){ if(GLOW.acr) return GLOW.acr;
+  if(GLOW.kelvin){ var kh=_kelvinHex(GLOW.kelvin); if(kh)return kh; }
+  return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
+window._setGLK=function(v){ GLOW.kelvin=v||'';
+  var gt=document.querySelectorAll('.glowT');
+  for(var j=0;j<gt.length;j++)gt[j].classList.toggle('on', !GLOW.kelvin && gt[j].getAttribute('data-t')===GLOW.temp);
+  if(v && GLOW.mode==='off'){ GLOW.mode='front';                        // เลือก K ตอนไฟปิด -> เปิดไฟออกหน้าให้เห็นผลทันที
+    var gm=document.querySelectorAll('.glowM');
+    for(var i=0;i<gm.length;i++)gm[i].classList.toggle('on',gm[i].getAttribute('data-g')==='front'); }
+  // 🔗 ซิงก์สเปคไฟในใบสั่งผลิตอัตโนมัติ (ถ้ามีตัวเลือกตรงกัน)
+  try{ var lm={'2700':'Warm White 2700K','3000':'Warm White 3000K','4000':'Cool White 4000K','6500':'Daylight 6500K','8000':'Cool Daylight 8000K','11000':'Super Cool White 11000K'};
+    var pl=$('pmLedColor'); if(pl&&v&&lm[v]){ for(var q=0;q<pl.options.length;q++)if(pl.options[q].value===lm[v]){pl.value=lm[v];break;} } }catch(_e){}
+  applyGlow(); };
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
 function recolor3d(){var img=$('ls3dImg');if(!img)return;
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
@@ -5032,7 +5048,7 @@ function applyGlow(){
 function wireGlow(){
   var gm=document.querySelectorAll('.glowM'),gt=document.querySelectorAll('.glowT');
   for(var i=0;i<gm.length;i++){gm[i].classList.toggle('on',gm[i].getAttribute('data-g')===GLOW.mode);gm[i].onclick=function(){for(var j=0;j<gm.length;j++)gm[j].classList.remove('on');this.classList.add('on');GLOW.mode=this.getAttribute('data-g');applyGlow();};}
-  for(var k=0;k<gt.length;k++){gt[k].classList.toggle('on',gt[k].getAttribute('data-t')===GLOW.temp);gt[k].onclick=function(){for(var j=0;j<gt.length;j++)gt[j].classList.remove('on');this.classList.add('on');GLOW.temp=this.getAttribute('data-t');applyGlow();};}
+  for(var k=0;k<gt.length;k++){gt[k].classList.toggle('on',!GLOW.kelvin&&gt[k].getAttribute('data-t')===GLOW.temp);gt[k].onclick=function(){for(var j=0;j<gt.length;j++)gt[j].classList.remove('on');this.classList.add('on');GLOW.temp=this.getAttribute('data-t');GLOW.kelvin='';if($('glowK'))$('glowK').value='';applyGlow();};}
   if($('faceColor'))$('faceColor').oninput=function(){FCOL=this.value;GLOW.acr=null;var od=$('acrOffD');if(od)od.classList.add('on');recolor3d();applyGlow();};
   if($('sideColor'))$('sideColor').oninput=function(){SCOL=this.value;recolor3d();};
   // 🎨 อะคริลิคนีออน 12 สี — หน้าเป็นสีนี้ + แสงเป็นสีเดียวกัน
@@ -5319,6 +5335,17 @@ $('goLayer').onclick=function(){
           '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button><button type="button" class="chip glowM" data-g="around">💫 ออกรอบ</button></div>'+
         '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
           '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">🌡️'+
+          '<select id="glowK" onchange="_setGLK(this.value)" title="อุณหภูมิสีแสง (Kelvin)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
+            '<option value=""'+(!GLOW.kelvin?' selected':'')+'>— K —</option>'+
+            '<option value="2700" style="background:#ffd6a0"'+(GLOW.kelvin==='2700'?' selected':'')+'>2700K วอร์มจัด</option>'+
+            '<option value="3000" style="background:#ffdfb5"'+(GLOW.kelvin==='3000'?' selected':'')+'>3000K วอร์มไวท์</option>'+
+            '<option value="4000" style="background:#fff1da"'+(GLOW.kelvin==='4000'?' selected':'')+'>4000K คูลไวท์</option>'+
+            '<option value="5000" style="background:#fff9f0"'+(GLOW.kelvin==='5000'?' selected':'')+'>5000K เดย์ไลท์นวล</option>'+
+            '<option value="6500" style="background:#f2f6ff"'+(GLOW.kelvin==='6500'?' selected':'')+'>6500K เดย์ไลท์</option>'+
+            '<option value="8000" style="background:#dfe9ff"'+(GLOW.kelvin==='8000'?' selected':'')+'>8000K ขาวอมฟ้า</option>'+
+            '<option value="11000" style="background:#c9dcff"'+(GLOW.kelvin==='11000'?' selected':'')+'>11000K ฟ้าเย็นจัด</option>'+
+          '</select></label>'+
         '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">หน้าอะคริลิค<input type="color" id="faceColor" value="'+FCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">ขอบ/คิ้ว<input type="color" id="sideColor" value="'+SCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
@@ -5432,7 +5459,7 @@ $('goLayer').onclick=function(){
         ncolors:_gv('nColors')||'6',
         arm:{m:_gv('mainArm'),len:_gv('mainArmLen'),side:_gv('mainArmSide'),adj:_gv('mainArmAdjust'),trv:_gv('mainArmTravel')},
         frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen')},
-        glow:(typeof GLOW!=='undefined'?{mode:GLOW.mode,temp:GLOW.temp,acr:GLOW.acr||null}:null),
+        glow:(typeof GLOW!=='undefined'?{mode:GLOW.mode,temp:GLOW.temp,acr:GLOW.acr||null,kelvin:GLOW.kelvin||''}:null),
         pm:{mat:_gv('pmMaterial'),ledt:_gv('pmLedType'),pitch:_gv('pmLedPitch'),ledc:_gv('pmLedColor'),wire:_gv('pmWire'),print:_gv('pmPrint'),sales:_gv('pmSales'),graphic:_gv('pmGraphic'),deliv:_gv('pmDelivery')},
         la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0}};
       var doSave=function(img,src){ st8.src=src||'';
