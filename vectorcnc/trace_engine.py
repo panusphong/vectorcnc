@@ -1044,7 +1044,7 @@ def _regularize_subpath(sp, tol=0.9, flatten=True, **_):
     return {'start': sp['start'], 'segs': snapped, 'closed': closed}
 def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
                   length_threshold=2.5, splice_threshold=45, path_precision=6,
-                  regularize=True):
+                  regularize=True, close_px=5, supersample=2600, smooth_px=0):
     """คืน [(bgr, [subpaths])] — ใช้ vtracer (VisionCortex) คุณภาพเส้นตัดระดับมืออาชีพ
     เส้นตรง = ตรงจริง · โค้ง = spline เนียน · มุม = คม · ขนาดพิกัด = px ต้นฉบับ"""
     import tempfile, re
@@ -1065,8 +1065,9 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     # supersample: อัปสเกลภาพเล็ก/กลางให้ด้านยาว ~2600px ก่อน trace
     # -> ขอบ diagonal/โค้ง เนียนตรงขึ้น (ลด stair-step ของ JPEG) + เส้นบางไม่หลุด
     _long = max(g.shape[:2])
-    if _long < 2600:
-        _sc = 2600.0 / float(_long)
+    _tgt = float(supersample or 2600)
+    if _long < _tgt:                    # supersample ตามค่าที่เรียก (โหมดไฟล์ตัด = สูงขึ้น -> เส้นเนียนกว่า)
+        _sc = _tgt / float(_long)
         g = _cv.resize(g, None, fx=_sc, fy=_sc, interpolation=_cv.INTER_CUBIC)
     g = _cv.bilateralFilter(g, 7, 45, 45)
     # พื้นหลัง = สว่างเด่นที่ขอบ -> ตั้ง threshold ให้จับเส้นที่เข้มกว่าพื้นเล็กน้อย (เก็บเส้นจาง)
@@ -1076,9 +1077,15 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
         thr = max(40.0, bg - 45.0); mask = (g < thr).astype(np.uint8) * 255
     else:                               # พื้นเข้ม วัตถุสว่าง
         thr = min(215.0, bg + 45.0); mask = (g > thr).astype(np.uint8) * 255
-    k = _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (5, 5))
-    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, k)   # เชื่อมรอยขาด/ปิดปลายเส้นเรียว
-    mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (3, 3)))
+    # 🔧 ปิดรอยขาด (ค่าเริ่มต้นเดิม 5px) — โหมดไฟล์ตัดส่ง close_px=0 เพื่อ 'ไม่กลืนเส้นบาง' (เช่น ขอบตัวสัตว์ในโลโก้)
+    if int(close_px or 0) >= 3:
+        _kk = int(close_px)
+        mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (_kk, _kk)))
+        mask = _cv.morphologyEx(mask, _cv.MORPH_CLOSE, _cv.getStructuringElement(_cv.MORPH_ELLIPSE, (3, 3)))
+    if int(smooth_px or 0) >= 1:        # 🧈 ลบรอยบันไดพิกเซลก่อนให้ vtracer ฟิตเส้น -> โค้งลื่น ไม่ยึกยัก
+        _s5 = int(smooth_px) * 2 + 1
+        mask = _cv.GaussianBlur(mask, (_s5, _s5), 0)
+        mask = ((mask > 127) * 255).astype(np.uint8)
     canvas = np.full(mask.shape, 255, np.uint8); canvas[mask > 0] = 0   # ดำบนขาว
     tf = tempfile.mktemp(suffix='.png'); _cv.imwrite(tf, canvas)
     outsvg = tempfile.mktemp(suffix='.svg')
