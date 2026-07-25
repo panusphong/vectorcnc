@@ -2019,7 +2019,7 @@ def _notes_overlay_svg(svg_str, notes):
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
-               metal_tex_scope="face", sticker_geom=None):
+               metal_tex_scope="face", sticker_geom=None, bore_subs=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -2186,7 +2186,34 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for pg in (sticker_geom.geoms if sticker_geom.geom_type == "MultiPolygon" else [sticker_geom]):
             if pg.geom_type == "Polygon" and not pg.is_empty:
                 parts.append('<path class="w3d-stick" d="%s" fill="#15181d" fill-rule="evenodd" opacity="0.92"/>' % faced(pg, F))
-    if inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
+    # 🔦 รูฉลุจาก 'เส้นตัดจริง' (subs) — ตรงกับไฟล์ .ai 100% (เขาเกลียว/เส้นบางไม่หาย)
+    _bore_d = ""
+    if bore_subs:
+        try:
+            _pp = []
+            for _sp in bore_subs:
+                _c0 = F(_sp["start"]); _pp.append("M %.2f %.2f" % _c0)
+                for _sg in _sp["segs"]:
+                    if _sg[0] == "L":
+                        _pp.append("L %.2f %.2f" % F(_sg[1]))
+                    else:
+                        _a = F(_sg[1]); _b2 = F(_sg[2]); _c2 = F(_sg[3])
+                        _pp.append("C %.2f %.2f %.2f %.2f %.2f %.2f" % (_a[0], _a[1], _b2[0], _b2[1], _c2[0], _c2[1]))
+                _pp.append("Z")
+            _bore_d = " ".join(_pp)
+        except Exception:
+            _bore_d = ""
+    if _bore_d:
+        _pbF = face_color or "#fff3c4"
+        _pblur = max(5.0, S * 0.014)
+        parts.append('<defs><filter id="w3dPunchGlow" x="-60%%" y="-60%%" width="220%%" height="220%%">'
+                     '<feGaussianBlur stdDeviation="%.1f"/></filter>'
+                     '<filter id="w3dPunchGlow2" x="-150%%" y="-150%%" width="400%%" height="400%%">'
+                     '<feGaussianBlur stdDeviation="%.1f"/></filter></defs>' % (_pblur, _pblur * 3.0))
+        parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" opacity="0.5" filter="url(#w3dPunchGlow2)"/>' % (_bore_d, _pbF))
+        parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" opacity="0.9" filter="url(#w3dPunchGlow)"/>' % (_bore_d, _pbF))
+        parts.append('<path class="w3d-face" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (_bore_d, _pbF, edge, lw * 0.5))
+    elif inner_bore is not None and not inner_bore.is_empty:   # คิ้วเจาะโบ๋ = ช่องจม
         _punch2 = bool(rec.get("punch_face"))
         ip = list(inner_bore.geoms) if inner_bore.geom_type == "MultiPolygon" else [inner_bore]
         if _punch2:
@@ -2597,6 +2624,7 @@ def _ortho_views_svg(full, rec, depth_mm, inner_bore=None, face_color=None, side
 
 
 def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0, sticker_geom=None,
+                    bore_subs=None,
                     side_color=None, metal_tex="", metal_tex_img="", metal_tex_scope="face"):
     """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย
        frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง สแตนเลส) เหนือป้าย (เฉพาะป้ายมีโครง)"""
@@ -2689,7 +2717,32 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
         if _punchF and _ftexF and _fmtxhair:           # ✨ ลายแฮร์ไลน์บนหน้าโลหะ
             for pg in polys:
                 parts.append('<path d="%s" fill="url(#mtxh)" fill-rule="evenodd"/>' % d(pg))
-        if inner_bore is not None and not inner_bore.is_empty:
+        _bd2 = ""
+        if bore_subs:                                  # 🔦 รูฉลุจากเส้นตัดจริง (ตรงกับไฟล์ .ai)
+            try:
+                _q = []
+                for _sp in bore_subs:
+                    _s0 = (_sp["start"][0] - b[0] + pad, _sp["start"][1] - b[1] + pad + ftop)
+                    _q.append("M %.2f %.2f" % _s0)
+                    for _sg in _sp["segs"]:
+                        if _sg[0] == "L":
+                            _q.append("L %.2f %.2f" % (_sg[1][0] - b[0] + pad, _sg[1][1] - b[1] + pad + ftop))
+                        else:
+                            _q.append("C %.2f %.2f %.2f %.2f %.2f %.2f" % (
+                                _sg[1][0] - b[0] + pad, _sg[1][1] - b[1] + pad + ftop,
+                                _sg[2][0] - b[0] + pad, _sg[2][1] - b[1] + pad + ftop,
+                                _sg[3][0] - b[0] + pad, _sg[3][1] - b[1] + pad + ftop))
+                    _q.append("Z")
+                _bd2 = " ".join(_q)
+            except Exception:
+                _bd2 = ""
+        if _bd2:
+            _pbF = face_color or "#ffd98a"
+            parts.append('<defs><filter id="fsPGlow" x="-60%%" y="-60%%" width="220%%" height="220%%">'
+                         '<feGaussianBlur stdDeviation="%.1f"/></filter></defs>' % max(4.0, S * 0.012))
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" opacity="0.9" filter="url(#fsPGlow)"/>' % (_bd2, _pbF))
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (_bd2, _pbF, edge, lw * 0.5))
+        elif inner_bore is not None and not inner_bore.is_empty:
             if _punchF:                                # 💡 แสงวอร์มออกเฉพาะรู logo (ฮาโลฟุ้ง + เนื้อรูสว่าง)
                 _pbF = face_color or "#ffd98a"
                 parts.append('<defs><filter id="fsPGlow" x="-60%%" y="-60%%" width="220%%" height="220%%">'
@@ -3231,6 +3284,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 _sticker_geom = None
         _use_raw_punch = None                       # 🏆 เส้นตัด logo แบบ 'เส้นโค้งดิบ' (ถ้าใช้ได้)
+        _punch_raw_subs = None                      # 🔦 เส้นรูฉลุ (ชุดเดียวกับไฟล์ตัด) ไว้วาดภาพ 3 มิติ
         for L in ([] if _neon else rec["layers"]):
             off = float(L["off"]); kind = L.get("kind", "solid")
             _use_raw_punch = None
@@ -3270,6 +3324,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
                         if _keepR and _boxS:
                             _use_raw_punch = _boxS + _keepR
+                            _punch_raw_subs = _keepR               # 🔦 ใช้วาด 'รูฉลุ' ในภาพ 3 มิติ ให้ตรงกับไฟล์ตัดเป๊ะ
                             warns.append("✂️ เส้นตัด logo = เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น" % len(_keepR))
                 except Exception:
                     pass
@@ -3415,7 +3470,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
                                    arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
-                                   metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"))
+                                   metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
+                                   bore_subs=_punch_raw_subs)
         except Exception:
             svg3d = ""
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
@@ -3517,7 +3573,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                            face_color=(face_color or None), art_href=_art, frame_top_cm=0.0,
                                            side_color=(side_color or None), metal_tex=str(metal_tex or ""),
                                            metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
-                                           sticker_geom=_sticker_geom)
+                                           sticker_geom=_sticker_geom, bore_subs=_punch_raw_subs)
         except Exception:
             svg_face = ""
         # 🔩 ป้ายอักษร + โครงแขวน -> ภาพด้านหลังมีโครงยึด (แยกเป็นอีกภาพ พร้อมจับระยะ)
