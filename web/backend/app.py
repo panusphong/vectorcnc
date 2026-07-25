@@ -3245,20 +3245,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
                         _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
                         _rawL = _subs_affine(_rs, _sx, _tx, _ty)
-                        # 🧹 คัดเส้นดิบให้ตรงกับ logo ที่ล้างเศษ/แยกสติ๊กเกอร์แล้ว (เก็บเฉพาะเส้นที่ยังอยู่บนรูปจริง)
+                        # 🧹 คัดเส้นดิบให้ตรงกับ logo ที่ล้างเศษ/แยกสติ๊กเกอร์แล้ว
+                        # ⚠️ ห้ามเช็คด้วย 'จุดกึ่งกลางกรอบ' — ตัวอักษร o/e/a จุดกลางตกในรู -> ถูกทิ้งหมด!
+                        # ✅ เช็คว่า 'เส้นวิ่งทับขอบของรูปจริง' แทน (ขอบ logo = เส้นดิบที่เก็บไว้พอดี)
                         from shapely.prepared import prep as _prep2
                         from shapely.geometry import Point as _Pt2
-                        _pp = _prep2(_punch_logo.buffer(0.6))
+                        _bnd2 = _prep2(_punch_logo.boundary.buffer(1.2))
                         _keepR = []
                         for _sp2 in _rawL:
-                            _xs2 = [_sp2["start"][0]]; _ys2 = [_sp2["start"][1]]
-                            for _sg2 in _sp2["segs"]:
-                                _xs2.append(_sg2[-1][0]); _ys2.append(_sg2[-1][1])
-                            _cx2 = (min(_xs2) + max(_xs2)) / 2.0; _cy2 = (min(_ys2) + max(_ys2)) / 2.0
-                            _w2 = max(_xs2) - min(_xs2); _h2 = max(_ys2) - min(_ys2)
-                            if _w2 * _h2 < 0.6:
+                            _an2 = [_sp2["start"]] + [s[-1] for s in _sp2["segs"]]
+                            _xs2 = [p[0] for p in _an2]; _ys2 = [p[1] for p in _an2]
+                            if (max(_xs2) - min(_xs2)) * (max(_ys2) - min(_ys2)) < 0.6:
                                 continue                            # เศษจิ๋ว (noise) -> ทิ้ง
-                            if _pp.intersects(_Pt2(_cx2, _cy2)) or _pp.intersects(_Pt2(min(_xs2), min(_ys2))):
+                            _st2 = max(1, len(_an2) // 12)          # สุ่มจุดบนเส้น ~12 จุดพอ (เร็ว)
+                            _hit2 = False
+                            for _p2 in _an2[::_st2]:
+                                if _bnd2.intersects(_Pt2(_p2[0], _p2[1])):
+                                    _hit2 = True; break
+                            if _hit2:
                                 _keepR.append(_sp2)
                         _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
                         if _keepR and _boxS:
