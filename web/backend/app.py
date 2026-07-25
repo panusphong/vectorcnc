@@ -1429,7 +1429,7 @@ def _metal_defs(tex, S):
 
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
-               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex=""):
+               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color=""):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -1607,7 +1607,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     arm_parts = []
     if _mount in ("top2", "side1", "side2", "letterframe"):
         tw = 25.0
-        steel = "#8b93a0"; steelD = "#5b626d"; plateC = "#c6ccd6"; bolt = "#5b626d"; surf = "#cbd5e1"
+        # 🦾 สีแขนยึด: เลือกเองได้ (arm_color) · ไม่เลือก -> วิ่งตามพื้นผิว/สีกล่องไฟ (metal_tex > side_color > เหล็กมาตรฐาน)
+        _armF = (arm_color or "").strip() or _mtxfill or (side_color or "") or "#8b93a0"
+        steel = _armF; steelD = "#5b626d"; plateC = _armF; bolt = "#5b626d"; surf = _armF
 
         def _tube(p1, p2, w):
             vx, vy = p2[0] - p1[0], p2[1] - p1[1]; Ln = math.hypot(vx, vy) or 1.0
@@ -1951,9 +1953,10 @@ def _ortho_views_svg(full, rec, depth_mm, inner_bore=None, face_color=None, side
     return "".join(parts)
 
 
-def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0):
+def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0,
+                    side_color=None, metal_tex=""):
     """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย
-       frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง) เหนือป้าย (เฉพาะป้ายมีโครง)"""
+       frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง สแตนเลส) เหนือป้าย (เฉพาะป้ายมีโครง)"""
     b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
     pad = S * (0.012 if float(frame_top_cm) <= 0 else 0.08)   # วางผนัง = pad ~1% ให้ภาพ ≈ ตัวป้าย (ขนาด/สัดส่วนตรง)
     ftop = max(0.0, float(frame_top_cm)) * 10.0
@@ -1974,11 +1977,22 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
         return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
 
     edge = "#3f4753"; lw = max(0.8, S * 0.0022); faceFill = face_color or "#eef4ff"
+    _punchF = bool(rec.get("punch_face"))
+    # 🪙 พื้นผิวโลหะ: ใช้กับหน้ากล่องฉลุ + แขนยึดสแตนเลส (ถ้าไม่เลือกพื้นผิว -> แขน = สแตนเลสเงินแฮร์ไลน์)
+    _fmtxd, _fmtxfill, _fmtxhair = _metal_defs(metal_tex, S)
+    _amtxd, _amtxfill, _ = ("", None, False)
+    if not _fmtxfill:
+        _amtxd, _amtxfill, _ = _metal_defs("silver_hairline", S)
     parts = ['<defs><filter id="fsh" x="-30%%" y="-30%%" width="160%%" height="160%%">'
              '<feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.32"/></filter></defs>'
              % (S * 0.022, S * 0.02)]
-    if ftop > 0:                                       # 🔩 โครงเหล็กแขวน (หน้าตรง) — คานเพดาน + แขน 2 ข้าง (หลังป้าย)
-        tw = max(8.0, S * 0.018); steel = "#8b93a0"; steelD = "#5b626d"; surf = "#cbd5e1"; plateC = "#c6ccd6"
+    if _fmtxd:
+        parts.append(_fmtxd)
+    elif _amtxd:
+        parts.append(_amtxd)
+    _steelFill = _fmtxfill or _amtxfill or "#c7cfd9"   # สแตนเลสสำหรับแขนยึด/คาน
+    if ftop > 0:                                       # 🔩 โครงแขวน (หน้าตรง) — คานเพดาน + แขน 2 ข้าง 'สแตนเลส'
+        tw = max(8.0, S * 0.018); steel = _steelFill; steelD = "#5b626d"; surf = _steelFill; plateC = _steelFill
         cyb = pad * 0.5
         _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
         _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center
@@ -2023,11 +2037,25 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
         for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw))
     else:                                              # หน้าตัน (ตัวอักษร/ไม่พิมพ์) + คิ้วเจาะโบ๋
+        # 🔦 กล่องฉลุ: หน้า = โลหะ (สแตนเลส/สีขอบ) · รู logo = อะคริลิคเรืองแสงวอร์ม — ห้ามสลับ!
+        _mainFill = (_fmtxfill or side_color or "#c7cfd9") if _punchF else faceFill
         for pg in polys:
-            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), faceFill, edge, lw))
+            parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), _mainFill, edge, lw))
+        if _punchF and _fmtxfill and _fmtxhair:        # ✨ ลายแฮร์ไลน์บนหน้าโลหะ
+            for pg in polys:
+                parts.append('<path d="%s" fill="url(#mtxh)" fill-rule="evenodd"/>' % d(pg))
         if inner_bore is not None and not inner_bore.is_empty:
-            for pg in P(inner_bore):
-                parts.append('<path d="%s" fill="#eef1f5" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw * 0.8))
+            if _punchF:                                # 💡 แสงวอร์มออกเฉพาะรู logo (ฮาโลฟุ้ง + เนื้อรูสว่าง)
+                _pbF = face_color or "#ffd98a"
+                parts.append('<defs><filter id="fsPGlow" x="-60%%" y="-60%%" width="220%%" height="220%%">'
+                             '<feGaussianBlur stdDeviation="%.1f"/></filter></defs>' % max(4.0, S * 0.012))
+                for pg in P(inner_bore):
+                    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" opacity="0.9" filter="url(#fsPGlow)"/>' % (d(pg), _pbF))
+                for pg in P(inner_bore):
+                    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), _pbF, edge, lw * 0.6))
+            else:
+                for pg in P(inner_bore):
+                    parts.append('<path d="%s" fill="#eef1f5" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (d(pg), edge, lw * 0.8))
     parts.append('</g>')
     Wt = W + 2 * pad; Ht = H + 2 * pad + ftop
     return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
@@ -2425,7 +2453,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
                     led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
-                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form("")):
+                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form("")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -2604,7 +2632,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
                                    arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj,
-                                   metal_tex=str(metal_tex or ""))
+                                   metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""))
         except Exception:
             svg3d = ""
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
@@ -2705,7 +2733,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
                 # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
                 svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
-                                           face_color=(face_color or None), art_href=_art, frame_top_cm=0.0)
+                                           face_color=(face_color or None), art_href=_art, frame_top_cm=0.0,
+                                           side_color=(side_color or None), metal_tex=str(metal_tex or ""))
         except Exception:
             svg_face = ""
         # 🔩 ป้ายอักษร + โครงแขวน -> ภาพด้านหลังมีโครงยึด (แยกเป็นอีกภาพ พร้อมจับระยะ)
@@ -3004,7 +3033,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     wire_type: str = Form("indoor"), print_spec: str = Form(""),
                     delivery_date: str = Form(""), nesting_b64: str = Form(""), graphic: str = Form(""),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
-                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""),
+                    logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     face_color: str = Form(""), side_color: str = Form(""),
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0)):
@@ -3080,7 +3109,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
                                    mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0,
                                    art_adj=_art_adj, metal_tex=str(metal_tex or ""),
-                                   face_color=(face_color or None), side_color=(side_color or None))
+                                   face_color=(face_color or None), side_color=(side_color or None),
+                                   arm_color=str(arm_color or ""))
             except Exception:
                 persp = ""
         # frame back (type ที่มีโครงแขวน)
