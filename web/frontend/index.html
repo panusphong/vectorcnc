@@ -6757,27 +6757,48 @@ function _wallPickPieces(pieces, f){
   box.querySelector('#wPieceAll').onclick=function(){ ov.remove(); _wallRasterWhole(f); };
   ov.addEventListener('click',function(ev){ if(ev.target===ov) ov.remove(); });
 }
-// 🧩 หน้าหลัก: แตกไฟล์ .ai รวมหลายแบบ -> เลือกหลายชิ้น -> ลากจัดวาง -> รวมเป็นแบบ -> ประเภทป้าย
+// 🧩 หน้าหลัก: แตกไฟล์รวมหลายแบบ -> เลือกหลายชิ้น -> ลากจัดวาง -> รวมเป็นแบบ -> ประเภทป้าย
+//    .ai/.pdf/.eps = 🎯 เส้นทางเวกเตอร์แท้ (extract-assets + compose-vector) เส้นคมเท่าต้นฉบับ 100% ไม่ trace
+//    .psd/.svg    = เส้นทางภาพ (ai-split + canvas)
 (function(){
   var btn=document.getElementById('asmBtn'); if(!btn) return;
-  var _pieces=[], _items=[];
+  var _pieces=[], _items=[], _tok='', _vecMode=false, _K=0;   // _K = มม.ต่อพิกเซล ในพื้นที่จัดวาง (โหมดเวกเตอร์)
   btn.onclick=function(){
-    if(typeof fileObj==='undefined'||!fileObj){ alert('ลากไฟล์ .ai/.pdf ที่รวมหลายแบบมาก่อนนะคะ'); return; }
+    if(typeof fileObj==='undefined'||!fileObj){ alert('ลากไฟล์ .ai/.pdf/.psd ที่รวมหลายแบบมาก่อนนะคะ'); return; }
     if(!/\.(ai|pdf|eps|ps|psd|psb|svg)$/i.test(fileObj.name||'')){ alert('ใช้กับไฟล์ .ai / .pdf / .eps / .psd ที่รวมหลายแบบ/หลายเลเยอร์'); return; }
     var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังแตกชิ้น...';
-    var fd=new FormData(); fd.append('file',fileObj); fd.append('max_px','1400');
-    fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-      btn.disabled=false; btn.textContent=old;
-      if(j&&j.pieces&&j.count>0){ _pieces=j.pieces; openModal(); }
-      else alert('แตกชิ้นไม่สำเร็จ: '+((j&&j.error)||'ไม่พบชิ้นย่อยในไฟล์'));
-    }).catch(function(e){ btn.disabled=false; btn.textContent=old; alert('ต่อ backend ไม่ได้ '+e); });
+    var done=function(){ btn.disabled=false; btn.textContent=old; };
+    var rasterFlow=function(){
+      var fd=new FormData(); fd.append('file',fileObj); fd.append('max_px','1400');
+      fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+        done();
+        if(j&&j.pieces&&j.count>0){ _vecMode=false; _tok=''; _K=0;
+          _pieces=j.pieces.map(function(p){return {png:p.png,w:p.w,h:p.h,meta:null};}); openModal(); }
+        else alert('แตกชิ้นไม่สำเร็จ: '+((j&&j.error)||'ไม่พบชิ้นย่อยในไฟล์'));
+      }).catch(function(e){ done(); alert('ต่อ backend ไม่ได้ '+e); });
+    };
+    if(/\.(ai|pdf|eps|ps)$/i.test(fileObj.name||'')){
+      // 🎯 เวกเตอร์แท้: แตกชิ้นด้วย extract-assets (ได้ page+bbox สำหรับรวมแบบเวกเตอร์)
+      var fd2=new FormData(); fd2.append('file',fileObj);
+      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
+        var as=(j&&j.assets)?j.assets.filter(function(a){return a.kind!=='page'&&a.thumb;}):[];
+        if(j&&j.token&&as.length){ done(); _vecMode=true; _tok=j.token; _K=0;
+          _pieces=as.map(function(a){return {png:a.thumb,w:a.w_mm,h:a.h_mm,
+            meta:{page:a.page||0,bbox:a.bbox,w_mm:a.w_mm,h_mm:a.h_mm,vector:(a.kind==='vector')}};});
+          openModal(); }
+        else rasterFlow();                              // แตกเวกเตอร์ไม่ได้ -> ตกลงเส้นทางภาพ
+      }).catch(rasterFlow);
+      return;
+    }
+    rasterFlow();
   };
   function openModal(){
     var ov=document.getElementById('asmPop'); if(ov)ov.remove();
     ov=document.createElement('div'); ov.id='asmPop';
     ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:14px;font-family:Prompt,sans-serif';
     ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:1080px;width:100%;max-height:92vh;overflow:auto;padding:16px;box-shadow:0 12px 44px rgba(0,0,0,.4)">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:15px">🧩 พบ '+_pieces.length+' ชิ้น — คลิกเพิ่มลงพื้นที่จัดวาง (เลือกได้หลายชิ้น)</b>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:15px">🧩 พบ '+_pieces.length+' ชิ้น — คลิกเพิ่มลงพื้นที่จัดวาง (เลือกได้หลายชิ้น)'
+      +(_vecMode?' <span style="background:#dcfce7;color:#15803d;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:700">เวกเตอร์แท้ ✓ เส้นคมเท่าต้นฉบับ</span>':' <span style="background:#fef3c7;color:#b45309;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:700">ภาพ (PSD)</span>')+'</b>'
       +'<button id="asmClose" style="border:none;background:#e2e8f0;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit">✕ ปิด</button></div>'
       +'<div id="asmGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px"></div>'
       +'<div style="font-size:12px;color:#64748b;margin-bottom:6px">พื้นที่จัดวาง — <b>ลากย้าย</b> · <b>ลากจุดมุมขวาล่าง</b> เพื่อย่อ/ขยาย · <b>×</b> ลบชิ้น</div>'
@@ -6803,14 +6824,18 @@ function _wallPickPieces(pieces, f){
   }
   function addItem(p,canv){
     var ar=(p.h||160)/(p.w||160);
-    var w=Math.min(180,(p.w||160)), h=w*ar;
+    var w,h;
+    if(p.meta){                                        // 🎯 เวกเตอร์: ขนาดชิ้นสัมพันธ์กันตามขนาดจริง (มม.)
+      if(!_K)_K=(p.meta.w_mm||100)/180.0;              // ชิ้นแรกกว้าง 180px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
+      w=Math.max(24,Math.min(560,(p.meta.w_mm||100)/_K)); h=w*ar;
+    } else { w=Math.min(180,(p.w||160)); h=w*ar; }
     var el=document.createElement('div');
     el.style.cssText='position:absolute;left:'+(16+(_items.length%5)*26)+'px;top:'+(16+(_items.length%5)*22)+'px;width:'+w+'px;height:'+h+'px;cursor:move;border:1px dashed rgba(124,58,237,.0);box-sizing:border-box';
     el.innerHTML='<img src="'+p.png+'" style="width:100%;height:100%;object-fit:contain;pointer-events:none" draggable="false">'
       +'<span class="asmR" style="position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;background:#0891b2;border:2px solid #fff;border-radius:50%;cursor:nwse-resize"></span>'
       +'<span class="asmDel" style="position:absolute;right:-9px;top:-9px;width:18px;height:18px;background:#ef4444;color:#fff;border-radius:50%;font-size:12px;line-height:15px;text-align:center;cursor:pointer">×</span>';
     canv.appendChild(el);
-    var it={png:p.png,el:el}; _items.push(it);
+    var it={png:p.png,el:el,meta:p.meta||null}; _items.push(it);
     var drag=null;
     el.addEventListener('pointerdown',function(e){ var cl=(e.target.className||''); if(cl==='asmR'||cl==='asmDel')return; drag={sx:e.clientX,sy:e.clientY,l:el.offsetLeft,t:el.offsetTop}; try{el.setPointerCapture(e.pointerId);}catch(_e){} el.style.borderColor='#7c3aed'; });
     el.addEventListener('pointermove',function(e){ if(!drag)return; el.style.left=(drag.l+e.clientX-drag.sx)+'px'; el.style.top=(drag.t+e.clientY-drag.sy)+'px'; });
@@ -6824,6 +6849,31 @@ function _wallPickPieces(pieces, f){
   function compose(ov){
     var minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
     _items.forEach(function(it){ var e=it.el; minx=Math.min(minx,e.offsetLeft); miny=Math.min(miny,e.offsetTop); maxx=Math.max(maxx,e.offsetLeft+e.offsetWidth); maxy=Math.max(maxy,e.offsetTop+e.offsetHeight); });
+    // 🎯 โหมดเวกเตอร์: รวมฝั่ง server เป็น PDF เวกเตอร์แท้ (ไม่ raster) -> เส้นตัดคมเท่าต้นฉบับ
+    if(_vecMode&&_tok&&_K>0&&_items.every(function(it){return !!it.meta;})){
+      var items=_items.map(function(it){ var e=it.el; return {page:it.meta.page,bbox:it.meta.bbox,
+        x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K}; });
+      var dbtn=ov.querySelector('#asmDone'); if(dbtn){dbtn.disabled=true;dbtn.textContent='⏳ กำลังรวมเวกเตอร์...';}
+      fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:_tok,items:items})})
+      .then(function(r){return r.json();}).then(function(j){
+        if(j&&j.ai_base64){
+          var bin=atob(j.ai_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+          var f=new File([u],'composed_vector.pdf',{type:'application/pdf'});
+          ov.remove();
+          try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
+          var wmm=Math.round(j.width_mm||0);
+          if(wmm>0){ if($('realW'))$('realW').value=wmm; if($('realWcm'))$('realWcm').value=Math.round(wmm/10); }
+          setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\nขนาดตามที่จัดวาง: '+Math.round(j.width_mm||0)/10+' × '+Math.round(j.height_mm||0)/10+' ซม. (ปรับได้)\nเลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย'); },100);
+        } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
+          alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
+      }).catch(function(e){ if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
+        composeRaster(ov,minx,miny,maxx,maxy); });
+      return;
+    }
+    composeRaster(ov,minx,miny,maxx,maxy);
+  }
+  function composeRaster(ov,minx,miny,maxx,maxy){
     var pad=10, cw=(maxx-minx)+pad*2, ch=(maxy-miny)+pad*2, SC=3;
     var out=document.createElement('canvas'); out.width=Math.max(2,Math.round(cw*SC)); out.height=Math.max(2,Math.round(ch*SC));
     var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height);
