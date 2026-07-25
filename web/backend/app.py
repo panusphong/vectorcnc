@@ -1552,18 +1552,23 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
         full = None
         # 🥇 เส้นทางที่ 1 (ดีที่สุด): ไฟล์เวกเตอร์ -> ดึง 'เส้นโค้งจริงในไฟล์' มาใช้เป็นเส้นตัดตรง ๆ
         #    (แบบเดียวกับที่ปุ่มแปลงเป็นเส้นตัดทำกับไฟล์ .ai — ไม่ trace เลย ตัวหนังสือเล็กจึงโค้งเนียน 100%)
-        _file_subs = None
+        _file_subs = None; _file_ref = None
         try:
             _fp = vector_import.full_pieces_mm(inp, float(real_width_mm))
-            _fs2 = []
+            _fs2 = []; _fx0 = _fy0 = 1e18; _fx1 = _fy1 = -1e18
             for _pc in (_fp or []):
+                _pp0 = _pc.get("poly")
+                if _pp0 is not None and not _pp0.is_empty and _pp0.area > 4.0:
+                    _pb0 = _pp0.bounds                  # 📐 อ้างอิงตำแหน่งจาก 'เนื้องานที่มองเห็น' (ไม่รวม clip/เส้นซ่อน)
+                    _fx0 = min(_fx0, _pb0[0]); _fy0 = min(_fy0, _pb0[1])
+                    _fx1 = max(_fx1, _pb0[2]); _fy1 = max(_fy1, _pb0[3])
                 for _sp in (_pc.get("subs") or []):
                     if _sp.get("segs"):
                         _fs2.append({"start": _sp["start"], "closed": _sp.get("closed", True), "segs": _sp["segs"]})
-            if len(_fs2) >= 3:
-                _file_subs = _fs2
+            if len(_fs2) >= 3 and _fx1 > _fx0 and _fy1 > _fy0:
+                _file_subs = _fs2; _file_ref = (_fx0, _fy0, _fx1, _fy1)
         except Exception:
-            _file_subs = None
+            _file_subs = None; _file_ref = None
         # 🏆 เส้นทางหลัก: เอนจิ้นเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' (vtracer Bézier) — เนียน/คม/มุมชัด ตามที่พิสูจน์แล้วหน้างาน
         try:
             import fitz as _fzv
@@ -1672,21 +1677,32 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             full = None
         # 🥇 ถ้าอ่านเส้นจากไฟล์ได้ -> ใช้ 'เส้นในไฟล์' เป็นเส้นตัด (คมกว่า trace ทุกกรณี)
         #    จัดพิกัดให้ตรงกับรูปทรงที่ใช้คำนวณ (bbox เดียวกัน) แล้วแทนที่เส้นดิบของ vtracer
-        if _file_subs and full is not None and not full.is_empty:
+        if _file_subs and _file_ref and full is not None and not full.is_empty:
             try:
-                _xs3 = []; _ys3 = []
-                for _sp in _file_subs:
-                    _xs3.append(_sp["start"][0]); _ys3.append(_sp["start"][1])
-                    for _sg in _sp["segs"]:
-                        _xs3.append(_sg[-1][0]); _ys3.append(_sg[-1][1])
-                _fb = (min(_xs3), min(_ys3), max(_xs3), max(_ys3))
+                _fb = _file_ref                          # ✅ ใช้กรอบ 'เนื้องานจริง' -> ทับกันสนิท ไม่เหลื่อม
                 _gb = full.bounds
                 _sc3 = (_gb[2] - _gb[0]) / max(1e-6, (_fb[2] - _fb[0]))
                 _sc3y = (_gb[3] - _gb[1]) / max(1e-6, (_fb[3] - _fb[1]))
-                if abs(_sc3y - _sc3) / max(1e-6, _sc3) < 0.05:          # สัดส่วนตรงกัน -> ใช้ได้
-                    _RAW_SUBS["subs"] = _subs_affine(_file_subs, _sc3,
-                                                     _gb[0] - _fb[0] * _sc3, _gb[1] - _fb[1] * _sc3)
-                    _TRACE_ENG["mode"] = "file-vector"
+                if abs(_sc3y - _sc3) / max(1e-6, _sc3) < 0.03:          # สัดส่วนต้องตรงกัน
+                    _cand = _subs_affine(_file_subs, _sc3,
+                                         _gb[0] - _fb[0] * _sc3, _gb[1] - _fb[1] * _sc3)
+                    # ✅ ตรวจ 'ทับกันจริงไหม' — สุ่มจุดบนเส้น เทียบกับรูปทรงที่เห็นจริง
+                    #    (ไฟล์รวมชิ้น composed_vector.pdf มีเนื้อหานอกกรอบครอบซ่อนอยู่ -> ต้องไม่เอา ไม่งั้นได้ตัวซ้อนเหลื่อม)
+                    from shapely.prepared import prep as _prep3
+                    from shapely.geometry import Point as _Pt3
+                    _tol3 = max(1.5, (_gb[2] - _gb[0]) * 0.004)
+                    _pk = _prep3(full.buffer(_tol3))
+                    _hit = 0; _tot = 0
+                    for _sp in _cand[::max(1, len(_cand) // 120)]:
+                        _an = [_sp["start"]] + [s[-1] for s in _sp["segs"]]
+                        for _p3 in _an[::max(1, len(_an) // 6)]:
+                            _tot += 1
+                            if _pk.intersects(_Pt3(_p3[0], _p3[1])):
+                                _hit += 1
+                    _ratio = (_hit / float(_tot)) if _tot else 0.0
+                    if _ratio >= 0.90:                                   # เส้นอยู่บนรูปจริง ≥90% -> ใช้ได้
+                        _RAW_SUBS["subs"] = _cand
+                        _TRACE_ENG["mode"] = "file-vector"
             except Exception:
                 pass
         if full is None or full.is_empty:               # fallback: เส้นทางเวกเตอร์ตรง (แบบเดิม)
@@ -1896,6 +1912,28 @@ _CUT_SMOOTH = {"mm": 0.0}   # 🧈 รีดคลื่นเส้นตัด
 _RAW_SUBS = {"subs": None}
 
 
+def _dedup_subs(subs, tol=0.08):
+    """🧹 ลบ 'เส้นซ้อนทับ' ในไฟล์ตัด — ไฟล์ .ai มักมีชิ้นเดียวกันซ้อนกัน (fill 1 ชิ้น + stroke อีกชิ้น)
+       เครื่องตัดจะเดินซ้ำที่เดิม 2 รอบ (ไหม้/เสียเวลา) · เทียบด้วยลายเซ็นพิกัด (ปัดเป็นช่อง tol มม.)"""
+    out = []; seen = set()
+    for sp in (subs or []):
+        try:
+            _an = [sp["start"]] + [s[-1] for s in sp["segs"]]
+            if len(_an) < 2:
+                continue
+            _xs = [p[0] for p in _an]; _ys = [p[1] for p in _an]
+            _k = (len(sp["segs"]),
+                  round(min(_xs) / tol), round(min(_ys) / tol),
+                  round(max(_xs) / tol), round(max(_ys) / tol),
+                  round(sum(_xs) / len(_xs) / tol), round(sum(_ys) / len(_ys) / tol))
+            if _k in seen:
+                continue
+            seen.add(_k); out.append(sp)
+        except Exception:
+            out.append(sp)
+    return out
+
+
 def _subs_affine(subs, s, tx, ty):
     """เลื่อน/ย่อขยาย subpath ทั้งชุด (uniform) — ใช้ตามการจัดวาง logo ในกล่อง"""
     def T(p):
@@ -2053,7 +2091,7 @@ def _notes_overlay_svg(svg_str, notes):
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
-               metal_tex_scope="face", sticker_geom=None, bore_subs=None):
+               metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -2084,6 +2122,61 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             padL += _armpad
         else:
             padR += _armpad
+    # 📏 จับระยะ 'ตัวอักษร/โลโก้' ทุกกลุ่ม — จัดกลุ่มตามแถว (Y ซ้อนกัน = แถวเดียวกัน) แล้ววางตัวเลข 'นอกตัวป้าย'
+    _dimg = []
+    try:
+        # ✅ ใช้ได้ทุกประเภทป้าย: กล่องฉลุ -> วัดจากรูฉลุ · ป้ายอื่น ๆ -> วัดจากตัวอักษร/โลโก้เอง
+        _src_pieces = []
+        _dim_src = None
+        if inner_bore is not None and not inner_bore.is_empty:
+            _dim_src = (inner_bore.geoms if inner_bore.geom_type == "MultiPolygon" else [inner_bore])
+        elif art_geom is not None and not art_geom.is_empty:      # กล่องไฟทรงเรขาคณิต -> ใช้รูปงานจริงที่วางในกล่อง
+            _dim_src = (art_geom.geoms if art_geom.geom_type == "MultiPolygon" else [art_geom])
+        elif not rec.get("wrap"):
+            _dim_src = polys                                       # อักษรยกขอบ/แบน/ไดคัท ฯลฯ
+        for _pg0 in (_dim_src or []):
+            if getattr(_pg0, "geom_type", "") == "Polygon" and not _pg0.is_empty and _pg0.area > 20.0:
+                _src_pieces.append(_pg0.bounds)
+        if _src_pieces:
+            _src_pieces.sort(key=lambda q: (q[1], q[0]))
+            for _bb0 in _src_pieces:
+                _put = False
+                for _gp in _dimg:
+                    _ov = min(_gp[3], _bb0[3]) - max(_gp[1], _bb0[1])
+                    _hh0 = min(_gp[3] - _gp[1], _bb0[3] - _bb0[1])
+                    if _hh0 > 0 and _ov > _hh0 * 0.45:              # ซ้อนแนวตั้ง >45% = แถวเดียวกัน
+                        _gp[0] = min(_gp[0], _bb0[0]); _gp[1] = min(_gp[1], _bb0[1])
+                        _gp[2] = max(_gp[2], _bb0[2]); _gp[3] = max(_gp[3], _bb0[3])
+                        _put = True; break
+                if not _put:
+                    _dimg.append([_bb0[0], _bb0[1], _bb0[2], _bb0[3]])
+            # ✂ แยกกลุ่มตามช่องว่างแนวนอน (เช่น โลโก้วงกลม ห่างจากคำ -> คนละกลุ่ม)
+            _dim2 = []
+            for _gp in _dimg:
+                _mem = [q for q in _src_pieces
+                        if min(_gp[3], q[3]) - max(_gp[1], q[1]) > 0 and q[0] >= _gp[0] - 1 and q[2] <= _gp[2] + 1]
+                _mem.sort(key=lambda q: q[0])
+                # เกณฑ์ช่องว่าง = 0.45 × ความสูงเฉลี่ยของชิ้นในแถว (ตัวอักษรในคำเดียวกันชิดกว่านี้ -> ไม่แยก)
+                _avh = (sum(q[3] - q[1] for q in _mem) / len(_mem)) if _mem else H
+                _gapT = max(W * 0.02, _avh * 0.45)
+                _cl = []
+                for _q in _mem:
+                    if _cl and _q[0] - _cl[-1][2] <= _gapT:
+                        _c9 = _cl[-1]
+                        _cl[-1] = [min(_c9[0], _q[0]), min(_c9[1], _q[1]), max(_c9[2], _q[2]), max(_c9[3], _q[3])]
+                    else:
+                        _cl.append([_q[0], _q[1], _q[2], _q[3]])
+                _dim2 += _cl if _cl else [_gp]
+            _dimg = [g for g in _dim2 if (g[2] - g[0]) > W * 0.015 and (g[3] - g[1]) > H * 0.02]
+            # ข้ามกลุ่มที่ ≈ ทั้งป้าย (ซ้ำกับเส้นบอกขนาดกล่องอยู่แล้ว)
+            _dimg = [g for g in _dimg if not ((g[2] - g[0]) > W * 0.95 and (g[3] - g[1]) > H * 0.95)]
+            _dimg.sort(key=lambda g: (g[1], g[0]))
+            _dimg = _dimg[:6]
+    except Exception:
+        _dimg = []
+    if _dimg:                                             # เผื่อพื้นที่นอกป้ายสำหรับเส้นบอกระยะ
+        padB += (len(_dimg) + 1) * fs * 1.9
+        padR += fs * 6.5
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
     _edgelit = bool(rec.get("edge_lit"))
@@ -2318,6 +2411,34 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     cF = F((b[2], b[1])); cB = Bk((b[2], b[1]))          # ลึก/ยกขอบ (แนวเยื้อง)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (cF[0], cF[1], cB[0], cB[1], cd, lw))
     parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="%s">Return ~%.1f cm</text>' % ((cF[0] + cB[0]) / 2 + fs * 0.3, (cF[1] + cB[1]) / 2 - fs * 0.3, fs * 0.9, cd, D / 10.0))
+    # 📏 เส้นบอกระยะ 'ตัวอักษร/โลโก้' — กว้างวางใต้ป้าย · สูงวางขวาป้าย (ตัวเลขอยู่นอกตัวป้ายทั้งหมด ไม่รกหน้างาน)
+    if _dimg:
+        _dc = "#0d9488"; _dlw = max(0.5, lw * 0.85); _dfs = fs * 0.8
+        _yBase = padT + H + fs * 2.6
+        for _i9, _g9 in enumerate(_dimg):
+            _x0d, _x1d = _g9[0] + ox, _g9[2] + ox
+            _yd = _yBase + (_i9 + 1) * fs * 1.75
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.5"/>'
+                         % (_x0d, _g9[3] + oy, _x0d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.5"/>'
+                         % (_x1d, _g9[3] + oy, _x1d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_x0d, _yd, _x1d, _yd, _dc, _dlw))
+            for _xa, _sg in ((_x0d, 1), (_x1d, -1)):
+                parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                             % (_xa + _sg * aw * 0.7, _yd - aw * 0.4, _xa, _yd, _xa + _sg * aw * 0.7, _yd + aw * 0.4, _dc, _dlw))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%s: กว้าง %.1f ซม.</text>'
+                         % ((_x0d + _x1d) / 2, _yd - fs * 0.28, _dfs, _dc,
+                            ("โลโก้" if _i9 == 0 and (_g9[2] - _g9[0]) < W * 0.45 else "แถว %d" % (_i9 + 1)),
+                            (_g9[2] - _g9[0]) / 10.0))
+            # สูง — วางนอกป้ายด้านขวา
+            _xr = padL + W + dvx + fs * 1.2 + (_i9 % 2) * fs * 2.6
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.45"/>'
+                         % (_g9[2] + ox, _g9[1] + oy, _xr, _g9[1] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.45"/>'
+                         % (_g9[2] + ox, _g9[3] + oy, _xr, _g9[3] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_xr, _g9[1] + oy, _xr, _g9[3] + oy, _dc, _dlw))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">สูง %.1f ซม.</text>'
+                         % (_xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, _dfs, _dc, _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, (_g9[3] - _g9[1]) / 10.0))
     # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
     arm_parts = []
     if _mount in ("top2", "side1", "side2", "letterframe"):
@@ -3154,6 +3275,7 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
         def T(p, _dx=dx, _dy=dy):
             return (p[0] + _dx, p[1] + _dy)
         lyname = _en_layer(L["name"])
+        L = dict(L); L["subs"] = _dedup_subs(L.get("subs"))     # 🧹 กันเส้นซ้อนหลุดเข้าไฟล์ .ai
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s">%s</text>' % (cursor, topPad - fs * 0.6, fs * 0.9, L["color"], lyname))
         parts.append('<g id="CUT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="%s" fill-opacity="0.14" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">'
                      % (_dxf_layer(lyname), lyname, L["color"], L["color"], lw))
@@ -3440,6 +3562,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 except Exception:
                     _use_raw_punch = None
             subs = _use_raw_punch if _use_raw_punch else _poly_to_subs(g, tol=0.04)   # 🏆 เส้นดิบก่อน · ไม่ได้ค่อยฟิต
+            subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
             if not subs:
                 continue
             b = g.bounds
