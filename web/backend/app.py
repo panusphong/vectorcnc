@@ -1469,6 +1469,21 @@ def _vtrace_full_mm(img_path, real_width_mm):
     _xs = [p[0] for r in rings for p in r]; _ys = [p[1] for r in rings for p in r]
     _minx = min(_xs); _wpx = max(1e-6, max(_xs) - _minx); _miny = min(_ys)
     _k = float(real_width_mm) / _wpx
+    # 🏆 เก็บ 'เส้นโค้งดิบ' จากเอนจิ้น (แปลงเป็น มม. พิกัดเดียวกับ polygon) — ใช้ทำไฟล์ตัดตรง ๆ เหมือนปุ่ม
+    try:
+        _rawsubs = []
+        for _col, _subs in (layers or []):
+            for _sp in _subs:
+                _rawsubs.append({"start": ((_sp['start'][0] - _minx) * _k, (_sp['start'][1] - _miny) * _k),
+                                 "closed": _sp.get('closed', True),
+                                 "segs": [(("L", ((s[1][0] - _minx) * _k, (s[1][1] - _miny) * _k)) if s[0] == 'L' else
+                                           ("C", ((s[1][0] - _minx) * _k, (s[1][1] - _miny) * _k),
+                                            ((s[2][0] - _minx) * _k, (s[2][1] - _miny) * _k),
+                                            ((s[3][0] - _minx) * _k, (s[3][1] - _miny) * _k)))
+                                          for s in _sp['segs']]})
+        _RAW_SUBS["subs"] = _rawsubs
+    except Exception:
+        _RAW_SUBS["subs"] = None
     Ps = []
     for r in rings:
         try:
@@ -1514,8 +1529,14 @@ def _vtrace_full_mm(img_path, real_width_mm):
     _u = _uu(_out)
     if _u is None or _u.is_empty:
         return None
-    # 🧈 รีดคลื่นพิกเซล (ภาพ raster ~90 DPI -> คลื่น ±0.3 มม. ตลอดเส้น) — พิสูจน์แล้ว: คลื่นลด 94% มุมคมยังตรงเป๊ะ
-    return _smooth_cut(_u, float(_CUT_SMOOTH.get("mm", 0.8)))
+    # 🧈 รีดคลื่นพิกเซล — เฉพาะภาพ raster เท่านั้น (เวกเตอร์แท้ไม่ต้องรีด · เส้นดิบคมอยู่แล้ว)
+    _sm = float(_CUT_SMOOTH.get("mm", 0.8))
+    if _sm > 0:
+        _u2 = _smooth_cut(_u, _sm)
+        if _u2 is not None and not _u2.is_empty:
+            _RAW_SUBS["subs"] = None                     # รูปเปลี่ยนแล้ว -> เส้นดิบใช้ไม่ได้
+            return _u2
+    return _u
 
 
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
@@ -1535,7 +1556,12 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             _zv = max(1.0, min(12.0, 3600.0 / max(1.0, _pgv.rect.width)))
             _pixv = _pgv.get_pixmap(matrix=_fzv.Matrix(_zv, _zv), alpha=False)
             _vpng = inp + ".vtrace.png"; _pixv.save(_vpng); _dv.close()
-            full = _vtrace_full_mm(_vpng, float(real_width_mm))
+            _sv0 = _CUT_SMOOTH.get("mm", 0.8)
+            _CUT_SMOOTH["mm"] = 0.0            # 📐 ต้นทางเป็นเวกเตอร์ -> ไม่มีคลื่นพิกเซล ไม่ต้องรีด (คงเส้นดิบไว้ใช้)
+            try:
+                full = _vtrace_full_mm(_vpng, float(real_width_mm))
+            finally:
+                _CUT_SMOOTH["mm"] = _sv0
         except Exception:
             full = None
         try:
@@ -1830,6 +1856,24 @@ _METAL_TEX = {
 _TEXIMG_CACHE = {}
 _TRACE_ENG = {"mode": ""}   # 🧭 บอกว่าไฟล์ตัดล่าสุดใช้เอนจิ้นตัวไหน (โชว์ในกล่องเตือนหน้าเว็บ)
 _CUT_SMOOTH = {"mm": 0.8}   # 🧈 ความแรงรีดคลื่นพิกเซลของเส้นตัด (มม.) — ผู้ใช้ปรับได้จากหน้าเว็บ
+# 🏆 เส้นโค้ง Bézier 'ดิบ' จากเอนจิ้น (หน่วย มม. · พิกัดเดียวกับ polygon ที่ trace ได้)
+#    ใช้ส่งเข้าไฟล์ตัดโดยตรงเหมือนปุ่ม 'แปลงเป็นเส้นตัด' — ไม่ผ่านการแตกจุด+ฟิตใหม่ (ซึ่งทำให้เส้นเละ)
+_RAW_SUBS = {"subs": None}
+
+
+def _subs_affine(subs, s, tx, ty):
+    """เลื่อน/ย่อขยาย subpath ทั้งชุด (uniform) — ใช้ตามการจัดวาง logo ในกล่อง"""
+    def T(p):
+        return (p[0] * s + tx, p[1] * s + ty)
+    out = []
+    for sp in (subs or []):
+        try:
+            out.append({"start": T(sp["start"]), "closed": sp.get("closed", True),
+                        "segs": [(("L", T(x[1])) if x[0] == "L" else ("C", T(x[1]), T(x[2]), T(x[3])))
+                                 for x in sp["segs"]]})
+        except Exception:
+            continue
+    return out
 
 
 def _tex_swatch_clean(uri):
@@ -3085,12 +3129,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 if _nm.startswith("ยกขอบ") and "ใน" not in _nm:
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        _raw_b0 = (full.bounds if (full is not None and not full.is_empty) else None)   # 📌 ตำแหน่งอ้างอิงของ 'เส้นดิบ'
         # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
         # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
+            _pl_b0 = (_punch_logo.bounds if _punch_logo is not None else None)   # bbox ก่อนจัดวาง (ไว้คำนวณ transform ของเส้นดิบ)
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm),
                                  float(box_h_cm or 0.0) * 10.0)     # 📐 ผู้ใช้กำหนด กว้าง×สูง กล่องเองได้อิสระ
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
@@ -3176,8 +3222,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     warns.append("🏷️ แยกเป็นสติ๊กเกอร์ (ไม่อยู่ในไฟล์ตัด) %d ชิ้น — โชว์บนหน้ากล่องเป็นงานติดสติ๊กเกอร์" % len(_stick_sel))
             except Exception:
                 _sticker_geom = None
+        _use_raw_punch = None                       # 🏆 เส้นตัด logo แบบ 'เส้นโค้งดิบ' (ถ้าใช้ได้)
         for L in ([] if _neon else rec["layers"]):
             off = float(L["off"]); kind = L.get("kind", "solid")
+            _use_raw_punch = None
             base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
             if base is None or base.is_empty:
                 continue
@@ -3188,6 +3236,36 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     g = base
                 if bore_geom is None:
                     bore_geom = _punch_logo; frame_outer = base   # ให้ภาพ 3 มิติโชว์รูโบ๋ตาม logo
+                # 🏆 ใช้ 'เส้นโค้งดิบจากเอนจิ้น' เป็นเส้นตัดของ logo (คมเท่าปุ่มแปลงเป็นเส้นตัด 100%)
+                #    เงื่อนไข: ไม่มีชิ้นถูกตัดทิ้ง/พองความหนา และไม่มีสติ๊กเกอร์ -> รูปตรงกับเส้นดิบเป๊ะ
+                try:
+                    _rs = _RAW_SUBS.get("subs")
+                    if _rs and _pl_b0 and abs(off) < 0.01:
+                        _b1 = _punch_logo.bounds
+                        _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
+                        _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
+                        _rawL = _subs_affine(_rs, _sx, _tx, _ty)
+                        # 🧹 คัดเส้นดิบให้ตรงกับ logo ที่ล้างเศษ/แยกสติ๊กเกอร์แล้ว (เก็บเฉพาะเส้นที่ยังอยู่บนรูปจริง)
+                        from shapely.prepared import prep as _prep2
+                        from shapely.geometry import Point as _Pt2
+                        _pp = _prep2(_punch_logo.buffer(0.6))
+                        _keepR = []
+                        for _sp2 in _rawL:
+                            _xs2 = [_sp2["start"][0]]; _ys2 = [_sp2["start"][1]]
+                            for _sg2 in _sp2["segs"]:
+                                _xs2.append(_sg2[-1][0]); _ys2.append(_sg2[-1][1])
+                            _cx2 = (min(_xs2) + max(_xs2)) / 2.0; _cy2 = (min(_ys2) + max(_ys2)) / 2.0
+                            _w2 = max(_xs2) - min(_xs2); _h2 = max(_ys2) - min(_ys2)
+                            if _w2 * _h2 < 0.6:
+                                continue                            # เศษจิ๋ว (noise) -> ทิ้ง
+                            if _pp.intersects(_Pt2(_cx2, _cy2)) or _pp.intersects(_Pt2(min(_xs2), min(_ys2))):
+                                _keepR.append(_sp2)
+                        _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
+                        if _keepR and _boxS:
+                            _use_raw_punch = _boxS + _keepR
+                            warns.append("✂️ เส้นตัด logo = เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น" % len(_keepR))
+                except Exception:
+                    pass
             elif kind == "backing" and _punch_logo is not None:
                 # 🥛 อะคริลิคขาวนม 3mm รองหลัง: ตัดเป็น 'สี่เหลี่ยมตามพื้นที่ logo' (+เผื่อขอบ 2 ซม.) — ไม่ตัดตามรูป
                 from shapely.geometry import box as _bx2
@@ -3216,7 +3294,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 g, junk = _clean_layer(g)
             if g is None or g.is_empty:
                 continue
-            subs = _poly_to_subs(g, tol=0.04)       # ฟิต v2: จุดน้อย + เนียนคม (แก้บั๊กสูตร Bézier)
+            # 🏆 ชั้นที่ 'ตัดตามรูปงานตรง ๆ' (ค่าเผื่อ 0) -> ใช้เส้นโค้งดิบจากปุ่มแปลงเป็นเส้นตัด ไม่ฟิตใหม่
+            if (_use_raw_punch is None and abs(off) < 0.01 and kind == "solid"
+                    and not rec.get("wrap") and not rec.get("box_shape") and _raw_b0):
+                try:
+                    _rs2 = _RAW_SUBS.get("subs")
+                    if _rs2:
+                        _bn = full.bounds
+                        _s2 = (_bn[2] - _bn[0]) / max(1e-6, (_raw_b0[2] - _raw_b0[0]))
+                        _s2y = (_bn[3] - _bn[1]) / max(1e-6, (_raw_b0[3] - _raw_b0[1]))
+                        if abs(_s2y - _s2) / max(1e-6, _s2) < 0.02:      # สเกลเท่ากันทั้ง 2 แกน (ไม่บิดสัดส่วน)
+                            _use_raw_punch = _subs_affine(_rs2, _s2, _bn[0] - _raw_b0[0] * _s2,
+                                                          _bn[1] - _raw_b0[1] * _s2)
+                            if _use_raw_punch:
+                                warns.append("✂️ ชั้น '%s' ใช้เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น"
+                                             % (L["name"], len(_use_raw_punch)))
+                except Exception:
+                    _use_raw_punch = None
+            subs = _use_raw_punch if _use_raw_punch else _poly_to_subs(g, tol=0.04)   # 🏆 เส้นดิบก่อน · ไม่ได้ค่อยฟิต
             if not subs:
                 continue
             b = g.bounds
@@ -5191,17 +5286,35 @@ async def compose_vector(request: Request):
         from vectorcnc import assets as _as
         MMPT = 72.0 / 25.4
         pad = 5.0                                       # เผื่อขอบ 5 มม.
+        # 🧮 ทำความสะอาดพิกัด: ทิ้งชิ้นขนาดผิดปกติ + เลื่อนให้เริ่มที่ 0 (กันชิ้นตกนอกหน้ากระดาษจนหายไป)
+        good = []
+        for it in items:
+            try:
+                w = float(it.get("w_mm") or 0); h = float(it.get("h_mm") or 0)
+                x = float(it.get("x_mm") or 0); y = float(it.get("y_mm") or 0)
+                if w > 0.5 and h > 0.5 and w == w and h == h and x == x and y == y:
+                    it["x_mm"] = x; it["y_mm"] = y; it["w_mm"] = w; it["h_mm"] = h
+                    good.append(it)
+            except Exception:
+                continue
+        if not good:
+            return JSONResponse({"error": "พิกัดชิ้นไม่ถูกต้อง"}, status_code=400)
+        items = good
+        _ox = min(float(it["x_mm"]) for it in items); _oy = min(float(it["y_mm"]) for it in items)
+        for it in items:
+            it["x_mm"] = float(it["x_mm"]) - _ox; it["y_mm"] = float(it["y_mm"]) - _oy
         maxx = max(float(it["x_mm"]) + float(it["w_mm"]) for it in items) + pad
         maxy = max(float(it["y_mm"]) + float(it["h_mm"]) for it in items) + pad
         out = fitz.open()
         pg = out.new_page(width=maxx * MMPT, height=maxy * MMPT)
-        n_ok = 0
+        n_ok = 0; fails = []
         for it in items:
             try:
                 # 🧩 รองรับชิ้นจาก 'หลายไฟล์' — แต่ละชิ้นพก token ของไฟล์ตัวเอง (ไม่มีก็ใช้ token กลาง)
                 _tk = str(it.get("token") or tok)
                 path = _ASSET_STORE.get(_tk)
                 if not path or not os.path.exists(path):
+                    fails.append("ไฟล์ต้นทางหมดอายุ (เซิร์ฟเวอร์รีสตาร์ต) — ลากไฟล์เข้ามาใหม่")
                     continue
                 # ✂ ครอปชิ้นแบบ redaction (ลบของนอกกรอบ · ชิ้นในกรอบ = ต้นฉบับ 100% ทั้ง path/รูโบ๋/ฟอนต์)
                 pbytes = _crop_clean_strict(path, int(it.get("page", 0)),
@@ -5216,14 +5329,16 @@ async def compose_vector(request: Request):
                 pg.show_pdf_page(r, pdoc, 0)             # ✅ ฝังเวกเตอร์สะอาดเฉพาะชิ้น (ไม่ raster)
                 pdoc.close()
                 n_ok += 1
-            except Exception:
+            except Exception as _e2:
+                fails.append(str(_e2)[:90])
                 continue
         if not n_ok:
-            return JSONResponse({"error": "รวมชิ้นไม่สำเร็จ"}, status_code=400)
+            return JSONResponse({"error": "รวมชิ้นไม่สำเร็จ: " + ("; ".join(fails[:3]) or "?")}, status_code=400)
         data = out.tobytes(garbage=4, deflate=True, clean=True)
         out.close()
         return {"ai_base64": _b64.b64encode(data).decode(),
-                "width_mm": round(maxx, 1), "height_mm": round(maxy, 1), "count": n_ok}
+                "width_mm": round(maxx, 1), "height_mm": round(maxy, 1),
+                "count": n_ok, "requested": len(items), "fails": fails[:5]}
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
 
