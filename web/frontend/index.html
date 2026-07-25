@@ -5284,6 +5284,7 @@ $('goLayer').onclick=function(){
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
+  fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0.8'));
   fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
@@ -5351,6 +5352,11 @@ $('goLayer').onclick=function(){
           '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button><button type="button" class="chip glowM" data-g="around">💫 ออกรอบ</button></div>'+
         '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
           '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#0f766e;font-weight:700" title="รีดคลื่นพิกเซลจากภาพต้นฉบับ — ยิ่งมากยิ่งเนียน (มุมคมยังคงอยู่)">🧈 เนียนเส้นตัด'+
+          '<select id="cutSmooth" onchange="window.CUTSM=this.value;try{$(\'goLayer\').click();}catch(_e){}" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #5eead4;border-radius:6px">'+
+            ['0','0.4','0.8','1.2','1.6'].map(function(v){var lb={'0':'ปิด (ตามภาพเป๊ะ)','0.4':'เบา 0.4 มม.','0.8':'ปกติ 0.8 มม.','1.2':'มาก 1.2 มม.','1.6':'สูงสุด 1.6 มม.'}[v];
+              return '<option value="'+v+'"'+(String(window.CUTSM||'0.8')===v?' selected':'')+'>'+lb+'</option>';}).join('')+
+          '</select></label>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">🌡️'+
           '<select id="glowK" onchange="_setGLK(this.value)" title="อุณหภูมิสีแสง (Kelvin)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
             '<option value=""'+(!GLOW.kelvin?' selected':'')+'>— K —</option>'+
@@ -5438,6 +5444,7 @@ $('goLayer').onclick=function(){
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
       fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
+      fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0.8'));
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
