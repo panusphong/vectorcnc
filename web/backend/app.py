@@ -1391,7 +1391,13 @@ def _vtrace_full_mm(img_path, real_width_mm):
     from shapely.geometry import Polygon as _Pg
     from shapely.ops import unary_union as _uu
     from shapely.prepared import prep as _prep
-    layers = _te.trace_vtracer(img_path, n_colors=2)
+    # 🎯 โหมด 'ไฟล์ตัด': supersample สูง + ไม่ปิดรอย (เส้นบางไม่หาย) + รีดขั้นบันได + spline ยาว = เนียนคม
+    try:
+        layers = _te.trace_vtracer(img_path, n_colors=2, corner_threshold=72, filter_speckle=3,
+                                   length_threshold=6.0, splice_threshold=52, path_precision=8,
+                                   close_px=0, supersample=5200, smooth_px=2)
+    except TypeError:                                  # engine เก่า (ไม่มีพารามิเตอร์ใหม่)
+        layers = _te.trace_vtracer(img_path, n_colors=2)
     rings = []
     for _col, _subs in (layers or []):
         for _sp in _subs:
