@@ -4438,6 +4438,49 @@ async def extract_assets(file: UploadFile = File(...)):
                             status_code=400)
 
 
+@app.post("/api/compose-vector")
+async def compose_vector(request: Request):
+    """🧩 รวม 'ชิ้นเวกเตอร์ที่เลือก + จัดวาง' เป็น PDF เวกเตอร์แท้ — ไม่ raster เลย เส้นคมเท่าต้นฉบับ 100%
+       body: {token, items:[{page, bbox:[x0,y0,x1,y1](pt), x_mm,y_mm,w_mm,h_mm}]}
+       -> {ai_base64, width_mm, height_mm}  (เปิดต่อเป็นไฟล์เวกเตอร์ในทุกเครื่องมือ ไม่ต้อง trace)"""
+    body = await request.json()
+    tok = str(body.get("token", ""))
+    path = _ASSET_STORE.get(tok)
+    if not path or not os.path.exists(path):
+        return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาลากไฟล์ใหม่"}, status_code=400)
+    items = (body.get("items") or [])[:40]
+    if not items:
+        return JSONResponse({"error": "ยังไม่ได้เลือกชิ้น"}, status_code=400)
+    try:
+        import fitz, base64 as _b64
+        MMPT = 72.0 / 25.4
+        pad = 5.0                                       # เผื่อขอบ 5 มม.
+        maxx = max(float(it["x_mm"]) + float(it["w_mm"]) for it in items) + pad
+        maxy = max(float(it["y_mm"]) + float(it["h_mm"]) for it in items) + pad
+        src = fitz.open(path)
+        out = fitz.open()
+        pg = out.new_page(width=maxx * MMPT, height=maxy * MMPT)
+        n_ok = 0
+        for it in items:
+            try:
+                r = fitz.Rect(float(it["x_mm"]) * MMPT, float(it["y_mm"]) * MMPT,
+                              (float(it["x_mm"]) + float(it["w_mm"])) * MMPT,
+                              (float(it["y_mm"]) + float(it["h_mm"])) * MMPT)
+                clip = fitz.Rect(*[float(v) for v in it["bbox"]])
+                pg.show_pdf_page(r, src, int(it.get("page", 0)), clip=clip)   # ✅ ฝังเวกเตอร์ต้นฉบับ (ไม่ raster)
+                n_ok += 1
+            except Exception:
+                continue
+        if not n_ok:
+            return JSONResponse({"error": "รวมชิ้นไม่สำเร็จ"}, status_code=400)
+        data = out.tobytes()
+        src.close(); out.close()
+        return {"ai_base64": _b64.b64encode(data).decode(),
+                "width_mm": round(maxx, 1), "height_mm": round(maxy, 1), "count": n_ok}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=400)
+
+
 @app.post("/api/compose-assets")
 async def compose_assets(request: Request):
     """รวม 'ชิ้นย่อยที่เลือก + จัดวาง' จากไฟล์ .ai/PDF -> ภาพเดียว (PNG ความละเอียดสูง)
