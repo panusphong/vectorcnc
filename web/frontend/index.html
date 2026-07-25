@@ -5445,7 +5445,21 @@ $('goLayer').onclick=function(){
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
       fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
       window._mtxAppend(fd);fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('arm_color',ACOL||'');
-      try{ fd.append('design_notes',JSON.stringify(window._ls3dNoteData||[])); }catch(_e){}
+      try{
+        // 📐 โน้ตเก็บพิกัดเทียบ 'กรอบพาเนล' แต่ใบสั่งผลิตใช้ 'ภาพ SVG' -> แปลงพิกัดให้ตรงกันก่อนส่ง (แก้ระยะเพี้ยน)
+        var _nts=(window._ls3dNoteData||[]).map(function(n){var m={};for(var k in n)m[k]=n[k];return m;});
+        var _w9=$('ls3dWrap'), _s9=_w9&&_w9.querySelector('#ls3dImg svg');
+        if(_w9&&_s9){ var Rw=_w9.getBoundingClientRect(), Ri=_s9.getBoundingClientRect();
+          if(Ri.width>2&&Ri.height>2){
+            var _cv9=function(fx,fy){ return [(fx*Rw.width+Rw.left-Ri.left)/Ri.width,(fy*Rw.height+Rw.top-Ri.top)/Ri.height]; };
+            _nts=_nts.map(function(n){ var a=_cv9(n.tx,n.ty);
+              n.tx=Math.max(0,Math.min(1,a[0])); n.ty=Math.max(0,Math.min(1,a[1]));
+              if(n.nx!=null){ var b9=_cv9(n.nx,n.ny); n.nx=Math.max(0,Math.min(1,b9[0])); n.ny=Math.max(0,Math.min(1,b9[1])); }
+              if(n.fs)n.fs=n.fs*Rw.width/Ri.width;
+              return n; });
+          } }
+        fd.append('design_notes',JSON.stringify(_nts));
+      }catch(_e){ try{ fd.append('design_notes',JSON.stringify(window._ls3dNoteData||[])); }catch(_e2){} }
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
       if((['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0)&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
@@ -7097,14 +7111,17 @@ function _wallPickPieces(pieces, f){
     // 🎯 โหมดเวกเตอร์ผสม: มีชิ้นเวกเตอร์อย่างน้อย 1 ชิ้น -> รวมเป็น PDF เวกเตอร์ (ชิ้น PNG เช่นตัวหนังสือไทย ฝังเป็นภาพ)
     //    เส้นเวกเตอร์คมเท่าต้นฉบับ 100% · ชิ้นภาพไม่ทำให้ทั้งงานกลายเป็น raster อีกต่อไป!
     if(_K>0&&_items.length&&_items.some(function(it){return !!(it.meta&&it.meta.token);})){
+      try{
       var items=_items.map(function(it){ var e=it.el;
         var base={x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K};
         if(it.meta&&it.meta.token){ base.token=it.meta.token; base.page=it.meta.page; base.bbox=it.meta.bbox; }
         else { base.png=it.png; }
         return base; });
       var dbtn=ov.querySelector('#asmDone'); if(dbtn){dbtn.disabled=true;dbtn.textContent='⏳ กำลังรวมเวกเตอร์...';}
+      // 🔑 token กลาง = จาก 'ชิ้นเวกเตอร์ตัวแรก' (ห้ามใช้ _items[0] ตรง ๆ — ถ้าชิ้นแรกเป็น PNG จะพังแล้วปุ่มค้าง!)
+      var _tok0=''; for(var _qi=0;_qi<_items.length;_qi++){ if(_items[_qi].meta&&_items[_qi].meta.token){_tok0=_items[_qi].meta.token;break;} }
       fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({token:_items[0].meta.token,items:items})})
+        body:JSON.stringify({token:_tok0,items:items})})
       .then(function(r){return r.json();}).then(function(j){
         // 🔁 ไฟล์ต้นทางหมดอายุ (deploy ใหม่ = เซิร์ฟเวอร์รีสตาร์ต) -> อัปไฟล์เดิมใหม่เงียบ ๆ แล้วรวมซ้ำ 1 รอบ
         var _stale = (!j || !j.ai_base64 || (j.requested && j.count < j.requested));
@@ -7144,6 +7161,11 @@ function _wallPickPieces(pieces, f){
           alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
       }).catch(function(e){ if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
         composeRaster(ov,minx,miny,maxx,maxy); });
+      }catch(_ce){                                     // 🛟 พังตรงไหนก็ตาม -> ปุ่มไม่ค้าง + รวมเป็นภาพแทน
+        var _db3=ov.querySelector('#asmDone');
+        if(_db3){_db3.disabled=false;_db3.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
+        composeRaster(ov,minx,miny,maxx,maxy);
+      }
       return;
     }
     composeRaster(ov,minx,miny,maxx,maxy);
