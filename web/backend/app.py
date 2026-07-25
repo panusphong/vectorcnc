@@ -1231,6 +1231,40 @@ def _en_wall(n):
     return _en_layer(n)
 
 
+def _piece_poly_with_holes(pc):
+    """🕳️ ประกอบ 'รูใน' กลับให้ชิ้นเวกเตอร์ — full_pieces_mm คืน poly แบบตัน (รูอยู่ใน subs)
+       ใช้กติกา even-odd (XOR วงแหวนทั้งหมดของ drawing เดียวกัน) = ตรงกับการ fill ของไฟล์ .ai/PDF"""
+    from shapely.geometry import Polygon
+    try:
+        rings = []
+        for sp in pc.get("subs", []):
+            if not sp.get("closed"):
+                continue
+            pts = [tuple(sp["start"])]
+            for seg in sp.get("segs", []):
+                if seg[0] == "L":
+                    pts.append(tuple(seg[1]))
+                elif seg[0] == "C":                     # flatten เบซิเยร์ (ละเอียดพอสำหรับ geometry ops)
+                    p0 = pts[-1]; c1, c2, p3 = seg[1], seg[2], seg[3]
+                    for i in range(1, 17):
+                        t = i / 16.0; mt = 1.0 - t
+                        pts.append((mt*mt*mt*p0[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t*t*t*p3[0],
+                                    mt*mt*mt*p0[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*p3[1]))
+            if len(pts) >= 4:
+                pg = Polygon(pts).buffer(0)
+                if pg is not None and not pg.is_empty and pg.area > 0.5:
+                    rings.append(pg)
+        if len(rings) <= 1:
+            return pc["poly"]
+        g = None
+        for r in sorted(rings, key=lambda p: -abs(p.area)):
+            g = r if g is None else g.symmetric_difference(r)
+        g = g.buffer(0)
+        return g if (g is not None and not g.is_empty) else pc["poly"]
+    except Exception:
+        return pc["poly"]
+
+
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
     from shapely.ops import unary_union
@@ -1241,7 +1275,7 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
         pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
         if not pcs:
             raise ValueError("อ่านเวกเตอร์ไม่ได้")
-        full = unary_union([pc["poly"] for pc in pcs])
+        full = unary_union([_piece_poly_with_holes(pc) for pc in pcs])   # 🕳️ คงรูใน (หัวแพะ/ช่องตัวอักษร)
     else:
         pcs = None
         try:
