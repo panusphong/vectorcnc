@@ -3189,12 +3189,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             pass
         # 🔦 คุณภาพไฟล์ตัดกล่องฉลุ: ล้างเศษจิ๋ว/ชิ้นบางเกินฉลุ + ลบขอบหยักจาก trace ก่อนเจาะ
         if _punch_logo is not None:
-            _punch_logo, _pdrop = _punch_logo_clean(_punch_logo)
+            # ✂️ กล่องฉลุ = 'ตัดฉลุบนแผ่นแบน' เท่านั้น -> ไม่แก้รูปใด ๆ ทั้งสิ้น (เหมือนประเภทอักษรแบน 100%)
+            #    เดิม: ล้างเศษ + เพิ่มความหนา + simplify -> รายละเอียดหาย/เส้นเพี้ยน · ตอนนี้แค่ 'เตือน' อย่างเดียว
+            _pdrop = 0; _nthick = 0
+            try:
+                _chk, _pdrop = _punch_logo_clean(_punch_logo, min_area_mm2=1.0, min_width_mm=0.15, smooth_mm=0.0)
+                _, _nthick = _punch_min_stroke(_punch_logo, min_w_mm=1.2)
+            except Exception:
+                pass
             if _pdrop:
-                warns.append("หน้าโลหะฉลุ: ตัดเศษ logo จิ๋ว/บางเกินฉลุ %d ชิ้นออกจากไฟล์ตัด (เครื่องตัดทำไม่ได้จริง)" % _pdrop)
-            _punch_logo, _nthick = _punch_min_stroke(_punch_logo, min_w_mm=1.2)
+                warns.append("ℹ️ มีชิ้นจิ๋วกว่า 1 ตร.มม. %d ชิ้น (ยังอยู่ในไฟล์ตัดครบ) — ถ้าไม่ต้องการ กดเลือกเป็นสติ๊กเกอร์ได้" % _pdrop)
             if _nthick:
-                warns.append("ตัวอักษร/ชิ้นเล็ก %d ชิ้น เส้นบางกว่า 1.2 มม. — เพิ่มความหนาให้ถึงขั้นต่ำฉลุได้จริงแล้ว (รูปทรงแทบไม่เปลี่ยน)" % _nthick)
+                warns.append("⚠️ ชิ้น/ตัวอักษร %d ชิ้น เส้นบางกว่า 1.2 มม. — ฉลุโลหะจริงอาจขาด (ไฟล์ตัดคงรูปเดิมไว้ 100% ตามต้นฉบับ)" % _nthick)
+            _pdrop = 0; _nthick = 0          # ไม่ได้แก้รูป -> เส้นดิบใช้ได้เต็มที่
             try:                                        # ⚠️ รูในตัวอักษร (counter เช่น a o ฿) = เหล็กก้อนกลางจะหลุดตอนฉลุ
                 _pl = list(_punch_logo.geoms) if _punch_logo.geom_type == "MultiPolygon" else [_punch_logo]
                 _nctr = sum(len(p.interiors) for p in _pl if p.geom_type == "Polygon")
@@ -3246,24 +3253,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
                         _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
                         _rawL = _subs_affine(_rs, _sx, _tx, _ty)
-                        # 🧹 คัดเส้นดิบให้ตรงกับ logo ที่ล้างเศษ/แยกสติ๊กเกอร์แล้ว
-                        # ⚠️ ห้ามเช็คด้วย 'จุดกึ่งกลางกรอบ' — ตัวอักษร o/e/a จุดกลางตกในรู -> ถูกทิ้งหมด!
-                        # ✅ เช็คว่า 'เส้นวิ่งทับขอบของรูปจริง' แทน (ขอบ logo = เส้นดิบที่เก็บไว้พอดี)
-                        from shapely.prepared import prep as _prep2
-                        from shapely.geometry import Point as _Pt2
-                        _bnd2 = _prep2(_punch_logo.boundary.buffer(1.2))
-                        _keepR = []
-                        for _sp2 in _rawL:
-                            _an2 = [_sp2["start"]] + [s[-1] for s in _sp2["segs"]]
-                            _xs2 = [p[0] for p in _an2]; _ys2 = [p[1] for p in _an2]
-                            if (max(_xs2) - min(_xs2)) * (max(_ys2) - min(_ys2)) < 0.6:
-                                continue                            # เศษจิ๋ว (noise) -> ทิ้ง
-                            _st2 = max(1, len(_an2) // 12)          # สุ่มจุดบนเส้น ~12 จุดพอ (เร็ว)
-                            _hit2 = False
-                            for _p2 in _an2[::_st2]:
-                                if _bnd2.intersects(_Pt2(_p2[0], _p2[1])):
-                                    _hit2 = True; break
-                            if _hit2:
+                        # ✂️ ตัดฉลุบนแผ่นแบน = ส่ง 'เส้นดิบทุกเส้น' ออกเลย (เหมือนประเภทอักษรแบน 100%)
+                        #    คัดออกเฉพาะชิ้นที่ผู้ใช้เลือกเป็น 'สติ๊กเกอร์' เท่านั้น
+                        _keepR = _rawL
+                        if _sticker_geom is not None and not _sticker_geom.is_empty:
+                            from shapely.prepared import prep as _prep2
+                            from shapely.geometry import Point as _Pt2
+                            _stk2 = _prep2(_sticker_geom.buffer(1.0))
+                            _keepR = []
+                            for _sp2 in _rawL:
+                                _an2 = [_sp2["start"]] + [s[-1] for s in _sp2["segs"]]
+                                _st2 = max(1, len(_an2) // 8)
+                                if any(_stk2.intersects(_Pt2(p[0], p[1])) for p in _an2[::_st2]):
+                                    continue                        # เส้นของชิ้นสติ๊กเกอร์ -> ไม่ตัด
                                 _keepR.append(_sp2)
                         _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
                         if _keepR and _boxS:
