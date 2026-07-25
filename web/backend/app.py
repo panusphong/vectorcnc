@@ -1606,7 +1606,7 @@ def _metal_defs(tex, S, tex_img=""):
     """คืน (defs_svg, fill_url, hairline?) สำหรับพื้นผิวโลหะ · tex ไม่รู้จัก -> (None,None,False)
        tex_img: data URI รูป swatch วัสดุ (พื้นผิวที่ผู้ใช้เพิ่มเอง เช่น ลายไม้) -> ปูเป็น pattern เต็มหน้า"""
     if tex_img and str(tex_img).startswith("data:image"):
-        _t = max(120.0, S * 1.15)                      # tile ใหญ่กว่าชิ้นงาน = รูปเดียวคลุมทั้งหน้า
+        _t = max(200.0, S * 4.0)                       # tile ใหญ่กว่าทั้งภาพ (รวม pad/แขน/หน้า2) = ไร้รอยต่อ ลายคลุมทุกชิ้น
         d = ('<defs><pattern id="mtxg" patternUnits="userSpaceOnUse" width="%.1f" height="%.1f">'
              '<image href="%s" xlink:href="%s" x="0" y="0" width="%.1f" height="%.1f" preserveAspectRatio="xMidYMid slice"/>'
              '</pattern></defs>' % (_t, _t, tex_img, tex_img, _t, _t))
@@ -1894,7 +1894,8 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     if _mount in ("top2", "side1", "side2", "letterframe"):
         tw = 25.0
         # 🦾 สีแขนยึด: เลือกเองได้ (arm_color) · ไม่เลือก -> วิ่งตามพื้นผิว/สีกล่องไฟ (metal_tex > side_color > เหล็กมาตรฐาน)
-        _armF = (arm_color or "").strip() or _mtxfill or (side_color or "") or "#8b93a0"
+        # 🦾 แขน: ตามพื้นผิวโลหะ preset ได้ แต่ 'ไม่เอา' ลาย custom (ไม้/ลามิเนต) มาติดแขน -> ใช้สีเหล็ก/สีข้างแทน
+        _armF = (arm_color or "").strip() or ("" if metal_tex_img else (_mtxfill or "")) or (side_color or "") or "#8b93a0"
         steel = _armF; steelD = "#5b626d"; plateC = _armF; bolt = "#5b626d"; surf = _armF
 
         def _tube(p1, p2, w):
@@ -2296,7 +2297,7 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
         parts.append(_fmtxd)
     elif _amtxd:
         parts.append(_amtxd)
-    _steelFill = _fmtxfill or _amtxfill or "#c7cfd9"   # สแตนเลสสำหรับแขนยึด/คาน
+    _steelFill = ((_fmtxfill if not metal_tex_img else None) or _amtxfill or "#c7cfd9")   # แขนยึด/คาน: ไม่ใช้ลาย custom
     if ftop > 0:                                       # 🔩 โครงแขวน (หน้าตรง) — คานเพดาน + แขน 2 ข้าง 'สแตนเลส'
         tw = max(8.0, S * 0.018); steel = _steelFill; steelD = "#5b626d"; surf = _steelFill; plateC = _steelFill
         cyb = pad * 0.5
