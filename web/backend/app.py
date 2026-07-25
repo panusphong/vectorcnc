@@ -3083,6 +3083,19 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
+        # 📏 ความลึกที่ผู้ใช้ตั้ง (เช่น 10 ซม.) -> ใช้ในภาพ 3 มิติ/Return/ผนังกล่อง ให้ตรงกับหน้าออกแบบ
+        try:
+            _rd = float(return_depth_cm)
+        except Exception:
+            _rd = 0.0
+        if _rd > 0:
+            import copy as _copy
+            rec = _copy.deepcopy(rec)
+            rec["depth_cm"] = _rd
+            for _w in rec.get("walls", []):
+                _nm = str(_w.get("name", ""))
+                if _nm.startswith("ยกขอบ") and "ใน" not in _nm:
+                    _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), 0.0, int(n_colors))
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
