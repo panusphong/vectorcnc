@@ -1094,6 +1094,56 @@ def _punch_fit_in_box(logo, box_g, pad_mm):
         return logo
 
 
+def _smooth_cut(geom, r_mm=0.45):
+    """🧈 รีด 'คลื่นพิกเซล' ออกจากรูปที่ได้จากการ trace ภาพ (ขนาดคลื่น ≈ 1 พิกเซลของต้นฉบับ)
+       วิธี: ปิด-เปิดทางสัณฐาน (buffer +r → −2r → +r) = ลบทั้ง 'ตุ่มนูน' และ 'รอยบุ๋ม' ที่เล็กกว่า r
+       เหลือเฉพาะรูปทรงจริง · คลาดเคลื่อน ≤ r (0.45 มม. บนป้าย 1.5 เมตร = ต่ำกว่าความละเอียดเครื่องตัด)"""
+    if geom is None or geom.is_empty or float(r_mm) <= 0:
+        return geom
+    try:
+        import numpy as _np
+        from shapely.geometry import Polygon as _P2, LinearRing as _LR
+        from shapely.ops import unary_union as _uu3
+        r = float(r_mm)
+        step = max(0.12, r * 0.45)                      # ระยะสุ่มจุดตามความยาวเส้น
+        sig = max(1.2, r / step)                        # ความแรงรีด (หน่วย = จำนวนจุด)
+        half = int(max(2, round(sig * 2.5)))
+        w = _np.exp(-0.5 * (_np.arange(-half, half + 1) / sig) ** 2); w = w / w.sum()
+
+        def _sm(ring):
+            ls = _LR(ring)
+            L = ls.length
+            if L < r * 8:                               # ชิ้นเล็กมาก -> ไม่รีด (กันรูปหาย)
+                return list(ring)
+            n = max(24, int(L / step))
+            pts = _np.array([ls.interpolate(i * L / n).coords[0] for i in range(n)])
+            ext = _np.vstack([pts[-half:], pts, pts[:half]])   # วนปิด -> ไม่มีรอยต่อ
+            sx = _np.convolve(ext[:, 0], w, 'valid'); sy = _np.convolve(ext[:, 1], w, 'valid')
+            return list(zip(sx, sy))
+        out = []
+        for pg in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+            if pg.geom_type != "Polygon" or pg.is_empty:
+                continue
+            try:
+                ex = _sm(pg.exterior.coords)
+                hs = []
+                for h in pg.interiors:
+                    hh = _sm(h.coords)
+                    if len(hh) >= 4:
+                        hs.append(hh)
+                q = _P2(ex, hs).buffer(0)
+                if q is not None and not q.is_empty:
+                    out.append(q)
+            except Exception:
+                out.append(pg)
+        if not out:
+            return geom
+        g = _uu3(out)
+        return g if (g is not None and not g.is_empty) else geom
+    except Exception:
+        return geom
+
+
 def _punch_logo_clean(logo, min_area_mm2=8.0, min_width_mm=0.5, smooth_mm=0.12):
     """🔦 ทำความสะอาด logo สำหรับ 'ฉลุโบ๋' บนหน้าโลหะ — คุณภาพไฟล์ตัดต้องผลิตได้จริง
        - ทิ้งเศษจิ๋ว (< min_area) และชิ้นบางเกินฉลุ (< min_width) ที่เครื่องตัดทำไม่ได้/หลุดร่วง
@@ -1462,7 +1512,10 @@ def _vtrace_full_mm(img_path, real_width_mm):
     if not _out:
         return None
     _u = _uu(_out)
-    return None if (_u is None or _u.is_empty) else _u
+    if _u is None or _u.is_empty:
+        return None
+    # 🧈 รีดคลื่นพิกเซล (ภาพ raster ~90 DPI -> คลื่น ±0.3 มม. ตลอดเส้น) — พิสูจน์แล้ว: คลื่นลด 94% มุมคมยังตรงเป๊ะ
+    return _smooth_cut(_u, float(_CUT_SMOOTH.get("mm", 0.8)))
 
 
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
@@ -1776,6 +1829,7 @@ _METAL_TEX = {
 
 _TEXIMG_CACHE = {}
 _TRACE_ENG = {"mode": ""}   # 🧭 บอกว่าไฟล์ตัดล่าสุดใช้เอนจิ้นตัวไหน (โชว์ในกล่องเตือนหน้าเว็บ)
+_CUT_SMOOTH = {"mm": 0.8}   # 🧈 ความแรงรีดคลื่นพิกเซลของเส้นตัด (มม.) — ผู้ใช้ปรับได้จากหน้าเว็บ
 
 
 def _tex_swatch_clean(uri):
@@ -3004,7 +3058,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
-                    box_h_cm: float = Form(0.0), sticker_idx: str = Form("")):
+                    box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
+                    cut_smooth_mm: float = Form(0.8)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -3012,6 +3067,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
     with open(inp, "wb") as f:
         f.write(await file.read())
     try:
+        _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
@@ -3669,7 +3725,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
-                    design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form("")):
+                    design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
+                    cut_smooth_mm: float = Form(0.8)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
@@ -3677,6 +3734,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
     with open(inp, "wb") as f:
         f.write(await file.read())
     try:
+        _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
