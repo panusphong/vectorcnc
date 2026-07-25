@@ -1251,14 +1251,30 @@ def _piece_poly_with_holes(pc):
                         pts.append((mt*mt*mt*p0[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t*t*t*p3[0],
                                     mt*mt*mt*p0[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t*t*t*p3[1]))
             if len(pts) >= 4:
+                _sa = 0.0                                # ทิศทางวง (signed area) จากจุดดิบ — ก่อน buffer(0) ซึ่งจะปรับทิศ
+                for _i in range(len(pts) - 1):
+                    _sa += pts[_i][0] * pts[_i + 1][1] - pts[_i + 1][0] * pts[_i][1]
                 pg = Polygon(pts).buffer(0)
                 if pg is not None and not pg.is_empty and pg.area > 0.5:
-                    rings.append(pg)
+                    rings.append((pg, _sa > 0))
         if len(rings) <= 1:
             return pc["poly"]
-        g = None
-        for r in sorted(rings, key=lambda p: -abs(p.area)):
-            g = r if g is None else g.symmetric_difference(r)
+        # 🧭 ประกอบตาม 'ทิศทางวงแหวน' (มาตรฐาน AI/PDF): วงกลับทิศ + อยู่ในเนื้อ = รู · ทิศเดียวกัน/ซ้อนกัน = เนื้อ (union)
+        #    (ห้ามใช้ XOR ล้วน — ชิ้นซ้อนกันแบบ nonzero จะกัดกันเองจนรูปเพี้ยน)
+        rings.sort(key=lambda t: -abs(t[0].area))
+        g = None; g_ccw = None
+        for pg, ccw in rings:
+            if g is None:
+                g = pg; g_ccw = ccw
+                continue
+            try:
+                _inside = g.contains(pg.representative_point())
+            except Exception:
+                _inside = False
+            if _inside and (ccw != g_ccw):
+                g = g.difference(pg)                    # รูใน (วงกลับทิศ ในเนื้อ)
+            else:
+                g = g.union(pg)                         # เนื้อเพิ่ม/ชิ้นซ้อน
         g = g.buffer(0)
         return g if (g is not None and not g.is_empty) else pc["poly"]
     except Exception:
@@ -1271,11 +1287,54 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     from shapely.affinity import scale as _scale
     from vectorcnc import trace_engine, vector_import
     if vector_import.is_vector_file(inp):
-        pcs = vector_import.full_pieces_mm(inp, real_width_mm)
-        pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
-        if not pcs:
-            raise ValueError("อ่านเวกเตอร์ไม่ได้")
-        full = unary_union([_piece_poly_with_holes(pc) for pc in pcs])   # 🕳️ คงรูใน (หัวแพะ/ช่องตัวอักษร)
+        # 🎯 เงาสำหรับ geometry: เรนเดอร์เวกเตอร์ที่ DPI สูง แล้ว trace ตาม 'ภาพจริง'
+        #    (ไฟล์ AI ใช้สีขาวทาทับเป็น knockout บ่อย — geometry ล้วนอ่านสีไม่ได้ จะได้ก้อนตัน/เพี้ยน)
+        #    เวกเตอร์คุม DPI ได้เอง -> 4000px = คมระดับผลิตจริง (±0.3 มม.)
+        full = None
+        try:
+            import fitz as _fz, cv2 as _cv, numpy as _np
+            from shapely.geometry import Polygon as _Pg
+            _d = _fz.open(inp); _pg0 = _d[0]
+            _z = 4000.0 / max(1.0, _pg0.rect.width)
+            _z = max(1.0, min(_z, 12.0))
+            _pixhi = _pg0.get_pixmap(matrix=_fz.Matrix(_z, _z), alpha=False)
+            _im = _np.frombuffer(_pixhi.samples, dtype=_np.uint8).reshape(_pixhi.height, _pixhi.width, _pixhi.n)
+            _d.close()
+            _gray = _cv.cvtColor(_im[:, :, :3], _cv.COLOR_RGB2GRAY)
+            _mask = ((_gray < 200) * 255).astype(_np.uint8)
+            # 🌳 CCOMP hierarchy = รองรับชิ้นซ้อนในรูกี่ชั้นก็ได้ (หัวแพะในรูวงหยัก ฯลฯ) — engine เดิมทิ้งชั้นใน
+            _cnts, _hier = _cv.findContours(_mask, _cv.RETR_CCOMP, _cv.CHAIN_APPROX_TC89_KCOS)
+            _mmpp = float(real_width_mm) / max(1, _pixhi.width)
+            _polys = []
+            if _hier is not None:
+                _hier = _hier[0]
+                for _i, _c in enumerate(_cnts):
+                    if _hier[_i][3] != -1 or _cv.contourArea(_c) < 60:
+                        continue                          # เอาเฉพาะขอบนอก (ลูก = รู)
+                    _ext = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _cv.approxPolyDP(_c, 1.1, True)]
+                    if len(_ext) < 3:
+                        continue
+                    _holes = []
+                    _j = _hier[_i][2]
+                    while _j != -1:
+                        if _cv.contourArea(_cnts[_j]) >= 60:
+                            _hh = [(pt[0][0] * _mmpp, pt[0][1] * _mmpp) for pt in _cv.approxPolyDP(_cnts[_j], 1.1, True)]
+                            if len(_hh) >= 3:
+                                _holes.append(_hh)
+                        _j = _hier[_j][0]
+                    _pg = _Pg(_ext, _holes).buffer(0)
+                    if _pg is not None and not _pg.is_empty and _pg.area > 4.0:
+                        _polys.append(_pg)
+            if _polys:
+                full = unary_union(_polys)
+        except Exception:
+            full = None
+        if full is None or full.is_empty:               # fallback: เส้นทางเวกเตอร์ตรง (แบบเดิม)
+            pcs = vector_import.full_pieces_mm(inp, real_width_mm)
+            pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
+            if not pcs:
+                raise ValueError("อ่านเวกเตอร์ไม่ได้")
+            full = unary_union([_piece_poly_with_holes(pc) for pc in pcs])
     else:
         pcs = None
         try:
@@ -4513,9 +4572,6 @@ async def compose_vector(request: Request):
        -> {ai_base64, width_mm, height_mm}  (เปิดต่อเป็นไฟล์เวกเตอร์ในทุกเครื่องมือ ไม่ต้อง trace)"""
     body = await request.json()
     tok = str(body.get("token", ""))
-    path = _ASSET_STORE.get(tok)
-    if not path or not os.path.exists(path):
-        return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาลากไฟล์ใหม่"}, status_code=400)
     items = (body.get("items") or [])[:40]
     if not items:
         return JSONResponse({"error": "ยังไม่ได้เลือกชิ้น"}, status_code=400)
@@ -4531,6 +4587,11 @@ async def compose_vector(request: Request):
         n_ok = 0
         for it in items:
             try:
+                # 🧩 รองรับชิ้นจาก 'หลายไฟล์' — แต่ละชิ้นพก token ของไฟล์ตัวเอง (ไม่มีก็ใช้ token กลาง)
+                _tk = str(it.get("token") or tok)
+                path = _ASSET_STORE.get(_tk)
+                if not path or not os.path.exists(path):
+                    continue
                 # ✂ ครอปชิ้นแบบ redaction (ลบของนอกกรอบ · ชิ้นในกรอบ = ต้นฉบับ 100% ทั้ง path/รูโบ๋/ฟอนต์)
                 pbytes = _crop_clean_strict(path, int(it.get("page", 0)),
                                             [float(v) for v in it["bbox"]], pad_pt=1.0)
