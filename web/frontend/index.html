@@ -329,7 +329,7 @@ select.numin{cursor:pointer}
             <div style="flex:1">
               <label style="font-size:10.5px;color:#64748b">กว้าง (ซม.)</label>
               <input class="numin" id="realWcm" type="number" value="120" min="1" step="1" style="width:100%"
-                     oninput="var v=parseFloat(this.value)||0;var w=document.getElementById('realW');if(w)w.value=v>0?Math.round(v*10):'';">
+                     oninput="var v=parseFloat(this.value)||0;var w=document.getElementById('realW');if(w)w.value=v>0?Math.round(v*10):'';var bw=document.getElementById('bxW');if(bw)bw.value=v>0?v:'';">
             </div>
             <div style="flex:1">
               <label style="font-size:10.5px;color:#64748b">สูง (ซม.) · เว้นว่าง=อัตโนมัติ</label>
@@ -5280,6 +5280,7 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   var _isPunch=(t==='4'||t==='21');   // 🔦 กล่องฉลุ: สูงกล่องส่งแยก (box_h_cm) — ไม่บีบสัดส่วนโลโก้
+  var _isBoxT=(['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0);   // กล่องไฟ = backend คุมขนาดตรงเป๊ะ
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
@@ -5303,7 +5304,8 @@ $('goLayer').onclick=function(){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
     try{
-      var _tw=parseFloat(($('bxW')&&$('bxW').value))||0;     // ขนาดกล่องที่ผู้ใช้กำหนด (ซม.)
+      // ⚠️ ใช้ 'กว้าง (ซม.)' ช่องหลักเป็นความจริงเดียว — กล่องไฟ backend สเกลตรงเป๊ะอยู่แล้ว จึงไม่ต้องชดเชยซ้ำ
+      var _tw=(_isBoxT?0:(parseFloat(($('realWcm')&&$('realWcm').value)||($('bxW')&&$('bxW').value))||0));
       if(_tw>0){
         var _outer=0; (j.layers||[]).forEach(function(l){ if((l.w_mm||0)>_outer)_outer=l.w_mm||0; });
         var _target=_tw*10, _cur=parseFloat($('realW').value)||0;
