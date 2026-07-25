@@ -6769,7 +6769,7 @@ function _wallPickPieces(pieces, f){
     var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังแตกชิ้น...';
     var done=function(){ btn.disabled=false; btn.textContent=old; };
     var rasterFlow=function(){
-      var fd=new FormData(); fd.append('file',fileObj); fd.append('max_px','1400');
+      var fd=new FormData(); fd.append('file',fileObj); fd.append('max_px','2400');   // 🔍 ความละเอียดสูง เส้นคมขึ้น
       fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
         done();
         if(j&&j.pieces&&j.count>0){ _vecMode=false; _tok=''; _K=0;
@@ -6778,7 +6778,7 @@ function _wallPickPieces(pieces, f){
       }).catch(function(e){ done(); alert('ต่อ backend ไม่ได้ '+e); });
     };
     if(/\.(ai|pdf|eps|ps)$/i.test(fileObj.name||'')){
-      // 🎯 เวกเตอร์แท้: แตกชิ้นด้วย extract-assets (ได้ page+bbox สำหรับรวมแบบเวกเตอร์)
+      // 🎯 เวกเตอร์แท้: แตกชิ้นด้วย extract-assets -> รวมด้วย compose-vector (ครอปเข้มงวด ของข้างเคียงไม่ติดมา)
       var fd2=new FormData(); fd2.append('file',fileObj);
       fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
         var as=(j&&j.assets)?j.assets.filter(function(a){return a.kind!=='page'&&a.thumb;}):[];
@@ -6862,9 +6862,8 @@ function _wallPickPieces(pieces, f){
           var f=new File([u],'composed_vector.pdf',{type:'application/pdf'});
           ov.remove();
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
-          var wmm=Math.round(j.width_mm||0);
-          if(wmm>0){ if($('realW'))$('realW').value=wmm; if($('realWcm'))$('realWcm').value=Math.round(wmm/10); }
-          setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\nขนาดตามที่จัดวาง: '+Math.round(j.width_mm||0)/10+' × '+Math.round(j.height_mm||0)/10+' ซม. (ปรับได้)\nเลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย'); },100);
+          if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
+          setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\nกรอกขนาด "กว้าง (ซม.)" ตามที่ต้องการ → เลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย'); },100);
         } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
           alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
       }).catch(function(e){ if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
@@ -6874,7 +6873,8 @@ function _wallPickPieces(pieces, f){
     composeRaster(ov,minx,miny,maxx,maxy);
   }
   function composeRaster(ov,minx,miny,maxx,maxy){
-    var pad=10, cw=(maxx-minx)+pad*2, ch=(maxy-miny)+pad*2, SC=3;
+    var pad=10, cw=(maxx-minx)+pad*2, ch=(maxy-miny)+pad*2;
+    var SC=Math.max(3, Math.min(7, 2600/Math.max(1,cw)));   // 🔍 อัดความละเอียดผลรวม ~2600px ให้เส้นคม
     var out=document.createElement('canvas'); out.width=Math.max(2,Math.round(cw*SC)); out.height=Math.max(2,Math.round(ch*SC));
     var g=out.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,out.width,out.height);
     var loaded=0, N=_items.length;
