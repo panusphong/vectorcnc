@@ -1391,15 +1391,10 @@ def _vtrace_full_mm(img_path, real_width_mm):
     from shapely.geometry import Polygon as _Pg
     from shapely.ops import unary_union as _uu
     from shapely.prepared import prep as _prep
-    # 🎯 โหมด 'ไฟล์ตัด': supersample สูง + ไม่ปิดรอย (เส้นบางไม่หาย) + รีดขั้นบันได + spline ยาว = เนียนคม
-    try:
-        layers = _te.trace_vtracer(img_path, n_colors=2, corner_threshold=72, filter_speckle=3,
-                                   length_threshold=6.0, splice_threshold=52, path_precision=8,
-                                   close_px=0, supersample=5200, smooth_px=2)
-        _TRACE_ENG["mode"] = "vtracer-cutfile"
-    except TypeError:                                  # engine เก่า (ไม่มีพารามิเตอร์ใหม่) — ไฟล์ vectorcnc/trace_engine.py ยังไม่ได้อัป!
-        layers = _te.trace_vtracer(img_path, n_colors=2)
-        _TRACE_ENG["mode"] = "vtracer-OLD-ENGINE"
+    # 🎯 เรียก 'เหมือนปุ่มแปลงเป็นเส้นตัด' ทุกประการ — ห้ามแต่งพารามิเตอร์เพิ่ม!
+    #    (บทเรียน: โหมดพิเศษที่เคยแต่งเอง (เบลอ 2px ฯลฯ) กลืนเส้นบางจนหาย + ขอบเพี้ยน)
+    layers = _te.trace_vtracer(img_path, n_colors=2)
+    _TRACE_ENG["mode"] = "vtracer-button"
     rings = []
     for _col, _subs in (layers or []):
         for _sp in _subs:
@@ -3084,10 +3079,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🧭 รายงานเอนจิ้นที่ใช้จริง (จะได้รู้ทันทีว่าไฟล์เอนจิ้นบนเซิร์ฟเวอร์เป็นรุ่นไหน)
         try:
             _eng9 = _TRACE_ENG.get("mode", "")
-            if _eng9 == "vtracer-OLD-ENGINE":
-                warns.append("⚠️ เซิร์ฟเวอร์ยังใช้เอนจิ้นรุ่นเก่า — ไฟล์ vectorcnc/trace_engine.py ยังไม่ได้อัปเดต! อัปไฟล์นี้ขึ้น GitHub แล้ว deploy ใหม่")
-            elif _eng9 == "vtracer-cutfile":
-                warns.append("🧭 เอนจิ้นเส้นตัด: vtracer โหมดไฟล์ตัด (รุ่นใหม่ · ตัวเดียวกับปุ่มแปลงเป็นเส้นตัด)")
+            if _eng9 == "vtracer-button":
+                warns.append("🧭 เอนจิ้นเส้นตัด: vtracer ค่าเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' 100%")
             _TRACE_ENG["mode"] = ""
         except Exception:
             pass
