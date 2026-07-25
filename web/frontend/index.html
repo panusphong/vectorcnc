@@ -254,7 +254,7 @@ select.numin{cursor:pointer}
     <div class="app-body">
       <div class="side">
         <div class="drop" id="drop"><div class="ic">📤</div><b data-i18n="drop.title">ลากไฟล์มาวาง</b><span data-i18n="drop.sub">รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
-        <button class="btn" id="asmBtn" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:700;font-size:12.5px">🧩 แตกชิ้น + เลือก + จัดวาง (ไฟล์ .ai รวมหลายแบบ)</button>
+        <button class="btn" id="asmBtn" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:700;font-size:12.5px">🧩 แตกชิ้น + เลือก + จัดวาง (.ai / .pdf / .psd รวมหลายแบบ)</button>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
         <!-- 🔬 ตรวจความละเอียดภาพ เทียบกับขนาดป้ายจริง -->
         <div id="resBox" style="display:none;margin-top:8px;border-radius:11px;padding:10px 12px;font-size:11.5px;line-height:1.55"></div>
@@ -834,7 +834,7 @@ select.numin{cursor:pointer}
         <div class="ik-sub">ลูกค้าส่งเมนู / นามบัตร / โบรชัวร์เป็น PDF มา → ระบบแตกทุกชิ้นให้เลือก<br>
           <b style="color:#16a34a">ถ้าชิ้นนั้นเป็นเวกเตอร์อยู่แล้ว = ได้ .ai ของจริงทันที ไม่ต้อง trace ไม่เสียความคม</b></div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="ikExFile" accept=".pdf,.ai,.eps" style="font-size:13px">
+          <input type="file" id="ikExFile" accept=".pdf,.ai,.eps,.psd,.psb" style="font-size:13px">
           <button class="ik-btn" id="ikExGo">แตกไฟล์</button>
           <span class="ik-msg" id="ikExMsg"></span>
         </div>
@@ -4344,8 +4344,28 @@ function ikInit(){
 /* ---------- 1) EXTRACT ---------- */
 if($('ikExGo'))$('ikExGo').onclick=function(){
   var f=$('ikExFile').files[0];
-  if(!f){$('ikExMsg').textContent='เลือกไฟล์ PDF / .ai ก่อนนะ';return;}
+  if(!f){$('ikExMsg').textContent='เลือกไฟล์ PDF / .ai / .psd ก่อนนะ';return;}
   $('ikExMsg').textContent='กำลังแตกไฟล์...';$('ikExOut').innerHTML='';
+  // 🖼️ PSD/PSB -> แตกเป็น 'เลเยอร์' (raster) ผ่าน ai-split · คลิกชิ้น = ดาวน์โหลด PNG โปร่งใสทันที
+  if(/\.(psd|psb)$/i.test(f.name||'')){
+    var pfd=new FormData(); pfd.append('file',f); pfd.append('max_px','1600');
+    fetch(API+'/api/ai-split',{method:'POST',body:pfd}).then(function(r){return r.json();}).then(function(j){
+      if(j.error){$('ikExMsg').textContent='❌ '+j.error;return;}
+      var ps=j.pieces||[];
+      if(!ps.length){$('ikExMsg').textContent='❌ ไม่พบเลเยอร์/ชิ้นในไฟล์ PSD';return;}
+      $('ikExMsg').innerHTML='พบ <b>'+ps.length+'</b> เลเยอร์/ชิ้น (PSD = ภาพ raster — ได้ PNG โปร่งใส แล้วส่งเข้า "ดราฟท์ .ai" ต่อได้)';
+      $('ikExOut').innerHTML='<div class="ik-card"><h4>เลือกเลเยอร์ที่ต้องการ</h4><div class="ik-sub">กดชิ้น → ดาวน์โหลด PNG โปร่งใสทันที</div><div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">'+
+        ps.map(function(p,i){return '<div class="ik-asset" data-i="'+i+'"><img src="'+p.png+'" style="background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px">'+
+          '<span class="ik-chip c-img">เลเยอร์ PSD</span>'+
+          '<div style="font-size:12px;font-weight:700;color:#0f172a">ชิ้น '+(i+1)+'</div>'+
+          '<div style="font-size:11px;color:#64748b">'+p.w+' × '+p.h+' px</div></div>';}).join('')+'</div></div>';
+      document.querySelectorAll('#ikExOut .ik-asset').forEach(function(el){
+        el.onclick=function(){ var p=ps[parseInt(el.getAttribute('data-i'),10)];
+          try{ var a=document.createElement('a'); a.href=p.png; a.download='psd_layer_'+(parseInt(el.getAttribute('data-i'),10)+1)+'.png'; a.click(); }catch(e){alert('❌ '+e);} };
+      });
+    }).catch(function(e){$('ikExMsg').textContent='❌ '+e;});
+    return;
+  }
   var fd=new FormData();fd.append('file',f);
   fetch(API+'/api/extract-assets',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
     if(j.error){$('ikExMsg').textContent='❌ '+j.error;return;}
@@ -6743,7 +6763,7 @@ function _wallPickPieces(pieces, f){
   var _pieces=[], _items=[];
   btn.onclick=function(){
     if(typeof fileObj==='undefined'||!fileObj){ alert('ลากไฟล์ .ai/.pdf ที่รวมหลายแบบมาก่อนนะคะ'); return; }
-    if(!/\.(ai|pdf|eps|ps)$/i.test(fileObj.name||'')){ alert('ใช้กับไฟล์เวกเตอร์ .ai / .pdf / .eps ที่รวมหลายแบบ'); return; }
+    if(!/\.(ai|pdf|eps|ps|psd|psb|svg)$/i.test(fileObj.name||'')){ alert('ใช้กับไฟล์ .ai / .pdf / .eps / .psd ที่รวมหลายแบบ/หลายเลเยอร์'); return; }
     var old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังแตกชิ้น...';
     var fd=new FormData(); fd.append('file',fileObj); fd.append('max_px','1400');
     fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
