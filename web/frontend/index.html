@@ -5378,6 +5378,7 @@ $('goLayer').onclick=function(){
   fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');   // 🖨️ UV / สติ๊กเกอร์
   try{ fd.append('material_groups',JSON.stringify(window._matGroups||[])); }catch(_e){}   // 🧱 ป้ายเดียว หลายวัสดุ
   fd.append('logo_w_cm',($('laWcm')&&$('laWcm').value)||'0');   // 📏 ขนาดจริงของ logo บนหน้ากล่อง
+  fd.append('safe_mode',(window._SAFEMODE?'1':'0'));   // 🔒 กดปุ่มโหมดปลอดภัยเมื่อสงสัยว่ารูปเพี้ยน
   fd.append('logo_h_cm',($('laHcm')&&$('laHcm').value)||'0');
   fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
