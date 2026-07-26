@@ -3779,10 +3779,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _, _nthick = _punch_min_stroke(_punch_logo, min_w_mm=1.2)
             except Exception:
                 pass
-            if _pdrop:
-                warns.append("ℹ️ มีชิ้นจิ๋วกว่า 1 ตร.มม. %d ชิ้น (ยังอยู่ในไฟล์ตัดครบ) — ถ้าไม่ต้องการ กดเลือกเป็นสติ๊กเกอร์ได้" % _pdrop)
-            if _nthick:
-                warns.append("⚠️ ชิ้น/ตัวอักษร %d ชิ้น เส้นบางกว่า 1.2 มม. — ฉลุโลหะจริงอาจขาด (ไฟล์ตัดคงรูปเดิมไว้ 100% ตามต้นฉบับ)" % _nthick)
+            # 🛡️ ข้อความเตือนต้องไม่มีวันทำให้ 'สร้างไฟล์ไม่ได้' — ห่อไว้เสมอ
+            try:
+                if _pdrop:
+                    warns.append("ℹ️ มีชิ้นจิ๋วกว่า 1 ตร.มม. %d ชิ้น (ยังอยู่ในไฟล์ตัดครบ) — ถ้าไม่ต้องการ กดเลือกเป็นสติ๊กเกอร์ได้" % _pdrop)
+                if _nthick:
+                    # ⚠️ ต้องใช้ %% เมื่อจะพิมพ์เครื่องหมายเปอร์เซ็นต์ในสตริงที่ format — ไม่งั้น ValueError ทั้งคำขอ
+                    warns.append("⚠️ ชิ้น/ตัวอักษร %d ชิ้น เส้นบางกว่า 1.2 มม. — ฉลุโลหะจริงอาจขาด (ไฟล์ตัดคงรูปเดิมไว้ 100%% ตามต้นฉบับ)" % _nthick)
+            except Exception:
+                pass
             _pdrop = 0; _nthick = 0          # ไม่ได้แก้รูป -> เส้นดิบใช้ได้เต็มที่
             try:                                        # ⚠️ รูในตัวอักษร (counter เช่น a o ฿) = เหล็กก้อนกลางจะหลุดตอนฉลุ
                 _pl = list(_punch_logo.geoms) if _punch_logo.geom_type == "MultiPolygon" else [_punch_logo]
