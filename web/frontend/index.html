@@ -276,8 +276,8 @@ select.numin{cursor:pointer}
             <option value="20" data-i18n="st.20">1 · ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)</option>
             <option value="16" data-i18n="st.16">2 · อักษรยกขอบไฟออกหน้า + โครงแขวน</option>
             <option value="19" data-i18n="st.19">3 · ตัวอักษรยกขอบไฟออกหลัง</option>
-            <option value="1" data-i18n="st.1">4 · ไฟออกหน้า มีคิ้ว</option>
-            <option value="2" data-i18n="st.2">5 · ไฟออกหน้า ไม่มีคิ้ว</option>
+            <option value="1" data-i18n="st.1">4 · ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)</option>
+            <option value="2" data-i18n="st.2">5 · ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)</option>
             <option value="3" data-i18n="st.3">6 · ตัวอักษรไฟออกรอบ</option>
             <option value="4" data-i18n="st.4">7 · กล่องไฟสี่เหลี่ยม ฉลุหน้า</option>
             <option value="21" data-i18n="st.21">8 · กล่องไฟวงกลม ฉลุหน้า</option>
@@ -297,8 +297,20 @@ select.numin{cursor:pointer}
             <option value="23" data-i18n="st.23">22 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer</option>
             <option value="24" data-i18n="st.24">23 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer</option>
             <option value="25" data-i18n="st.25">24 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer</option>
+            <option value="26" data-i18n="st.26">25 · สแตนดี้ สี่เหลี่ยม</option>
+            <option value="27" data-i18n="st.27">26 · สแตนดี้ ล้อมตามทรง</option>
           </select>
           <div class="hint" data-i18n="hint.signtype" style="margin-bottom:0">เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ</div>
+          <!-- 🖨️ วิธีทำหน้ากล่องไฟ — เลือกได้ตั้งแต่ออกแบบ (โชว์เฉพาะป้ายที่หน้าเป็นงานพิมพ์/ฉลุ) -->
+          <div id="facePrintRow" style="display:none;margin-top:8px;padding:8px 10px;border:1px dashed #f59e0b;border-radius:10px;background:#fffbeb">
+            <label style="font-weight:800;color:#b45309;font-size:12.5px;margin:0">🖨️ งานพิมพ์บนผิวงาน — เลือกวิธีตั้งแต่ออกแบบ</label>
+            <select class="numin" id="facePrint" onchange="try{_fpHint();}catch(_e){}" style="border:1.5px solid #f59e0b;font-weight:700;color:#92400e;background:#fff;margin-top:4px">
+              <option value="uv">พิมพ์ UV ลงผิววัสดุโดยตรง (ไม่มีเผื่อตก)</option>
+              <option value="sticker">พิมพ์สติ๊กเกอร์ + ไดคัท ไปติดทับ (เผื่อตก 3 มม.)</option>
+              <option value="none">ไม่ต้องสร้างไฟล์พิมพ์</option>
+            </select>
+            <div class="hint" id="facePrintHint" style="margin-bottom:0">พิมพ์ UV = พิมพ์ลงบนแผ่นอะคริลิค/พลาสวูด/หน้ากล่องไฟโดยตรง · ระบบจะสร้าง <b>ไฟล์งานพิมพ์ขนาดจริง 1:1</b> ให้อัตโนมัติ พร้อมเลเยอร์ TrimLine / CutContour</div>
+          </div>
         </div>
 
         <div class="grp">
@@ -1501,8 +1513,8 @@ select.numin{cursor:pointer}
     <p>ป้าย/ตัวอักษรเป็นงาน "ประกอบหลายชั้น" แต่ละชั้นตัดคนละวัสดุ และตัดขนาดต่างกันเล็กน้อย (ค่าเผื่อ/offset) จาก "ไซซ์เต็ม" เพื่อประกอบพอดี</p>
     <table>
       <tr><th>#</th><th>รูปแบบ</th><th>ชั้นตัด (ค่าเผื่อ)</th><th>ยกขอบ (ผนัง·พับ)</th></tr>
-      <tr><td>1</td><td>ไฟออกหน้า มีคิ้ว</td><td>คิ้ว (เจาะโบ๋·เต็ม) · อะคริลิค −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
-      <tr><td>2</td><td>ไฟออกหน้า ไม่มีคิ้ว</td><td>หน้าอะคริลิค +0.1 · ไส้อะคริลิคใส −0.15 · แผ่นพื้น เต็ม</td><td>5 ซม.</td></tr>
+      <tr><td>1</td><td>ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)</td><td>คิ้ว (เจาะโบ๋·เต็ม) · อะคริลิค −0.25 · แผ่นพื้น +0.1 — <b>ตัดแยกทีละตัว</b></td><td>5 ซม. + ใน 2 ซม.</td></tr>
+      <tr><td>2</td><td>ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)</td><td>หน้าอะคริลิค +0.1 · ไส้อะคริลิคใส −0.15 · แผ่นพื้น เต็ม — <b>ตัดแยกทีละตัว</b></td><td>5 ซม.</td></tr>
       <tr><td>3</td><td>ตัวอักษรไฟออกรอบ</td><td>หน้าอะคริลิค เต็ม · แผ่นพื้น +0.1 · <b>ข้างอะคริลิค แสงออกรอบตัวอักษร</b></td><td>ใน 2 ซม. + อะคริลิค 7 ซม.</td></tr>
       <tr><td>4</td><td>กล่องไฟฉลุหน้า</td><td>คิ้ว · หน้าฉลุตัวอักษร −0.25 · แผ่นพื้น +0.1</td><td>5 ซม. + ใน 2 ซม.</td></tr>
       <tr><td>6</td><td>งานยกขอบ</td><td>ซิ้งค์ เต็ม</td><td>2.5 ซม. + ขากลางยกลอย</td></tr>
@@ -3171,7 +3183,7 @@ var I18N={
   'hint.size':'⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน',
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
-  'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'4 · ไฟออกหน้า มีคิ้ว','st.2':'5 · ไฟออกหน้า ไม่มีคิ้ว',
+  'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'4 · ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)','st.2':'5 · ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)',
   'st.3':'6 · ตัวอักษรไฟออกรอบ','st.4':'7 · กล่องไฟสี่เหลี่ยม ฉลุหน้า','st.21':'8 · กล่องไฟวงกลม ฉลุหน้า','st.5':'','st.16':'2 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.17':'19 · นีออนเฟล็กซ์','st.18':'20 · กล่องไฟอะคริลิค ไฟออกรอบ','st.19':'3 · ตัวอักษรยกขอบไฟออกหลัง','st.20':'1 · ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)',
   'st.6':'9 · งานยกขอบ','st.7':'10 · งานยกขอบ มีไส้',
   'st.8':'11 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'12 · กล่องไฟล้อมตามทรง 2 หน้า',
@@ -3180,6 +3192,7 @@ var I18N={
   'st.14':'17 · กล่องไฟวงรี 1 หน้า','st.15':'18 · กล่องไฟวงรี 2 หน้า',
   'st.22':'21 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.23':'22 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer',
   'st.24':'23 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.25':'24 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer',
+  'st.26':'25 · สแตนดี้ สี่เหลี่ยม','st.27':'26 · สแตนดี้ ล้อมตามทรง',
   'hint.signtype':'เลือกประเภท แล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ด้านล่าง → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ',
   'app.nofile':'ยังไม่ได้เลือกไฟล์','stage.hint':'อัปโหลดภาพเพื่อเริ่ม',
   'chip.auto':'อัตโนมัติ','ph.own':'เอง',
@@ -3224,7 +3237,7 @@ var I18N={
   'hint.size':'⚠️ Set the size before generating the cut file (JPG/PNG has no real-world size like .ai) → we scale it to fit, keeping the aspect ratio.',
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
-  'st.0':'— Flat cut lines (normal) —','st.1':'4 · Front-lit, with trim','st.2':'5 · Front-lit, no trim',
+  'st.0':'— Flat cut lines (normal) —','st.1':'4 · Front-lit Built-up Letters (with trim)','st.2':'5 · Front-lit Built-up Letters (no trim)',
   'st.3':'6 · Edge-lit Letters (light all around)','st.4':'7 · Rect Light Box · Punched Face','st.21':'8 · Round Light Box · Punched Face','st.5':'','st.16':'2 · Front-lit Raised Letters + Hanging Frame','st.17':'19 · Neon Flex + Clear Acrylic','st.18':'20 · Edge-lit Acrylic Light Box','st.19':'3 · Halo-lit Raised Letters (back-lit)','st.20':'1 · Flat Letters/Logo (no return)',
   'st.6':'9 · Raised (return) letters','st.7':'10 · Raised letters with insert',
   'st.8':'11 · Contour light box · 1-face','st.9':'12 · Contour light box · 2-face',
@@ -3233,6 +3246,7 @@ var I18N={
   'st.14':'17 · Oval light box · 1-face','st.15':'18 · Oval light box · 2-face',
   'st.22':'21 · Plaswood Die-cut Letters/Logo · No Light · 1 Layer','st.23':'22 · Plaswood Die-cut Letters/Logo · No Light · 2 Layers',
   'st.24':'23 · Acrylic Die-cut Letters/Logo · No Light · 1 Layer','st.25':'24 · Acrylic Die-cut Letters/Logo · No Light · 2 Layers',
+  'st.26':'25 · Standee · Rectangular Board','st.27':'26 · Standee · Contour Die-cut',
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
   'app.nofile':'No file selected','stage.hint':'Upload an image to start',
   'chip.auto':'Auto','ph.own':'custom',
@@ -4108,7 +4122,7 @@ function mfRender(){
       (MFLS?
         ('<div style="margin-top:6px"><label style="font-size:10px;color:#5A6B8C">ประเภทป้าย (แตกชั้นวัสดุ)</label>'+
          '<select class="numin mfType" data-i="'+i+'" style="padding:5px">'+
-           [['1','1·ไฟออกหน้า มีคิ้ว'],['2','2·ไฟออกหน้า ไม่มีคิ้ว'],['3','3·ไฟออกรอบ'],['4','4·กล่องไฟฉลุหน้า'],['6','6·งานยกขอบ'],['7','7·งานยกขอบ มีไส้']].map(function(p){var v=p[0];return '<option value="'+v+'"'+(m.type===v?' selected':'')+'>'+p[1]+'</option>';}).join('')+
+           [['1','1·ยกขอบไฟออกหน้า (มีคิ้ว)'],['2','2·ยกขอบไฟออกหน้า (ไม่มีคิ้ว)'],['3','3·ไฟออกรอบ'],['4','4·กล่องไฟฉลุหน้า'],['6','6·งานยกขอบ'],['7','7·งานยกขอบ มีไส้']].map(function(p){var v=p[0];return '<option value="'+v+'"'+(m.type===v?' selected':'')+'>'+p[1]+'</option>';}).join('')+
          '</select></div>')
         :
         ('<div style="display:flex;gap:6px;margin-top:6px">'+
@@ -4912,6 +4926,7 @@ window.restoreDesignJob=function(d,job){
     if(d.bxh!=null&&d.bxh!=='')_sv('bxH',d.bxh); else if(parseFloat(d.hcm)>0)_sv('bxH',parseFloat(d.hcm));
     if(d.bxd!=null&&d.bxd!=='')_sv('bxD',d.bxd); else if(RDEPTH>0)_sv('bxD',RDEPTH);
     try{ window._bxDrawPrev&&window._bxDrawPrev(); }catch(_e){}
+    try{ if(d.faceprint&&$('facePrint')){ $('facePrint').value=String(d.faceprint); window._fpHint&&window._fpHint(); } }catch(_e){}
     // ⛓️ ซิงก์ UI ความหนายกขอบ/ความลึก + คิ้ว ให้ตรงค่าที่คืนมา (เดิมหน้าจอโชว์ค่าเก่า)
     try{ var rc=document.querySelectorAll('#rdChips .chip'),_rh=false;
       for(var i=0;i<rc.length;i++){ var _on=(parseFloat(rc[i].getAttribute('data-d'))===RDEPTH); rc[i].classList.toggle('on',_on); if(_on)_rh=true; }
@@ -5096,7 +5111,14 @@ var TRIMW=1, TRIMDIR='out';
     for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; }
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
     for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
-  var _boxTypes=['8','9','10','11','12','13','14','15','18','4','21'];   // กล่องไฟทุกชนิด (รวมกล่องฉลุ -> ตั้ง กว้าง×สูง×ลึก เองได้)
+  // 🖨️ คำอธิบายวิธีพิมพ์ (เปลี่ยนตามที่เลือก)
+  window._fpHint=function(){ var s=$('facePrint'), h=$('facePrintHint'); if(!s||!h)return;
+    h.innerHTML={
+      'uv':'<b>พิมพ์ UV</b> = พิมพ์หมึกลงบนผิววัสดุโดยตรง (อะคริลิค · พลาสวูด · หน้ากล่องไฟ) · ไม่มีเผื่อตก · ระบบสร้าง <b>ไฟล์งานพิมพ์ขนาดจริง 1:1</b> พร้อมเลเยอร์ TrimLine',
+      'sticker':'<b>พิมพ์สติ๊กเกอร์</b> = พิมพ์ลงสติ๊กเกอร์ ไดคัท แล้วติดทับบนผิวงาน · เผื่อตก (bleed) 3 มม. · ระบบสร้างไฟล์ 1:1 พร้อมเลเยอร์ <b>CutContour</b> ให้โรงพิมพ์ไดคัทได้เลย',
+      'none':'ไม่สร้างไฟล์งานพิมพ์ — ได้เฉพาะไฟล์ .ai ชุดชั้นตัด'
+    }[s.value]||''; };
+  var _boxTypes=['8','9','10','11','12','13','14','15','18','4','21','26'];   // กล่องไฟทุกชนิด + สแตนดี้สี่เหลี่ยม (ตั้ง กว้าง×สูง เองได้)
   var _adjTypes=_boxTypes.slice();                                        // 🎯 ปรับ logo ในกล่องได้ทุกแบบ
   if($('laScale'))$('laScale').oninput=function(){ if($('laScaleV'))$('laScaleV').textContent=this.value; };
   if($('laReset'))$('laReset').onclick=function(){ if($('laScale')){$('laScale').value=100;} if($('laScaleV'))$('laScaleV').textContent='100'; if($('laDx'))$('laDx').value=0; if($('laDy'))$('laDy').value=0; try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} };
@@ -5111,6 +5133,8 @@ var TRIMW=1, TRIMDIR='out';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
     if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
+    // 🖨️ งานพิมพ์เปิดไว้ทุกประเภท — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว หรือพิมพ์สติ๊กเกอร์ไปติด
+    if($('facePrintRow')) $('facePrintRow').style.display=(v&&v!=='')?'block':'none';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
@@ -5282,13 +5306,14 @@ $('goLayer').onclick=function(){
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
   var _isPunch=(t==='4'||t==='21');   // 🔦 กล่องฉลุ: สูงกล่องส่งแยก (box_h_cm) — ไม่บีบสัดส่วนโลโก้
-  var _isBoxT=(['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0);   // กล่องไฟ = backend คุมขนาดตรงเป๊ะ
+  var _isBoxT=(['4','21','8','9','10','11','12','13','14','15','18','26'].indexOf(t)>=0);   // กล่องไฟ = backend คุมขนาดตรงเป๊ะ
   // 📐 กล่องไฟ: ใช้ค่า 'กว้าง' จากแผงกล่องเสมอ (กันเคสค่าไม่ซิงก์เพราะไม่ได้พิมพ์ใหม่)
   if(_isBoxT&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
   fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
+  fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');   // 🖨️ UV / สติ๊กเกอร์
   fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
   fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
@@ -5345,6 +5370,7 @@ $('goLayer').onclick=function(){
         '<button id="lsDlMain" style="display:none">DXF</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
         (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
         '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ .ai (ชุดชั้นตัด แยกเลเยอร์)</button>'+
+        (j.print_base64?('<button id="lsDlPrint" title="'+(((j.print_info||{}).note)||'').replace(/"/g,'&quot;')+'" style="background:linear-gradient(135deg,#f59e0b,#b45309);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🖨️ โหลดไฟล์งานพิมพ์ ('+(((j.print_info||{}).label_th)||'พิมพ์')+')</button>'):'')+
         (j.sticker_map_svg?'<button id="lsGoStick" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🏷️ เลือกชิ้นไม่ตัด (สติ๊กเกอร์)</button>':'')+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         '<button id="lsPresent" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 แผ่นนำเสนอแบบ</button>'+
@@ -5463,9 +5489,10 @@ $('goLayer').onclick=function(){
       }catch(_e){ try{ fd.append('design_notes',JSON.stringify(window._ls3dNoteData||[])); }catch(_e2){} }
       fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('arm',($('mainArm')&&$('mainArm').value)||'none');fd.append('arm_len_cm',($('mainArmLen')&&$('mainArmLen').value)||'30');
       fd.append('box_h_cm',((t==='4'||t==='21')&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
-      if((['4','21','8','9','10','11','12','13','14','15','18'].indexOf(t)>=0)&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
+      if((['4','21','8','9','10','11','12','13','14','15','18','26'].indexOf(t)>=0)&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
       fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
       fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
+      fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');
       fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
       fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
       fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -5556,6 +5583,7 @@ $('goLayer').onclick=function(){
         mtimg:(function(){try{var _c=(MTEX&&MTEX.indexOf('cust_')===0&&window._ctexGet)?window._ctexGet(MTEX):null;return _c?_c.img:'';}catch(_e){return '';}})(),
         mtname:(function(){try{var _c=(MTEX&&MTEX.indexOf('cust_')===0&&window._ctexGet)?window._ctexGet(MTEX):null;return _c?_c.name:'';}catch(_e){return '';}})(),
         mtscope:(window.MTSCOPE||'face'),
+        faceprint:(($('facePrint')&&$('facePrint').value)||'uv'),          // 🖨️ วิธีทำงานพิมพ์ (UV / สติ๊กเกอร์)
         notes:(window._ls3dNoteData||[]).slice(),
         sticker:(window._stickerIdx||[]).slice(),
         rdepth:(((typeof RDEPTH!=='undefined')?RDEPTH:0)||parseFloat(_gv('bxD'))||0),   // ⚠️ RDEPTH=0 แต่ช่องลึกมีค่า -> ใช้ค่าช่องลึก
@@ -5596,6 +5624,18 @@ $('goLayer').onclick=function(){
       setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400);
       return 1; };
     if($('lsDlAll'))$('lsDlAll').onclick=function(){ window._dlAllProd(false); };
+    // 🖨️ ไฟล์งานพิมพ์ (UV / สติ๊กเกอร์) — แยกไฟล์ ขนาดจริง 1:1 พร้อมเลเยอร์ CutContour
+    window._dlPrintFile=function(silent){
+      if(!j.print_base64){ if(!silent)alert('ยังไม่มีไฟล์งานพิมพ์ — เลือกวิธีพิมพ์ (UV / สติ๊กเกอร์) ที่แผงซ้าย แล้วกด "สร้างไฟล์สั่งผลิต" ใหม่ค่ะ'); return 0; }
+      var pb=atob(j.print_base64),pu=new Uint8Array(pb.length);
+      for(var q=0;q<pb.length;q++)pu[q]=pb.charCodeAt(q);
+      var pa=document.createElement('a');
+      pa.href=URL.createObjectURL(new Blob([pu],{type:'application/postscript'}));
+      pa.download=(lastName||'sign')+'_'+t+'_PRINT_'+(((j.print_info||{}).mode)||'uv')+'.ai';
+      document.body.appendChild(pa); pa.click();
+      setTimeout(function(){ try{document.body.removeChild(pa);}catch(_e){} },400);
+      return 1; };
+    if($('lsDlPrint'))$('lsDlPrint').onclick=function(){ window._dlPrintFile(false); };
     // 🏭 ปุ่มเดียวจบ: สร้างเสร็จ -> โหลดไฟล์ผลิตให้อัตโนมัติ (ครั้งเดียวต่อการกด 1 ครั้ง)
     if(window._autoDL){ window._autoDL=false; setTimeout(function(){ try{ window._dlAllProd(true); }catch(_e){} }, 350); }
     // 📐 ส่งแบบเข้า "จำลองผนัง" ทันที (เก็บภาพย่อ+ขนาดจริง ลง localStorage แล้วเปิด /measure)
