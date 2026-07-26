@@ -1319,6 +1319,11 @@ def _dxf_layer(name):
 
 def _en_layer(n):
     n = str(n)
+    # 🧱 ป้ายหลายวัสดุ: ชื่อชั้นขึ้นต้นด้วยแท็กกลุ่ม (B_ · C_) -> คงแท็กไว้ แปลเฉพาะชื่อชั้น
+    import re as _re9
+    _mt = _re9.match(r"^([B-H])_(.+)$", n)
+    if _mt:
+        return "%s_%s" % (_mt.group(1), _en_layer(_mt.group(2)))
     if "งานพิมพ์ / สติ๊กเกอร์" in n:
         return "PRINT / STICKER (no metal cut)"
     if "แผ่นขอบข้าง" in n:
@@ -3660,7 +3665,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv")):
+                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
+                    material_groups: str = Form(""),
+                    logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0)):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -3698,8 +3705,26 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                  float(box_h_cm or 0.0) * 10.0)     # 📐 ผู้ใช้กำหนด กว้าง×สูง กล่องเองได้อิสระ
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
+        warns = []
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
+        # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
+        #    ใส่ค่าใดค่าหนึ่งก็พอ — อีกด้านคำนวณตามสัดส่วนเดิมให้อัตโนมัติ · ใส่ทั้งคู่ = ยึด 'สูง'
+        _logo_wh = [0.0, 0.0]
+        try:
+            _lw_t = float(logo_w_cm or 0.0) * 10.0; _lh_t = float(logo_h_cm or 0.0) * 10.0
+            if (_lw_t > 1.0 or _lh_t > 1.0) and _punch_logo is not None and not _punch_logo.is_empty:
+                _lb0 = _punch_logo.bounds
+                _lw0 = _lb0[2] - _lb0[0]; _lh0 = _lb0[3] - _lb0[1]
+                if _lh_t > 1.0 and _lh0 > 0.01:
+                    _laS = _lh_t / _lh0
+                elif _lw_t > 1.0 and _lw0 > 0.01:
+                    _laS = _lw_t / _lw0
+                _laS = max(0.02, min(20.0, _laS))
+                _logo_wh = [round(_lw0 * _laS / 10.0, 1), round(_lh0 * _laS / 10.0, 1)]
+                warns.append("📏 ขนาด logo บนหน้ากล่อง = %.1f × %.1f ซม. (ตามที่กำหนด)" % (_logo_wh[0], _logo_wh[1]))
+        except Exception:
+            pass
         _laDX = float(logo_dx_cm or 0.0) * 10.0; _laDY = float(logo_dy_cm or 0.0) * 10.0
         _art_adj = ({"s": _laS, "dx": _laDX, "dy": _laDY}
                     if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5) else None)
@@ -3734,7 +3759,6 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except NameError:
             _punch_logo = None
         out_layers = []
-        warns = []
         # 🧭 รายงานเอนจิ้นที่ใช้จริง (จะได้รู้ทันทีว่าไฟล์เอนจิ้นบนเซิร์ฟเวอร์เป็นรุ่นไหน)
         try:
             _eng9 = _TRACE_ENG.get("mode", "")
@@ -3788,183 +3812,264 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     warns.append("🏷️ แยกเป็นสติ๊กเกอร์ (ไม่อยู่ในไฟล์ตัด) %d ชิ้น — โชว์บนหน้ากล่องเป็นงานติดสติ๊กเกอร์" % len(_stick_sel))
             except Exception:
                 _sticker_geom = None
-        _use_raw_punch = None                       # 🏆 เส้นตัด logo แบบ 'เส้นโค้งดิบ' (ถ้าใช้ได้)
-        _punch_raw_subs = None                      # 🔦 เส้นรูฉลุ (ชุดเดียวกับไฟล์ตัด) ไว้วาดภาพ 3 มิติ
-        for L in ([] if _neon else rec["layers"]):
-            off = float(L["off"]); kind = L.get("kind", "solid")
-            _use_raw_punch = None
-            base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
-            if base is None or base.is_empty:
-                continue
-            if kind == "punch" and _punch_logo is not None:
-                # 🔦 หน้าโลหะฉลุ: แผ่นเต็มทรงกล่อง 'เจาะโบ๋ทะลุ' ตามรูป logo — แสงลอดเฉพาะ logo
-                g = base.difference(_punch_logo)
-                if g.is_empty:
-                    g = base
-                if bore_geom is None:
-                    bore_geom = _punch_logo; frame_outer = base   # ให้ภาพ 3 มิติโชว์รูโบ๋ตาม logo
-                # 🏆 ใช้ 'เส้นโค้งดิบจากเอนจิ้น' เป็นเส้นตัดของ logo (คมเท่าปุ่มแปลงเป็นเส้นตัด 100%)
-                #    เงื่อนไข: ไม่มีชิ้นถูกตัดทิ้ง/พองความหนา และไม่มีสติ๊กเกอร์ -> รูปตรงกับเส้นดิบเป๊ะ
+        # 🧱 ============ ป้ายเดียว หลายวัสดุ (material groups) ============
+        #    ผู้ใช้แตะ 'คำ' บนแผนที่ชิ้น แล้วจ่ายประเภทป้าย/วัสดุคนละแบบให้คำนั้น
+        #    เช่น "ลูกก้อ" = อักษรยกขอบไฟออกหน้า · "ร้านผลไม้" = พลาสวูด 10 มม. ไดคัท ไม่มีไฟ
+        #    → กลุ่มที่ถูกจ่ายวัสดุจะถูก 'หักออก' จากตัวหลัก แล้วสร้างชุดชั้นตัดของตัวเองแยกต่างหาก
+        _mat_pieces = _stick_pieces
+        if not _mat_pieces:
+            try:
+                _mp0 = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                _mat_pieces = sorted([p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 20.0],
+                                     key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+            except Exception:
+                _mat_pieces = []
+        # 🗺️ แผนที่ให้ผู้ใช้ 'แตะคำ' เลือกชิ้น (สร้างก่อนหักกลุ่มออก — index ต้องตรงกับที่ผู้ใช้เห็น)
+        _mat_map_svg = ""
+        try:
+            if len(_mat_pieces) > 1:
+                _mgsel = set()
+                for _g0 in (json.loads(material_groups) if str(material_groups or "").strip() else []):
+                    for _v0 in (_g0.get("pieces") or []):
+                        _mgsel.add(int(_v0))
+                _fb9 = full.bounds
+                _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel,
+                                                _sticker_groups(_mat_pieces, _fb9[2] - _fb9[0], _fb9[3] - _fb9[1]))
+        except Exception:
+            _mat_map_svg = ""
+        _mat_groups = []          # [{tag,name,rec,geom,idx}]
+        try:
+            _mgspec = json.loads(material_groups) if str(material_groups or "").strip() else []
+        except Exception:
+            _mgspec = []
+        if _mgspec and _mat_pieces:
+            from shapely.ops import unary_union as _uug
+            _used = set()
+            for _gi, _gs in enumerate(_mgspec[:8]):
                 try:
-                    _rs = _RAW_SUBS.get("subs")
-                    if _rs and _pl_b0 and abs(off) < 0.01:
-                        _b1 = _punch_logo.bounds
-                        _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
-                        _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
-                        _rawL = _subs_affine(_rs, _sx, _tx, _ty)
-                        # ✂️ ตัดฉลุบนแผ่นแบน = ส่ง 'เส้นดิบทุกเส้น' ออกเลย (เหมือนประเภทอักษรแบน 100%)
-                        #    คัดออกเฉพาะชิ้นที่ผู้ใช้เลือกเป็น 'สติ๊กเกอร์' เท่านั้น
-                        _keepR = _rawL
-                        if _sticker_geom is not None and not _sticker_geom.is_empty:
-                            from shapely.prepared import prep as _prep2
-                            from shapely.geometry import Point as _Pt2
-                            _stk2 = _prep2(_sticker_geom.buffer(1.0))
-                            _keepR = []
-                            for _sp2 in _rawL:
-                                _an2 = [_sp2["start"]] + [s[-1] for s in _sp2["segs"]]
-                                _st2 = max(1, len(_an2) // 8)
-                                if any(_stk2.intersects(_Pt2(p[0], p[1])) for p in _an2[::_st2]):
-                                    continue                        # เส้นของชิ้นสติ๊กเกอร์ -> ไม่ตัด
-                                _keepR.append(_sp2)
-                        _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
-                        if _keepR and _boxS:
-                            _use_raw_punch = _boxS + _keepR
-                            _punch_raw_subs = _keepR               # 🔦 ใช้วาด 'รูฉลุ' ในภาพ 3 มิติ ให้ตรงกับไฟล์ตัดเป๊ะ
-                            warns.append("✂️ เส้นตัด logo = เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น" % len(_keepR))
+                    _idx = [int(v) for v in (_gs.get("pieces") or []) if 0 <= int(v) < len(_mat_pieces)]
+                    _idx = [v for v in _idx if v not in _used]
+                    _grec = SIGN_TYPES.get(str(_gs.get("type") or ""))
+                    if not _idx or not _grec:
+                        continue
+                    _used.update(_idx)
+                    import copy as _cpg
+                    _grec = _cpg.deepcopy(_grec)
+                    if float(_gs.get("depth_cm") or 0) > 0:
+                        _grec["depth_cm"] = float(_gs["depth_cm"])
+                    _mat_groups.append({"tag": chr(66 + len(_mat_groups)),          # B, C, D...
+                                        "name": str(_gs.get("name") or ("กลุ่ม %d" % (_gi + 1))),
+                                        "rec": _grec, "idx": sorted(_idx),
+                                        "geom": _uug([_mat_pieces[i] for i in sorted(_idx)]),
+                                        "material": str(_gs.get("material") or "")})
+                except Exception:
+                    continue
+        _FULL0 = full            # 📐 รูปเต็มของป้าย (ทุกวัสดุรวมกัน) — ใช้คุมขนาดรวม + ภาพ 3 มิติ
+        if _mat_groups:
+            from shapely.ops import unary_union as _uug2
+            _cut_out = _uug2([g["geom"] for g in _mat_groups])
+            try:
+                _rest = full.difference(_cut_out.buffer(0.15))     # หักกลุ่มที่จ่ายวัสดุแล้วออกจากตัวหลัก
+                if _rest is not None and not _rest.is_empty:
+                    full = _rest
+            except Exception:
+                pass
+            if _punch_logo is not None:
+                try:
+                    _pl3 = _punch_logo.difference(_cut_out.buffer(0.15))
+                    _punch_logo = _pl3 if (_pl3 is not None and not _pl3.is_empty) else _punch_logo
                 except Exception:
                     pass
-            elif kind == "backing" and _punch_logo is not None:
-                # 🥛 อะคริลิคขาวนม 3mm รองหลัง: ตัดเป็น 'สี่เหลี่ยมตามพื้นที่ logo' (+เผื่อขอบ 2 ซม.) — ไม่ตัดตามรูป
-                from shapely.geometry import box as _bx2
-                lb = _punch_logo.bounds
-                g = _bx2(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(base)
-                if g.is_empty:
-                    g = base
-            elif kind == "standee_leg":
-                # 🧍 ขาตั้งสแตนดี้: สามเหลี่ยมพับหลัง สูง ~45% ของงาน + ลิ้นล็อกล่าง (ตัดจากแผ่นเดียวกัน)
-                from shapely.geometry import Polygon as _Pg9, box as _bx9
-                from shapely.ops import unary_union as _uu9
-                _sb9 = full.bounds
-                _sw9 = _sb9[2] - _sb9[0]; _sh9 = _sb9[3] - _sb9[1]
-                _lh9 = max(200.0, min(900.0, _sh9 * 0.55))   # สูงขาตั้ง (20–90 ซม.)
-                _lw9 = max(150.0, min(_sw9 * 0.85, _lh9 * 0.62))   # ฐานขาตั้ง ~62% ของความสูง (ตั้งไม่ล้ม)
-                _hg9 = max(20.0, _lh9 * 0.05)                # แถบพับติดหลังแผ่น
-                _ox9 = _sb9[0]; _oy9 = _sb9[3] + 40.0        # วางใต้ตัวงาน (ไม่ทับ · ตัดจากแผ่นเดียวกัน)
-                _tri = _Pg9([(_ox9, _oy9 + _lh9),                       # มุมพับซ้าย (ติดแผ่น)
-                             (_ox9 + _lw9, _oy9 + _lh9),                # มุมพับขวา (ติดแผ่น)
-                             (_ox9 + _lw9 * 0.72, _oy9),                # ปลายเท้าขวา
-                             (_ox9 + _lw9 * 0.28, _oy9)])               # ปลายเท้าซ้าย (ฐานกว้าง ไม่ล้ม)
-                _hin = _bx9(_ox9, _oy9 + _lh9, _ox9 + _lw9, _oy9 + _lh9 + _hg9)
-                _tab = _bx9(_ox9 + _lw9 * 0.32, _oy9 + _lh9 + _hg9,
-                            _ox9 + _lw9 * 0.68, _oy9 + _lh9 + _hg9 * 2.0)        # ลิ้นล็อก
-                g = _uu9([_tri, _hin, _tab])
-            elif kind == "frame":
-                band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
-                # 🅰️ ตัดแยกทีละตัว: คิ้วต้องไม่กว้างจนตัวติดกันเป็น 'กล่องไฟล้อมตามทรง'
-                if rec.get("per_letter") and TRIM_OUT:
-                    try:
-                        from vectorcnc import mount_frame as _MFL0
-                        _lts0 = _MFL0.split_letters(full)
-                        if len(_lts0) > 1:
-                            _gapmin = 1e18
-                            for _i0 in range(len(_lts0)):
-                                for _j0 in range(_i0 + 1, len(_lts0)):
-                                    _d0 = _lts0[_i0].distance(_lts0[_j0])
-                                    if _d0 > 0.01:
-                                        _gapmin = min(_gapmin, _d0)
-                            if _gapmin < 1e17:
-                                _bcap = max(1.5, _gapmin * 0.42)
-                                if band > _bcap:
-                                    warns.append("🅰️ ตัดแยกทีละตัว: ลดคิ้วจาก %.1f ซม. เหลือ %.1f ซม. "
-                                                 "เพื่อไม่ให้ตัวอักษรเชื่อมติดกันเป็นกล่องเดียว"
-                                                 % (band / 10.0, _bcap / 10.0))
-                                    band = _bcap
-                    except Exception:
-                        pass
-                if TRIM_OUT:
-                    o2 = _mbuf(full, off + band)    # ขอบนอกคิ้ว = ตัวต้น + ความหนาคิ้ว
-                    i2 = base                        # ช่องกลาง = ตัวต้น (โชว์อะคริลิค) · รูใน(ไส้)จัดการโดย difference
-                else:
-                    o2 = base
-                    i2 = _mbuf(full, off - band)
-                g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
-                if g.is_empty:
-                    g = o2
-                if bore_geom is None:
-                    bore_geom = i2; frame_outer = o2
-                # 🅰️ งานตัดแยกทีละตัวอักษร: คิ้วของแต่ละตัวต้องไม่เชื่อมติดกันเป็นก้อนเดียว
-                if rec.get("per_letter"):
-                    try:
-                        # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
-                        from vectorcnc import mount_frame as _MFL
-                        _lts = _MFL.split_letters(full)
-                        _acc = []
-                        for _lt in _lts:
-                            _o = _mbuf(_lt, off + band) if TRIM_OUT else _mbuf(_lt, off)
-                            _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
-                            _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
-                            if _gg is not None and not _gg.is_empty:
-                                _acc += _cut_subs_offset(_gg, float(real_width_mm))
-                        if _acc:
-                            _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
-                    except Exception:
-                        pass
-            else:
-                g = base
-                # 🅰️ ตัดแยกทีละตัวอักษร (ชั้น solid ที่มีค่าเผื่อ) -> ไม่ให้ตัวติดกันกลายเป็นชิ้นเดียว
-                if rec.get("per_letter") and abs(off) > 0.01:
-                    try:
-                        # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
-                        from vectorcnc import mount_frame as _MFL
-                        _lts = _MFL.split_letters(full)
-                        _acc = []
-                        for _lt in _lts:
-                            _gg = _mbuf(_lt, off)
-                            if _gg is not None and not _gg.is_empty:
-                                _acc += _cut_subs_offset(_gg, float(real_width_mm))
-                        if _acc:
-                            _use_raw_punch = _acc
-                    except Exception:
-                        pass
-            # ⚠️ ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) จะทำให้ลายเส้นบางแตกเป็นเศษ -> เก็บกวาดทิ้ง
-            junk = 0
-            if off < -0.01:
-                g, junk = _clean_layer(g)
-            if g is None or g.is_empty:
-                continue
-            # 🏆 ชั้นที่ 'ตัดตามรูปงานตรง ๆ' (ค่าเผื่อ 0) -> ใช้เส้นโค้งดิบจากปุ่มแปลงเป็นเส้นตัด ไม่ฟิตใหม่
-            if (_use_raw_punch is None and abs(off) < 0.01 and kind == "solid"
-                    and not rec.get("wrap") and not rec.get("box_shape") and _raw_b0):
-                try:
-                    _rs2 = _RAW_SUBS.get("subs")
-                    if _rs2:
-                        _bn = full.bounds
-                        _s2 = (_bn[2] - _bn[0]) / max(1e-6, (_raw_b0[2] - _raw_b0[0]))
-                        _s2y = (_bn[3] - _bn[1]) / max(1e-6, (_raw_b0[3] - _raw_b0[1]))
-                        if abs(_s2y - _s2) / max(1e-6, _s2) < 0.02:      # สเกลเท่ากันทั้ง 2 แกน (ไม่บิดสัดส่วน)
-                            _use_raw_punch = _subs_affine(_rs2, _s2, _bn[0] - _raw_b0[0] * _s2,
-                                                          _bn[1] - _raw_b0[1] * _s2)
-                            if _use_raw_punch:
-                                warns.append("✂️ ชั้น '%s' ใช้เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น"
-                                             % (L["name"], len(_use_raw_punch)))
-                except Exception:
-                    _use_raw_punch = None
-            # 🏆 ลำดับคุณภาพเส้นตัด:
-            #    1) เส้นโค้งดิบจากเอนจิ้น (ชั้น off=0) — คมที่สุด เท่าปุ่มแปลงเป็นเส้นตัด
-            #    2) ชั้นที่ขยาย/หด (คิ้ว·แผ่นพื้น·อะคริลิค) — รีดคลื่น buffer แล้วฟิตโค้ง (เนียน จุดน้อย)
-            if _use_raw_punch:
-                subs = _use_raw_punch
-            elif abs(off) > 0.01 or kind in ("frame", "wallplate", "backing", "standee_leg"):
-                subs = _cut_subs_offset(g, float(real_width_mm))
-            else:
-                subs = _poly_to_subs(g, tol=0.04)
-            subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
-            if not subs:
-                continue
-            b = g.bounds
-            out_layers.append({"name": L["name"], "off": off, "kind": kind, "color": L["color"], "rgb": L["rgb"],
-                               "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
-                               "junk": junk})
+            warns.append("🧱 ป้ายนี้มี %d วัสดุ: A · %s + %s"
+                         % (len(_mat_groups) + 1, rec.get("name", ""),
+                            " + ".join("%s · %s (%s)" % (g["tag"], g["name"], g["rec"].get("name", ""))
+                                       for g in _mat_groups)))
+        _use_raw_punch = None                       # 🏆 เส้นตัด logo แบบ 'เส้นโค้งดิบ' (ถ้าใช้ได้)
+        _punch_raw_subs = None                      # 🔦 เส้นรูฉลุ (ชุดเดียวกับไฟล์ตัด) ไว้วาดภาพ 3 มิติ
+        # 🔁 สร้างชุดชั้นตัด 'ทีละกลุ่มวัสดุ' — A = ตัวหลัก · B/C/D = กลุ่มที่จ่ายวัสดุเอง
+        _MAIN_FULL, _MAIN_REC = full, rec
+        _builds = [("", rec, full)] + [(g["tag"] + "_", g["rec"], g["geom"]) for g in _mat_groups]
+        for _btag, _brec, _bfull in _builds:
+          full = _bfull; rec = _brec
+          if full is None or full.is_empty:
+            continue
+          for L in ([] if _neon else rec["layers"]):
+              off = float(L["off"]); kind = L.get("kind", "solid")
+              _use_raw_punch = None
+              base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
+              if base is None or base.is_empty:
+                  continue
+              if kind == "punch" and _punch_logo is not None:
+                  # 🔦 หน้าโลหะฉลุ: แผ่นเต็มทรงกล่อง 'เจาะโบ๋ทะลุ' ตามรูป logo — แสงลอดเฉพาะ logo
+                  g = base.difference(_punch_logo)
+                  if g.is_empty:
+                      g = base
+                  if bore_geom is None:
+                      bore_geom = _punch_logo; frame_outer = base   # ให้ภาพ 3 มิติโชว์รูโบ๋ตาม logo
+                  # 🏆 ใช้ 'เส้นโค้งดิบจากเอนจิ้น' เป็นเส้นตัดของ logo (คมเท่าปุ่มแปลงเป็นเส้นตัด 100%)
+                  #    เงื่อนไข: ไม่มีชิ้นถูกตัดทิ้ง/พองความหนา และไม่มีสติ๊กเกอร์ -> รูปตรงกับเส้นดิบเป๊ะ
+                  try:
+                      _rs = _RAW_SUBS.get("subs")
+                      if _rs and _pl_b0 and abs(off) < 0.01:
+                          _b1 = _punch_logo.bounds
+                          _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
+                          _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
+                          _rawL = _subs_affine(_rs, _sx, _tx, _ty)
+                          # ✂️ ตัดฉลุบนแผ่นแบน = ส่ง 'เส้นดิบทุกเส้น' ออกเลย (เหมือนประเภทอักษรแบน 100%)
+                          #    คัดออกเฉพาะชิ้นที่ผู้ใช้เลือกเป็น 'สติ๊กเกอร์' เท่านั้น
+                          _keepR = _rawL
+                          if _sticker_geom is not None and not _sticker_geom.is_empty:
+                              from shapely.prepared import prep as _prep2
+                              from shapely.geometry import Point as _Pt2
+                              _stk2 = _prep2(_sticker_geom.buffer(1.0))
+                              _keepR = []
+                              for _sp2 in _rawL:
+                                  _an2 = [_sp2["start"]] + [s[-1] for s in _sp2["segs"]]
+                                  _st2 = max(1, len(_an2) // 8)
+                                  if any(_stk2.intersects(_Pt2(p[0], p[1])) for p in _an2[::_st2]):
+                                      continue                        # เส้นของชิ้นสติ๊กเกอร์ -> ไม่ตัด
+                                  _keepR.append(_sp2)
+                          _boxS = _poly_to_subs(base, tol=0.04)      # ขอบกล่อง (สี่เหลี่ยม/วงกลม) เนียนอยู่แล้ว
+                          if _keepR and _boxS:
+                              _use_raw_punch = _boxS + _keepR
+                              _punch_raw_subs = _keepR               # 🔦 ใช้วาด 'รูฉลุ' ในภาพ 3 มิติ ให้ตรงกับไฟล์ตัดเป๊ะ
+                              warns.append("✂️ เส้นตัด logo = เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น" % len(_keepR))
+                  except Exception:
+                      pass
+              elif kind == "backing" and _punch_logo is not None:
+                  # 🥛 อะคริลิคขาวนม 3mm รองหลัง: ตัดเป็น 'สี่เหลี่ยมตามพื้นที่ logo' (+เผื่อขอบ 2 ซม.) — ไม่ตัดตามรูป
+                  from shapely.geometry import box as _bx2
+                  lb = _punch_logo.bounds
+                  g = _bx2(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(base)
+                  if g.is_empty:
+                      g = base
+              elif kind == "standee_leg":
+                  # 🧍 ขาตั้งสแตนดี้: สามเหลี่ยมพับหลัง สูง ~45% ของงาน + ลิ้นล็อกล่าง (ตัดจากแผ่นเดียวกัน)
+                  from shapely.geometry import Polygon as _Pg9, box as _bx9
+                  from shapely.ops import unary_union as _uu9
+                  _sb9 = full.bounds
+                  _sw9 = _sb9[2] - _sb9[0]; _sh9 = _sb9[3] - _sb9[1]
+                  _lh9 = max(200.0, min(900.0, _sh9 * 0.55))   # สูงขาตั้ง (20–90 ซม.)
+                  _lw9 = max(150.0, min(_sw9 * 0.85, _lh9 * 0.62))   # ฐานขาตั้ง ~62% ของความสูง (ตั้งไม่ล้ม)
+                  _hg9 = max(20.0, _lh9 * 0.05)                # แถบพับติดหลังแผ่น
+                  _ox9 = _sb9[0]; _oy9 = _sb9[3] + 40.0        # วางใต้ตัวงาน (ไม่ทับ · ตัดจากแผ่นเดียวกัน)
+                  _tri = _Pg9([(_ox9, _oy9 + _lh9),                       # มุมพับซ้าย (ติดแผ่น)
+                               (_ox9 + _lw9, _oy9 + _lh9),                # มุมพับขวา (ติดแผ่น)
+                               (_ox9 + _lw9 * 0.72, _oy9),                # ปลายเท้าขวา
+                               (_ox9 + _lw9 * 0.28, _oy9)])               # ปลายเท้าซ้าย (ฐานกว้าง ไม่ล้ม)
+                  _hin = _bx9(_ox9, _oy9 + _lh9, _ox9 + _lw9, _oy9 + _lh9 + _hg9)
+                  _tab = _bx9(_ox9 + _lw9 * 0.32, _oy9 + _lh9 + _hg9,
+                              _ox9 + _lw9 * 0.68, _oy9 + _lh9 + _hg9 * 2.0)        # ลิ้นล็อก
+                  g = _uu9([_tri, _hin, _tab])
+              elif kind == "frame":
+                  band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
+                  # 🅰️ ตัดแยกทีละตัว: คิ้วต้องไม่กว้างจนตัวติดกันเป็น 'กล่องไฟล้อมตามทรง'
+                  if rec.get("per_letter") and TRIM_OUT:
+                      try:
+                          from vectorcnc import mount_frame as _MFL0
+                          _lts0 = _MFL0.split_letters(full)
+                          if len(_lts0) > 1:
+                              _gapmin = 1e18
+                              for _i0 in range(len(_lts0)):
+                                  for _j0 in range(_i0 + 1, len(_lts0)):
+                                      _d0 = _lts0[_i0].distance(_lts0[_j0])
+                                      if _d0 > 0.01:
+                                          _gapmin = min(_gapmin, _d0)
+                              if _gapmin < 1e17:
+                                  _bcap = max(1.5, _gapmin * 0.42)
+                                  if band > _bcap:
+                                      warns.append("🅰️ ตัดแยกทีละตัว: ลดคิ้วจาก %.1f ซม. เหลือ %.1f ซม. "
+                                                   "เพื่อไม่ให้ตัวอักษรเชื่อมติดกันเป็นกล่องเดียว"
+                                                   % (band / 10.0, _bcap / 10.0))
+                                      band = _bcap
+                      except Exception:
+                          pass
+                  if TRIM_OUT:
+                      o2 = _mbuf(full, off + band)    # ขอบนอกคิ้ว = ตัวต้น + ความหนาคิ้ว
+                      i2 = base                        # ช่องกลาง = ตัวต้น (โชว์อะคริลิค) · รูใน(ไส้)จัดการโดย difference
+                  else:
+                      o2 = base
+                      i2 = _mbuf(full, off - band)
+                  g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
+                  if g.is_empty:
+                      g = o2
+                  if bore_geom is None:
+                      bore_geom = i2; frame_outer = o2
+                  # 🅰️ งานตัดแยกทีละตัวอักษร: คิ้วของแต่ละตัวต้องไม่เชื่อมติดกันเป็นก้อนเดียว
+                  if rec.get("per_letter"):
+                      try:
+                          # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
+                          from vectorcnc import mount_frame as _MFL
+                          _lts = _MFL.split_letters(full)
+                          _acc = []
+                          for _lt in _lts:
+                              _o = _mbuf(_lt, off + band) if TRIM_OUT else _mbuf(_lt, off)
+                              _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
+                              _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
+                              if _gg is not None and not _gg.is_empty:
+                                  _acc += _cut_subs_offset(_gg, float(real_width_mm))
+                          if _acc:
+                              _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
+                      except Exception:
+                          pass
+              else:
+                  g = base
+                  # 🅰️ ตัดแยกทีละตัวอักษร (ชั้น solid ที่มีค่าเผื่อ) -> ไม่ให้ตัวติดกันกลายเป็นชิ้นเดียว
+                  if rec.get("per_letter") and abs(off) > 0.01:
+                      try:
+                          # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
+                          from vectorcnc import mount_frame as _MFL
+                          _lts = _MFL.split_letters(full)
+                          _acc = []
+                          for _lt in _lts:
+                              _gg = _mbuf(_lt, off)
+                              if _gg is not None and not _gg.is_empty:
+                                  _acc += _cut_subs_offset(_gg, float(real_width_mm))
+                          if _acc:
+                              _use_raw_punch = _acc
+                      except Exception:
+                          pass
+              # ⚠️ ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) จะทำให้ลายเส้นบางแตกเป็นเศษ -> เก็บกวาดทิ้ง
+              junk = 0
+              if off < -0.01:
+                  g, junk = _clean_layer(g)
+              if g is None or g.is_empty:
+                  continue
+              # 🏆 ชั้นที่ 'ตัดตามรูปงานตรง ๆ' (ค่าเผื่อ 0) -> ใช้เส้นโค้งดิบจากปุ่มแปลงเป็นเส้นตัด ไม่ฟิตใหม่
+              if (_use_raw_punch is None and abs(off) < 0.01 and kind == "solid"
+                      and not rec.get("wrap") and not rec.get("box_shape") and _raw_b0):
+                  try:
+                      _rs2 = _RAW_SUBS.get("subs")
+                      if _rs2:
+                          _bn = full.bounds
+                          _s2 = (_bn[2] - _bn[0]) / max(1e-6, (_raw_b0[2] - _raw_b0[0]))
+                          _s2y = (_bn[3] - _bn[1]) / max(1e-6, (_raw_b0[3] - _raw_b0[1]))
+                          if abs(_s2y - _s2) / max(1e-6, _s2) < 0.02:      # สเกลเท่ากันทั้ง 2 แกน (ไม่บิดสัดส่วน)
+                              _use_raw_punch = _subs_affine(_rs2, _s2, _bn[0] - _raw_b0[0] * _s2,
+                                                            _bn[1] - _raw_b0[1] * _s2)
+                              if _use_raw_punch:
+                                  warns.append("✂️ ชั้น '%s' ใช้เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น"
+                                               % (L["name"], len(_use_raw_punch)))
+                  except Exception:
+                      _use_raw_punch = None
+              # 🏆 ลำดับคุณภาพเส้นตัด:
+              #    1) เส้นโค้งดิบจากเอนจิ้น (ชั้น off=0) — คมที่สุด เท่าปุ่มแปลงเป็นเส้นตัด
+              #    2) ชั้นที่ขยาย/หด (คิ้ว·แผ่นพื้น·อะคริลิค) — รีดคลื่น buffer แล้วฟิตโค้ง (เนียน จุดน้อย)
+              if _use_raw_punch:
+                  subs = _use_raw_punch
+              elif abs(off) > 0.01 or kind in ("frame", "wallplate", "backing", "standee_leg"):
+                  subs = _cut_subs_offset(g, float(real_width_mm))
+              else:
+                  subs = _poly_to_subs(g, tol=0.04)
+              subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
+              if not subs:
+                  continue
+              b = g.bounds
+              out_layers.append({"name": _btag + L["name"], "off": off, "kind": kind,
+                                 "color": L["color"], "rgb": L["rgb"], "grp": (_btag[:-1] or "A"),
+                                 "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                                 "junk": junk})
+        full, rec = _MAIN_FULL, _MAIN_REC      # 🔙 คืนตัวหลักให้ขั้นตอนถัดไป (3 มิติ · มุมมอง · ใบสั่งผลิต)
         # 🧱 แผ่นขอบข้าง (return) — ชิ้นตัดจริงของผนังข้าง: แถบกว้าง = ความลึกกล่อง/ตัวป้าย
         try:
             _wallsH = [w for w in rec.get("walls", []) if str(w.get("name", "")).startswith("ยกขอบ")]
@@ -4031,7 +4136,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             _skip_kind = ("wallplate", "standee_leg", "print")
             _ow = [L for L in out_layers if L.get("kind") not in _skip_kind]
-            if _ow:
+            if _mat_groups:                      # หลายวัสดุ -> ขนาดรวม = รูปเต็มทุกกลุ่ม (ไม่ใช่เฉพาะกลุ่ม A)
+                _fb8 = _FULL0.bounds
+                _outer_wh = [round(_fb8[2] - _fb8[0], 1), round(_fb8[3] - _fb8[1], 1)]
+            elif _ow:
                 _outer_wh = [round(max(float(L.get("w_mm") or 0.0) for L in _ow), 1),
                              round(max(float(L.get("h_mm") or 0.0) for L in _ow), 1)]
             else:
@@ -4050,6 +4158,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg = _spec_sheet_svg(out_layers)
         try:
             body3d = frame_outer if (frame_outer is not None and not frame_outer.is_empty) else full
+            # 🧱 หลายวัสดุ: ภาพ 3 มิติ/ใบเสนอ ต้องเห็น 'ป้ายเต็มใบ' ทุกกลุ่ม (ลูกค้าดูแบบรวม)
+            if _mat_groups:
+                try:
+                    from shapely.ops import unary_union as _uu3d
+                    body3d = _uu3d([body3d] + [g["geom"] for g in _mat_groups])
+                except Exception:
+                    pass
             _art = ""
             if rec.get("face_finish") == "print":       # กล่องไฟล้อมทรง = จบด้วยงานพิมพ์ -> โชว์รูปจริงบนหน้า
                 try: _art = _art_data_uri(inp)
@@ -4075,7 +4190,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
         try:
             _vd = (float(return_depth_cm) * 10.0) if float(return_depth_cm) > 0 else float(rec.get("depth_cm", 5.0)) * 10.0
-            svg_views = _ortho_views_svg(full, rec, _vd, inner_bore=bore_geom,
+            svg_views = _ortho_views_svg(_FULL0, rec, _vd, inner_bore=bore_geom,
                                          face_color=(face_color or None), side_color=(side_color or None),
                                          metal_tex=str(metal_tex or ""), metal_tex_img=str(metal_tex_img or ""),
                                          metal_tex_scope=str(metal_tex_scope or "face"))
@@ -4311,6 +4426,18 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                                                      full.bounds[3] - full.bounds[1]))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
+                # 🧱 แผนที่ชิ้น สำหรับ 'จ่ายวัสดุคนละแบบในป้ายเดียว' (แตะคำเดียว = ทั้งคำ) — ใช้ได้ทุกประเภทป้าย
+                # 📏 ขนาดจริงของ logo บนหน้ากล่อง (ซม.) — ให้หน้าเว็บเติมกลับในช่องกรอก
+                "logo_w_cm": (_logo_wh[0] if _logo_wh[0] else
+                              (round((_punch_logo.bounds[2] - _punch_logo.bounds[0]) / 10.0, 1)
+                               if _punch_logo is not None and not _punch_logo.is_empty else 0)),
+                "logo_h_cm": (_logo_wh[1] if _logo_wh[1] else
+                              (round((_punch_logo.bounds[3] - _punch_logo.bounds[1]) / 10.0, 1)
+                               if _punch_logo is not None and not _punch_logo.is_empty else 0)),
+                "mat_map_svg": _mat_map_svg, "mat_pieces": len(_mat_pieces),
+                "mat_groups": [{"tag": g["tag"], "name": g["name"], "type_name": g["rec"].get("name", ""),
+                                "pieces": g["idx"], "material": g["material"],
+                                "depth_cm": g["rec"].get("depth_cm", 0)} for g in _mat_groups],
                 # 📐 ขนาดนอกจริงของ 'ตัวป้าย' (ไม่รวมแผ่นขอบข้าง/ขาตั้ง/งานพิมพ์ ที่วางแยกเป็นชิ้นตัด)
                 #    ⚠️ ห้ามใช้ max(w_mm) ของทุกเลเยอร์ — แถบขอบข้างยาวเป็นเมตร จะทำให้ชดเชยขนาดเพี้ยน
                 "outer_w_mm": _outer_wh[0], "outer_h_mm": _outer_wh[1],
@@ -4602,7 +4729,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv")):
+                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
+                    material_groups: str = Form(""),
+                    logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
@@ -4642,6 +4771,19 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             _punch_logo = None
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง (ตรงกับหน้าออกแบบ)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
+        # 📏 ขนาด logo เป็น ซม. (ต้องคิดแบบเดียวกับหน้าออกแบบเป๊ะ ๆ ใบสั่งผลิตจะได้ตรงกัน)
+        try:
+            _lw_t2 = float(logo_w_cm or 0.0) * 10.0; _lh_t2 = float(logo_h_cm or 0.0) * 10.0
+            if (_lw_t2 > 1.0 or _lh_t2 > 1.0) and _punch_logo is not None and not _punch_logo.is_empty:
+                _lb2 = _punch_logo.bounds
+                _lw2 = _lb2[2] - _lb2[0]; _lh2 = _lb2[3] - _lb2[1]
+                if _lh_t2 > 1.0 and _lh2 > 0.01:
+                    _laS = _lh_t2 / _lh2
+                elif _lw_t2 > 1.0 and _lw2 > 0.01:
+                    _laS = _lw_t2 / _lw2
+                _laS = max(0.02, min(20.0, _laS))
+        except Exception:
+            pass
         _laDX = float(logo_dx_cm or 0.0) * 10.0; _laDY = float(logo_dy_cm or 0.0) * 10.0
         _art_adj = ({"s": _laS, "dx": _laDX, "dy": _laDY}
                     if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5) else None)
@@ -4773,11 +4915,27 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         _wiren = "VCT 2×1.5 mm² (Indoor)" if str(wire_type) == "indoor" else "สายกันน้ำ Outdoor 2×1.5 mm² (VCT-G/YY)"
         # BOM จากชั้นวัสดุ + LED + หม้อแปลง + งานพิมพ์
         bom = []
+        # 🧱 ป้ายหลายวัสดุ -> ขึ้นหัวข้อกลุ่ม A แล้วต่อด้วยกลุ่ม B/C/D ที่จ่ายวัสดุเอง
+        try:
+            _mg_js = json.loads(material_groups) if str(material_groups or "").strip() else []
+        except Exception:
+            _mg_js = []
+        _mg_js = [g for g in _mg_js if SIGN_TYPES.get(str(g.get("type") or ""))]
+        _bp = "A · " if _mg_js else ""
         for L in rec["layers"]:
             _isface = (L.get("kind") != "frame" and "แผ่นพื้น" not in L["name"])
             _mm = _matn if _isface else "ตามสเปควัสดุ"
-            bom.append((L["name"], _mm,
+            bom.append((_bp + L["name"], _mm,
                         ("%+.1f ซม." % (float(L["off"]) / 10.0)) if abs(float(L["off"])) > 1e-6 else "เต็มทรง", ""))
+        for _gi, _g in enumerate(_mg_js[:8]):
+            _grec = SIGN_TYPES.get(str(_g.get("type")))
+            _tag = chr(66 + _gi)
+            _thk = _g.get("thick_mm") or (float(_g.get("depth_cm") or 0) * 10.0)
+            _gmat = "%s%s" % (_grec.get("name", ""), (" · หนา %g มม." % float(_thk)) if _thk else "")
+            for L in _grec.get("layers", []):
+                bom.append(("%s · %s (%s)" % (_tag, L["name"], _g.get("name", "")), _gmat,
+                            ("%+.1f ซม." % (float(L["off"]) / 10.0)) if abs(float(L["off"])) > 1e-6 else "เต็มทรง",
+                            "แยกวัสดุจากตัวหลัก · เลเยอร์ .ai ขึ้นต้น %s_" % _tag))
         if rec.get("face_finish") == "print":
             _pm0 = _PRINT_MODES.get(str(face_print or "uv").lower(), _PRINT_MODES["uv"])
             bom.append(("หน้าอะคริลิคพิมพ์", (print_spec or "อะคริลิคขาวขุ่น P433"), "3mm / 5mm",
