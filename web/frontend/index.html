@@ -7070,7 +7070,20 @@ function _wallPickPieces(pieces, f){
       +'<button id="asmClose" style="border:none;background:#e2e8f0;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit">✕ ปิด</button></span></div>'
       +'<div style="font-size:11.5px;color:#64748b;margin-bottom:6px">🎯 ชิ้นจากไฟล์ .ai/.pdf = เวกเตอร์แท้ (คมเท่าต้นฉบับ) · ชิ้นจาก .psd/รูป = ภาพ — ถ้าผสมกัน ผลรวมจะเป็นภาพความละเอียดสูง</div>'
       +'<div id="asmGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px"></div>'
-      +'<div style="font-size:12px;color:#64748b;margin-bottom:6px">พื้นที่จัดวาง — <b>ลากย้าย</b> · <b>ลากจุดมุมขวาล่าง</b> เพื่อย่อ/ขยาย · <b>×</b> ลบชิ้น</div>'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+      +'<span style="font-size:12px;color:#64748b">พื้นที่จัดวาง — <b>ลากย้าย</b> · <b>จุดมุมขวาล่าง</b> ย่อ/ขยาย · <b>×</b> ลบ · คลิกชิ้นเพื่อเลือก</span>'
+      +'<span style="display:inline-flex;gap:4px;margin-left:auto;flex-wrap:wrap">'
+      +'<button class="alnB" data-a="cx" title="จัดกึ่งกลางแนวนอน (ของทั้งกลุ่ม)">↔ กึ่งกลาง</button>'
+      +'<button class="alnB" data-a="cy" title="จัดกึ่งกลางแนวตั้ง">↕ กึ่งกลาง</button>'
+      +'<button class="alnB" data-a="l">⬅ ชิดซ้าย</button>'
+      +'<button class="alnB" data-a="r">➡ ชิดขวา</button>'
+      +'<button class="alnB" data-a="t">⬆ ชิดบน</button>'
+      +'<button class="alnB" data-a="b">⬇ ชิดล่าง</button>'
+      +'<button class="alnB" data-a="rowc" title="เรียงแถวเดียว เว้นระยะเท่ากัน + กึ่งกลางแนวตั้ง">⇹ เรียงแถว</button>'
+      +'<button class="alnB" data-a="allc" title="จัดทั้งกลุ่มไว้กลางกระดาน">🎯 กลางกระดาน</button>'
+      +'</span></div>'
+      +'<style>.alnB{border:1px solid #cbd5e1;background:#f8fafc;border-radius:7px;padding:4px 9px;font-size:11.5px;font-family:inherit;cursor:pointer}.alnB:hover{background:#e0f2fe;border-color:#0891b2}'
+      +'.asmSel{outline:2px solid #0891b2;outline-offset:1px}</style>'
       +'<div id="asmCanvas" style="position:relative;height:420px;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/20px 20px;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;touch-action:none"></div>'
       +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
       +'<button id="asmClear" style="border:1px solid #cbd5e1;background:#f8fafc;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:inherit">🧹 ล้าง</button>'
@@ -7107,6 +7120,36 @@ function _wallPickPieces(pieces, f){
         }); });
       };
     }
+    // 🎯 จัดตำแหน่ง/จัดกึ่งกลาง — ถ้าเลือกชิ้นไว้ = จัดเฉพาะชิ้นนั้นเทียบกระดาน · ไม่เลือก = จัดทั้งกลุ่ม
+    var _alignDo=function(a){
+      if(!_items.length)return;
+      var BW=canv.clientWidth||900, BH=canv.clientHeight||420;
+      var sel=_items.filter(function(it){ return it.el&&it.el.classList.contains('asmSel'); });
+      var tg=sel.length?sel:_items;
+      var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+      tg.forEach(function(it){ var e=it.el; x0=Math.min(x0,e.offsetLeft); y0=Math.min(y0,e.offsetTop);
+        x1=Math.max(x1,e.offsetLeft+e.offsetWidth); y1=Math.max(y1,e.offsetTop+e.offsetHeight); });
+      var gw=x1-x0, gh=y1-y0, dx=0, dy=0;
+      if(a==='cx')dx=(BW-gw)/2-x0;
+      else if(a==='cy')dy=(BH-gh)/2-y0;
+      else if(a==='l')dx=8-x0;
+      else if(a==='r')dx=(BW-8-gw)-x0;
+      else if(a==='t')dy=8-y0;
+      else if(a==='b')dy=(BH-8-gh)-y0;
+      else if(a==='allc'){ dx=(BW-gw)/2-x0; dy=(BH-gh)/2-y0; }
+      else if(a==='rowc'){                      // เรียงแถวเดียว เว้นระยะเท่ากัน + กึ่งกลางแนวตั้ง
+        var arr=tg.slice().sort(function(p,q){return p.el.offsetLeft-q.el.offsetLeft;});
+        var tw=0; arr.forEach(function(it){ tw+=it.el.offsetWidth; });
+        var gap=Math.max(10,(BW*0.9-tw)/Math.max(1,arr.length-1));
+        var cx=(BW-(tw+gap*(arr.length-1)))/2;
+        arr.forEach(function(it){ var e=it.el; e.style.left=cx+'px';
+          e.style.top=((BH-e.offsetHeight)/2)+'px'; cx+=e.offsetWidth+gap; });
+        return;
+      }
+      tg.forEach(function(it){ var e=it.el; e.style.left=(e.offsetLeft+dx)+'px'; e.style.top=(e.offsetTop+dy)+'px'; });
+    };
+    Array.prototype.forEach.call(ov.querySelectorAll('.alnB'),function(b){
+      b.onclick=function(){ _alignDo(b.getAttribute('data-a')); }; });
     ov.querySelector('#asmClose').onclick=function(){ ov.remove(); };
     ov.querySelector('#asmClear').onclick=function(){ _items=[]; canv.innerHTML=''; };
     ov.querySelector('#asmDone').onclick=function(){ if(!_items.length){ alert('เพิ่มชิ้นอย่างน้อย 1 ชิ้นก่อนนะคะ'); return; } compose(ov); };
@@ -7131,9 +7174,38 @@ function _wallPickPieces(pieces, f){
     canv.appendChild(el);
     var it={png:p.png,el:el,meta:p.meta||null}; _items.push(it);
     var drag=null;
-    el.addEventListener('pointerdown',function(e){ var cl=(e.target.className||''); if(cl==='asmR'||cl==='asmDel')return; drag={sx:e.clientX,sy:e.clientY,l:el.offsetLeft,t:el.offsetTop}; try{el.setPointerCapture(e.pointerId);}catch(_e){} el.style.borderColor='#7c3aed'; });
-    el.addEventListener('pointermove',function(e){ if(!drag)return; el.style.left=(drag.l+e.clientX-drag.sx)+'px'; el.style.top=(drag.t+e.clientY-drag.sy)+'px'; });
-    el.addEventListener('pointerup',function(e){ drag=null; el.style.borderColor='rgba(124,58,237,0)'; });
+    // 🧲 เส้นไกด์ + ดูดเข้ากึ่งกลาง/ขอบชิ้นอื่น (กะระยะไม่ต้องเล็งเอง)
+    var _gv=null,_gh=null;
+    var _guide=function(v,h){
+      if(v==null){ if(_gv){_gv.remove();_gv=null;} } else { if(!_gv){_gv=document.createElement('div');
+          _gv.style.cssText='position:absolute;top:0;bottom:0;width:1px;background:#e11d48;pointer-events:none;z-index:9';canv.appendChild(_gv);} _gv.style.left=v+'px'; }
+      if(h==null){ if(_gh){_gh.remove();_gh=null;} } else { if(!_gh){_gh=document.createElement('div');
+          _gh.style.cssText='position:absolute;left:0;right:0;height:1px;background:#e11d48;pointer-events:none;z-index:9';canv.appendChild(_gh);} _gh.style.top=h+'px'; }
+    };
+    var _snap=function(L,T){
+      var BW=canv.clientWidth||900, BH=canv.clientHeight||420, TOL=7, gv=null, gh=null;
+      var W0=el.offsetWidth, H0=el.offsetHeight;
+      var xs=[[BW/2,'c'],[8,'l'],[BW-8,'r']], ys=[[BH/2,'c'],[8,'t'],[BH-8,'b']];
+      _items.forEach(function(o){ if(o.el===el)return; var e=o.el;
+        xs.push([e.offsetLeft,'l'],[e.offsetLeft+e.offsetWidth/2,'c'],[e.offsetLeft+e.offsetWidth,'r']);
+        ys.push([e.offsetTop,'t'],[e.offsetTop+e.offsetHeight/2,'c'],[e.offsetTop+e.offsetHeight,'b']); });
+      xs.forEach(function(p){ var v=p[0];
+        [[L,'l'],[L+W0/2,'c'],[L+W0,'r']].forEach(function(q){
+          if(Math.abs(q[0]-v)<TOL&&gv===null){ L=L+(v-q[0]); gv=v; } }); });
+      ys.forEach(function(p){ var v=p[0];
+        [[T,'t'],[T+H0/2,'c'],[T+H0,'b']].forEach(function(q){
+          if(Math.abs(q[0]-v)<TOL&&gh===null){ T=T+(v-q[0]); gh=v; } }); });
+      _guide(gv,gh);
+      return [L,T];
+    };
+    el.addEventListener('pointerdown',function(e){ var cl=(e.target.className||''); if(cl==='asmR'||cl==='asmDel')return;
+      _items.forEach(function(o){ if(o.el)o.el.classList.remove('asmSel'); });
+      el.classList.add('asmSel');                      // ✅ เลือกชิ้นนี้ -> ปุ่มจัดตำแหน่งจะทำเฉพาะชิ้นนี้
+      drag={sx:e.clientX,sy:e.clientY,l:el.offsetLeft,t:el.offsetTop}; try{el.setPointerCapture(e.pointerId);}catch(_e){} el.style.borderColor='#7c3aed'; });
+    el.addEventListener('pointermove',function(e){ if(!drag)return;
+      var p=_snap(drag.l+e.clientX-drag.sx, drag.t+e.clientY-drag.sy);
+      el.style.left=p[0]+'px'; el.style.top=p[1]+'px'; });
+    el.addEventListener('pointerup',function(e){ drag=null; _guide(null,null); el.style.borderColor='rgba(124,58,237,0)'; });
     var rz=el.querySelector('.asmR'), rs=null;
     rz.addEventListener('pointerdown',function(e){ e.stopPropagation(); rs={sx:e.clientX,w:el.offsetWidth,ar:ar}; try{rz.setPointerCapture(e.pointerId);}catch(_e){} });
     rz.addEventListener('pointermove',function(e){ if(!rs)return; var nw=Math.max(24,rs.w+e.clientX-rs.sx); el.style.width=nw+'px'; el.style.height=(nw*rs.ar)+'px'; });
