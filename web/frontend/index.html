@@ -255,6 +255,8 @@ select.numin{cursor:pointer}
       <div class="side">
         <div class="drop" id="drop"><div class="ic">📤</div><b data-i18n="drop.title">ลากไฟล์มาวาง</b><span data-i18n="drop.sub">รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
         <button class="btn" id="asmBtn" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:700;font-size:12.5px">🧩 แตกชิ้น + เลือก + จัดวาง (.ai / .pdf / .psd รวมหลายแบบ)</button>
+        <button class="btn" id="cropBtn" style="display:none;width:100%;margin-top:6px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;border:none;font-weight:700;font-size:12.5px">✂️ เลือกพื้นที่ในภาพ → แยกเป็นชิ้น (JPG/PNG)</button>
+        <button class="btn" id="cropUndo" style="display:none;width:100%;margin-top:5px;background:#e2e8f0;border:none;font-weight:700;font-size:11.5px">↩ กลับไปใช้ภาพเต็มเดิม</button>
         <div class="thumb" id="thumb"><img id="thumbImg" alt=""></div>
         <!-- 🔬 ตรวจความละเอียดภาพ เทียบกับขนาดป้ายจริง -->
         <div id="resBox" style="display:none;margin-top:8px;border-radius:11px;padding:10px 12px;font-size:11.5px;line-height:1.55"></div>
@@ -1732,6 +1734,33 @@ select.numin{cursor:pointer}
     </div>
     <div id="logList" style="margin-top:14px;max-height:360px;overflow:auto"></div>
     <div class="csm2-setbar" style="margin-top:12px">⚙ ลิงก์ Apps Script (Login CRM /exec):<input id="crmApiUrl" placeholder="วาง Web App URL ของชีต Login CRM ที่ลงท้าย /exec"><button class="btn ghost" id="crmApiSave" style="padding:5px 12px;font-size:11.5px">บันทึก</button></div>
+  </div>
+</div></div>
+<!-- ===== ✂️ เลือกพื้นที่ในภาพ (crop) แล้วแยกออกมาเป็นชิ้นงาน ===== -->
+<div class="modal" id="cropOverlay"><div class="modal-card" style="width:96vw;max-width:1200px;height:92vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <div><b style="font-size:15px">✂️ เลือกพื้นที่ในภาพ → แยกเป็นชิ้นงาน</b>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px">ลากกรอบคลุมส่วนที่ต้องการ (เช่น คำว่า "ร้านผลไม้") → ระบบจะตัดเฉพาะส่วนนั้นมาเป็นไฟล์ใหม่ พร้อมแปลงเป็นเวกเตอร์ต่อได้ทันที</div></div>
+    <button type="button" id="cropClose" class="btn" style="background:#e2e8f0;border:none;font-weight:700">✕ ปิด</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 18px;border-bottom:1px solid var(--line);font-size:12px">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#0f766e"><input type="checkbox" id="cropKnockout" checked> ลบพื้นหลังขาว → โปร่งใส</label>
+    <label style="display:inline-flex;align-items:center;gap:5px;color:#475569">ความไวพื้นหลัง
+      <input type="range" id="cropThr" min="150" max="250" value="225" style="width:120px"><span id="cropThrV" style="font-weight:700">225</span></label>
+    <label style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#7c3aed"><input type="checkbox" id="cropTrim" checked> ตัดขอบว่างรอบชิ้นทิ้ง</label>
+    <span id="cropInfo" style="color:#64748b;margin-left:auto">ยังไม่ได้เลือกพื้นที่</span>
+  </div>
+  <div id="cropWrap" style="flex:1;overflow:auto;background:#0f172a;display:grid;place-items:center;padding:14px">
+    <div id="cropStage" style="position:relative;line-height:0;box-shadow:0 0 0 1px #334155">
+      <img id="cropImg" alt="" style="display:block;max-width:100%;user-select:none;-webkit-user-drag:none">
+      <div id="cropBox" style="position:absolute;display:none;border:2px dashed #f59e0b;background:rgba(245,158,11,.16);pointer-events:none"></div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:11px 18px;border-top:1px solid var(--line);background:var(--panel2)">
+    <button type="button" id="cropAll" class="btn" style="background:#475569;color:#fff;border:none;font-weight:700">⬚ เลือกทั้งภาพ</button>
+    <button type="button" id="cropReset" class="btn" style="background:#e2e8f0;border:none;font-weight:700">ล้างกรอบ</button>
+    <button type="button" id="cropGoVec" class="btn" style="margin-left:auto;background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;font-weight:800">✅ ตัดชิ้นนี้ + แปลงเป็นเวกเตอร์เลย</button>
+    <button type="button" id="cropGo" class="btn" style="background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;border:none;font-weight:800">✂️ ตัดชิ้นนี้มาใช้งาน</button>
   </div>
 </div></div>
 <!-- ===== จำลองป้ายบนผนังตามสเกลจริง ===== -->
@@ -6045,7 +6074,114 @@ function pick(f){
     }
   }
   $('go').disabled=false;
+  // ✂️ ภาพ raster เท่านั้นที่ crop ได้ (เวกเตอร์ใช้ปุ่ม 'แตกชิ้น' อยู่แล้ว)
+  try{ if($('cropBtn'))$('cropBtn').style.display=(isImg&&!/\.svg$/i.test(f.name||''))?'block':'none';
+       if($('cropUndo'))$('cropUndo').style.display=(window._cropOrig&&f!==window._cropOrig)?'block':'none'; }catch(_e){}
 }
+
+/* ==================================================================
+   ✂️ เลือกพื้นที่ในภาพ (crop) → แยกออกมาเป็นชิ้นงานเดี่ยว
+   ใช้กับไฟล์ JPG/PNG ที่มีหลายองค์ประกอบรวมกัน เช่น โลโก้ + คำโปรย
+   ตัดที่ความละเอียดเต็มของต้นฉบับ (ไม่ย่อ) -> เส้นเวกเตอร์ยังคม
+   ================================================================== */
+(function(){
+  var IM=null, drag=null, sel=null;          // sel = {x,y,w,h} หน่วย % ของภาพ
+  function $c(id){ return document.getElementById(id); }
+  function stageRect(){ return $c('cropImg').getBoundingClientRect(); }
+  function draw(){
+    var bx=$c('cropBox'), im=$c('cropImg');
+    if(!sel||sel.w<=0||sel.h<=0){ bx.style.display='none'; $c('cropInfo').textContent='ยังไม่ได้เลือกพื้นที่'; return; }
+    bx.style.display='block';
+    bx.style.left=(sel.x*im.clientWidth)+'px';  bx.style.top=(sel.y*im.clientHeight)+'px';
+    bx.style.width=(sel.w*im.clientWidth)+'px'; bx.style.height=(sel.h*im.clientHeight)+'px';
+    $c('cropInfo').textContent='พื้นที่ที่เลือก '+Math.round(sel.w*IM.naturalWidth)+' × '+Math.round(sel.h*IM.naturalHeight)+' px';
+  }
+  function open(){
+    if(!fileObj){ alert('อัปโหลดภาพก่อนค่ะ'); return; }
+    var rd=new FileReader();
+    rd.onload=function(){
+      var im=$c('cropImg'); im.src=rd.result;
+      im.onload=function(){ IM=im; sel=null; draw(); };
+      $c('cropOverlay').classList.add('show');
+    };
+    rd.readAsDataURL(fileObj);
+  }
+  // ---- ลากกรอบเลือก ----
+  function pt(e){ var r=stageRect(); var cx=(e.touches?e.touches[0].clientX:e.clientX), cy=(e.touches?e.touches[0].clientY:e.clientY);
+    return { x:Math.max(0,Math.min(1,(cx-r.left)/r.width)), y:Math.max(0,Math.min(1,(cy-r.top)/r.height)) }; }
+  function down(e){ if(!IM)return; e.preventDefault(); drag=pt(e); sel={x:drag.x,y:drag.y,w:0,h:0}; draw(); }
+  function move(e){ if(!drag||!IM)return; e.preventDefault(); var p=pt(e);
+    sel={x:Math.min(drag.x,p.x), y:Math.min(drag.y,p.y), w:Math.abs(p.x-drag.x), h:Math.abs(p.y-drag.y)}; draw(); }
+  function up(){ drag=null; }
+  // ---- ตัดจริง (ความละเอียดเต็ม) ----
+  function cutFile(cb){
+    if(!IM){ alert('ยังไม่มีภาพ'); return; }
+    var s=sel; if(!s||s.w<0.005||s.h<0.005){ alert('ลากกรอบคลุมส่วนที่ต้องการก่อนค่ะ (หรือกด "เลือกทั้งภาพ")'); return; }
+    var W=IM.naturalWidth, H=IM.naturalHeight;
+    var x=Math.round(s.x*W), y=Math.round(s.y*H), w=Math.max(2,Math.round(s.w*W)), h=Math.max(2,Math.round(s.h*H));
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    var ctx=c.getContext('2d', {willReadFrequently:true});
+    ctx.drawImage(IM, x,y,w,h, 0,0,w,h);
+    var thr=parseInt(($c('cropThr')&&$c('cropThr').value)||225,10);
+    if($c('cropKnockout')&&$c('cropKnockout').checked){
+      var d=ctx.getImageData(0,0,w,h), a=d.data;
+      for(var i=0;i<a.length;i+=4){
+        // พื้นขาว/เทาอ่อนที่ 'ไม่มีสี' -> โปร่งใส (คงสีจริงของงานไว้ครบ)
+        var mx=Math.max(a[i],a[i+1],a[i+2]), mn=Math.min(a[i],a[i+1],a[i+2]);
+        if(mn>=thr && (mx-mn)<=14) a[i+3]=0;
+      }
+      ctx.putImageData(d,0,0);
+    }
+    // ✂ ตัดขอบว่างรอบชิ้นทิ้ง (ให้ชิ้นพอดีตัว -> ขนาดจริงคำนวณง่าย)
+    if($c('cropTrim')&&$c('cropTrim').checked){
+      try{
+        var dd=ctx.getImageData(0,0,w,h).data, x0=w,y0=h,x1=-1,y1=-1;
+        for(var yy=0;yy<h;yy++)for(var xx=0;xx<w;xx++){
+          var o=(yy*w+xx)*4;
+          var op=dd[o+3]>12 && !(dd[o]>=thr&&dd[o+1]>=thr&&dd[o+2]>=thr);
+          if(op){ if(xx<x0)x0=xx; if(xx>x1)x1=xx; if(yy<y0)y0=yy; if(yy>y1)y1=yy; }
+        }
+        if(x1>x0&&y1>y0){
+          var pad=Math.max(1,Math.round(Math.min(w,h)*0.01));
+          x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad);
+          x1=Math.min(w-1,x1+pad); y1=Math.min(h-1,y1+pad);
+          var c2=document.createElement('canvas'); c2.width=x1-x0+1; c2.height=y1-y0+1;
+          c2.getContext('2d').drawImage(c, x0,y0,c2.width,c2.height, 0,0,c2.width,c2.height);
+          c=c2;
+        }
+      }catch(_e){}
+    }
+    c.toBlob(function(bl){
+      if(!bl){ alert('ตัดชิ้นไม่สำเร็จ'); return; }
+      if(!window._cropOrig) window._cropOrig=fileObj;                 // เก็บภาพเต็มไว้ย้อนกลับ
+      var base=((window._cropOrig&&window._cropOrig.name)||'image').replace(/\.[^.]+$/,'');
+      var f=new File([bl], base+'_ชิ้นที่ตัด.png', {type:'image/png'});
+      $c('cropOverlay').classList.remove('show');
+      try{ pick(f); }catch(_e){ fileObj=f; }
+      if($c('cropUndo'))$c('cropUndo').style.display='block';
+      if(cb)cb();
+    },'image/png');
+  }
+  function bind(){
+    var st=$c('cropStage'); if(!st)return;
+    st.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+    st.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
+    if($c('cropBtn'))$c('cropBtn').onclick=open;
+    if($c('cropClose'))$c('cropClose').onclick=function(){ $c('cropOverlay').classList.remove('show'); };
+    if($c('cropReset'))$c('cropReset').onclick=function(){ sel=null; draw(); };
+    if($c('cropAll'))$c('cropAll').onclick=function(){ sel={x:0,y:0,w:1,h:1}; draw(); };
+    if($c('cropThr'))$c('cropThr').oninput=function(){ $c('cropThrV').textContent=this.value; };
+    if($c('cropGo'))$c('cropGo').onclick=function(){ cutFile(); };
+    if($c('cropGoVec'))$c('cropGoVec').onclick=function(){ cutFile(function(){
+      setTimeout(function(){ try{ $('go').click(); }catch(_e){} },200); }); };
+    if($c('cropUndo'))$c('cropUndo').onclick=function(){
+      if(!window._cropOrig)return; var o=window._cropOrig; window._cropOrig=null;
+      try{ pick(o); }catch(_e){ fileObj=o; }
+      $c('cropUndo').style.display='none'; };
+    window.addEventListener('resize',function(){ try{draw();}catch(_e){} });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind); else bind();
+})();
 
 // ---- vectorize ----
 $('go').onclick=function(){
