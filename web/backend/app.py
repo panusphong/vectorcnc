@@ -1498,6 +1498,69 @@ def _sticker_groups(pieces, W, H):
     return groups
 
 
+def _merge_touching(pieces, tol=0.6):
+    """🧩 รวม 'ชิ้นที่ติดกัน/แทบติดกัน' ให้เป็นชิ้นเดียว
+
+    เอนจิ้น trace มักซอยขอบบนของตัวอักษรออกเป็นแถบบาง ๆ หลายชิ้น (4–10 ตร.มม.)
+    ถ้าไม่รวมกลับ แผนที่จะเห็นตัวอักษร 'หัวแหว่ง' และเลือกจ่ายวัสดุได้ไม่ครบชิ้น
+    ระยะ tol เล็กมาก (0.6 มม.) จึงไม่มีทางดูดตัวอักษรคนละตัวมารวมกัน"""
+    from shapely.ops import unary_union as _uum
+    n = len(pieces)
+    if n <= 1:
+        return list(pieces)
+    par = list(range(n))
+
+    def _f(i):
+        while par[i] != i:
+            par[i] = par[par[i]]; i = par[i]
+        return i
+    bb = [p.bounds for p in pieces]
+    ar = [p.area for p in pieces]
+    # 🛡️ รวมได้เฉพาะเมื่อ 'ฝ่ายใดฝ่ายหนึ่งเป็นชิ้นเล็ก' (เศษขอบจาก trace) — ตัวอักษรเต็มตัว 2 ตัวจะไม่มีวันถูกดูดรวมกัน
+    _big = max(ar) if ar else 1.0
+    _small = max(4.0, _big * 0.06)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if ar[i] >= _small and ar[j] >= _small:
+                continue
+            # ตัดคู่ที่กรอบห่างเกิน tol ออกก่อน (เร็ว)
+            if (bb[i][0] - bb[j][2] > tol or bb[j][0] - bb[i][2] > tol
+                    or bb[i][1] - bb[j][3] > tol or bb[j][1] - bb[i][3] > tol):
+                continue
+            try:
+                if pieces[i].distance(pieces[j]) <= tol:
+                    a, b = _f(i), _f(j)
+                    if a != b:
+                        par[a] = b
+            except Exception:
+                pass
+    bag = {}
+    for i in range(n):
+        bag.setdefault(_f(i), []).append(i)
+    out = []
+    for idx in bag.values():
+        if len(idx) == 1:
+            out.append(pieces[idx[0]])
+        else:
+            try:
+                g = _uum([pieces[k].buffer(tol * 0.55, join_style=2) for k in idx]).buffer(-tol * 0.55, join_style=2)
+                out.append(g if (g is not None and not g.is_empty and g.geom_type == "Polygon")
+                           else _uum([pieces[k] for k in idx]))
+            except Exception:
+                out.append(_uum([pieces[k] for k in idx]))
+    # ต้องคืน 'Polygon เดี่ยว' เสมอ — ตัววาดแผนที่อ่าน .exterior โดยตรง
+    flat = []
+    for p in out:
+        if p is None or p.is_empty:
+            continue
+        if p.geom_type == "MultiPolygon":
+            flat += [q for q in p.geoms if q.geom_type == "Polygon" and not q.is_empty]
+        elif p.geom_type == "Polygon":
+            flat.append(p)
+    flat.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+    return flat
+
+
 def _sticker_map_svg(box_g, pieces, sel, groups=None):
     """🏷️ แผนที่ชิ้นบนหน้ากล่อง (คลิกเลือกเป็นสติ๊กเกอร์): กล่อง + ทุกชิ้นมี data-pi กดสลับได้
        ชิ้นที่เลือก = แดง (สติ๊กเกอร์ ไม่ตัด) · ไม่เลือก = น้ำเงินเข้ม (ฉลุตามปกติ)"""
@@ -2014,7 +2077,7 @@ def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
             return geom
 
 
-def _cut_subs_offset(geom, ref_w_mm=600.0):
+def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
     """✂️ เส้นตัดของ 'ชั้นที่ขยาย/หดจากรูปต้น' (คิ้ว · แผ่นพื้น · อะคริลิคหด)
 
     ปัญหาเดิม: รูปต้นถูก sample เป็นจุดถี่ ~0.5 มม. → shapely.buffer คำนวณ normal
@@ -2029,7 +2092,23 @@ def _cut_subs_offset(geom, ref_w_mm=600.0):
     W = max(50.0, float(ref_w_mm or 600.0))
     r = max(0.30, min(0.70, W * 0.0008))      # แรงรีดคลื่น (มม.)
     tol = max(0.06, min(0.25, W * 0.0003))    # ความคลาดเคลื่อนตอนฟิตโค้ง (มม.)
-    geom = _fix_offset_geom(geom, W)          # 🩹 แก้ห่วง/หนาม/วงเศษ ก่อนฟิตโค้งเสมอ
+    # 🧮 รูปที่ 'สร้างเอง' (สี่เหลี่ยม/ขาตั้ง/กล่องเรขาคณิต) จุดน้อยอยู่แล้ว -> ส่งออกตรง ๆ คมกว่า
+    try:
+        _npt = sum(len(p.exterior.coords) + sum(len(h.coords) for h in p.interiors)
+                   for p in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom])
+                   if p.geom_type == "Polygon")
+        if _npt <= 64:
+            return _poly_to_subs(geom, tol=0.02)
+    except Exception:
+        pass
+    # 🩹 แก้ห่วง/หนาม/วงเศษ ก่อนฟิตโค้ง — clean=False (ชั้นตัดตามรูปตรง ๆ) จะแค่แก้เส้นตัดกันเอง ไม่ลบชิ้นใด ๆ
+    if clean:
+        geom = _fix_offset_geom(geom, W)
+    else:
+        try:
+            geom = geom.buffer(0)
+        except Exception:
+            pass
     base = _poly_to_subs(geom, tol=0.04)      # เส้นแบบเดิม (ไว้เทียบ/ถอยกลับ)
     try:
         g2 = _smooth_cut(geom, r)
@@ -2041,7 +2120,8 @@ def _cut_subs_offset(geom, ref_w_mm=600.0):
         if _n2 < _n1 or abs(g2.area - geom.area) > max(20.0, geom.area * 0.02):
             return base
         subs = _poly_to_subs(g2, tol=tol)
-        if not subs or len(subs) < len(base) * 0.9:      # วงหาย -> ไม่เอา
+        # 🛡️ ชั้นที่ตัดตามรูปตรง ๆ (clean=False) ห้ามวงหายแม้แต่วงเดียว · ชั้น offset ยอมได้ ≤10%
+        if not subs or len(subs) < (len(base) if not clean else len(base) * 0.9):
             return base
         return subs
     except Exception:
@@ -2277,6 +2357,31 @@ def _metal_defs(tex, S, tex_img=""):
     return d, "url(#mtxg)", hairline
 
 
+def _ov_paint(tex, tex_img, S, idx):
+    """พื้นผิวของ 'กลุ่มวัสดุย่อย' ในป้ายเดียวกัน — id ไม่ชนกับพื้นผิวตัวหลัก (ใช้ได้หลายกลุ่มพร้อมกัน)"""
+    pid = "movtx%d" % int(idx)
+    try:
+        if tex_img and str(tex_img).startswith("data:image"):
+            img, _ar = _tex_swatch_clean(tex_img)
+            _tw = max(180.0, S * 0.6); _th = max(30.0, _tw * float(_ar or 1.0))
+            d = ('<defs><pattern id="%s" patternUnits="userSpaceOnUse" width="%.1f" height="%.1f">'
+                 '<image href="%s" xlink:href="%s" x="0" y="0" width="%.1f" height="%.1f" '
+                 'preserveAspectRatio="none"/></pattern></defs>' % (pid, _tw, _th, img, img, _tw, _th))
+            return d, "url(#%s)" % pid
+        t = _METAL_TEX.get(str(tex or ""))
+        if t:
+            lo, mid, dk, _hl = t
+            d = ('<defs><linearGradient id="%s" x1="0%%" y1="0%%" x2="100%%" y2="100%%">'
+                 '<stop offset="0" stop-color="%s"/><stop offset="0.3" stop-color="%s"/>'
+                 '<stop offset="0.55" stop-color="%s"/><stop offset="0.78" stop-color="%s"/>'
+                 '<stop offset="1" stop-color="%s"/></linearGradient></defs>'
+                 % (pid, lo, mid, lo, dk, mid))
+            return d, "url(#%s)" % pid
+    except Exception:
+        pass
+    return "", None
+
+
 def _notes_overlay_svg(svg_str, notes):
     """🗒️ ทับโน้ต/ข้อความอิสระจากหน้าออกแบบ ลงบนภาพ SVG (ใบสั่งผลิต/พิมพ์) — พิกัด 0-1 เทียบทั้งภาพ"""
     import re as _re
@@ -2331,7 +2436,8 @@ def _notes_overlay_svg(svg_str, notes):
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
-               metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None):
+               metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None,
+               mat_overlays=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -2549,6 +2655,57 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                      '<stop offset="1" stop-color="#0b1220" stop-opacity="0.10"/></linearGradient></defs>')
         for pg in polys:
             parts.append('<path d="%s" fill="url(#w3dSheen)" fill-rule="evenodd"/>' % faced(pg, F))
+    # 🧱 กลุ่มวัสดุอื่นในป้ายเดียวกัน (เช่น "ร้านผลไม้" = พลาสวูด 10 มม. สีขาว) — วาดทับด้วยสี+ความหนาของตัวเอง
+    for _ovi, _ov in enumerate(mat_overlays or []):
+        try:
+            _og = _ov.get("geom")
+            if _og is None or _og.is_empty:
+                continue
+            _of = _ov.get("fill") or "#f5f5f4"
+            # 🎨 พื้นผิวของกลุ่มนี้ (สแตนเลส/ลายไม้/ลามิเนต ที่ผู้ใช้เลือกเอง) — id ไม่ชนกับตัวหลัก
+            _ovd, _ovf = _ov_paint(_ov.get("tex"), _ov.get("tex_img"), S, _ovi)
+            if _ovd:
+                parts.append(_ovd)
+            if _ovf:
+                _of = _ovf
+            _od = max(2.0, float(_ov.get("depth_mm") or 10.0))
+            _ovx = _od * math.cos(ang); _ovy = -_od * math.sin(ang)
+
+            def _Fo(p, _dx=_ovx, _dy=_ovy):                 # หน้าแผ่นของกลุ่มนี้ (ยกขึ้นตามความหนาตัวเอง)
+                return (p[0] + ox + _dx, p[1] + oy + _dy)
+            _ops = list(_og.geoms) if _og.geom_type == "MultiPolygon" else [_og]
+            # ผนังข้าง (ความหนาวัสดุ) — ลากจากฐานขึ้นหน้าแผ่น
+            for pg in _ops:
+                if pg.geom_type != "Polygon" or pg.is_empty:
+                    continue
+                _co = list(pg.exterior.coords)
+                for _i7 in range(len(_co) - 1):
+                    _a = _co[_i7]; _b = _co[_i7 + 1]
+                    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f L %.1f %.1f Z" fill="%s" '
+                                 'fill-opacity="0.55" stroke="none"/>'
+                                 % (_a[0] + ox, _a[1] + oy, _b[0] + ox, _b[1] + oy,
+                                    _Fo(_b)[0], _Fo(_b)[1], _Fo(_a)[0], _Fo(_a)[1], "#94a3b8"))
+            for pg in _ops:
+                if pg.geom_type == "Polygon" and not pg.is_empty:
+                    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>'
+                                 % (faced(pg, _Fo), _of, "#64748b", lw * 0.7))
+            # ป้ายชี้บอกวัสดุ
+            _b8 = _og.bounds; _q0 = _Fo((_b8[0], _b8[1])); _q1 = _Fo((_b8[2], _b8[3]))
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#7c3aed" '
+                         'stroke-width="%.2f" stroke-dasharray="%.1f %.1f" rx="%.1f"/>'
+                         % (_q0[0] - fs * 0.22, _q0[1] - fs * 0.22, (_q1[0] - _q0[0]) + fs * 0.44,
+                            (_q1[1] - _q0[1]) + fs * 0.44, lw * 1.3, fs * 0.32, fs * 0.22, fs * 0.18))
+            _tx = _q1[0] + fs * 0.8; _ty = _q1[1] + fs * 1.4
+            _lb = "%s · หนา %.1f ซม." % (_esc(_ov.get("label") or "วัสดุแยก"), _od / 10.0)
+            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#7c3aed" stroke-width="%.2f"/>'
+                         % (_q1[0], _q1[1], _tx, _ty, lw))
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#faf5ff" '
+                         'stroke="#7c3aed" stroke-width="%.2f"/>'
+                         % (_tx, _ty - fs * 0.95, len(_lb) * fs * 0.44 + fs * 0.7, fs * 1.35, fs * 0.28, lw * 0.9))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
+                         'fill="#6d28d9">%s</text>' % (_tx + fs * 0.35, _ty + fs * 0.05, fs * 0.8, _lb))
+        except Exception:
+            pass
     if sticker_geom is not None and not sticker_geom.is_empty:   # 🏷️ ชิ้นสติ๊กเกอร์ (ไม่ตัด) — พิมพ์/ติดดำบนหน้ากล่อง
         for pg in (sticker_geom.geoms if sticker_geom.geom_type == "MultiPolygon" else [sticker_geom]):
             if pg.geom_type == "Polygon" and not pg.is_empty:
@@ -3922,8 +4079,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         if not _mat_pieces:
             try:
                 _mp0 = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
-                _mat_pieces = sorted([p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 20.0],
-                                     key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+                # ⚠️ ห้ามกรองด้วยพื้นที่แรง ๆ — ขอบบนของตัวอักษรมักถูกเอนจิ้นแยกเป็นชิ้นบาง ๆ (4–10 ตร.มม.)
+                #    ถ้ากรองทิ้ง แผนที่จะโชว์ตัวอักษร 'หัวแหว่ง' และจ่ายวัสดุได้ไม่ครบชิ้น
+                _mp1 = [p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 0.5]
+                _fb1 = full.bounds
+                _mat_pieces = _merge_touching(_mp1, tol=min(4.0, max(0.8, (_fb1[3] - _fb1[1]) * 0.05)))
             except Exception:
                 _mat_pieces = []
         # 🗺️ แผนที่ให้ผู้ใช้ 'แตะคำ' เลือกชิ้น (สร้างก่อนหักกลุ่มออก — index ต้องตรงกับที่ผู้ใช้เห็น)
@@ -3963,6 +4123,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                         "name": str(_gs.get("name") or ("กลุ่ม %d" % (_gi + 1))),
                                         "rec": _grec, "idx": sorted(_idx),
                                         "geom": _uug([_mat_pieces[i] for i in sorted(_idx)]),
+                                        "color": (str(_gs.get("color") or "").strip() or "#f5f5f4"),
+                                        "tex": str(_gs.get("tex") or ""), "tex_img": str(_gs.get("tex_img") or ""),
                                         "material": str(_gs.get("material") or "")})
                 except Exception:
                     continue
@@ -4169,11 +4331,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
               #    1) เส้นโค้งดิบจากเอนจิ้น (ชั้น off=0) — คมที่สุด เท่าปุ่มแปลงเป็นเส้นตัด
               #    2) ชั้นที่ขยาย/หด (คิ้ว·แผ่นพื้น·อะคริลิค) — รีดคลื่น buffer แล้วฟิตโค้ง (เนียน จุดน้อย)
               if _use_raw_punch:
-                  subs = _use_raw_punch
-              elif abs(off) > 0.01 or kind in ("frame", "wallplate", "backing", "standee_leg"):
-                  subs = _cut_subs_offset(g, float(real_width_mm))
+                  subs = _use_raw_punch                     # 🥇 เส้นโค้งดิบจากเอนจิ้น — คมที่สุด ไม่แตะ
               else:
-                  subs = _poly_to_subs(g, tol=0.04)
+                  # 🧈 ทุกชั้น ทุกประเภทป้าย: ฟิตโค้งเนียน
+                  #    ชั้นที่ 'ขยาย/หด' เท่านั้นที่กวาดเศษได้ — ชั้นที่ตัดตามรูปตรง ๆ (off=0) ห้ามลบชิ้นใด ๆ
+                  #    (สระ/วรรณยุกต์/จุดเล็ก ๆ คือเนื้องานจริง ไม่ใช่เศษจากการ offset)
+                  subs = _cut_subs_offset(g, float(real_width_mm),
+                                          clean=(abs(off) > 0.01 or kind in ("frame", "punch", "backing")))
               subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
               if not subs:
                   continue
@@ -4232,7 +4396,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    "color": "#d946ef", "rgb": (217, 70, 239),
                                    "subs": _ns, "w_mm": round(_nb[2] - _nb[0], 1), "h_mm": round(_nb[3] - _nb[1], 1)})
             if _acrylic is not None and not _acrylic.is_empty:
-                _as = _poly_to_subs(_acrylic, tol=0.08)
+                _as = _cut_subs_offset(_acrylic, float(real_width_mm))
                 if _as:
                     _ab = _acrylic.bounds
                     out_layers.append({"name": "อะคริลิคใสรองหลัง 8mm", "off": 30.0, "kind": "solid",
@@ -4279,13 +4443,20 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg = _spec_sheet_svg(out_layers)
         try:
             body3d = frame_outer if (frame_outer is not None and not frame_outer.is_empty) else full
-            # 🧱 หลายวัสดุ: ภาพ 3 มิติ/ใบเสนอ ต้องเห็น 'ป้ายเต็มใบ' ทุกกลุ่ม (ลูกค้าดูแบบรวม)
+            # 🧱 หลายวัสดุ: ภาพ 3 มิติ/ใบเสนอ ต้องเห็น 'ป้ายเต็มใบ' ทุกกลุ่ม
+            #    กลุ่ม B/C/D วาดทับด้วย 'สีวัสดุของตัวเอง' + ความหนาของตัวเอง (เช่น พลาสวูดขาว 10 มม.)
+            _mat_ov = []
             if _mat_groups:
                 try:
                     from shapely.ops import unary_union as _uu3d
-                    body3d = _uu3d([body3d] + [g["geom"] for g in _mat_groups])
+                    body3d = _uu3d([body3d] + [g["geom"] for g in _mat_groups])   # กรอบภาพต้องคลุมทุกกลุ่ม
                 except Exception:
                     pass
+                for _g3 in _mat_groups:
+                    _mat_ov.append({"geom": _g3["geom"], "fill": _g3.get("color") or "#f5f5f4",
+                                    "tex": _g3.get("tex", ""), "tex_img": _g3.get("tex_img", ""),
+                                    "depth_mm": float(_g3["rec"].get("depth_cm", 1.0)) * 10.0,
+                                    "label": "%s · %s" % (_g3["name"], _g3["rec"].get("name", ""))})
             _art = ""
             if rec.get("face_finish") == "print":       # กล่องไฟล้อมทรง = จบด้วยงานพิมพ์ -> โชว์รูปจริงบนหน้า
                 try: _art = _art_data_uri(inp)
@@ -4305,7 +4476,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
                                    metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
-                                   bore_subs=_punch_raw_subs)
+                                   bore_subs=_punch_raw_subs, mat_overlays=_mat_ov)
         except Exception:
             svg3d = ""
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
@@ -4436,7 +4607,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             try:
                 if _sticker_geom is not None and not _sticker_geom.is_empty:
                     # 🖨️ งานพิมพ์: ใช้รูปทรงจริง (รวมรูในตัวอักษร) -> ตัวหนังสือทึบดำ อ่านออก ไม่เละ
-                    _ss = _poly_to_subs(_sticker_geom, tol=0.03)
+                    _ss = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
                     if _punch_raw_subs:                       # ใช้เส้นดิบถ้ามี (คมกว่า)
                         from shapely.prepared import prep as _pp4
                         from shapely.geometry import Point as _Pt4
@@ -4474,13 +4645,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     # เลือกเฉพาะบางชิ้นเป็นสติ๊กเกอร์ -> พิมพ์เฉพาะชิ้นนั้น (ทึบดำ พร้อมไดคัท)
                     _pb = _sticker_geom.bounds
                     _phref = ""
-                    _pcut = _poly_to_subs(_sticker_geom, tol=0.03)
+                    _pcut = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
                     _pmat = "สติ๊กเกอร์พิมพ์ + ไดคัทตามรูป (เฉพาะชิ้นที่เลือก)"
                 else:
                     # พิมพ์เต็มหน้างาน -> ใช้รูปงานจริงความละเอียดสูง + เส้นตัด/ไดคัทตามทรงงาน
                     _pb = full.bounds
                     _phref = _art_data_uri(inp, max_px=3200)
-                    _pcut = _poly_to_subs(full, tol=0.03)
+                    _pcut = _cut_subs_offset(full, float(real_width_mm), clean=False)
                     _pmat = str(rec.get("face_material", "")) or _PRINT_MAT.get(str(sign_type), "ตามสเปควัสดุหน้างาน")
                     if _pmode == "sticker":
                         _pmat = "สติ๊กเกอร์พิมพ์ + ลามิเนตกันแดด (ติดทับผิว %s)" % _pmat
