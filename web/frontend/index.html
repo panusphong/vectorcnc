@@ -5452,7 +5452,7 @@ $('goLayer').onclick=function(){
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'+
         '<b style="font-size:17px;color:#0f172a">'+(j.type_name_en||'')+'</b><span style="font-size:12px;color:#64748b">('+j.type_name+')</span>'+
         '<button id="lsBack" style="margin-left:auto;background:#e2e8f0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">← กลับไปดูเส้นตัด</button>'+
-        '<button id="lsDlSvg" style="display:none">SVG</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
+        (j.svg_cut?'<button id="lsDlSvg" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลด SVG (มม. · แยกเลเยอร์)</button>':'<button id="lsDlSvg" style="display:none">SVG</button>')+
         '<button id="lsDlMain" style="display:none">DXF</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
         (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
         '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ .ai (ชุดชั้นตัด แยกเลเยอร์)</button>'+
