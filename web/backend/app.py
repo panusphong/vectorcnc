@@ -1640,10 +1640,18 @@ def _vtrace_full_mm(img_path, real_width_mm):
     from shapely.geometry import Polygon as _Pg
     from shapely.ops import unary_union as _uu
     from shapely.prepared import prep as _prep
-    # 🎯 เรียก 'เหมือนปุ่มแปลงเป็นเส้นตัด' ทุกประการ — ห้ามแต่งพารามิเตอร์เพิ่ม!
-    #    (บทเรียน: โหมดพิเศษที่เคยแต่งเอง (เบลอ 2px ฯลฯ) กลืนเส้นบางจนหาย + ขอบเพี้ยน)
-    layers = _te.trace_vtracer(img_path, n_colors=2)
-    _TRACE_ENG["mode"] = "vtracer-button"
+    # 🎯 ใช้ 'เอนจิ้นเดียวกับปุ่มแปลงเป็นเส้นตัด' เป๊ะ ๆ = potrace ก่อน · vtracer เป็นตัวสำรอง
+    #    ⚠️ เดิมเรียก vtracer ตรง ๆ (ทั้งที่ปุ่มใช้ potrace) -> ขอบตัวอักษรคนละแบบ
+    #       เป็นที่มาของ 'รอยตัดบนหัวตัวอักษร' ที่ปุ่มแปลงไม่เคยมี
+    layers = None
+    try:
+        layers = _te.trace_potrace(img_path, n_colors=2)
+        _TRACE_ENG["mode"] = "potrace-button"
+    except Exception:
+        layers = None
+    if not layers:
+        layers = _te.trace_vtracer(img_path, n_colors=2)
+        _TRACE_ENG["mode"] = "vtracer-button"
     rings = []
     for _col, _subs in (layers or []):
         for _sp in _subs:
@@ -2738,7 +2746,11 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     else:
         _punch = bool(rec.get("punch_face"))
         # 🔦 กล่องฉลุ: หน้ากล่อง = แผ่นโลหะ (ย้อมด้วยสี 'ขอบ/คิ้ว' -> class w3d-kim) · รู logo = อะคริลิคเรืองแสง (สี 'หน้าอะคริลิค')
-        _faceCls = "w3d-kim" if _punch else "w3d-face"
+        # 🎨 ป้ายที่มี 'คิ้ว' (มี inner_bore = เจาะโชว์อะคริลิคตรงกลาง) -> แถบหน้าที่เห็นคือ 'คิ้ว'
+        #    ต้องย้อมด้วยสี "ขอบ/คิ้ว" (class w3d-kim) ไม่ใช่สีหน้าอะคริลิค — เดิมย้อมผิดช่อง
+        _hasKim = bool(inner_bore is not None and not inner_bore.is_empty
+                       and any(L.get("kind") == "frame" for L in rec.get("layers", [])))
+        _faceCls = "w3d-kim" if (_punch or _hasKim) else "w3d-face"
         _faceFillUse = (side_color or "#c9cdd4") if _punch else faceFill
         if _texFace:                                   # 🪙 เลือกพื้นผิวสแตนเลส -> ผิวโลหะเป็น gradient เมทัลลิก (ตาม scope)
             _faceFillUse = _texFace
@@ -4769,7 +4781,40 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             cursor += Lmm + gap
         # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
         dxf_b64 = ""
+        # 📄 SVG ชุดชั้นตัด (หน่วย มม. · ตำแหน่งจริงซ้อนกัน · แยก <g> ต่อชั้น เปิดใน LightBurn/Illustrator ได้)
         svg_cut = ""
+        try:
+            from vectorcnc import nesting as _nsv
+            _ab = [1e18, 1e18, -1e18, -1e18]
+            for _L in out_layers:
+                for _sp in _L["subs"]:
+                    _pt = [_sp["start"]] + [s[-1] for s in _sp["segs"]]
+                    for _p in _pt:
+                        _ab[0] = min(_ab[0], _p[0]); _ab[1] = min(_ab[1], _p[1])
+                        _ab[2] = max(_ab[2], _p[0]); _ab[3] = max(_ab[3], _p[1])
+            if _ab[2] > _ab[0]:
+                _Wv = _ab[2] - _ab[0] + 4.0; _Hv = _ab[3] - _ab[1] + 4.0
+                _gs = []
+                for _L in out_layers:
+                    _dd = []
+                    for _sp in _L["subs"]:
+                        _n = {"start": (_sp["start"][0] - _ab[0] + 2.0, _sp["start"][1] - _ab[1] + 2.0),
+                              "segs": [("L", (s[1][0] - _ab[0] + 2.0, s[1][1] - _ab[1] + 2.0)) if s[0] == "L" else
+                                       ("C", (s[1][0] - _ab[0] + 2.0, s[1][1] - _ab[1] + 2.0),
+                                        (s[2][0] - _ab[0] + 2.0, s[2][1] - _ab[1] + 2.0),
+                                        (s[3][0] - _ab[0] + 2.0, s[3][1] - _ab[1] + 2.0)) for s in _sp["segs"]],
+                              "closed": _sp.get("closed", True)}
+                        _dd.append('<path d="%s"/>' % _nsv._sp_d(_n))
+                    if _dd:
+                        _gs.append('<g id="%s" inkscape:groupmode="layer" inkscape:label="%s" '
+                                   'fill="none" stroke="%s" stroke-width="0.25">%s</g>'
+                                   % (_dxf_layer(_L["name"]), _en_layer(_L["name"]), _L["color"], "".join(_dd)))
+                svg_cut = ('<svg xmlns="http://www.w3.org/2000/svg" '
+                           'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
+                           'width="%.2fmm" height="%.2fmm" viewBox="0 0 %.2f %.2f">%s</svg>'
+                           % (_Wv, _Hv, _Wv, _Hv, "".join(_gs)))
+        except Exception:
+            svg_cut = ""
         # 🖼️ ภาพหน้าตรง (3D เบา ๆ พื้นโปร่ง) — เอาไปวางบนผนังในหน้าจำลองผนัง
         svg_face = ""
         try:
