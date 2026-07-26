@@ -1562,7 +1562,8 @@ def _vtrace_full_mm(img_path, real_width_mm):
                     _p1, _p2, _p3 = _s[1], _s[2], _s[3]
                     _ln = (_m.hypot(_p1[0] - _cur[0], _p1[1] - _cur[1]) + _m.hypot(_p2[0] - _p1[0], _p2[1] - _p1[1])
                            + _m.hypot(_p3[0] - _p2[0], _p3[1] - _p2[1]))
-                    _ns = max(6, min(140, int(_ln / 1.1) + 2))
+                    # 🔬 sample โค้งถี่ขึ้น (~0.55px) — รูปต้นเนียนขึ้น ชั้นที่ buffer ต่อจึงไม่เป็นขั้นบันได
+                    _ns = max(10, min(260, int(_ln / 0.55) + 2))
                     for _i2 in range(1, _ns + 1):
                         _t = _i2 / _ns; _mt = 1.0 - _t
                         _pts.append((_mt**3 * _cur[0] + 3 * _mt * _mt * _t * _p1[0] + 3 * _mt * _t * _t * _p2[0] + _t**3 * _p3[0],
@@ -1911,6 +1912,39 @@ def _poly_to_subs(geom, tol=0.04):
             if sp:
                 subs.append(sp)
     return subs
+
+
+def _cut_subs_offset(geom, ref_w_mm=600.0):
+    """✂️ เส้นตัดของ 'ชั้นที่ขยาย/หดจากรูปต้น' (คิ้ว · แผ่นพื้น · อะคริลิคหด)
+
+    ปัญหาเดิม: รูปต้นถูก sample เป็นจุดถี่ ~0.5 มม. → shapely.buffer คำนวณ normal
+    ทีละท่อนสั้น ๆ ได้ขอบเป็น 'ขั้นบันไดจิ๋ว' → ตัวฟิตโค้ง tol 0.04 มม. ไล่ตามขั้นบันได
+    เป๊ะ ๆ เลยได้เส้นจุดเยอะ ยึกยัก (ต่างจากชั้น off=0 ที่ใช้เส้นโค้งดิบจากเอนจิ้นตรง ๆ)
+
+    วิธีแก้: รีดคลื่นระดับต่ำกว่าความละเอียดเครื่องออกก่อน แล้วฟิตโค้งด้วย tol ที่
+    สมมาตรกับขนาดงานจริง → เส้นเนียน จุดน้อย แต่ยังอยู่ในพิกัดความเผื่อ (< 0.25 มม.)
+    ถ้ารีดแล้วรูปเพี้ยน/หาย → ถอยกลับไปใช้เส้นเดิมทันที (ห้ามเส้นหาย)"""
+    if geom is None or geom.is_empty:
+        return []
+    W = max(50.0, float(ref_w_mm or 600.0))
+    r = max(0.30, min(0.70, W * 0.0008))      # แรงรีดคลื่น (มม.)
+    tol = max(0.06, min(0.25, W * 0.0003))    # ความคลาดเคลื่อนตอนฟิตโค้ง (มม.)
+    base = _poly_to_subs(geom, tol=0.04)      # เส้นแบบเดิม (ไว้เทียบ/ถอยกลับ)
+    try:
+        g2 = _smooth_cut(geom, r)
+        if g2 is None or g2.is_empty:
+            return base
+        # 🛡️ ตรวจว่า 'ไม่เพี้ยน/ไม่หาย': พื้นที่ต้องใกล้เดิม และจำนวนชิ้นต้องเท่าเดิม
+        _n1 = len(geom.geoms) if geom.geom_type == "MultiPolygon" else 1
+        _n2 = len(g2.geoms) if g2.geom_type == "MultiPolygon" else 1
+        if _n2 < _n1 or abs(g2.area - geom.area) > max(20.0, geom.area * 0.02):
+            return base
+        subs = _poly_to_subs(g2, tol=tol)
+        if not subs or len(subs) < len(base) * 0.9:      # วงหาย -> ไม่เอา
+            return base
+        return subs
+    except Exception:
+        return base
 
 
 def _spec_sheet_svg(out_layers):
@@ -3829,7 +3863,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🅰️ ตัดแยกทีละตัว: คิ้วต้องไม่กว้างจนตัวติดกันเป็น 'กล่องไฟล้อมตามทรง'
                 if rec.get("per_letter") and TRIM_OUT:
                     try:
-                        _lts0 = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        from vectorcnc import mount_frame as _MFL0
+                        _lts0 = _MFL0.split_letters(full)
                         if len(_lts0) > 1:
                             _gapmin = 1e18
                             for _i0 in range(len(_lts0)):
@@ -3860,14 +3895,16 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🅰️ งานตัดแยกทีละตัวอักษร: คิ้วของแต่ละตัวต้องไม่เชื่อมติดกันเป็นก้อนเดียว
                 if rec.get("per_letter"):
                     try:
-                        _lts = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
+                        from vectorcnc import mount_frame as _MFL
+                        _lts = _MFL.split_letters(full)
                         _acc = []
                         for _lt in _lts:
                             _o = _mbuf(_lt, off + band) if TRIM_OUT else _mbuf(_lt, off)
                             _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
                             _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
                             if _gg is not None and not _gg.is_empty:
-                                _acc += _poly_to_subs(_gg, tol=0.04)
+                                _acc += _cut_subs_offset(_gg, float(real_width_mm))
                         if _acc:
                             _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
                     except Exception:
@@ -3877,12 +3914,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🅰️ ตัดแยกทีละตัวอักษร (ชั้น solid ที่มีค่าเผื่อ) -> ไม่ให้ตัวติดกันกลายเป็นชิ้นเดียว
                 if rec.get("per_letter") and abs(off) > 0.01:
                     try:
-                        _lts = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        # 🅰️ ใช้ 'ตัวแยกตัวอักษร' ตัวเดียวกับประเภท 16 (อักษรยกขอบ + โครงแขวน) เป๊ะ ๆ
+                        from vectorcnc import mount_frame as _MFL
+                        _lts = _MFL.split_letters(full)
                         _acc = []
                         for _lt in _lts:
                             _gg = _mbuf(_lt, off)
                             if _gg is not None and not _gg.is_empty:
-                                _acc += _poly_to_subs(_gg, tol=0.04)
+                                _acc += _cut_subs_offset(_gg, float(real_width_mm))
                         if _acc:
                             _use_raw_punch = _acc
                     except Exception:
@@ -3910,7 +3949,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                              % (L["name"], len(_use_raw_punch)))
                 except Exception:
                     _use_raw_punch = None
-            subs = _use_raw_punch if _use_raw_punch else _poly_to_subs(g, tol=0.04)   # 🏆 เส้นดิบก่อน · ไม่ได้ค่อยฟิต
+            # 🏆 ลำดับคุณภาพเส้นตัด:
+            #    1) เส้นโค้งดิบจากเอนจิ้น (ชั้น off=0) — คมที่สุด เท่าปุ่มแปลงเป็นเส้นตัด
+            #    2) ชั้นที่ขยาย/หด (คิ้ว·แผ่นพื้น·อะคริลิค) — รีดคลื่น buffer แล้วฟิตโค้ง (เนียน จุดน้อย)
+            if _use_raw_punch:
+                subs = _use_raw_punch
+            elif abs(off) > 0.01 or kind in ("frame", "wallplate", "backing", "standee_leg"):
+                subs = _cut_subs_offset(g, float(real_width_mm))
+            else:
+                subs = _poly_to_subs(g, tol=0.04)
             subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
             if not subs:
                 continue
