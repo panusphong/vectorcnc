@@ -82,7 +82,7 @@ def _thumb(page, rect, max_px=260):
 
 
 # ---------------------------------------------------------------- main
-def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120):
+def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120, split_gap=0.0):
     """
     คืน dict:
       {"pages": n, "page_size_mm": [w,h], "assets": [...]}
@@ -174,16 +174,18 @@ def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120):
             # 🛡️ ไฟล์ผลิตซ้ำ (step&repeat) มีหลายร้อยชิ้น -> จำกัดจำนวนก่อนคลัสเตอร์ (กัน O(n²) + OOM)
             if len(rects) > 300:
                 rects = sorted(rects, key=lambda r: -((r[2] - r[0]) * (r[3] - r[1])))[:300]
-            # 🔧 ระยะจับกลุ่ม ต้องอิง 'ขนาดชิ้นงานจริง' ไม่ใช่ขนาดหน้ากระดาษ
-            #    เดิม: 1.2% ของหน้า -> หน้า A4 ได้ 3.5 มม. (หั่นคำกลาง เช่น LUGGAW -> LU + GGAW)
-            #          หน้า 4 เมตร ได้ 52 มม. (ดูดทุกอย่างรวมกันเป็นก้อนเดียว)
-            #    ใหม่: 0.55 เท่าของความสูงชิ้นเฉลี่ย = ช่องไฟในคำเดียวกันจะถูกรวม แต่คนละคำยังแยก
+            # 🔧 ระยะจับกลุ่มชิ้น — ค่าเริ่มต้นใช้ของเดิม (1.2% ของหน้า) ซึ่งแยกเป็นตัว ๆ ได้ดี
+            #    แต่ 'จำกัดช่วง' ด้วยความสูงชิ้นจริง กันเคสหน้ากระดาษใหญ่/เล็กผิดปกติ:
+            #      - หน้าใหญ่มาก -> gap โตจนดูดทุกอย่างรวมเป็นแผ่นเดียว
+            #      - หน้าเล็กมาก -> gap เล็กจนหั่นกลางคำ
+            #    split_gap: ผู้ใช้ปรับเองได้ (เล็ก = แยกละเอียด · ใหญ่ = รวมเป็นก้อน)
             _hs = sorted((r[3] - r[1]) for r in rects)
             _hmid = _hs[len(_hs) // 2] if _hs else 0.0
-            _hbig = _hs[int(len(_hs) * 0.8)] if _hs else 0.0
-            gap = max(1.0, min(_hbig * 0.55, max(pr.width, pr.height) * 0.05))
-            if _hmid <= 0:
-                gap = max(pr.width, pr.height) * 0.012
+            gap = max(pr.width, pr.height) * 0.012
+            if _hmid > 0:
+                gap = max(_hmid * 0.10, min(gap, _hmid * 0.45))
+            if split_gap and float(split_gap) > 0:
+                gap = max(0.5, _hmid * float(split_gap)) if _hmid > 0 else gap
             for cb in _cluster(rects, gap):
                 if len(out) >= max_assets:
                     break
