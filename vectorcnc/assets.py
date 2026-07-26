@@ -82,7 +82,7 @@ def _thumb(page, rect, max_px=260):
 
 
 # ---------------------------------------------------------------- main
-def list_assets(path, max_pages=6, min_mm=6.0, max_assets=60):
+def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120):
     """
     คืน dict:
       {"pages": n, "page_size_mm": [w,h], "assets": [...]}
@@ -174,7 +174,16 @@ def list_assets(path, max_pages=6, min_mm=6.0, max_assets=60):
             # 🛡️ ไฟล์ผลิตซ้ำ (step&repeat) มีหลายร้อยชิ้น -> จำกัดจำนวนก่อนคลัสเตอร์ (กัน O(n²) + OOM)
             if len(rects) > 300:
                 rects = sorted(rects, key=lambda r: -((r[2] - r[0]) * (r[3] - r[1])))[:300]
-            gap = max(pr.width, pr.height) * 0.012   # ~1.2% ของหน้า
+            # 🔧 ระยะจับกลุ่ม ต้องอิง 'ขนาดชิ้นงานจริง' ไม่ใช่ขนาดหน้ากระดาษ
+            #    เดิม: 1.2% ของหน้า -> หน้า A4 ได้ 3.5 มม. (หั่นคำกลาง เช่น LUGGAW -> LU + GGAW)
+            #          หน้า 4 เมตร ได้ 52 มม. (ดูดทุกอย่างรวมกันเป็นก้อนเดียว)
+            #    ใหม่: 0.55 เท่าของความสูงชิ้นเฉลี่ย = ช่องไฟในคำเดียวกันจะถูกรวม แต่คนละคำยังแยก
+            _hs = sorted((r[3] - r[1]) for r in rects)
+            _hmid = _hs[len(_hs) // 2] if _hs else 0.0
+            _hbig = _hs[int(len(_hs) * 0.8)] if _hs else 0.0
+            gap = max(1.0, min(_hbig * 0.55, max(pr.width, pr.height) * 0.05))
+            if _hmid <= 0:
+                gap = max(pr.width, pr.height) * 0.012
             for cb in _cluster(rects, gap):
                 if len(out) >= max_assets:
                     break
@@ -242,8 +251,35 @@ def list_assets(path, max_pages=6, min_mm=6.0, max_assets=60):
     # เรียง: เวกเตอร์ก่อน (มีค่าที่สุด) แล้วภาพ แล้วข้อความ แล้วทั้งหน้า
     order = {"vector": 0, "image": 1, "text": 2, "page": 3}
     out.sort(key=lambda a: (order.get(a["kind"], 9), -(a["w_mm"] * a["h_mm"])))
+    # 🔎 ตรวจ 'ความครบ' — ชิ้นที่แตกได้ ครอบคลุมเนื้องานจริงในหน้ากี่ % ?
+    #    ถ้าไม่ครบ = มีบางส่วนหายไป (เช่น สระ/วรรณยุกต์/คำเล็ก) ต้องเตือนก่อนเอาไปใช้
+    cov = 100.0
+    miss = []
+    try:
+        p0 = doc[0]
+        cells = []
+        for d in (p0.get_drawings() or []):
+            r = d.get("rect")
+            if r is None or (r.width < 0.4 and r.height < 0.4):
+                continue
+            if r.width > p0.rect.width * 0.97 and r.height > p0.rect.height * 0.97:
+                continue
+            cells.append((r.x0, r.y0, r.x1, r.y1))
+        picks = [a["bbox"] for a in out if a["kind"] in ("vector", "image", "text") and a["page"] == 0]
+        if cells:
+            got = 0
+            for c in cells:
+                cx = (c[0] + c[2]) / 2.0; cy = (c[1] + c[3]) / 2.0
+                if any(b[0] - 0.5 <= cx <= b[2] + 0.5 and b[1] - 0.5 <= cy <= b[3] + 0.5 for b in picks):
+                    got += 1
+                else:
+                    miss.append([round(v, 1) for v in c])
+            cov = round(100.0 * got / len(cells), 1)
+    except Exception:
+        pass
     return {"pages": npg, "page_size_mm": psize, "assets": out,
-            "truncated": len(out) >= max_assets}
+            "truncated": len(out) >= max_assets,
+            "coverage": cov, "missing": len(miss), "missing_bbox": miss[:20]}
 
 
 # ---------------------------------------------------------------- crop
