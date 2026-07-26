@@ -3979,6 +3979,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         if rec.get("face_finish") == "print":
             warns.append("หน้าอะคริลิคขาว P433 = ตัดเป็นแผ่นเต็มตามทรงชิ้นเดียว "
                          "แล้วจบด้วยงานพิมพ์ UV / ติดสติกเกอร์ — ไม่ตัดเส้นตัวอักษรข้างใน")
+        # 📐 ขนาดนอกจริงของตัวป้าย = เฉพาะชั้นที่ 'ประกอบเป็นตัวป้าย' (ตัดแถบขอบข้าง/ขาตั้ง/งานพิมพ์ ออก)
+        _outer_wh = [0.0, 0.0]
+        try:
+            _skip_kind = ("wallplate", "standee_leg", "print")
+            _ow = [L for L in out_layers if L.get("kind") not in _skip_kind]
+            if _ow:
+                _outer_wh = [round(max(float(L.get("w_mm") or 0.0) for L in _ow), 1),
+                             round(max(float(L.get("h_mm") or 0.0) for L in _ow), 1)]
+            else:
+                _fb0 = full.bounds
+                _outer_wh = [round(_fb0[2] - _fb0[0], 1), round(_fb0[3] - _fb0[1], 1)]
+        except Exception:
+            _outer_wh = [0.0, 0.0]
         # bbox รวม (ชั้นที่ขยายสุด)
         allb = [full.buffer(max(0.0, float(L["off"])), join_style=1).bounds for L in rec["layers"]]
         MNX = min(b[0] for b in allb); MNY = min(b[1] for b in allb)
@@ -4251,6 +4264,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                                                      full.bounds[3] - full.bounds[1]))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
+                # 📐 ขนาดนอกจริงของ 'ตัวป้าย' (ไม่รวมแผ่นขอบข้าง/ขาตั้ง/งานพิมพ์ ที่วางแยกเป็นชิ้นตัด)
+                #    ⚠️ ห้ามใช้ max(w_mm) ของทุกเลเยอร์ — แถบขอบข้างยาวเป็นเมตร จะทำให้ชดเชยขนาดเพี้ยน
+                "outer_w_mm": _outer_wh[0], "outer_h_mm": _outer_wh[1],
                 "print_base64": print_b64, "print_info": print_info,     # 🖨️ ไฟล์งานพิมพ์ UV / สติ๊กเกอร์
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
