@@ -6632,7 +6632,7 @@ _ASSET_STORE = {}          # token -> path ของไฟล์ที่อั�
 
 
 @app.post("/api/extract-assets")
-async def extract_assets(file: UploadFile = File(...)):
+async def extract_assets(file: UploadFile = File(...), split_gap: float = Form(0.0)):
     """อัป PDF/.ai -> แตกทุก object (เวกเตอร์ / ภาพฝังใน / ข้อความ+ฟอนต์) พร้อมพรีวิว
        กราฟิกกดเลือกชิ้นที่ต้องการ -> ได้ .ai คงเวกเตอร์ทันที (ไม่ต้อง trace ใหม่)"""
     import uuid
@@ -6677,7 +6677,7 @@ async def extract_assets(file: UploadFile = File(...)):
                 }, status_code=400)
         except Exception:
             pass
-        rep = _as.list_assets(target)
+        rep = _as.list_assets(target, split_gap=float(split_gap or 0.0))
         tok = uuid.uuid4().hex[:16]
         _ASSET_STORE[tok] = target
         rep["token"] = tok
