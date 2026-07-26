@@ -1693,7 +1693,13 @@ def _vtrace_full_mm(img_path, real_width_mm):
         #    ✅ ของจริง 'รู' ต้องอยู่ข้างในทั้งชิ้น · ถ้าล้นออกนอกขอบแม้แต่นิดเดียว = เนื้องาน ไม่ใช่รู
         if _best >= 0:
             try:
-                if not _preps[_best].contains(Ps[_i]):
+                _pb9 = Ps[_best].bounds
+                _tolH = max(0.5, (_pb9[3] - _pb9[1]) * 0.02)   # ~2% ของความสูงตัวอักษร
+                # (1) ต้องอยู่ข้างในทั้งชิ้น — ล้นออกนอกขอบ = เนื้องาน
+                # (2) ต้องไม่ 'ชิดขอบ' ตัวอักษร — ช่องในตัวอักษรจริงอยู่ลึกเข้าไปเสมอ
+                #     ส่วนเศษขอบที่เอนจิ้นซอยออกมา จะแนบขอบ 0–1 มม. -> ไม่ใช่รู
+                if (not _preps[_best].contains(Ps[_i])
+                        or Ps[_best].exterior.distance(Ps[_i]) < _tolH):
                     _best = -1
             except Exception:
                 pass
