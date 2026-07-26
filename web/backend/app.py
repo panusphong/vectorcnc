@@ -1687,6 +1687,16 @@ def _vtrace_full_mm(img_path, real_width_mm):
                 _preps[_j] = _prep(Ps[_j])
             if _preps[_j].contains(_reps[_i]) and (_ba is None or Ps[_j].area < _ba):
                 _best = _j; _ba = Ps[_j].area
+        # 🩹 กันตัวอักษร 'แหว่ง': เดิมตัดสินว่าเป็น 'รู' จากจุดตัวแทนจุดเดียว
+        #    เศษขอบที่เอนจิ้นซอยออกมา (ทับขอบตัวอักษรบางส่วน) จุดตัวแทนก็อยู่ในตัวอักษร
+        #    -> ถูกนับเป็นรู -> เจาะทะลุเป็นรอยแหว่งตรงขอบบน (และย้ายที่ทุกครั้งตามการ trace)
+        #    ✅ ของจริง 'รู' ต้องอยู่ข้างในทั้งชิ้น · ถ้าล้นออกนอกขอบแม้แต่นิดเดียว = เนื้องาน ไม่ใช่รู
+        if _best >= 0:
+            try:
+                if not _preps[_best].contains(Ps[_i]):
+                    _best = -1
+            except Exception:
+                pass
         _parent[_i] = _best; _depth[_i] = 0 if _best < 0 else _depth[_best] + 1
     _out = []
     for _i in range(len(Ps)):
