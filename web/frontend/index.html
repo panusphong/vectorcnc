@@ -5527,6 +5527,19 @@ $('goLayer').onclick=function(){
           '<label style="font-size:11.5px;color:#475569">ความหนา (มม.)<input id="matThk" type="number" value="10" min="1" step="1" style="width:60px;margin-left:4px;font-family:inherit;font-size:11.5px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px"></label>'+
           '<input id="matName" placeholder="ชื่อกลุ่ม เช่น ร้านผลไม้" style="font-family:inherit;font-size:11.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;width:150px">'+
           '<button id="matAdd" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-weight:700;cursor:pointer;font-family:inherit;font-size:11.5px">➕ จ่ายวัสดุให้ชิ้นที่เลือก</button>'+
+          '<input type="color" id="matColor" value="#f5f5f4" title="สีวัสดุของกลุ่มนี้ (ใช้เรนเดอร์ภาพ 3 มิติ)" style="width:34px;height:26px;border:1px solid #cbd5e1;border-radius:6px;background:none;cursor:pointer;padding:1px">'+
+          '<select id="matTex" title="พื้นผิวของกลุ่มนี้ — ใช้พรีเซ็ตโลหะ หรือพื้นผิวที่เพิ่มเอง (ลายไม้/ลามิเนต)" style="font-family:inherit;font-size:11.5px;padding:4px 6px;border:1px solid #c4b5fd;border-radius:7px">'+
+            '<option value="">— สีล้วน —</option>'+
+            '<option value="silver_mirror">สแตนเลสเงิน (เงา)</option>'+
+            '<option value="silver_hairline">สแตนเลสเงิน (แฮร์ไลน์)</option>'+
+            '<option value="gold_mirror">สแตนเลสทอง (เงา)</option>'+
+            '<option value="gold_hairline">สแตนเลสทอง (แฮร์ไลน์)</option>'+
+            '<option value="rose_mirror">โรสโกลด์ (เงา)</option>'+
+            '<option value="rose_hairline">โรสโกลด์ (แฮร์ไลน์)</option>'+
+            (function(){var s='';try{(window._ctexAll?window._ctexAll():[]).forEach(function(tx){s+='<option value="'+tx.id+'">🖼 '+String(tx.name).replace(/</g,'&lt;')+'</option>';});}catch(_e){}return s;})()+
+          '</select>'+
+          '<button type="button" onclick="_ctexAdd()" title="เพิ่มพื้นผิวเอง (อัปโหลดรูปวัสดุ เช่น ลายไม้/ลามิเนต)" style="font-size:11px;padding:3px 7px;border:1px solid #cbd5e1;border-radius:6px;background:#f0fdf4;cursor:pointer">➕</button>'+
+          '<a id="matPickAll" style="font-size:11px;color:#7c3aed;cursor:pointer;text-decoration:underline">เลือกทั้งหมด</a>'+
           '<a id="matPickClr" style="font-size:11px;color:#0d9488;cursor:pointer;text-decoration:underline">ล้างที่เลือก</a>'+
         '</div>'+
         '<div id="matList" style="margin-top:8px"></div>'+
@@ -5700,10 +5713,21 @@ $('goLayer').onclick=function(){
             +'<b>'+(g.name||'กลุ่ม '+(i+1))+'</b>'
             +'<span style="color:#475569">'+tn+'</span>'
             +'<span style="color:#94a3b8">'+(g.pieces||[]).length+' ชิ้น · หนา '+(g.thick_mm||'-')+' มม.</span>'
+            +'<span style="display:inline-flex;align-items:center;gap:4px;color:#7c3aed">'
+              +'<i style="width:14px;height:14px;border-radius:3px;border:1px solid #cbd5e1;background:'+(g.color||'#f5f5f4')+';display:inline-block"></i>'
+              +(g.tex_name||g.tex||'สีล้วน')+'</span>'
+            +'<a data-mtex="'+i+'" style="color:#0d9488;cursor:pointer;text-decoration:underline">เปลี่ยนพื้นผิว</a>'
             +'<a data-mdel="'+i+'" style="margin-left:auto;color:#dc2626;cursor:pointer;text-decoration:underline">ลบ</a></div>';
         }).join('');
         box.querySelectorAll('[data-mdel]').forEach(function(a){ a.onclick=function(){
           window._matGroups.splice(parseInt(this.getAttribute('data-mdel'),10),1);
+          try{ $('goLayer').click(); }catch(_e){} }; });
+        // 🎨 เปลี่ยนสี/พื้นผิวของกลุ่มที่จ่ายไปแล้ว โดยไม่ต้องเลือกชิ้นใหม่
+        box.querySelectorAll('[data-mtex]').forEach(function(a){ a.onclick=function(){
+          var i=parseInt(this.getAttribute('data-mtex'),10), G=window._matGroups[i]; if(!G)return;
+          var tv=($('matTex')&&$('matTex').value)||'', cv=($('matColor')&&$('matColor').value)||'#f5f5f4';
+          G.tex=tv; G.color=cv; G.tex_img=''; G.tex_name='';
+          try{ if(tv.indexOf('cust_')===0&&window._ctexGet){ var c=window._ctexGet(tv); if(c){ G.tex_img=c.img; G.tex_name=c.name; } } }catch(_e){}
           try{ $('goLayer').click(); }catch(_e){} }; });
       };
       _mm.onclick=function(e){
@@ -5716,7 +5740,42 @@ $('goLayer').onclick=function(){
           if(allOn){ if(k>=0)window._matPick.splice(k,1); } else if(k<0)window._matPick.push(i); });
         _paint();
       };
+      // 🔲 ลากกรอบคลุมหลายคำพร้อมกัน (แตะทีละคำแล้วตกหล่น เช่น สระ/วรรณยุกต์ที่ลอยอยู่)
+      if(_msvg){
+        var _mb=null,_ms=null;
+        var _mpt=function(ev){ var r=_msvg.getBoundingClientRect(), t=(ev.touches&&ev.touches[0])||ev;
+          return {x:(t.clientX-r.left)/r.width, y:(t.clientY-r.top)/r.height, cx:t.clientX-r.left, cy:t.clientY-r.top}; };
+        var _mdown=function(ev){ _ms=_mpt(ev); window._matDragged=false;
+          _mb=document.createElement('div');
+          _mb.style.cssText='position:absolute;border:2px dashed #7c3aed;background:rgba(124,58,237,.10);pointer-events:none;z-index:5';
+          _mm.style.position='relative'; _mm.appendChild(_mb); };
+        var _mmove=function(ev){ if(!_ms||!_mb)return; var p=_mpt(ev);
+          if(Math.abs(p.cx-_ms.cx)>4||Math.abs(p.cy-_ms.cy)>4)window._matDragged=true;
+          var r=_msvg.getBoundingClientRect(), mr=_mm.getBoundingClientRect();
+          var ox=r.left-mr.left, oy=r.top-mr.top;
+          _mb.style.left=(ox+Math.min(_ms.cx,p.cx))+'px'; _mb.style.top=(oy+Math.min(_ms.cy,p.cy))+'px';
+          _mb.style.width=Math.abs(p.cx-_ms.cx)+'px'; _mb.style.height=Math.abs(p.cy-_ms.cy)+'px';
+          if(ev.preventDefault)ev.preventDefault(); };
+        var _mup=function(ev){ if(!_ms)return; var p=_mpt(ev);
+          if(_mb&&_mb.parentNode)_mb.parentNode.removeChild(_mb); _mb=null;
+          var x0=Math.min(_ms.x,p.x),x1=Math.max(_ms.x,p.x),y0=Math.min(_ms.y,p.y),y1=Math.max(_ms.y,p.y); _ms=null;
+          if((x1-x0)<0.008&&(y1-y0)<0.008)return;                    // แค่คลิก -> ให้ onclick จัดการ
+          var vb=(_msvg.getAttribute('viewBox')||'0 0 1 1').split(/\s+/).map(Number);
+          var VW=vb[2]||1, VH=vb[3]||1, hit=[];
+          _msvg.querySelectorAll('[data-pis]').forEach(function(g){
+            var bb; try{ bb=g.getBBox(); }catch(_e){ return; }
+            // ✅ เอา 'ทุกชิ้นที่ทับกรอบ' (ไม่ใช่แค่จุดกึ่งกลาง) -> สระ/วรรณยุกต์ที่โผล่นอกกรอบนิดเดียวก็ติดมาด้วย
+            var gx0=bb.x/VW, gx1=(bb.x+bb.width)/VW, gy0=bb.y/VH, gy1=(bb.y+bb.height)/VH;
+            if(gx1>=x0&&gx0<=x1&&gy1>=y0&&gy0<=y1)
+              hit=hit.concat((g.getAttribute('data-pis')||'').split(',').map(Number).filter(function(v){return !isNaN(v);}));
+          });
+          if(hit.length){ hit.forEach(function(i){ if(window._matPick.indexOf(i)<0)window._matPick.push(i); }); _paint(); } };
+        _msvg.addEventListener('mousedown',_mdown); window.addEventListener('mousemove',_mmove); window.addEventListener('mouseup',_mup);
+        _msvg.addEventListener('touchstart',_mdown,{passive:false}); window.addEventListener('touchmove',_mmove,{passive:false}); window.addEventListener('touchend',_mup);
+      }
       if($('matPickClr'))$('matPickClr').onclick=function(){ window._matPick=[]; _paint(); };
+      if($('matPickAll'))$('matPickAll').onclick=function(){
+        window._matPick=[]; for(var i=0;i<(j.mat_pieces||0);i++)window._matPick.push(i); _paint(); };
       if($('matAdd'))$('matAdd').onclick=function(){
         if(!window._matPick.length){ alert('แตะคำที่ต้องการบนแผนที่ก่อนค่ะ (แตะ 1 ครั้ง = เลือกทั้งคำ)'); return; }
         var ty=($('matType')&&$('matType').value)||'';
@@ -5724,8 +5783,16 @@ $('goLayer').onclick=function(){
         var thk=parseFloat(($('matThk')&&$('matThk').value)||10)||10;
         window._matGroups.push({ name:(($('matName')&&$('matName').value)||'').trim()||('กลุ่ม '+(window._matGroups.length+1)),
           type:ty, pieces:window._matPick.slice(), thick_mm:thk, depth_cm:thk/10.0,
+          color:(($('matColor')&&$('matColor').value)||'#f5f5f4'),
+          tex:(($('matTex')&&$('matTex').value)||''),
+          // 🖼 พื้นผิวที่ผู้ใช้เพิ่มเอง -> ส่งรูปไปด้วย (เซิร์ฟเวอร์ไม่มีคลังรูปของเครื่องนี้)
+          tex_img:(function(){ try{ var v=($('matTex')&&$('matTex').value)||'';
+              if(v.indexOf('cust_')===0&&window._ctexGet){ var c=window._ctexGet(v); return c?c.img:''; } }catch(_e){} return ''; })(),
+          tex_name:(function(){ try{ var v=($('matTex')&&$('matTex').value)||'';
+              if(v.indexOf('cust_')===0&&window._ctexGet){ var c=window._ctexGet(v); return c?c.name:''; } }catch(_e){} return ''; })(),
           material:(($('matThk')&&$('matThk').value)||'')+' มม.' });
         window._matPick=[]; if($('matName'))$('matName').value='';
+        // 🔄 สร้างภาพ 3 มิติ + ไฟล์ตัดใหม่ทันที — ภาพจะเปลี่ยนตามวัสดุที่จ่ายให้กลุ่มนั้น
         try{ $('goLayer').click(); }catch(_e){}
       };
       _paint(); _renderList();
