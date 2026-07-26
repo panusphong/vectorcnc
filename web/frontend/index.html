@@ -6085,7 +6085,7 @@ function pick(f){
    ตัดที่ความละเอียดเต็มของต้นฉบับ (ไม่ย่อ) -> เส้นเวกเตอร์ยังคม
    ================================================================== */
 (function(){
-  var IM=null, drag=null, sel=null;          // sel = {x,y,w,h} หน่วย % ของภาพ
+  var IM=null, drag=null, sel=null, _cb=null;   // sel = {x,y,w,h} หน่วย % ของภาพ · _cb = โหมดคืนค่าให้ผู้เรียก
   function $c(id){ return document.getElementById(id); }
   function stageRect(){ return $c('cropImg').getBoundingClientRect(); }
   function draw(){
@@ -6096,14 +6096,21 @@ function pick(f){
     bx.style.width=(sel.w*im.clientWidth)+'px'; bx.style.height=(sel.h*im.clientHeight)+'px';
     $c('cropInfo').textContent='พื้นที่ที่เลือก '+Math.round(sel.w*IM.naturalWidth)+' × '+Math.round(sel.h*IM.naturalHeight)+' px';
   }
+  function openSrc(dataURL, cb, topMost){
+    _cb=cb||null;
+    var ov=$c('cropOverlay');
+    ov.style.zIndex=topMost?100001:'';                    // เปิดซ้อนบนหน้าต่าง 'แตกชิ้น' ได้
+    if($c('cropGoVec'))$c('cropGoVec').style.display=_cb?'none':'';   // โหมดในหน้าแตกชิ้น = ตัดแล้วกลับไปเป็น 'ชิ้น'
+    if($c('cropGo'))$c('cropGo').textContent=_cb?'✂️ ตัดเป็นชิ้นใหม่':'✂️ ตัดชิ้นนี้มาใช้งาน';
+    var im=$c('cropImg'); im.src=dataURL;
+    im.onload=function(){ IM=im; sel=null; draw(); };
+    ov.classList.add('show');
+  }
+  window._cropOpenSrc=openSrc;
   function open(){
     if(!fileObj){ alert('อัปโหลดภาพก่อนค่ะ'); return; }
     var rd=new FileReader();
-    rd.onload=function(){
-      var im=$c('cropImg'); im.src=rd.result;
-      im.onload=function(){ IM=im; sel=null; draw(); };
-      $c('cropOverlay').classList.add('show');
-    };
+    rd.onload=function(){ openSrc(rd.result,null,false); };
     rd.readAsDataURL(fileObj);
   }
   // ---- ลากกรอบเลือก ----
@@ -6151,6 +6158,14 @@ function pick(f){
         }
       }catch(_e){}
     }
+    // 🧩 โหมดเรียกจากหน้าต่าง 'แตกชิ้น' -> คืน dataURL กลับไปเป็น 'ชิ้น' ใหม่ (ไม่แตะไฟล์หลัก)
+    if(_cb){
+      var _fn=_cb; _cb=null;
+      $c('cropOverlay').classList.remove('show');
+      try{ _fn(c.toDataURL('image/png'), c.width, c.height); }catch(_e){}
+      if(cb)cb();
+      return;
+    }
     c.toBlob(function(bl){
       if(!bl){ alert('ตัดชิ้นไม่สำเร็จ'); return; }
       if(!window._cropOrig) window._cropOrig=fileObj;                 // เก็บภาพเต็มไว้ย้อนกลับ
@@ -6167,7 +6182,7 @@ function pick(f){
     st.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
     st.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
     if($c('cropBtn'))$c('cropBtn').onclick=open;
-    if($c('cropClose'))$c('cropClose').onclick=function(){ $c('cropOverlay').classList.remove('show'); };
+    if($c('cropClose'))$c('cropClose').onclick=function(){ _cb=null; $c('cropOverlay').classList.remove('show'); };
     if($c('cropReset'))$c('cropReset').onclick=function(){ sel=null; draw(); };
     if($c('cropAll'))$c('cropAll').onclick=function(){ sel={x:0,y:0,w:1,h:1}; draw(); };
     if($c('cropThr'))$c('cropThr').oninput=function(){ $c('cropThrV').textContent=this.value; };
@@ -7293,12 +7308,33 @@ function _wallPickPieces(pieces, f){
       grid.innerHTML='';
       var cnt=ov.querySelector('#asmCnt'); if(cnt)cnt.textContent=_pieces.length;
       _pieces.forEach(function(p,i){
-        var c=document.createElement('button'); c.type='button';
-        c.style.cssText='border:1px solid #e2e8f0;border-radius:9px;background:#fff;padding:5px;cursor:pointer;font-family:inherit';
+        var c=document.createElement('div');
+        c.style.cssText='position:relative;border:1px solid #e2e8f0;border-radius:9px;background:#fff;padding:5px;font-family:inherit';
         c.onmouseover=function(){c.style.borderColor='#7c3aed';};c.onmouseout=function(){c.style.borderColor='#e2e8f0';};
-        c.innerHTML='<div style="height:78px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px;border-radius:6px"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div>'
+        var b=document.createElement('button'); b.type='button';
+        b.style.cssText='border:none;background:none;padding:0;width:100%;cursor:pointer;font-family:inherit';
+        b.innerHTML='<div style="height:78px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px;border-radius:6px"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div>'
           +'<div style="font-size:10.5px;color:#64748b;margin-top:2px">ชิ้น '+(i+1)+' '+(p.meta?'<span style="color:#15803d;font-weight:700">· เวกเตอร์</span>':'<span style="color:#b45309">· ภาพ</span>')+'</div>';
-        c.onclick=function(){ addItem(p,canv); };
+        b.onclick=function(){ addItem(p,canv); };
+        c.appendChild(b);
+        // ✂️ ชิ้นที่เป็น 'ภาพ' (JPG/PNG ทั้งใบ) -> ลากกรอบตัดเป็นชิ้นย่อยได้ เช่น แยกคำโปรยออกจากโลโก้
+        if(!p.meta){
+          var s=document.createElement('button'); s.type='button';
+          s.title='ลากกรอบตัดเฉพาะส่วนที่ต้องการ ออกมาเป็นชิ้นใหม่';
+          s.textContent='✂️ แยกส่วน';
+          s.style.cssText='position:absolute;top:3px;right:3px;border:none;border-radius:6px;padding:2px 6px;'
+            +'font-size:10px;font-weight:800;font-family:inherit;cursor:pointer;background:#ea580c;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)';
+          s.onclick=function(ev){
+            ev.stopPropagation();
+            if(typeof window._cropOpenSrc!=='function'){ alert('เครื่องมือตัดยังไม่พร้อม — รีเฟรชหน้า (Ctrl+F5)'); return; }
+            window._cropOpenSrc(p.png, function(png,w,h){
+              _pieces.push({png:png, w:w, h:h});     // ไม่มี meta = ชิ้นภาพ
+              renderGrid();
+              try{ addItem(_pieces[_pieces.length-1], canv); }catch(_e){}
+            }, true);
+          };
+          c.appendChild(s);
+        }
         grid.appendChild(c);
       });
     }
