@@ -4300,8 +4300,19 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _used.update(_idx)
                     import copy as _cpg
                     _grec = _cpg.deepcopy(_grec)
-                    if float(_gs.get("depth_cm") or 0) > 0:
-                        _grec["depth_cm"] = float(_gs["depth_cm"])
+                    # 📏 ความหนาที่ผู้ใช้กรอก (มม.) ต้องมาก่อนเสมอ — ใช้ทั้งภาพ 3 มิติ · ผนังข้าง · ใบสั่งผลิต
+                    _thk_mm = 0.0
+                    try:
+                        _thk_mm = float(_gs.get("thick_mm") or 0)
+                    except Exception:
+                        _thk_mm = 0.0
+                    if _thk_mm <= 0:
+                        _thk_mm = float(_gs.get("depth_cm") or 0) * 10.0
+                    if _thk_mm > 0:
+                        _grec["depth_cm"] = _thk_mm / 10.0
+                        for _w9 in _grec.get("walls", []):
+                            if str(_w9.get("name", "")).startswith("ยกขอบ"):
+                                _w9["h"] = _thk_mm / 10.0
                     _mat_groups.append({"tag": chr(66 + len(_mat_groups)),          # B, C, D...
                                         "name": str(_gs.get("name") or ("กลุ่ม %d" % (_gi + 1))),
                                         "rec": _grec, "idx": sorted(_idx),
@@ -4637,9 +4648,20 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             _skip_kind = ("wallplate", "standee_leg", "print")
             _ow = [L for L in out_layers if L.get("kind") not in _skip_kind]
-            if _mat_groups:                      # หลายวัสดุ -> ขนาดรวม = รูปเต็มทุกกลุ่ม (ไม่ใช่เฉพาะกลุ่ม A)
-                _fb8 = _FULL0.bounds
-                _outer_wh = [round(_fb8[2] - _fb8[0], 1), round(_fb8[3] - _fb8[1], 1)]
+            if _mat_groups and _ow:
+                # 🧱 หลายวัสดุ: ขนาดนอกสุดจริง = กรอบรวมของ 'ทุกชั้นตัดของทุกกลุ่ม' (รวมคิ้วด้วย)
+                #    ⚠️ ห้ามใช้ _FULL0 (รูปงานก่อนบวกคิ้ว) — จะรายงานเล็กกว่าจริง แล้วขนาดไม่ตรงที่กรอก
+                _x0 = _y0 = 1e18; _x1 = _y1 = -1e18
+                for _L in _ow:
+                    for _sp in _L["subs"]:
+                        for _p in [_sp["start"]] + [s[-1] for s in _sp["segs"]]:
+                            _x0 = min(_x0, _p[0]); _y0 = min(_y0, _p[1])
+                            _x1 = max(_x1, _p[0]); _y1 = max(_y1, _p[1])
+                if _x1 > _x0:
+                    _outer_wh = [round(_x1 - _x0, 1), round(_y1 - _y0, 1)]
+                else:
+                    _fb8 = _FULL0.bounds
+                    _outer_wh = [round(_fb8[2] - _fb8[0], 1), round(_fb8[3] - _fb8[1], 1)]
             elif _ow:
                 _outer_wh = [round(max(float(L.get("w_mm") or 0.0) for L in _ow), 1),
                              round(max(float(L.get("h_mm") or 0.0) for L in _ow), 1)]
