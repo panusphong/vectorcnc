@@ -7615,8 +7615,30 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 _AN_LOCK = threading.Lock()
-_AN_DB = os.environ.get("ANALYTICS_DB",
-                        os.path.join(os.environ.get("DATA_DIR", "/tmp"), "vectorcnc_stats.db"))
+def _an_dbpath():
+    """ที่เก็บสถิติในเครื่อง — เลือก 'ที่ที่รอดจากการ deploy' ก่อนเสมอ
+       บน Render ถ้าต่อ Persistent Disk ไว้ที่ /var/data ข้อมูลจะอยู่ถาวร
+       ถ้าไม่มี disk -> /tmp (หายตอน deploy) แต่ยังมี Google Sheet เป็นตัวถาวรสำรองอยู่"""
+    _env = os.environ.get("ANALYTICS_DB", "").strip()
+    if _env:
+        return _env
+    for _d in (os.environ.get("DATA_DIR", "").strip(), "/var/data", "/data", "/tmp"):
+        if not _d:
+            continue
+        try:
+            os.makedirs(_d, exist_ok=True)
+            _t = os.path.join(_d, ".wtest")
+            with open(_t, "w") as _f:
+                _f.write("1")
+            os.remove(_t)
+            return os.path.join(_d, "vectorcnc_stats.db")
+        except Exception:
+            continue
+    return "/tmp/vectorcnc_stats.db"
+
+
+_AN_DB = _an_dbpath()
+_AN_PERSIST = not _AN_DB.startswith("/tmp")     # True = รอด deploy · False = อาศัย Google Sheet
 TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
 # ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
@@ -7848,8 +7870,27 @@ def api_stats(request: Request, days: int = 30, fresh: int = 0):
                        "ref": r[4], "device": r[5], "dur": r[6]} for r in q(
                 "SELECT ts,account,ev,menu,refhost,device,dur FROM ev "
                 "ORDER BY id DESC LIMIT 40").fetchall()]
+            # 🛒 กรวยขาย: เข้าหน้าขาย -> เลื่อนดู -> กดทดลองใช้ (ตัวเลขที่พี่อยากเห็น)
+            _land = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE page='landing' AND ev='visit'").fetchone()[0]
+            _s50 = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE page='landing' AND menu='scroll_50'").fetchone()[0]
+            _s100 = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE page='landing' AND menu='scroll_100'").fetchone()[0]
+            _trial = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE ev='trial_click'").fetchone()[0]
+            _trial_n = q("SELECT COUNT(*) FROM ev WHERE ev='trial_click'").fetchone()[0]
+            _t_land = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE page='landing' AND ev='visit' AND day=?",
+                        (today,)).fetchone()[0]
+            _t_trial = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE ev='trial_click' AND day=?",
+                         (today,)).fetchone()[0]
+            _lt = [{"ts": r[0], "menu": r[1], "ref": r[2], "device": r[3]} for r in q(
+                "SELECT ts,menu,refhost,device FROM ev WHERE ev='trial_click' "
+                "ORDER BY id DESC LIMIT 30").fetchall()]
+            funnel = {"landing_visits": _land, "scroll_50": _s50, "scroll_100": _s100,
+                      "trial_clicks_people": _trial, "trial_clicks_total": _trial_n,
+                      "today_landing": _t_land, "today_trial": _t_trial,
+                      "convert_pct": round(100.0 * _trial / _land, 1) if _land else 0.0,
+                      "recent_trials": _lt}
             c.close()
-        return {"ok": True, "source": "local", "totals": {
+        return {"ok": True, "source": "local", "persist": _AN_PERSIST, "db": _AN_DB,
+                "funnel": funnel, "totals": {
                     "accounts": tot_acc, "sessions": tot_ses, "views": tot_view,
                     "avg_sec": avg_dur, "total_sec": tot_dur,
                     "today_sessions": t_ses, "today_accounts": t_acc},
