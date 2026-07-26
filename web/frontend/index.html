@@ -341,7 +341,7 @@ select.numin{cursor:pointer}
             <div style="flex:1">
               <label style="font-size:10.5px;color:#64748b">กว้าง (ซม.)</label>
               <input class="numin" id="realWcm" type="number" value="120" min="1" step="1" style="width:100%"
-                     oninput="var v=parseFloat(this.value)||0;var w=document.getElementById('realW');if(w)w.value=v>0?Math.round(v*10):'';var bw=document.getElementById('bxW');if(bw)bw.value=v>0?v:'';">
+                     oninput="var v=parseFloat(this.value)||0;var w=document.getElementById('realW');if(w)w.value=v>0?Math.round(v*10):'';var bw=document.getElementById('bxW');if(bw)bw.value=v>0?v:'';window._bxFit=0;">
             </div>
             <div style="flex:1">
               <label style="font-size:10.5px;color:#64748b">สูง (ซม.) · เว้นว่าง=อัตโนมัติ</label>
@@ -5137,9 +5137,9 @@ var TRIMW=1, TRIMDIR='out';
     if($('facePrintRow')) $('facePrintRow').style.display=(v&&v!=='')?'block':'none';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
-  if($('bxW'))$('bxW').oninput=function(){ if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
+  if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0; if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
-  sel.addEventListener('change',function(){ toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
+  sel.addEventListener('change',function(){ window._bxFit=0; toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
   if($('mfTextGo'))$('mfTextGo').onclick=function(){
     var txt=($('mfTextVal').value||'').trim(); if(!txt){alert('พิมพ์ข้อความก่อน');$('mfTextVal').focus();return;}
@@ -5297,6 +5297,9 @@ $('goLayer').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
+  // 📐 เริ่มรอบใหม่ (ไม่ใช่รอบชดเชยอัตโนมัติ) -> ดึงค่ากว้างจากช่อง ซม. เป็นความจริงเสมอ กันค่าเก่าที่เพี้ยนค้าง
+  if(!(window._bxFit>0)){ var _wcm0=parseFloat(($('realWcm')&&$('realWcm').value)||0);
+    if(_wcm0>0&&$('realW'))$('realW').value=Math.round(_wcm0*10); }
   if(!(+($('realW').value)>0)){alert('⚠️ กรอกขนาด "กว้าง (ซม.)" ก่อนสร้างไฟล์ตัด — ภาพ JPG ไม่มีขนาดกำกับ');if($('realWcm'))$('realWcm').focus();return;}
   var st=$('layerStage');if(!st)return;
   if($('emptyStage'))$('emptyStage').style.display='none';
@@ -5337,17 +5340,27 @@ $('goLayer').onclick=function(){
       // ⚠️ ใช้ 'กว้าง (ซม.)' ช่องหลักเป็นความจริงเดียว — กล่องไฟ backend สเกลตรงเป๊ะอยู่แล้ว จึงไม่ต้องชดเชยซ้ำ
       var _tw=(_isBoxT?0:(parseFloat(($('realWcm')&&$('realWcm').value)||($('bxW')&&$('bxW').value))||0));
       if(_tw>0){
-        var _outer=0; (j.layers||[]).forEach(function(l){ if((l.w_mm||0)>_outer)_outer=l.w_mm||0; });
+        // 📐 ขนาดนอกจริง = 'ตัวป้าย' เท่านั้น — ห้ามนับ แถบขอบข้าง(return)/ขาตั้งสแตนดี้/เลเยอร์งานพิมพ์
+        //    (แถบขอบข้างยาวเป็นเมตร ถ้านับด้วยจะชดเชยจนป้ายหดเหลือนิดเดียว)
+        var _skipK={wallplate:1,standee_leg:1,print:1};
+        var _outer=parseFloat(j.outer_w_mm)||0;
+        if(!(_outer>0)){ (j.layers||[]).forEach(function(l){ if(!_skipK[l.kind]&&(l.w_mm||0)>_outer)_outer=l.w_mm||0; }); }
         var _target=_tw*10, _cur=parseFloat($('realW').value)||0;
         window._bxFit=(window._bxFit||0);
-        if(_outer>0 && _cur>0 && Math.abs(_outer-_target)>1 && window._bxFit<2){
+        var _next=Math.round(_cur+(_target-_outer));
+        // 🛡️ กันหลุด: ค่าที่ชดเชยต้องอยู่ในช่วงสมเหตุสมผล (40%–250% ของค่าเดิม) ไม่งั้นข้ามการชดเชย
+        var _sane=(_outer>0 && _cur>0 && _next>=_cur*0.4 && _next<=_cur*2.5 && _next>=20);
+        if(_sane && Math.abs(_outer-_target)>1 && window._bxFit<3){
           window._bxFit++;
-          $('realW').value=Math.max(10,Math.round(_cur+(_target-_outer)));   // ชดเชยแบบตรงตัว (คิ้วเป็นค่าคงที่)
+          $('realW').value=_next;                              // ชดเชยแบบตรงตัว (คิ้วเป็นค่าคงที่)
           st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">ปรับขนาดให้ตรงกับที่กำหนด...</div></div>';
           setTimeout(function(){ try{ $('goLayer').click(); }catch(_e){} },30);
           return;
         }
         window._bxFit=0;
+        if(_outer>0 && Math.abs(_outer-_target)>Math.max(3,_target*0.02)){
+          try{ (j.warns=j.warns||[]).unshift('⚠️ ขนาดกว้างที่ได้จริง '+(_outer/10).toFixed(1)+' ซม. (กำหนดไว้ '+_tw+' ซม.) — ตรวจค่า "คิ้ว/ค่าเผื่อ" อีกครั้ง'); }catch(_e){}
+        }
       }
     }catch(_e){}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
