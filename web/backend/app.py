@@ -1545,7 +1545,7 @@ def _merge_touching(pieces, tol=0.6):
     return cl
 
 
-def _sticker_map_svg(box_g, pieces, sel, groups=None):
+def _sticker_map_svg(box_g, pieces, sel, groups=None, raw_subs=None):
     """🏷️ แผนที่ชิ้นบนหน้ากล่อง (คลิกเลือกเป็นสติ๊กเกอร์): กล่อง + ทุกชิ้นมี data-pi กดสลับได้
        ชิ้นที่เลือก = แดง (สติ๊กเกอร์ ไม่ตัด) · ไม่เลือก = น้ำเงินเข้ม (ฉลุตามปกติ)"""
     try:
@@ -1562,16 +1562,36 @@ def _sticker_map_svg(box_g, pieces, sel, groups=None):
         _grp = groups if groups else [[i] for i in range(len(pieces))]
         _lw = max(0.6, W * 0.0012)
         out = ['<svg id="stkSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.1f %.1f" style="width:100%%;height:auto;display:block;touch-action:none">' % (W, H)]
-        # 🔒 ชั้นล่างสุด = 'รูปงานต้นฉบับเต็ม ๆ' วาดทีละชิ้น
-        #    ต่อให้ชั้นบน (ชิ้นที่กดเลือกได้) จะขาดชิ้นไหนไป ตัวอักษรที่ตาเห็นก็ยังครบ 100% เสมอ
-        #    ห้ามรวม d ของหลายชิ้นเป็น path เดียวเด็ดขาด — evenodd จะหักล้างกันตรงที่ซ้อนกัน
+        # 🥇 ชั้นล่างสุด = 'เส้นดิบจากเอนจิ้น' วาดแบบเดียวกับไฟล์เส้นตัดที่ออกจากปุ่มเป๊ะ
+        #    fill="none" + stroke อย่างเดียว -> ไม่ต้องตัดสินว่าอันไหนรู จึงไม่มีทางแหว่ง
+        _drew_raw = False
         try:
-            for _bp in (box_g.geoms if box_g.geom_type == "MultiPolygon" else [box_g]):
-                if _bp.geom_type == "Polygon" and not _bp.is_empty:
-                    out.append('<path d="%s" fill="#334155" fill-rule="evenodd" stroke="#0f172a" stroke-width="%.1f"/>'
-                               % (_pd(_bp), _lw))
+            if raw_subs:
+                from vectorcnc import nesting as _ns9
+                _p9 = []
+                for _sp in raw_subs:
+                    _n9 = {"start": (_sp["start"][0] - b[0], _sp["start"][1] - b[1]),
+                           "segs": [("L", (s[1][0] - b[0], s[1][1] - b[1])) if s[0] == "L" else
+                                    ("C", (s[1][0] - b[0], s[1][1] - b[1]),
+                                     (s[2][0] - b[0], s[2][1] - b[1]),
+                                     (s[3][0] - b[0], s[3][1] - b[1])) for s in _sp["segs"]],
+                           "closed": _sp.get("closed", True)}
+                    _p9.append('<path d="%s"/>' % _ns9._sp_d(_n9))
+                if _p9:
+                    out.append('<g fill="none" stroke="#334155" stroke-width="%.2f" stroke-linejoin="round" '
+                               'stroke-linecap="round">%s</g>' % (max(0.8, W * 0.0022), "".join(_p9)))
+                    _drew_raw = True
         except Exception:
-            pass
+            _drew_raw = False
+        # สำรอง: ถ้าไม่มีเส้นดิบ ค่อยวาดจากรูปทรง (ทีละชิ้น ห้ามรวม path — evenodd จะหักล้างกัน)
+        if not _drew_raw:
+            try:
+                for _bp in (box_g.geoms if box_g.geom_type == "MultiPolygon" else [box_g]):
+                    if _bp.geom_type == "Polygon" and not _bp.is_empty:
+                        out.append('<path d="%s" fill="#334155" fill-rule="evenodd" stroke="#0f172a" stroke-width="%.1f"/>'
+                                   % (_pd(_bp), _lw))
+            except Exception:
+                pass
         for _gi, _g in enumerate(_grp):
             _on = any(i in sel for i in _g)
             _xs = [pieces[i].bounds[0] for i in _g] + [pieces[i].bounds[2] for i in _g]
@@ -1586,11 +1606,17 @@ def _sticker_map_svg(box_g, pieces, sel, groups=None):
             # ⚠️ ต้องวาด 'ชิ้นละ path' เท่านั้น — ห้ามต่อ d ของหลายชิ้นเข้าด้วยกัน
             #    เพราะ fill-rule="evenodd" จะหักล้างกันตรงที่ชิ้นซ้อนกัน ทำให้ตัวอักษร 'แหว่ง'
             #    (รูปทรงไม่ได้ผิด — เป็นการวาดผิดล้วน ๆ)
+            # ✅ ถ้าวาดเส้นดิบเป็นชั้นฐานแล้ว: ชั้นนี้เป็นแค่ 'พื้นที่กด + ไฮไลต์' เท่านั้น
+            #    ไม่ทับรูปงาน จึงไม่มีทางทำให้ตัวอักษรเปลี่ยนรูป
             for i in _g:
                 if i < len(pieces):
-                    out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" opacity="0.92"/>'
-                               % (_pd(pieces[i]), "#ef4444" if _on else "#334155",
-                                  "#b91c1c" if _on else "#0f172a", _lw))
+                    if _drew_raw:
+                        out.append('<path d="%s" fill="%s" fill-opacity="%s" stroke="none"/>'
+                                   % (_pd(pieces[i]), "#ef4444" if _on else "#000000", "0.30" if _on else "0.001"))
+                    else:
+                        out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" opacity="0.92"/>'
+                                   % (_pd(pieces[i]), "#ef4444" if _on else "#334155",
+                                      "#b91c1c" if _on else "#0f172a", _lw))
             out.append('<title>%s</title></g>'
                        % ("สติ๊กเกอร์ (ไม่ตัด) — คลิกเพื่อกลับไปตัด" if _on
                           else "คลิก 1 ครั้ง = ทั้งคำนี้เป็นสติ๊กเกอร์ (ไม่ตัด)"))
@@ -1694,12 +1720,19 @@ def _vtrace_full_mm(img_path, real_width_mm):
         if _best >= 0:
             try:
                 _pb9 = Ps[_best].bounds
-                _tolH = max(0.5, (_pb9[3] - _pb9[1]) * 0.02)   # ~2% ของความสูงตัวอักษร
-                # (1) ต้องอยู่ข้างในทั้งชิ้น — ล้นออกนอกขอบ = เนื้องาน
-                # (2) ต้องไม่ 'ชิดขอบ' ตัวอักษร — ช่องในตัวอักษรจริงอยู่ลึกเข้าไปเสมอ
-                #     ส่วนเศษขอบที่เอนจิ้นซอยออกมา จะแนบขอบ 0–1 มม. -> ไม่ใช่รู
+                _PH = _pb9[3] - _pb9[1]                       # ความสูงตัวอักษรแม่
+                _hb9 = Ps[_i].bounds
+                _hh = _hb9[3] - _hb9[1]; _hw = _hb9[2] - _hb9[0]
+                _tolH = max(0.6, _PH * 0.035)                 # 3.5% ของความสูงตัวอักษร
+                # 🔎 'ช่องในตัวอักษรจริง' (เช่น ช่องกลาง อ ล ก) มีลักษณะชัดเจน 3 ข้อ:
+                #    (1) อยู่ข้างในทั้งชิ้น — ล้นออกนอกขอบแม้แต่นิดเดียว = เนื้องาน
+                #    (2) อยู่ลึกเข้าไป ไม่แนบขอบตัวอักษร
+                #    (3) ไม่ใช่แถบบางแบน ๆ — เศษจากการ trace ขอบจะบางมาก (สูงไม่กี่ มม.)
+                #    ถ้าผิดข้อใดข้อหนึ่ง = เนื้องาน ไม่ใช่ช่อง -> ห้ามเจาะทะลุ (ตัวอักษรจะแหว่ง)
                 if (not _preps[_best].contains(Ps[_i])
-                        or Ps[_best].exterior.distance(Ps[_i]) < _tolH):
+                        or Ps[_best].exterior.distance(Ps[_i]) < _tolH
+                        or min(_hh, _hw) < _PH * 0.05
+                        or Ps[_i].area < Ps[_best].area * 0.004):
                     _best = -1
             except Exception:
                 pass
@@ -3976,6 +4009,20 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
         _raw_b0 = (full.bounds if (full is not None and not full.is_empty) else None)   # 📌 ตำแหน่งอ้างอิงของ 'เส้นดิบ'
+        # 🖼️ ============ ภาพแบน (FLAT) — ก๊อบเก็บไว้ก่อนขึ้นรูปทรงใด ๆ ทั้งสิ้น ============
+        #    หลักการ: การตัดฉลุ = วางแผ่นบาง ๆ แล้วดูที่ 'เส้น' อย่างเดียว
+        #    เก็บเส้นทุกเส้นตามขนาดจริง (กว้าง×สูง ที่ผู้ใช้กำหนด) ไว้ 1 ชุด แล้วใช้ชุดนี้ตลอด
+        #    ส่วนรูปทรง (รู/เนื้อ/คิ้ว/ยกขอบ) ค่อยไปประกอบทีหลัง ไม่ย้อนกลับมาแตะภาพแบนนี้
+        _FLAT = {"subs": None, "w_mm": 0.0, "h_mm": 0.0, "bounds": _raw_b0}
+        try:
+            import copy as _cpf
+            _rs0 = _RAW_SUBS.get("subs")
+            if _rs0 and _raw_b0:
+                _FLAT["subs"] = _cpf.deepcopy(_rs0)
+                _FLAT["w_mm"] = round(_raw_b0[2] - _raw_b0[0], 2)
+                _FLAT["h_mm"] = round(_raw_b0[3] - _raw_b0[1], 2)
+        except Exception:
+            _FLAT["subs"] = None
         # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
@@ -4142,7 +4189,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                               max(_mat_pieces[k].bounds[3] for k in cl)) for cl in _mat_clust]
                 _cgrp = _sticker_groups(_cbox, _fb9[2] - _fb9[0], _fb9[3] - _fb9[1])
                 _wgrp = [sorted({i for c in g for i in _mat_clust[c]}) for g in _cgrp]
-                _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel, _wgrp)
+                # 🖼️ วาดจาก 'ภาพแบน' ที่ก๊อบเก็บไว้ตั้งแต่ต้น — เหมือนไฟล์เส้นตัดจากปุ่มเป๊ะ
+                _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel, _wgrp,
+                                                raw_subs=(_FLAT.get("subs") or _RAW_SUBS.get("subs")))
         except Exception:
             _mat_map_svg = ""
         _mat_groups = []          # [{tag,name,rec,geom,idx}]
@@ -4228,7 +4277,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # ✅ แยกงานแบบ 'หยิบชิ้นออกมา' ไม่ใช่ 'ตัดออกจากแบบรวม'
         #    กลุ่ม A = รวมเฉพาะชิ้นที่ยังไม่ถูกจ่ายวัสดุ · กลุ่ม B/C/D = รวมเฉพาะชิ้นของตัวเอง
         #    ⛔ ห้ามใช้ difference() กับแบบรวมอีก — เคยทำแล้วมันไปกัดตัวอักษรแหว่งทั้งใบ
+        # ⛔ ยังไม่ได้เลือกพื้นที่ = ฟีเจอร์นี้ต้อง 'ไม่ทำงานเลย' · แบบหลักต้องเหมือนไม่มีฟีเจอร์นี้อยู่
         _A_geom = full
+        if not _mat_groups:
+            _mat_ov = []
         if _mat_groups and _mat_pieces:
             try:
                 from shapely.ops import unary_union as _uug2
@@ -4411,11 +4463,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                   g, junk = _clean_layer(g)
               if g is None or g.is_empty:
                   continue
-              # 🏆 ชั้นที่ 'ตัดตามรูปงานตรง ๆ' (ค่าเผื่อ 0) -> ใช้เส้นโค้งดิบจากปุ่มแปลงเป็นเส้นตัด ไม่ฟิตใหม่
-              if (_use_raw_punch is None and abs(off) < 0.01 and kind == "solid"
+              # 🏆 หลักการ: 'ตัดฉลุบนแผ่นแบน = ดูที่เส้นอย่างเดียว' — ชั้นที่ค่าเผื่อ 0 ใช้เส้นดิบทุกเส้น
+              #    ไม่ต้องตัดสินว่าอันไหนรู อันไหนเนื้อ (รูปทรงเอาไว้ประกอบตอนทำคิ้ว/ยกขอบเท่านั้น)
+              if (_use_raw_punch is None and abs(off) < 0.01
+                      and kind in ("solid", "print", "wallplate", "backing")
                       and not rec.get("wrap") and not rec.get("box_shape") and _raw_b0):
                   try:
-                      _rs2 = _RAW_SUBS.get("subs")
+                      _rs2 = _FLAT.get("subs") or _RAW_SUBS.get("subs")   # 🖼️ ใช้ภาพแบนที่เก็บไว้ก่อน
                       if _rs2:
                           _bn = full.bounds
                           _s2 = (_bn[2] - _bn[0]) / max(1e-6, (_raw_b0[2] - _raw_b0[0]))
@@ -4827,6 +4881,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "logo_h_cm": (_logo_wh[1] if _logo_wh[1] else
                               (round((_punch_logo.bounds[3] - _punch_logo.bounds[1]) / 10.0, 1)
                                if _punch_logo is not None and not _punch_logo.is_empty else 0)),
+                # 🖼️ ภาพแบนที่เก็บไว้ก่อนขึ้นรูปทรง (ไว้ตรวจว่าเส้นครบตั้งแต่ต้น)
+                "flat_lines": len(_FLAT.get("subs") or []),
+                "flat_w_cm": round(_FLAT.get("w_mm", 0) / 10.0, 1),
+                "flat_h_cm": round(_FLAT.get("h_mm", 0) / 10.0, 1),
                 "mat_map_svg": _mat_map_svg, "mat_pieces": len(_mat_pieces),
                 "mat_groups": [{"tag": g["tag"], "name": g["name"], "type_name": g["rec"].get("name", ""),
                                 "pieces": g["idx"], "material": g["material"],
