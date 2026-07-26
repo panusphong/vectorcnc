@@ -1560,11 +1560,20 @@ def _sticker_map_svg(box_g, pieces, sel, groups=None):
                 s += "M " + " L ".join("%.1f %.1f" % (x - b[0], y - b[1]) for x, y in pts) + " Z "
             return s
         _grp = groups if groups else [[i] for i in range(len(pieces))]
+        _lw = max(0.6, W * 0.0012)
         out = ['<svg id="stkSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.1f %.1f" style="width:100%%;height:auto;display:block;touch-action:none">' % (W, H)]
-        out.append('<path d="%s" fill="#f1f5f9" stroke="#94a3b8" stroke-width="%.1f"/>' % (_pd(box_g) if box_g.geom_type == "Polygon" else "", max(1.0, W * 0.002)))
+        # 🔒 ชั้นล่างสุด = 'รูปงานต้นฉบับเต็ม ๆ' วาดทีละชิ้น
+        #    ต่อให้ชั้นบน (ชิ้นที่กดเลือกได้) จะขาดชิ้นไหนไป ตัวอักษรที่ตาเห็นก็ยังครบ 100% เสมอ
+        #    ห้ามรวม d ของหลายชิ้นเป็น path เดียวเด็ดขาด — evenodd จะหักล้างกันตรงที่ซ้อนกัน
+        try:
+            for _bp in (box_g.geoms if box_g.geom_type == "MultiPolygon" else [box_g]):
+                if _bp.geom_type == "Polygon" and not _bp.is_empty:
+                    out.append('<path d="%s" fill="#334155" fill-rule="evenodd" stroke="#0f172a" stroke-width="%.1f"/>'
+                               % (_pd(_bp), _lw))
+        except Exception:
+            pass
         for _gi, _g in enumerate(_grp):
             _on = any(i in sel for i in _g)
-            _d = "".join(_pd(pieces[i]) for i in _g if i < len(pieces))
             _xs = [pieces[i].bounds[0] for i in _g] + [pieces[i].bounds[2] for i in _g]
             _ys = [pieces[i].bounds[1] for i in _g] + [pieces[i].bounds[3] for i in _g]
             _pad = max(2.0, W * 0.004)
@@ -1574,11 +1583,17 @@ def _sticker_map_svg(box_g, pieces, sel, groups=None):
                        % (min(_xs) - b[0] - _pad, min(_ys) - b[1] - _pad,
                           (max(_xs) - min(_xs)) + _pad * 2, (max(_ys) - min(_ys)) + _pad * 2,
                           "#ef4444" if _on else "#38bdf8", "0.14" if _on else "0.0", _pad))
-            out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" opacity="0.92"><title>%s</title></path>'
-                       % (_d, "#ef4444" if _on else "#334155", "#b91c1c" if _on else "#0f172a",
-                          max(0.6, W * 0.0012),
-                          ("สติ๊กเกอร์ (ไม่ตัด) — คลิกเพื่อกลับไปตัด" if _on else "คลิก 1 ครั้ง = ทั้งคำนี้เป็นสติ๊กเกอร์ (ไม่ตัด)")))
-            out.append('</g>')
+            # ⚠️ ต้องวาด 'ชิ้นละ path' เท่านั้น — ห้ามต่อ d ของหลายชิ้นเข้าด้วยกัน
+            #    เพราะ fill-rule="evenodd" จะหักล้างกันตรงที่ชิ้นซ้อนกัน ทำให้ตัวอักษร 'แหว่ง'
+            #    (รูปทรงไม่ได้ผิด — เป็นการวาดผิดล้วน ๆ)
+            for i in _g:
+                if i < len(pieces):
+                    out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" opacity="0.92"/>'
+                               % (_pd(pieces[i]), "#ef4444" if _on else "#334155",
+                                  "#b91c1c" if _on else "#0f172a", _lw))
+            out.append('<title>%s</title></g>'
+                       % ("สติ๊กเกอร์ (ไม่ตัด) — คลิกเพื่อกลับไปตัด" if _on
+                          else "คลิก 1 ครั้ง = ทั้งคำนี้เป็นสติ๊กเกอร์ (ไม่ตัด)"))
         out.append('</svg>')
         return "".join(out)
     except Exception:
@@ -1614,8 +1629,8 @@ def _vtrace_full_mm(img_path, real_width_mm):
                     _p1, _p2, _p3 = _s[1], _s[2], _s[3]
                     _ln = (_m.hypot(_p1[0] - _cur[0], _p1[1] - _cur[1]) + _m.hypot(_p2[0] - _p1[0], _p2[1] - _p1[1])
                            + _m.hypot(_p3[0] - _p2[0], _p3[1] - _p2[1]))
-                    # 🔬 sample โค้งถี่ขึ้น (~0.55px) — รูปต้นเนียนขึ้น ชั้นที่ buffer ต่อจึงไม่เป็นขั้นบันได
-                    _ns = max(10, min(260, int(_ln / 0.55) + 2))
+                    # 🔒 ค่าเดิมของระบบ (~1.1px) — ห้ามแก้ · เป็นค่าที่ให้เส้นตัดคมมาตลอด
+                    _ns = max(6, min(140, int(_ln / 1.1) + 2))
                     for _i2 in range(1, _ns + 1):
                         _t = _i2 / _ns; _mt = 1.0 - _t
                         _pts.append((_mt**3 * _cur[0] + 3 * _mt * _mt * _t * _p1[0] + 3 * _mt * _t * _t * _p2[0] + _t**3 * _p3[0],
@@ -1903,11 +1918,12 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
 
 def _mbuf(geom, d):
     """offset เส้นแบบ 'มุมฉาก' (mitre) — ไม่ปัดมุมมน · ลดจุดบนโค้ง (resolution ต่ำ) เพื่อเครื่องดัดไม่กรีดถี่
-       ⚠️ mitre_limit ต่ำ = มุมแคบมากจะถูกตัดเป็นมุมเฉียงแทน 'หนามแหลม' (หนามคือต้นเหตุห่วงเล็ก ๆ ที่มุม)
-       resolution สูงขึ้น = โค้งเนียนกว่าเดิม (ยังฟิตเป็นเบซิเยร์ทีหลังอยู่ดี จุดไม่บาน)"""
+       🔒 ค่าเดิมของระบบ (mitre_limit 4.0 · resolution 12) — ห้ามแก้
+          เคยลองลดเป็น 2.0/24 เพื่อกันหนามที่มุม แต่มันเปลี่ยนมุมของ 'ทุกประเภทป้าย' พร้อมกัน
+          ตอนนี้จัดการหนาม/ห่วงที่ _fix_offset_geom แทน ซึ่งแตะเฉพาะชั้นที่ offset จริง ๆ"""
     if geom is None or geom.is_empty or abs(float(d)) < 1e-9:
         return geom
-    return geom.buffer(float(d), join_style=2, mitre_limit=2.0, resolution=24)
+    return geom.buffer(float(d), join_style=2, mitre_limit=4.0, resolution=12)
 
 
 def _clean_layer(geom, min_area_mm2=30.0, min_width_mm=1.8):
