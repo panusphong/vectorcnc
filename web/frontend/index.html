@@ -7452,6 +7452,7 @@ function _wallPickPieces(pieces, f){
     }
     if(/\.(ai|pdf|eps|ps)$/i.test(nm)){                 // 🎯 เวกเตอร์ -> แตกชิ้นแบบเวกเตอร์ (คมเท่าต้นฉบับ)
       var fd2=new FormData(); fd2.append('file',f);
+      fd2.append('split_gap',String(window._splitGap||0));   // 🔧 ความละเอียดการแยกชิ้น (0=อัตโนมัติ)
       fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
         // 📄 เก็บ 'ทั้งแผ่น' ไว้เป็นตัวเลือกแรกเสมอ — ปลอดภัยที่สุด ไม่เสี่ยงกับการแตกชิ้นผิด
         var _pageA=(j&&j.assets)?j.assets.filter(function(a){return a.kind==='page'&&a.thumb;}):[];
@@ -7496,6 +7497,8 @@ function _wallPickPieces(pieces, f){
       +'<span style="display:flex;gap:8px;margin-left:auto">'
       +'<button id="asmAdd" style="border:none;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">➕ เพิ่มไฟล์</button>'
       +'<button id="asmLib" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">📁 คลังชิ้นงาน</button>'
+      +'<button id="asmFiner" title="แยกชิ้นให้ละเอียดขึ้น (แยกคำ/ตัวอักษรออกจากกัน) แล้วแตกไฟล์ใหม่" style="border:none;background:#f59e0b;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-weight:700">✂️ แยกละเอียดขึ้น</button>'
+      +'<button id="asmCoarser" title="รวมชิ้นเข้าด้วยกันมากขึ้น" style="border:none;background:#94a3b8;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-weight:700">🧲 รวมมากขึ้น</button>'
       +'<input type="file" id="asmAddF" accept=".ai,.pdf,.eps,.ps,.psd,.psb,.svg,image/*" multiple style="display:none">'
       +'<button id="asmClose" style="border:none;background:#e2e8f0;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit">✕ ปิด</button></span></div>'
       +'<div style="font-size:11.5px;color:#64748b;margin-bottom:6px">🎯 ชิ้นจากไฟล์ .ai/.pdf = เวกเตอร์แท้ (คมเท่าต้นฉบับ) · ชิ้นจาก .psd/รูป = ภาพ — ถ้าผสมกัน ผลรวมจะเป็นภาพความละเอียดสูง</div>'
@@ -7650,6 +7653,23 @@ function _wallPickPieces(pieces, f){
     if(_dimChk)_dimChk.onchange=function(){ _drawDims(); };
     var _libB=ov.querySelector('#asmLib');
     if(_libB)_libB.onclick=function(){ window._libOpenPicker(function(p){ _pieces.push(p); renderGrid(); addItem(p,canv); }); };
+    // ✂️ ปรับความละเอียดการแยกชิ้น แล้วแตกไฟล์ล่าสุดใหม่ทันที
+    var _reSplit=function(dir){
+      var f=null; try{ var ks=Object.keys(window._asmFiles||{}); if(ks.length)f=window._asmFiles[ks[ks.length-1]]; }catch(_e){}
+      if(!f){ alert('ยังไม่มีไฟล์ให้แตกใหม่ — กด "เพิ่มไฟล์" ก่อนค่ะ'); return; }
+      var g=parseFloat(window._splitGap||0.30);
+      g = dir<0 ? Math.max(0.04, g*0.55) : Math.min(1.60, g*1.8);
+      window._splitGap=g;
+      var b=ov.querySelector(dir<0?'#asmFiner':'#asmCoarser'); var ot=b?b.textContent:'';
+      if(b){ b.disabled=true; b.textContent='⏳ กำลังแตกใหม่...'; }
+      procFile(f,function(ps){
+        if(b){ b.disabled=false; b.textContent=ot; }
+        if(!ps||!ps.length){ alert('แตกชิ้นไม่สำเร็จ'); return; }
+        _pieces=ps; renderGrid();
+      });
+    };
+    var _fn=ov.querySelector('#asmFiner');   if(_fn)_fn.onclick=function(){ _reSplit(-1); };
+    var _cs=ov.querySelector('#asmCoarser'); if(_cs)_cs.onclick=function(){ _reSplit(1); };
     /* 📐 ปรับขนาดพื้นที่จัดวาง — ปุ่มขยาย/ลด · เต็มจอ · ซ่อนแถวชิ้น · และลากมุมขวาล่างเองก็ได้ */
     var _cardEl=ov.querySelector('#asmCard'), _gridEl=ov.querySelector('#asmGrid');
     var _setH=function(h){ canv.style.height=Math.max(240,Math.min(4000,h))+'px'; _drawDims(); };
