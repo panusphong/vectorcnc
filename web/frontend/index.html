@@ -311,7 +311,11 @@ select.numin{cursor:pointer}
               <option value="sticker">พิมพ์สติ๊กเกอร์ + ไดคัท ไปติดทับ (เผื่อตก 3 มม.)</option>
               <option value="none">ไม่ต้องสร้างไฟล์พิมพ์</option>
             </select>
-            <div class="hint" id="facePrintHint" style="margin-bottom:0">พิมพ์ UV = พิมพ์ลงบนแผ่นอะคริลิค/พลาสวูด/หน้ากล่องไฟโดยตรง · ระบบจะสร้าง <b>ไฟล์งานพิมพ์ขนาดจริง 1:1</b> ให้อัตโนมัติ พร้อมเลเยอร์ TrimLine / CutContour</div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer">
+            <input type="checkbox" id="safeMode" onchange="window._SAFEMODE=this.checked;try{$('goLayer').click();}catch(_e){}">
+            🔒 โหมดปลอดภัย — ใช้เส้นทางเดิมของระบบล้วน ๆ (ปิดกลุ่มวัสดุ + ปิดการเกลาเส้น)
+          </label>
+          <div class="hint" id="facePrintHint" style="margin-bottom:0">พิมพ์ UV = พิมพ์ลงบนแผ่นอะคริลิค/พลาสวูด/หน้ากล่องไฟโดยตรง · ระบบจะสร้าง <b>ไฟล์งานพิมพ์ขนาดจริง 1:1</b> ให้อัตโนมัติ พร้อมเลเยอร์ TrimLine / CutContour</div>
           </div>
         </div>
 
@@ -7449,10 +7453,15 @@ function _wallPickPieces(pieces, f){
     if(/\.(ai|pdf|eps|ps)$/i.test(nm)){                 // 🎯 เวกเตอร์ -> แตกชิ้นแบบเวกเตอร์ (คมเท่าต้นฉบับ)
       var fd2=new FormData(); fd2.append('file',f);
       fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
+        // 📄 เก็บ 'ทั้งแผ่น' ไว้เป็นตัวเลือกแรกเสมอ — ปลอดภัยที่สุด ไม่เสี่ยงกับการแตกชิ้นผิด
+        var _pageA=(j&&j.assets)?j.assets.filter(function(a){return a.kind==='page'&&a.thumb;}):[];
         var as=(j&&j.assets)?j.assets.filter(function(a){return a.kind!=='page'&&a.thumb;}):[];
+        as=_pageA.concat(as);
+        // 🔎 รายงานความครบของการแตกชิ้น (ถ้าไม่ครบ = มีสระ/คำเล็กหายไป ห้ามเอาไปใช้)
+        try{ window._asmCov={cov:(j&&j.coverage!=null)?j.coverage:null, miss:(j&&j.missing)||0}; }catch(_e){}
         if(j&&j.token&&as.length){
           window._asmFiles=window._asmFiles||{}; window._asmFiles[j.token]=f;   // 🔁 จำไฟล์ต้นทางไว้ อัปใหม่เองได้ถ้าเซิร์ฟเวอร์รีสตาร์ต
-          cb(as.map(function(a){return {png:a.thumb,w:a.w_mm,h:a.h_mm,
+          cb(as.map(function(a){return {png:a.thumb,w:a.w_mm,h:a.h_mm,whole:(a.kind==='page'),
             meta:{token:j.token,page:a.page||0,bbox:a.bbox,w_mm:a.w_mm,h_mm:a.h_mm}};})); }
         else procRaster(f,cb);
       }).catch(function(){ procRaster(f,cb); });
@@ -7490,6 +7499,7 @@ function _wallPickPieces(pieces, f){
       +'<input type="file" id="asmAddF" accept=".ai,.pdf,.eps,.ps,.psd,.psb,.svg,image/*" multiple style="display:none">'
       +'<button id="asmClose" style="border:none;background:#e2e8f0;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit">✕ ปิด</button></span></div>'
       +'<div style="font-size:11.5px;color:#64748b;margin-bottom:6px">🎯 ชิ้นจากไฟล์ .ai/.pdf = เวกเตอร์แท้ (คมเท่าต้นฉบับ) · ชิ้นจาก .psd/รูป = ภาพ — ถ้าผสมกัน ผลรวมจะเป็นภาพความละเอียดสูง</div>'
+      +'<div id="asmCov" style="display:none;font-size:12px;font-weight:700;padding:7px 10px;border-radius:9px;margin-bottom:8px"></div>'
       +'<div id="asmGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:10px"></div>'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
       +'<span style="font-size:12px;color:#64748b">พื้นที่จัดวาง — <b>ลากย้าย</b> · <b>จุดมุมขวาล่าง</b> ย่อ/ขยาย · <b>×</b> ลบ · คลิกชิ้นเพื่อเลือก</span>'
@@ -7524,6 +7534,19 @@ function _wallPickPieces(pieces, f){
     function renderGrid(){
       grid.innerHTML='';
       var cnt=ov.querySelector('#asmCnt'); if(cnt)cnt.textContent=_pieces.length;
+      // 🔎 แถบเตือนความครบของการแตกชิ้น
+      try{
+        var cv=ov.querySelector('#asmCov'), C=window._asmCov;
+        if(cv&&C&&C.cov!=null){
+          cv.style.display='block';
+          if(C.cov>=99.5){ cv.style.cssText+=';background:#f0fdf4;border:1px solid #86efac;color:#15803d';
+            cv.innerHTML='✅ แตกชิ้นครบ 100% — ชิ้นทั้งหมดในไฟล์ถูกดึงออกมาแล้ว'; }
+          else{ cv.style.cssText+=';background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c';
+            cv.innerHTML='⚠️ <b>แตกชิ้นได้ไม่ครบ '+C.cov+'%</b> — มี '+C.miss+' ส่วนในไฟล์ที่ไม่ถูกดึงออกมา '
+              +'(เช่น สระ · วรรณยุกต์ · คำเล็ก) <b>ห้ามใช้ชิ้นย่อย</b> ให้เลือก '
+              +'<b>"📄 ทั้งแผ่น"</b> (ชิ้นแรก) แทน แล้วงานจะครบ 100%'; }
+        }
+      }catch(_e){}
       _pieces.forEach(function(p,i){
         var c=document.createElement('div');
         c.style.cssText='position:relative;border:1px solid #e2e8f0;border-radius:9px;background:#fff;padding:5px;font-family:inherit';
@@ -7531,7 +7554,9 @@ function _wallPickPieces(pieces, f){
         var b=document.createElement('button'); b.type='button';
         b.style.cssText='border:none;background:none;padding:0;width:100%;cursor:pointer;font-family:inherit';
         b.innerHTML='<div style="height:78px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px;border-radius:6px"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div>'
-          +'<div style="font-size:10.5px;color:#64748b;margin-top:2px">ชิ้น '+(i+1)+' '+(p.meta?'<span style="color:#15803d;font-weight:700">· เวกเตอร์</span>':'<span style="color:#b45309">· ภาพ</span>')+'</div>';
+          +'<div style="font-size:10.5px;color:#64748b;margin-top:2px">'
+          +(p.whole?'<b style="color:#0d9488">📄 ทั้งแผ่น (ครบ 100%)</b>':('ชิ้น '+(i+1)+' '+(p.meta?'<span style="color:#15803d;font-weight:700">· เวกเตอร์</span>':'<span style="color:#b45309">· ภาพ</span>')))+'</div>';
+        if(p.whole)c.style.cssText+=';border:2px solid #0d9488;background:#f0fdfa';
         b.onclick=function(){ addItem(p,canv); };
         c.appendChild(b);
         // ✂️ ชิ้นที่เป็น 'ภาพ' (JPG/PNG ทั้งใบ) -> ลากกรอบตัดเป็นชิ้นย่อยได้ เช่น แยกคำโปรยออกจากโลโก้
