@@ -1499,15 +1499,16 @@ def _sticker_groups(pieces, W, H):
 
 
 def _merge_touching(pieces, tol=0.6):
-    """🧩 รวม 'ชิ้นที่ติดกัน/แทบติดกัน' ให้เป็นชิ้นเดียว
+    """🧩 จับ 'ชิ้นที่ติดกัน/แทบติดกัน' ให้อยู่กลุ่มเดียวกัน — คืนเป็น list ของ index
 
     เอนจิ้น trace มักซอยขอบบนของตัวอักษรออกเป็นแถบบาง ๆ หลายชิ้น (4–10 ตร.มม.)
-    ถ้าไม่รวมกลับ แผนที่จะเห็นตัวอักษร 'หัวแหว่ง' และเลือกจ่ายวัสดุได้ไม่ครบชิ้น
-    ระยะ tol เล็กมาก (0.6 มม.) จึงไม่มีทางดูดตัวอักษรคนละตัวมารวมกัน"""
-    from shapely.ops import unary_union as _uum
+    ต้องนับเป็นชิ้นเดียวกับตัวอักษร ไม่งั้นเลือกจ่ายวัสดุได้ไม่ครบ
+
+    ⚠️ ห้ามแก้รูปทรง: เดิมเคยรวมด้วย buffer(+r).buffer(-r) แล้วมันกัดมุมเว้า
+       ทำให้ตัวอักษร 'แหว่ง' — ตอนนี้เก็บเส้นต้นฉบับไว้ 100% แค่บอกว่าใครอยู่กลุ่มไหน"""
     n = len(pieces)
     if n <= 1:
-        return list(pieces)
+        return [[i] for i in range(n)]
     par = list(range(n))
 
     def _f(i):
@@ -1537,28 +1538,11 @@ def _merge_touching(pieces, tol=0.6):
     bag = {}
     for i in range(n):
         bag.setdefault(_f(i), []).append(i)
-    out = []
-    for idx in bag.values():
-        if len(idx) == 1:
-            out.append(pieces[idx[0]])
-        else:
-            try:
-                g = _uum([pieces[k].buffer(tol * 0.55, join_style=2) for k in idx]).buffer(-tol * 0.55, join_style=2)
-                out.append(g if (g is not None and not g.is_empty and g.geom_type == "Polygon")
-                           else _uum([pieces[k] for k in idx]))
-            except Exception:
-                out.append(_uum([pieces[k] for k in idx]))
-    # ต้องคืน 'Polygon เดี่ยว' เสมอ — ตัววาดแผนที่อ่าน .exterior โดยตรง
-    flat = []
-    for p in out:
-        if p is None or p.is_empty:
-            continue
-        if p.geom_type == "MultiPolygon":
-            flat += [q for q in p.geoms if q.geom_type == "Polygon" and not q.is_empty]
-        elif p.geom_type == "Polygon":
-            flat.append(p)
-    flat.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
-    return flat
+    # ✅ คืนเป็น 'กลุ่มของ index' — ไม่แตะรูปทรงเลยแม้แต่จุดเดียว
+    #    (เคยลองรวมด้วย buffer(+r).buffer(-r) แล้วมันกัดมุมเว้าของตัวอักษรแหว่ง — ห้ามทำเด็ดขาด)
+    cl = sorted(bag.values(), key=lambda idx: (round(min(pieces[k].bounds[0] for k in idx), 1),
+                                               round(min(pieces[k].bounds[1] for k in idx), 1)))
+    return cl
 
 
 def _sticker_map_svg(box_g, pieces, sel, groups=None):
@@ -2101,14 +2085,15 @@ def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
             return _poly_to_subs(geom, tol=0.02)
     except Exception:
         pass
-    # 🩹 แก้ห่วง/หนาม/วงเศษ ก่อนฟิตโค้ง — clean=False (ชั้นตัดตามรูปตรง ๆ) จะแค่แก้เส้นตัดกันเอง ไม่ลบชิ้นใด ๆ
-    if clean:
-        geom = _fix_offset_geom(geom, W)
-    else:
+    # 🔒 ชั้นที่ 'ตัดตามรูปตรง ๆ' (off = 0 · งานพิมพ์ · สติ๊กเกอร์) = ส่งเส้นต้นฉบับออกไปเลย
+    #    ห้ามรีด ห้ามเกลา ห้ามลบชิ้น — ไม่งั้นตัวอักษรจะโดนกัดมุมจนแหว่ง
+    if not clean:
         try:
-            geom = geom.buffer(0)
+            return _poly_to_subs(geom.buffer(0), tol=0.04)
         except Exception:
-            pass
+            return _poly_to_subs(geom, tol=0.04)
+    # 🩹 ชั้นที่ขยาย/หด: แก้ห่วง/หนาม/วงเศษ (ของที่ 'เกิดใหม่' จากการ offset เท่านั้น) แล้วฟิตโค้ง
+    geom = _fix_offset_geom(geom, W)
     base = _poly_to_subs(geom, tol=0.04)      # เส้นแบบเดิม (ไว้เทียบ/ถอยกลับ)
     try:
         g2 = _smooth_cut(geom, r)
@@ -4081,9 +4066,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _mp0 = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
                 # ⚠️ ห้ามกรองด้วยพื้นที่แรง ๆ — ขอบบนของตัวอักษรมักถูกเอนจิ้นแยกเป็นชิ้นบาง ๆ (4–10 ตร.มม.)
                 #    ถ้ากรองทิ้ง แผนที่จะโชว์ตัวอักษร 'หัวแหว่ง' และจ่ายวัสดุได้ไม่ครบชิ้น
-                _mp1 = [p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 0.5]
+                # 🔒 เก็บ 'เส้นต้นฉบับ' ไว้ทั้งหมด ไม่แก้รูปทรงเลย — แค่จัดกลุ่มว่าชิ้นไหนเป็นตัวเดียวกัน
+                _mat_pieces = sorted([p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 0.5],
+                                     key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
                 _fb1 = full.bounds
-                _mat_pieces = _merge_touching(_mp1, tol=min(4.0, max(0.8, (_fb1[3] - _fb1[1]) * 0.05)))
+                _mat_clust = _merge_touching(_mat_pieces,
+                                             tol=min(4.0, max(0.8, (_fb1[3] - _fb1[1]) * 0.05)))
             except Exception:
                 _mat_pieces = []
         # 🗺️ แผนที่ให้ผู้ใช้ 'แตะคำ' เลือกชิ้น (สร้างก่อนหักกลุ่มออก — index ต้องตรงกับที่ผู้ใช้เห็น)
@@ -4095,8 +4083,16 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     for _v0 in (_g0.get("pieces") or []):
                         _mgsel.add(int(_v0))
                 _fb9 = full.bounds
-                _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel,
-                                                _sticker_groups(_mat_pieces, _fb9[2] - _fb9[0], _fb9[3] - _fb9[1]))
+                # 🧩 จัดกลุ่ม 'คำ' โดยมองแต่ละคลัสเตอร์ (ตัวอักษร + เศษขอบที่ติดกัน) เป็นหน่วยเดียว
+                #    ใช้ 'กรอบรวมของคลัสเตอร์' คิดกลุ่มเท่านั้น — รูปทรงที่วาดยังเป็นเส้นต้นฉบับ 100%
+                from shapely.geometry import box as _bxC
+                _cbox = [_bxC(min(_mat_pieces[k].bounds[0] for k in cl),
+                              min(_mat_pieces[k].bounds[1] for k in cl),
+                              max(_mat_pieces[k].bounds[2] for k in cl),
+                              max(_mat_pieces[k].bounds[3] for k in cl)) for cl in _mat_clust]
+                _cgrp = _sticker_groups(_cbox, _fb9[2] - _fb9[0], _fb9[3] - _fb9[1])
+                _wgrp = [sorted({i for c in g for i in _mat_clust[c]}) for g in _cgrp]
+                _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel, _wgrp)
         except Exception:
             _mat_map_svg = ""
         _mat_groups = []          # [{tag,name,rec,geom,idx}]
