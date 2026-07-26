@@ -5540,6 +5540,7 @@ $('goLayer').onclick=function(){
           '</select>'+
           '<button type="button" onclick="_ctexAdd()" title="เพิ่มพื้นผิวเอง (อัปโหลดรูปวัสดุ เช่น ลายไม้/ลามิเนต)" style="font-size:11px;padding:3px 7px;border:1px solid #cbd5e1;border-radius:6px;background:#f0fdf4;cursor:pointer">➕</button>'+
           '<a id="matPickAll" style="font-size:11px;color:#7c3aed;cursor:pointer;text-decoration:underline">เลือกทั้งหมด</a>'+
+          '<a id="matGrpClr" style="font-size:11px;color:#dc2626;cursor:pointer;text-decoration:underline;font-weight:700" title="ล้างกลุ่มวัสดุทั้งหมด — ใช้เมื่อตัวอักษรแหว่ง/ผิดรูป">🧹 ล้างกลุ่มวัสดุทั้งหมด</a>'+
           '<a id="matPickClr" style="font-size:11px;color:#0d9488;cursor:pointer;text-decoration:underline">ล้างที่เลือก</a>'+
         '</div>'+
         '<div id="matList" style="margin-top:8px"></div>'+
@@ -5774,6 +5775,9 @@ $('goLayer').onclick=function(){
         _msvg.addEventListener('touchstart',_mdown,{passive:false}); window.addEventListener('touchmove',_mmove,{passive:false}); window.addEventListener('touchend',_mup);
       }
       if($('matPickClr'))$('matPickClr').onclick=function(){ window._matPick=[]; _paint(); };
+      if($('matGrpClr'))$('matGrpClr').onclick=function(){
+        if(!confirm('ล้างกลุ่มวัสดุทั้งหมด แล้วสร้างแบบใหม่?'))return;
+        window._matGroups=[]; window._matPick=[]; try{ $('goLayer').click(); }catch(_e){} };
       if($('matPickAll'))$('matPickAll').onclick=function(){
         window._matPick=[]; for(var i=0;i<(j.mat_pieces||0);i++)window._matPick.push(i); _paint(); };
       if($('matAdd'))$('matAdd').onclick=function(){
@@ -5782,6 +5786,9 @@ $('goLayer').onclick=function(){
         if(!ty){ alert('เลือกประเภทป้าย/วัสดุของกลุ่มนี้ก่อนค่ะ'); return; }
         var thk=parseFloat(($('matThk')&&$('matThk').value)||10)||10;
         window._matGroups.push({ name:(($('matName')&&$('matName').value)||'').trim()||('กลุ่ม '+(window._matGroups.length+1)),
+          // 🔑 จำ 'จำนวนชิ้นทั้งหมดตอนที่เลือก' ไว้ด้วย — ถ้างานเปลี่ยนจนจำนวนชิ้นไม่ตรง
+          //    เซิร์ฟเวอร์จะทิ้งกลุ่มนี้ทันที ไม่เอาหมายเลขเก่าไปหักชิ้นผิดจนตัวอักษรแหว่ง
+          pieces_n:(j.mat_pieces||0),
           type:ty, pieces:window._matPick.slice(), thick_mm:thk, depth_cm:thk/10.0,
           color:(($('matColor')&&$('matColor').value)||'#f5f5f4'),
           tex:(($('matTex')&&$('matTex').value)||''),
