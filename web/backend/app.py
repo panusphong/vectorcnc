@@ -4185,22 +4185,49 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                         "material": str(_gs.get("material") or "")})
                 except Exception:
                     continue
-        _FULL0 = full            # 📐 รูปเต็มของป้าย (ทุกวัสดุรวมกัน) — ใช้คุมขนาดรวม + ภาพ 3 มิติ
-        if _mat_groups:
-            from shapely.ops import unary_union as _uug2
-            _cut_out = _uug2([g["geom"] for g in _mat_groups])
+        # 🔎 ตรวจ 'ตั้งแต่ไฟล์ต้นทาง' ว่ารูปงานมีรอยแหว่งมาก่อนแล้วหรือไม่ (ก่อนระบบแตะอะไรทั้งสิ้น)
+        #    ถ้าเจอตรงนี้ = ปัญหาอยู่ที่ไฟล์/ขั้นตอนรวมไฟล์ ไม่ใช่ขั้นตอนทำเส้นตัด
+        try:
+            from shapely.geometry import Polygon as _PgD
+            _dp = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+            _notch = 0
+            for _p in _dp:
+                if _p.geom_type != "Polygon":
+                    continue
+                _pb = _p.bounds; _ph = _pb[3] - _pb[1]
+                for _h in _p.interiors:
+                    _hb = _PgD(_h).bounds
+                    # รูที่ 'ชิดขอบบน/ล่างของชิ้นตัวเอง' = รอยแหว่ง ไม่ใช่ช่องในตัวอักษร
+                    if _ph > 0 and (min(_hb[1] - _pb[1], _pb[3] - _hb[3]) < _ph * 0.04):
+                        _notch += 1
+            if _notch:
+                warns.append("🔎 ตรวจไฟล์ต้นทาง: พบรอยแหว่งติดขอบตัวอักษร %d จุด "
+                             "**ตั้งแต่ในไฟล์ที่อัปโหลด** (ก่อนระบบทำเส้นตัด) — "
+                             "แนะนำใช้ไฟล์ .ai ต้นฉบับแทนไฟล์ที่ผ่านการรวมเวกเตอร์" % _notch)
+            else:
+                warns.append("🔎 ตรวจไฟล์ต้นทาง: รูปงานสมบูรณ์ ไม่มีรอยแหว่ง ✅")
+        except Exception:
+            pass
+        _FULL0 = full            # 📐 รูปเต็มของป้าย (ทุกวัสดุรวมกัน) — ห้ามแก้ ห้ามหัก เด็ดขาด
+        # ✅ แยกงานแบบ 'หยิบชิ้นออกมา' ไม่ใช่ 'ตัดออกจากแบบรวม'
+        #    กลุ่ม A = รวมเฉพาะชิ้นที่ยังไม่ถูกจ่ายวัสดุ · กลุ่ม B/C/D = รวมเฉพาะชิ้นของตัวเอง
+        #    ⛔ ห้ามใช้ difference() กับแบบรวมอีก — เคยทำแล้วมันไปกัดตัวอักษรแหว่งทั้งใบ
+        _A_geom = full
+        if _mat_groups and _mat_pieces:
             try:
-                _rest = full.difference(_cut_out.buffer(0.15))     # หักกลุ่มที่จ่ายวัสดุแล้วออกจากตัวหลัก
-                if _rest is not None and not _rest.is_empty:
-                    full = _rest
+                from shapely.ops import unary_union as _uug2
+                _taken = set()
+                for g in _mat_groups:
+                    _taken.update(g["idx"])
+                _keepA = [p for i, p in enumerate(_mat_pieces) if i not in _taken]
+                if _keepA:
+                    _A_geom = _uug2(_keepA) if len(_keepA) > 1 else _keepA[0]
+                if _punch_logo is not None:
+                    _pk = [p for i, p in enumerate(_stick_pieces) if i not in _taken] if _stick_pieces else None
+                    if _pk:
+                        _punch_logo = _uug2(_pk) if len(_pk) > 1 else _pk[0]
             except Exception:
-                pass
-            if _punch_logo is not None:
-                try:
-                    _pl3 = _punch_logo.difference(_cut_out.buffer(0.15))
-                    _punch_logo = _pl3 if (_pl3 is not None and not _pl3.is_empty) else _punch_logo
-                except Exception:
-                    pass
+                _A_geom = full
             warns.append("🧱 ป้ายนี้มี %d วัสดุ: A · %s + %s"
                          % (len(_mat_groups) + 1, rec.get("name", ""),
                             " + ".join("%s · %s (%s)" % (g["tag"], g["name"], g["rec"].get("name", ""))
@@ -4209,7 +4236,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         _punch_raw_subs = None                      # 🔦 เส้นรูฉลุ (ชุดเดียวกับไฟล์ตัด) ไว้วาดภาพ 3 มิติ
         # 🔁 สร้างชุดชั้นตัด 'ทีละกลุ่มวัสดุ' — A = ตัวหลัก · B/C/D = กลุ่มที่จ่ายวัสดุเอง
         _MAIN_FULL, _MAIN_REC = full, rec
-        _builds = [("", rec, full)] + [(g["tag"] + "_", g["rec"], g["geom"]) for g in _mat_groups]
+        #    กลุ่ม A ใช้ _A_geom (ชิ้นที่ยังไม่ถูกจ่ายวัสดุ) — ตัว full ยังเป็นแบบเต็มไม่ถูกแตะ
+        _builds = [("", rec, _A_geom)] + [(g["tag"] + "_", g["rec"], g["geom"]) for g in _mat_groups]
         for _btag, _brec, _bfull in _builds:
           full = _bfull; rec = _brec
           if full is None or full.is_empty:
