@@ -5405,7 +5405,7 @@ $('goLayer').onclick=function(){
         '<div id="ls3dImg" style="position:relative;max-width:680px;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
       (j.sticker_map_svg?('<div style="font-size:13px;font-weight:700;color:#b91c1c;margin:2px 0 5px">🏷️ แยกชิ้นเป็นสติ๊กเกอร์ — คลิกชิ้นที่ "ไม่ต้องตัด" (เช่น ตัวหนังสือไทยติดสติ๊กเกอร์ดำแทน)</div>'+
         '<div id="stickMap" style="border:1px solid #fecaca;border-radius:12px;padding:10px;background:#fff7f7;margin-bottom:14px"><div style="max-width:900px;margin:0 auto">'+j.sticker_map_svg+'</div>'+
-        '<div style="font-size:11.5px;color:#64748b;margin-top:5px">ชิ้นสีแดง = สติ๊กเกอร์ (ไม่อยู่ในไฟล์ตัด แต่โชว์บนหน้ากล่อง) · คลิกซ้ำ = กลับไปตัด · <a id="stickClr" style="color:#0d9488;cursor:pointer;text-decoration:underline">ล้างทั้งหมด</a></div></div>'):'')+
+        '<div style="font-size:11.5px;color:#64748b;margin-top:5px">🖱️ <b>คลิก 1 ครั้ง = เลือกทั้งคำ</b> · หรือ <b>ลากกรอบ</b> คลุมหลายคำพร้อมกัน · ชิ้นสีแดง = สติ๊กเกอร์ (ไม่อยู่ในไฟล์ตัด แต่โชว์บนหน้ากล่อง) · คลิกซ้ำ = กลับไปตัด · <a id="stickClr" style="color:#0d9488;cursor:pointer;text-decoration:underline">ล้างทั้งหมด</a></div></div>'):'')+
       (j.svg_views?('<div style="font-size:13px;font-weight:700;color:#0d9488;margin:2px 0 5px">📐 มุมมองมาตรฐาน — Top View · Front View · Side View <span style="font-size:11px;color:#94a3b8">(Perspective = ภาพ 3 มิติด้านบน)</span></div>'+
         '<div style="border:1px solid #99f6e4;border-radius:12px;padding:10px;background:#f0fdfa;margin-bottom:14px"><div style="max-width:900px;margin:0 auto">'+(j.svg_views||'').replace(/width="[^"]*"/,'width="100%"').replace(/height="[^"]*"/,'')+'</div></div>'):'')+
       (j.svg_back?('<div style="font-size:13px;font-weight:700;color:#e11d48;margin:10px 0 5px">🔩 มุมมองด้านหลัง — โครงแขวน + รูเจาะยึด/สายไฟ'+(j.frame_info?(' · '+(j.frame_info.letters||0)+' ตัวอักษร · น็อต Ø3 '+(j.frame_info.bolts||0)+' รู · สายไฟ Ø5 '+(j.frame_info.wires||0)+' รู'):'')+'</div>'+
@@ -5494,11 +5494,53 @@ $('goLayer').onclick=function(){
       try{ m.scrollIntoView({behavior:'smooth',block:'center'}); }catch(_e){ m.scrollIntoView(); }
       m.style.transition='box-shadow .25s'; m.style.boxShadow='0 0 0 4px #fecaca';
       setTimeout(function(){ m.style.boxShadow='none'; },1600); };
-    if($('stickMap')){ $('stickMap').onclick=function(e){ var p=e.target.closest('[data-pi]'); if(!p)return;
-        var i=parseInt(p.getAttribute('data-pi'),10); if(isNaN(i))return;
-        window._stickerIdx=window._stickerIdx||[];
-        var k=window._stickerIdx.indexOf(i); if(k>=0)window._stickerIdx.splice(k,1); else window._stickerIdx.push(i);
+    if($('stickMap')){
+      var _mapEl=$('stickMap'), _svgEl=_mapEl.querySelector('svg');
+      var _toggle=function(list){ window._stickerIdx=window._stickerIdx||[];
+        var allOn=list.every(function(i){return window._stickerIdx.indexOf(i)>=0;});
+        list.forEach(function(i){ var k=window._stickerIdx.indexOf(i);
+          if(allOn){ if(k>=0)window._stickerIdx.splice(k,1); } else if(k<0)window._stickerIdx.push(i); });
         try{ $('goLayer').click(); }catch(_e){} };
+      // 🖱️ คลิก 1 ครั้ง = ทั้งคำ (กลุ่ม)
+      _mapEl.onclick=function(e){ if(window._stkDragged){window._stkDragged=false;return;}
+        var g=e.target.closest('[data-pis]'); if(!g)return;
+        var ids=(g.getAttribute('data-pis')||'').split(',').map(Number).filter(function(v){return !isNaN(v);});
+        if(ids.length)_toggle(ids); };
+      // 🔲 ลากกรอบเลือกหลายคำพร้อมกัน
+      if(_svgEl){
+        var _box=null,_st=null;
+        var _pt=function(ev){ var r=_svgEl.getBoundingClientRect(), t=(ev.touches&&ev.touches[0])||ev;
+          return {x:(t.clientX-r.left)/r.width, y:(t.clientY-r.top)/r.height, cx:t.clientX-r.left, cy:t.clientY-r.top}; };
+        var _down=function(ev){ _st=_pt(ev); window._stkDragged=false;
+          _box=document.createElement('div');
+          _box.style.cssText='position:absolute;border:2px dashed #ef4444;background:rgba(239,68,68,.10);pointer-events:none;z-index:5';
+          _mapEl.style.position='relative'; _mapEl.appendChild(_box); };
+        var _move=function(ev){ if(!_st||!_box)return; var p=_pt(ev);
+          if(Math.abs(p.cx-_st.cx)>4||Math.abs(p.cy-_st.cy)>4)window._stkDragged=true;
+          var r=_svgEl.getBoundingClientRect(), mr=_mapEl.getBoundingClientRect();
+          var ox=r.left-mr.left, oy=r.top-mr.top;
+          _box.style.left=(ox+Math.min(_st.cx,p.cx))+'px'; _box.style.top=(oy+Math.min(_st.cy,p.cy))+'px';
+          _box.style.width=Math.abs(p.cx-_st.cx)+'px'; _box.style.height=Math.abs(p.cy-_st.cy)+'px';
+          if(ev.preventDefault)ev.preventDefault(); };
+        var _up=function(ev){ if(!_st)return; var p=_pt(ev);
+          if(_box&&_box.parentNode)_box.parentNode.removeChild(_box); _box=null;
+          var x0=Math.min(_st.x,p.x), x1=Math.max(_st.x,p.x), y0=Math.min(_st.y,p.y), y1=Math.max(_st.y,p.y);
+          _st=null;
+          if((x1-x0)<0.01&&(y1-y0)<0.01)return;                       // แค่คลิก -> ปล่อยให้ onclick จัดการ
+          var vb=(_svgEl.getAttribute('viewBox')||'0 0 1 1').split(/\s+/).map(Number);
+          var VW=vb[2]||1, VH=vb[3]||1, hit=[];
+          _svgEl.querySelectorAll('[data-pis]').forEach(function(g){
+            var bb=g.getBBox(), gx0=bb.x/VW, gx1=(bb.x+bb.width)/VW, gy0=bb.y/VH, gy1=(bb.y+bb.height)/VH;
+            var cx=(gx0+gx1)/2, cy=(gy0+gy1)/2;                        // จุดกึ่งกลางอยู่ในกรอบ = เลือก
+            if(cx>=x0&&cx<=x1&&cy>=y0&&cy<=y1)
+              hit=hit.concat((g.getAttribute('data-pis')||'').split(',').map(Number).filter(function(v){return !isNaN(v);}));
+          });
+          if(hit.length){ window._stickerIdx=window._stickerIdx||[];
+            hit.forEach(function(i){ if(window._stickerIdx.indexOf(i)<0)window._stickerIdx.push(i); });
+            try{ $('goLayer').click(); }catch(_e){} } };
+        _svgEl.addEventListener('mousedown',_down); window.addEventListener('mousemove',_move); window.addEventListener('mouseup',_up);
+        _svgEl.addEventListener('touchstart',_down,{passive:false}); window.addEventListener('touchmove',_move,{passive:false}); window.addEventListener('touchend',_up);
+      }
       var _sc=$('stickClr'); if(_sc)_sc.onclick=function(ev){ ev.stopPropagation(); window._stickerIdx=[]; try{ $('goLayer').click(); }catch(_e){} }; }
     if($('lsSaveJob'))$('lsSaveJob').onclick=function(){
       if(typeof window.saveDesignJob!=='function'){alert('ระบบบันทึกงานยังไม่พร้อม');return;}
@@ -7070,12 +7112,26 @@ function _wallPickPieces(pieces, f){
     ov.querySelector('#asmDone').onclick=function(){ if(!_items.length){ alert('เพิ่มชิ้นอย่างน้อย 1 ชิ้นก่อนนะคะ'); return; } compose(ov); };
     ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
   }
+  // 🔍 ซูมกระดานทั้งแผ่น (ทุกชิ้นโตขึ้น/เล็กลงพร้อมกัน) — สัดส่วนจริงไม่เปลี่ยน
+  function _zoomBoard(f){
+    if(!isFinite(f)||f<=0||Math.abs(f-1)<0.01)return;
+    _K=_K/f;
+    _items.forEach(function(it){ var e=it.el; if(!e)return;
+      e.style.width=(e.offsetWidth*f)+'px'; e.style.height=(e.offsetHeight*f)+'px';
+      e.style.left=(e.offsetLeft*f)+'px'; e.style.top=(e.offsetTop*f)+'px'; });
+  }
   function addItem(p,canv){
     var ar=(p.h||160)/(p.w||160);
     var w,h;
     if(p.meta){                                        // 🎯 เวกเตอร์: ขนาดชิ้นสัมพันธ์กันตามขนาดจริง (มม.)
-      if(!_K)_K=(p.meta.w_mm||100)/180.0;              // ชิ้นแรกกว้าง 180px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
-      w=Math.max(24,Math.min(560,(p.meta.w_mm||100)/_K)); h=w*ar;
+      if(!_K)_K=(p.meta.w_mm||100)/280.0;              // ชิ้นแรกกว้าง ~280px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
+      w=(p.meta.w_mm||100)/_K;
+      // ⚠️ ชิ้นเล็กจิ๋วเพราะสเกลกระดานถูกล็อกจากชิ้นใหญ่ -> ซูมกระดานทั้งแผ่นแทน (ไม่บิดสัดส่วน)
+      if(w<70){ var _f=Math.min(6, 70/Math.max(1,w)); _zoomBoard(_f); w=w*_f; }
+      var _bw=(canv&&canv.clientWidth)||900, _bh=(canv&&canv.clientHeight)||460;
+      if(w>_bw*0.9){ var _f2=(_bw*0.9)/w; _zoomBoard(_f2); w=w*_f2; }
+      if(w*ar>_bh*0.9){ var _f3=(_bh*0.9)/(w*ar); _zoomBoard(_f3); w=w*_f3; }
+      h=w*ar;
     } else { w=Math.min(180,(p.w||160)); h=w*ar; }
     var el=document.createElement('div');
     el.style.cssText='position:absolute;left:'+(16+(_items.length%5)*26)+'px;top:'+(16+(_items.length%5)*22)+'px;width:'+w+'px;height:'+h+'px;cursor:move;border:1px dashed rgba(124,58,237,.0);box-sizing:border-box';
