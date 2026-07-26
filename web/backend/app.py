@@ -1400,7 +1400,42 @@ def _piece_poly_with_holes(pc):
         return pc["poly"]
 
 
-def _sticker_map_svg(box_g, pieces, sel):
+def _sticker_groups(pieces, W, H):
+    """🧩 จัดชิ้นเป็น 'กลุ่มคำ/ข้อความ' — คลิกครั้งเดียวได้ทั้งประโยค (ไม่ต้องคลิกทีละตัวอักษร)
+       เกณฑ์: อยู่แถวเดียวกัน (Y ซ้อน >40%) และห่างกันไม่เกิน 0.6 × ความสูงตัวอักษร
+       คืน list ของ list-ของ-index"""
+    n = len(pieces)
+    if n <= 1:
+        return [[i] for i in range(n)]
+    bb = [p.bounds for p in pieces]
+    order = sorted(range(n), key=lambda i: (bb[i][1], bb[i][0]))
+    rows = []
+    for i in order:
+        _put = False
+        for r in rows:
+            _y0 = min(bb[j][1] for j in r); _y1 = max(bb[j][3] for j in r)
+            _ov = min(_y1, bb[i][3]) - max(_y0, bb[i][1])
+            _hh = min(_y1 - _y0, bb[i][3] - bb[i][1])
+            if _hh > 0 and _ov > _hh * 0.40:
+                r.append(i); _put = True; break
+        if not _put:
+            rows.append([i])
+    groups = []
+    for r in rows:
+        r.sort(key=lambda i: bb[i][0])
+        _avh = sum(bb[i][3] - bb[i][1] for i in r) / len(r)
+        _gap = max(W * 0.012, _avh * 0.60)
+        cur = [r[0]]; curx = bb[r[0]][2]
+        for i in r[1:]:
+            if bb[i][0] - curx <= _gap:
+                cur.append(i); curx = max(curx, bb[i][2])
+            else:
+                groups.append(cur); cur = [i]; curx = bb[i][2]
+        groups.append(cur)
+    return groups
+
+
+def _sticker_map_svg(box_g, pieces, sel, groups=None):
     """🏷️ แผนที่ชิ้นบนหน้ากล่อง (คลิกเลือกเป็นสติ๊กเกอร์): กล่อง + ทุกชิ้นมี data-pi กดสลับได้
        ชิ้นที่เลือก = แดง (สติ๊กเกอร์ ไม่ตัด) · ไม่เลือก = น้ำเงินเข้ม (ฉลุตามปกติ)"""
     try:
@@ -1414,14 +1449,26 @@ def _sticker_map_svg(box_g, pieces, sel):
                 pts = list(r.coords)
                 s += "M " + " L ".join("%.1f %.1f" % (x - b[0], y - b[1]) for x, y in pts) + " Z "
             return s
-        out = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.1f %.1f" style="width:100%%;height:auto;display:block">' % (W, H)]
+        _grp = groups if groups else [[i] for i in range(len(pieces))]
+        out = ['<svg id="stkSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.1f %.1f" style="width:100%%;height:auto;display:block;touch-action:none">' % (W, H)]
         out.append('<path d="%s" fill="#f1f5f9" stroke="#94a3b8" stroke-width="%.1f"/>' % (_pd(box_g) if box_g.geom_type == "Polygon" else "", max(1.0, W * 0.002)))
-        for i, p in enumerate(pieces):
-            _on = i in sel
-            out.append('<path data-pi="%d" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" '
-                       'style="cursor:pointer" opacity="0.9"><title>%s</title></path>'
-                       % (i, _pd(p), "#ef4444" if _on else "#334155", "#b91c1c" if _on else "#0f172a",
-                          max(0.6, W * 0.0012), ("สติ๊กเกอร์ (ไม่ตัด) — คลิกเพื่อกลับไปตัด" if _on else "คลิก = แยกเป็นสติ๊กเกอร์ ไม่ตัด")))
+        for _gi, _g in enumerate(_grp):
+            _on = any(i in sel for i in _g)
+            _d = "".join(_pd(pieces[i]) for i in _g if i < len(pieces))
+            _xs = [pieces[i].bounds[0] for i in _g] + [pieces[i].bounds[2] for i in _g]
+            _ys = [pieces[i].bounds[1] for i in _g] + [pieces[i].bounds[3] for i in _g]
+            _pad = max(2.0, W * 0.004)
+            # 🖱️ คลิกครั้งเดียว = ทั้งกลุ่ม (ทั้งคำ) · data-pis = รายการ index ในกลุ่ม
+            out.append('<g data-pis="%s" data-gi="%d" style="cursor:pointer">' % (",".join(str(i) for i in _g), _gi))
+            out.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" opacity="%s" rx="%.1f"/>'
+                       % (min(_xs) - b[0] - _pad, min(_ys) - b[1] - _pad,
+                          (max(_xs) - min(_xs)) + _pad * 2, (max(_ys) - min(_ys)) + _pad * 2,
+                          "#ef4444" if _on else "#38bdf8", "0.14" if _on else "0.0", _pad))
+            out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.1f" opacity="0.92"><title>%s</title></path>'
+                       % (_d, "#ef4444" if _on else "#334155", "#b91c1c" if _on else "#0f172a",
+                          max(0.6, W * 0.0012),
+                          ("สติ๊กเกอร์ (ไม่ตัด) — คลิกเพื่อกลับไปตัด" if _on else "คลิก 1 ครั้ง = ทั้งคำนี้เป็นสติ๊กเกอร์ (ไม่ตัด)")))
+            out.append('</g>')
         out.append('</svg>')
         return "".join(out)
     except Exception:
@@ -2762,7 +2809,7 @@ def _ortho_views_svg(full, rec, depth_mm, inner_bore=None, face_color=None, side
             out.append(d)
         return " ".join(out)
 
-    TW = PW * 3 + GAP * 2 + PAD * 2; TH = PH + PAD * 2 + LBL + 26
+    TW = PW * 4 + GAP * 3 + PAD * 2; TH = PH + PAD * 2 + LBL + 26     # 📐 4 มุมมอง: Top · Front · Side · Back
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">' % (TW, TH, TW, TH),
              '<rect width="%.0f" height="%.0f" fill="#f8fafc"/>' % (TW, TH)]
     if _mtxd:
@@ -2804,8 +2851,75 @@ def _ortho_views_svg(full, rec, depth_mm, inner_bore=None, face_color=None, side
     parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="%s" stroke-width="1"/>' % (rx, ry, max(3.0, rd * 0.18), rh, metal, edge))
     dims(px, py, "ลึก %.0f × สูง %.0f ซม." % (D / 10.0, H / 10.0))
 
+    # ── Back View: ด้านหลัง (แผ่นหลัง + จุดยึด/ทางเข้าสายไฟ) — กลับซ้าย-ขวา ──
+    px, py = panel(3, "Back View (ด้านหลัง)")
+    s = min((PW - 70) / W, (PH - 80) / H)
+    _bw = W * s; _bh = H * s
+    _bx = px + (PW - _bw) / 2; _by = py + (PH - _bh) / 2
+    parts.append('<g transform="translate(%.1f,%.1f) scale(-1,1) translate(%.1f,%.1f)">'
+                 % (_bx + _bw, _by, -(_bx) - 0.0, -(_by)))
+    parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="1.4"/>'
+                 % (poly_d(full, s, _bx - b[0] * s, _by - b[1] * s), "#cbd5e1", edge))
+    parts.append('</g>')
+    # จุดยึด 4 มุม + ทางเข้าสายไฟกลางล่าง
+    for _fx, _fy in ((0.18, 0.20), (0.82, 0.20), (0.18, 0.80), (0.82, 0.80)):
+        parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#ffffff" stroke="%s" stroke-width="1.2"/>'
+                     % (_bx + _bw * _fx, _by + _bh * _fy, max(3.0, PW * 0.012), edge))
+    parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>'
+                 % (_bx + _bw * 0.44, _by + _bh - max(10.0, PH * 0.055), _bw * 0.12, max(8.0, PH * 0.045)))
+    parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.0f" fill="#92400e" text-anchor="middle">สายไฟเข้า</text>'
+                 % (_bx + _bw * 0.50, _by + _bh - max(1.0, PH * 0.012), fsD * 0.85))
+    dims(px, py, "แผ่นหลัง %.0f × %.0f ซม. · จุดยึด 4 จุด" % (W / 10.0, H / 10.0))
+
     parts.append('</svg>')
     return "".join(parts)
+
+
+def _led_color_card_svg(led_color, glow_mode="front"):
+    """💡 ตัวอย่าง 'สีไฟที่ลูกค้าเลือก' — แถบไล่โทน + จุดตัวอย่างแสงจริง + ชื่อ/อุณหภูมิสี"""
+    import re as _re2
+    _txt = str(led_color or "Warm White 3000K")
+    _k = ""
+    _m = _re2.search(r"(\d{3,5})\s*K", _txt)
+    if _m:
+        _k = _m.group(1)
+    _MAP = {"2700": "#ff9e3d", "3000": "#ffb45e", "4000": "#ffd9a0", "5000": "#fff3dc",
+            "6500": "#dfeaff", "8000": "#b9d4ff", "11000": "#93bbff"}
+    _c = _MAP.get(_k, "#ffb45e")
+    if "RGB" in _txt.upper():
+        _c = "#c084fc"
+    W2, H2 = 460.0, 190.0
+    p = ['<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f">' % (W2, H2, W2, H2),
+         '<defs><radialGradient id="lcG" cx="0.5" cy="0.5" r="0.5">'
+         '<stop offset="0" stop-color="%s" stop-opacity="1"/>'
+         '<stop offset="0.55" stop-color="%s" stop-opacity="0.55"/>'
+         '<stop offset="1" stop-color="%s" stop-opacity="0"/></radialGradient>'
+         '<linearGradient id="lcBar" x1="0" y1="0" x2="1" y2="0">'
+         '<stop offset="0" stop-color="#ff9e3d"/><stop offset="0.25" stop-color="#ffb45e"/>'
+         '<stop offset="0.45" stop-color="#ffd9a0"/><stop offset="0.62" stop-color="#fff3dc"/>'
+         '<stop offset="0.78" stop-color="#dfeaff"/><stop offset="1" stop-color="#93bbff"/>'
+         '</linearGradient></defs>' % (_c, _c, _c),
+         '<rect width="%.0f" height="%.0f" rx="10" fill="#0b1220"/>' % (W2, H2),
+         '<circle cx="118" cy="86" r="74" fill="url(#lcG)"/>',
+         '<circle cx="118" cy="86" r="30" fill="%s"/>' % _c,
+         '<text x="212" y="60" font-family="Prompt,Arial" font-size="21" font-weight="800" fill="#ffffff">%s</text>'
+         % str(_txt).replace("&", "&amp;").replace("<", "&lt;")[:26],
+         '<text x="212" y="86" font-family="Prompt,Arial" font-size="14" fill="#94a3b8">ตัวอย่างสีแสงที่ลูกค้าเลือก</text>']
+    # แถบไล่โทน + เครื่องหมายตำแหน่งอุณหภูมิสี
+    p.append('<rect x="212" y="102" width="224" height="16" rx="8" fill="url(#lcBar)"/>')
+    try:
+        _kk = float(_k or 3000)
+        _pos = max(0.0, min(1.0, (_kk - 2700.0) / (11000.0 - 2700.0)))
+        p.append('<polygon points="%.1f,98 %.1f,98 %.1f,124" fill="#ffffff"/>'
+                 % (212 + 224 * _pos - 6, 212 + 224 * _pos + 6, 212 + 224 * _pos))
+    except Exception:
+        pass
+    p.append('<text x="212" y="140" font-family="Prompt,Arial" font-size="11" fill="#64748b">2700K วอร์ม</text>')
+    p.append('<text x="436" y="140" font-family="Prompt,Arial" font-size="11" fill="#64748b" text-anchor="end">11000K ฟ้าเย็น</text>')
+    p.append('<text x="212" y="166" font-family="Prompt,Arial" font-size="12.5" fill="#cbd5e1">โหมดไฟ: %s</text>'
+             % {"front": "ออกหน้า", "back": "ออกหลัง", "around": "ออกรอบ", "off": "ไม่มีไฟ"}.get(str(glow_mode), "ออกหน้า"))
+    p.append('</svg>')
+    return "".join(p)
 
 
 def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0, sticker_geom=None,
@@ -3835,7 +3949,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
                 "svg_face": svg_face, "led": led_info,
-                "sticker_map_svg": (_sticker_map_svg(full, _stick_pieces, _stick_sel)
+                "sticker_map_svg": (_sticker_map_svg(full, _stick_pieces, _stick_sel,
+                                                     _sticker_groups(_stick_pieces, full.bounds[2] - full.bounds[0],
+                                                                     full.bounds[3] - full.bounds[1]))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
@@ -3909,8 +4025,18 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
     # 📐 มุมมอง Top / Front / Side (คู่กับ Perspective ด้านบน)
     views_card = ""
     if views_svg:
-        views_card = ('<div class="card big3d"><div class="ct"><span class="no">V</span>มุมมองมาตรฐาน — Top View · Front View · Side View</div>'
+        views_card = ('<div class="card big3d"><div class="ct"><span class="no">4</span>มุมมองมาตรฐาน — Top · Front · Side · Back View</div>'
                       '<div class="cbody"><div class="imgwrap">%s</div></div></div>' % views_svg)
+    # 💡 ตัวอย่างสีไฟที่ลูกค้าเลือก
+    ledcol_card = ""
+    try:
+        _lc = str(meta.get("led_color") or "")
+        if _lc:
+            ledcol_card = ('<div class="card"><div class="ct"><span class="no">5</span>สีไฟที่ลูกค้าเลือก</div>'
+                           '<div class="cbody"><div class="imgwrap dark">%s</div></div></div>'
+                           % _led_color_card_svg(_lc, meta.get("glow_mode", "front")))
+    except Exception:
+        ledcol_card = ""
     # จัดวันที่ส่งมอบให้อ่านง่าย (YYYY-MM-DD -> DD/MM/YYYY)
     _dv = str(meta.get("delivery") or "").strip()
     try:
@@ -3926,7 +4052,7 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                  "__SIZE__": "%d × %d ซม." % (Wcm, Hcm), "__SALES__": esc(meta.get("sales", "-")),
                  "__GRAPHIC__": esc(meta.get("graphic", "-")),
                  "__MATERIAL__": esc(meta.get("material", "-")),
-                 "__PERSP__": persp_svg, "__VIEWS__": views_card,
+                 "__PERSP__": persp_svg, "__VIEWS__": views_card, "__LEDCOLOR__": ledcol_card,
                  "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
                  "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom}.items():
         html = html.replace(k, str(v))
@@ -3951,7 +4077,13 @@ body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px
 .ct{display:flex;align-items:center;gap:8px;padding:9px 12px;font-weight:700;font-size:14.5px;border-bottom:1px solid #eef2f7}
 .ct .no{width:22px;height:22px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none}
 .cbody{padding:10px 12px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:6px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:230px}.imgwrap.dark{background:#0f1522}
-.big3d{margin-bottom:12px}.big3d .imgwrap svg{max-height:300px}
+.big3d .imgwrap svg{max-height:300px}
+/* 🖼️ แถวบน: แบบ 3 มิติ (กว้าง 2 ส่วน) + ภาพหน้างาน + ภาพอ้างอิง อยู่คู่กัน */
+.toprow{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.toprow .site{min-height:118px}
+/* 📐 แถวกลาง: 4 มุมมอง (กว้าง 3 ส่วน) + ตัวอย่างสีไฟ (1 ส่วน) */
+.midrow{display:grid;grid-template-columns:3fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.midrow .imgwrap svg{max-height:210px}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;border-bottom:1px solid #eef2f7;text-align:left}th{background:#f8fafc;color:#475569;font-weight:600;font-size:12px;text-transform:uppercase}td.r{text-align:right;font-weight:700;color:#0f172a}
 .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0}.kpi .b{background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;padding:8px;text-align:center}.kpi .b .n{font-size:17px;font-weight:800;color:#0369a1}.kpi .b .l{font-size:11px;color:#64748b}
 .chip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:12.5px;margin:2px 3px 2px 0}.dot{width:11px;height:11px;border-radius:50%;display:inline-block}
@@ -3996,8 +4128,25 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
     <div class="c"><div class="k">กำหนดส่งมอบ</div><div class="v">__DELIV__</div></div>
     <div class="c"><div class="k">เซลล์ / กราฟิก</div><div class="v" style="font-size:12.5px">👤 __SALES__<br><span style="color:#475569">🎨 __GRAPHIC__</span></div></div></div>
   <div class="body">
-    <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective View) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
-    __VIEWS__
+    <!-- 🖼️ แถวบน: แบบงานออกแบบ (3 มิติ) + ภาพหน้างานจริง + ภาพอ้างอิง — วางคู่กันให้เทียบได้ทันที -->
+    <div class="toprow">
+      <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective View) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+      <div class="card"><div class="ct"><span class="no">2</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody">
+        <label for="siteFile"><div class="site" id="siteBox"><div style="font-size:26px">📷</div><div>คลิกแนบภาพหน้างาน</div><div style="font-size:10px">ถ่ายจุดติดตั้งจริง</div></div></label>
+        <input type="file" id="siteFile" accept="image/*" style="display:none">
+        <img id="siteImg" alt="ภาพหน้างาน">
+      </div></div>
+      <div class="card"><div class="ct"><span class="no">3</span>ภาพอ้างอิง (แบบ/ตัวอย่างงาน)</div><div class="cbody">
+        <label for="refFile"><div class="site" id="refBox"><div style="font-size:26px">🖼️</div><div>คลิกแนบภาพอ้างอิง</div><div style="font-size:10px">แบบลูกค้า / งานเดิม</div></div></label>
+        <input type="file" id="refFile" accept="image/*" style="display:none">
+        <img id="refImg" alt="ภาพอ้างอิง" style="max-width:100%;border-radius:8px;display:none;margin-top:2px">
+      </div></div>
+    </div>
+    <!-- 📐 แถวกลาง: 4 มุมมองมาตรฐาน + ตัวอย่างสีไฟ -->
+    <div class="midrow">
+      __VIEWS__
+      __LEDCOLOR__
+    </div>
     <div class="masonry">
       __CUTIMG__
       __FRAME__
@@ -4007,16 +4156,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 9px;b
       __NEST__
       <div class="card"><div class="ct"><span class="no">B</span>รายละเอียดวัตถุดิบ / สเปค (BOM)</div><div class="cbody"><table><tr><th>ชิ้นส่วน</th><th>วัสดุ</th><th>สเปค</th><th>หมายเหตุ</th></tr>__BOM__</table></div></div>
       <div class="card"><div class="ct"><span class="no">✎</span>รายละเอียดเพิ่มเติม / หมายเหตุ (พิมพ์ได้)</div><div class="cbody"><div class="editnote" contenteditable="true" data-ph="คลิกเพื่อพิมพ์รายละเอียดเพิ่มเติม เช่น สี Pantone · วิธีติดตั้ง · เงื่อนไข/กำหนดพิเศษ ..."></div></div></div>
-      <div class="card"><div class="ct"><span class="no">7</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody">
-        <label for="siteFile"><div class="site" id="siteBox"><div style="font-size:28px">📷</div><div>คลิกเพื่อแนบภาพหน้างาน (1 ภาพ)</div><div style="font-size:10px">แนะนำถ่ายจุดติดตั้งจริง</div></div></label>
-        <input type="file" id="siteFile" accept="image/*" style="display:none">
-        <img id="siteImg" alt="ภาพหน้างาน">
-      </div></div>
-      <div class="card"><div class="ct"><span class="no">8</span>ภาพอ้างอิง (แบบ/ตัวอย่างงาน)</div><div class="cbody">
-        <label for="refFile"><div class="site" id="refBox"><div style="font-size:28px">🖼️</div><div>คลิกเพื่อแนบภาพอ้างอิง (1 ภาพ)</div><div style="font-size:10px">เช่น แบบจากลูกค้า / ตัวอย่างงานเดิม</div></div></label>
-        <input type="file" id="refFile" accept="image/*" style="display:none">
-        <img id="refImg" alt="ภาพอ้างอิง" style="max-width:100%;border-radius:8px;display:none;margin-top:2px">
-      </div></div>
     </div>
   </div>
   <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
@@ -4038,21 +4177,40 @@ function _busy(b){var e=document.getElementById('expbar');if(e)e.style.opacity=b
 // 📄 บังคับ A3 แนวนอน '1 แผ่นเสมอ' — พื้นที่พิมพ์ 408×285มม. : ถ้าเนื้อหาสูงเกินสัดส่วน ให้ย่อทั้งแผ่นพอดีหน้า
 function _fitOnePage(){
   try{
-    var sh=document.querySelector('.sheet'); if(!sh)return;
+    var sh=document.querySelector('.sheet'); if(!sh)return 1;
     var W=1560.0, targetH=W*(285.0/408.0);            // สูงสุดที่ 1 หน้า A3 รับได้ (ตามสัดส่วนพื้นที่พิมพ์ 408×285มม.)
     var h=sh.scrollHeight||sh.offsetHeight||1;
     var fit=Math.min(1.0, targetH/h);
     document.documentElement.style.setProperty('--fit', String(fit));
-  }catch(e){}
+    return fit;
+  }catch(e){ return 1; }
+}
+// 📏 ย่อเนื้อหาให้พอดี 1 หน้า A3 'ก่อนแคปภาพ' (ใช้กับ PDF/JPG) แล้วคืนสภาพ
+function _fitForCapture(on){
+  var sh=document.querySelector('.sheet'); if(!sh)return 1;
+  if(!on){ sh.style.transform=''; sh.style.transformOrigin=''; sh.style.width=''; return 1; }
+  var W=1560.0, targetH=W*(285.0/408.0);
+  var h=sh.scrollHeight||sh.offsetHeight||1;
+  var f=Math.min(1.0, targetH/h);
+  if(f<0.999){ sh.style.width=W+'px'; sh.style.transformOrigin='top left'; sh.style.transform='scale('+f+')'; }
+  return f;
 }
 window.addEventListener('beforeprint', _fitOnePage);
 window.addEventListener('load', _fitOnePage);
 function _cap(cb){_busy(true);
   var fr=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
   fr.then(function(){return new Promise(function(r){setTimeout(r,150);});}).then(function(){
-    html2canvas(document.querySelector('.sheet'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false})
-      .then(function(cv){_busy(false);cb(cv);})
-      .catch(function(e){_busy(false);alert('สร้างภาพไม่ได้: '+e);});});}
+    var _f=_fitForCapture(true);                       // 📄 A3 แนวนอน 1 แผ่นเสมอ
+    var _sh=document.querySelector('.sheet');
+    var _opt={scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false};
+    if(_f<0.999){ _opt.width=Math.ceil(1560*_f); _opt.height=Math.ceil((_sh.scrollHeight||1)*_f);
+                  _opt.windowWidth=1560; }
+    setTimeout(function(){
+      html2canvas(_sh,_opt)
+        .then(function(cv){_fitForCapture(false);_busy(false);cb(cv);})
+        .catch(function(e){_fitForCapture(false);_busy(false);alert('สร้างภาพไม่ได้: '+e);});
+    },80);
+  });}
 function saveJPG(){_cap(function(cv){var a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',.92);a.download='JobSheet_'+JOBNO+'.jpg';a.click();});}
 function savePDF(){_cap(function(cv){var J=(window.jspdf||{}).jsPDF;if(!J){alert('โหลดตัวสร้าง PDF ไม่ได้ — ลองใช้ปุ่มพิมพ์แทน');return;}
   var pdf=new J({orientation:'landscape',unit:'mm',format:'a3'});var pw=420,ph=297,m=6;
