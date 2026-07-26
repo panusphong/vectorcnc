@@ -1069,6 +1069,11 @@ def trace_vtracer(image_path, n_colors=6, corner_threshold=58, filter_speckle=2,
     if _long < _tgt:                    # supersample ตามค่าที่เรียก (โหมดไฟล์ตัด = สูงขึ้น -> เส้นเนียนกว่า)
         _sc = _tgt / float(_long)
         g = _cv.resize(g, None, fx=_sc, fy=_sc, interpolation=_cv.INTER_CUBIC)
+    # 📌 บันทึกขนาด 'ภาพงานที่ trace จริง' — ตัวพรีวิววางทับต้นฉบับใช้ค่านี้คำนวณสเกล
+    #    ⚠️ เดิมมีแต่ potrace ที่เซ็ตค่านี้ พอระบบเปลี่ยนมาใช้ vtracer ค่าจึงเป็นของรอบก่อนที่ค้างอยู่
+    #       -> สเกลผิด -> เส้นตัดใหญ่/เล็กไม่ตรงกับภาพต้นฉบับ (อาการ 'ขนาดเพี้ยน' แบบสุ่ม)
+    global LAST_WORK_HW
+    LAST_WORK_HW = (int(g.shape[0]), int(g.shape[1]))
     g = _cv.bilateralFilter(g, 7, 45, 45)
     # พื้นหลัง = สว่างเด่นที่ขอบ -> ตั้ง threshold ให้จับเส้นที่เข้มกว่าพื้นเล็กน้อย (เก็บเส้นจาง)
     border = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])

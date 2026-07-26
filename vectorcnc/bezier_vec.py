@@ -468,6 +468,15 @@ def vectorize_bezier(image_path, real_width_mm=1200.0, n_colors=6, dxf_out=None,
         if _ow:
             _wh, _ww = getattr(te, 'LAST_WORK_HW', None) or (Hpx, Wpx)
             _sc = (float(_ow) / float(_ww)) if _ww else 1.0
+            # 🛡️ กันสเกลเพี้ยน: สัดส่วนภาพงานกับต้นฉบับต้องใกล้เคียงกัน ไม่งั้นแปลว่าค่าค้างจากรอบก่อน
+            try:
+                if _wh and _oh:
+                    _r1 = float(_ww) / float(_wh); _r2 = float(_ow) / float(_oh)
+                    if abs(_r1 - _r2) / max(1e-6, _r2) > 0.05:
+                        _sc = 1.0
+                        _ow, _oh = int(_ww), int(_wh)      # ถอยไปใช้กรอบของภาพงานเอง (ยังตรงกันเสมอ)
+            except Exception:
+                pass
             _raw = []
             for _c, _subs in items:
                 for _sp in _subs:
