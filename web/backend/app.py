@@ -1408,30 +1408,36 @@ def _sticker_groups(pieces, W, H):
     if n <= 1:
         return [[i] for i in range(n)]
     bb = [p.bounds for p in pieces]
-    order = sorted(range(n), key=lambda i: (bb[i][1], bb[i][0]))
-    rows = []
-    for i in order:
-        _put = False
-        for r in rows:
-            _y0 = min(bb[j][1] for j in r); _y1 = max(bb[j][3] for j in r)
-            _ov = min(_y1, bb[i][3]) - max(_y0, bb[i][1])
-            _hh = min(_y1 - _y0, bb[i][3] - bb[i][1])
-            if _hh > 0 and _ov > _hh * 0.40:
-                r.append(i); _put = True; break
-        if not _put:
-            rows.append([i])
-    groups = []
-    for r in rows:
-        r.sort(key=lambda i: bb[i][0])
-        _avh = sum(bb[i][3] - bb[i][1] for i in r) / len(r)
-        _gap = max(W * 0.012, _avh * 0.60)
-        cur = [r[0]]; curx = bb[r[0]][2]
-        for i in r[1:]:
-            if bb[i][0] - curx <= _gap:
-                cur.append(i); curx = max(curx, bb[i][2])
-            else:
-                groups.append(cur); cur = [i]; curx = bb[i][2]
-        groups.append(cur)
+    par = list(range(n))
+
+    def _find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]; a = par[a]
+        return a
+
+    def _join(a, b):
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            par[rb] = ra
+    # 🔗 รวมชิ้นเป็น 'คำ' เมื่อ: ขนาดใกล้กัน + อยู่ระดับเดียวกัน + ชิดกัน (เทียบกับขนาดตัวเอง)
+    for i in range(n):
+        hi = bb[i][3] - bb[i][1]
+        for j in range(i + 1, n):
+            hj = bb[j][3] - bb[j][1]
+            _mn = min(hi, hj); _mx = max(hi, hj)
+            if _mn <= 0 or _mx / _mn > 1.6:                 # ขนาดต่างกันมาก (โลโก้ vs ตัวอักษร) -> คนละกลุ่ม
+                continue
+            _ov = min(bb[i][3], bb[j][3]) - max(bb[i][1], bb[j][1])
+            if _ov < _mn * 0.25:                            # ไม่ได้อยู่บรรทัดเดียวกัน
+                continue
+            _gx = max(bb[i][0], bb[j][0]) - min(bb[i][2], bb[j][2])
+            if _gx <= _mn * 0.55:                           # ชิดกันพอที่จะเป็นคำเดียวกัน
+                _join(i, j)
+    _bag = {}
+    for i in range(n):
+        _bag.setdefault(_find(i), []).append(i)
+    groups = list(_bag.values())
+    groups.sort(key=lambda g: (min(bb[i][1] for i in g), min(bb[i][0] for i in g)))
     return groups
 
 
