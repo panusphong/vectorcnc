@@ -5101,22 +5101,26 @@ function _recolor3dRaster(){
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
+  // 💡 กติกา: แสงต้องเรือง 'ออกจากตัวป้าย' ตามรูปทรงจริง — ไม่ใช่ไล่สีเต็มกรอบสี่เหลี่ยม
+  //    ใช้ drop-shadow ซ้อนหลายชั้นบนตัว SVG ของป้าย (เรืองตามรูปตัวอักษรเป๊ะ)
+  //    ส่วน <div> ไล่สี = แสงบรรยากาศจาง ๆ เท่านั้น (เดิมเข้มจนกลายเป็นกล่องไฟสี่เหลี่ยม)
+  g.style.mixBlendMode='screen';
   if(GLOW.mode==='off'){wrap.style.background='#faf9ff';g.style.opacity='0';g.style.background='none';g.style.filter='none';g.style.zIndex='0';img.style.filter='none';}
-  else if(GLOW.mode==='front'){ // ไฟออกหน้า = หน้าเรืองแสงเข้าหาเรา (ทั้งป้ายสว่าง+ย้อมสีแสง) ไม่ใช่ halo
-    wrap.style.background='#eceaf6';
-    g.style.zIndex='3';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='none';
-    g.style.background='radial-gradient(ellipse at 50% 48%,'+_hexA(c,0.42)+' 0%,'+_hexA(c,0.22)+' 55%,transparent 80%)';
-    img.style.filter='drop-shadow(0 0 5px '+_hexA(c,0.85)+') brightness(1.18) saturate(1.15)';}
-  else if(GLOW.mode==='around'){ // 💫 ไฟออกรอบ = เรืองทุกด้าน (edge-lit) หน้าสว่าง + ฮาโลรอบตัว
+  else if(GLOW.mode==='front'){ // ไฟออกหน้า = หน้าป้ายสว่างเข้าหาเรา
+    wrap.style.background='#1a1a22';
+    g.style.zIndex='0';g.style.opacity='0.22';g.style.filter='blur(40px)';
+    g.style.background='radial-gradient(ellipse at 50% 50%,'+_hexA(c,0.35)+' 0%,transparent 62%)';
+    img.style.filter='drop-shadow(0 0 3px '+_hexA(c,0.95)+') drop-shadow(0 0 9px '+_hexA(c,0.75)+') brightness(1.16) saturate(1.12)';}
+  else if(GLOW.mode==='around'){ // 💫 ไฟออกรอบ = เรืองทุกด้านรอบ 'ตัวป้าย'
     wrap.style.background='#14100a';
-    g.style.zIndex='3';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='blur(10px)';
-    g.style.background='radial-gradient(ellipse at 50% 50%,'+_hexA(c,0.6)+' 0%,'+_hexA(c,0.35)+' 50%,'+_hexA(c,0.12)+' 75%,transparent 90%)';
-    img.style.filter='drop-shadow(0 0 10px '+_hexA(c,0.95)+') drop-shadow(0 0 22px '+_hexA(c,0.6)+') brightness(1.14) saturate(1.1)';}
-  else{ // ไฟออกหลัง = halo เรืองรอบขอบ พื้นหลังมืด
+    g.style.zIndex='0';g.style.opacity='0.20';g.style.filter='blur(46px)';
+    g.style.background='radial-gradient(ellipse at 50% 50%,'+_hexA(c,0.30)+' 0%,transparent 60%)';
+    img.style.filter='drop-shadow(0 0 4px '+_hexA(c,1)+') drop-shadow(0 0 12px '+_hexA(c,0.85)+') drop-shadow(0 0 26px '+_hexA(c,0.55)+') drop-shadow(0 0 44px '+_hexA(c,0.3)+') brightness(1.12) saturate(1.1)';}
+  else{ // ไฟออกหลัง = ฮาโลเรืองรอบขอบตัวป้าย พื้นหลังมืด
     wrap.style.background='#0b1220';
-    g.style.zIndex='0';g.style.opacity='1';g.style.mixBlendMode='screen';g.style.filter='blur(16px)';
-    g.style.background='radial-gradient(circle at 50% 50%,'+_hexA(c,0.9)+','+_hexA(c,0.25)+' 42%,transparent 66%)';
-    img.style.filter='drop-shadow(0 0 6px '+_hexA(c,0.9)+')';}
+    g.style.zIndex='0';g.style.opacity='0.16';g.style.filter='blur(50px)';
+    g.style.background='radial-gradient(circle at 50% 50%,'+_hexA(c,0.30)+',transparent 58%)';
+    img.style.filter='drop-shadow(0 0 8px '+_hexA(c,0.95)+') drop-shadow(0 0 20px '+_hexA(c,0.7)+') drop-shadow(0 0 38px '+_hexA(c,0.4)+')';}
 }
 function wireGlow(){
   var gm=document.querySelectorAll('.glowM'),gt=document.querySelectorAll('.glowT');
