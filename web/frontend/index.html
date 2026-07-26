@@ -5345,6 +5345,7 @@ $('goLayer').onclick=function(){
         '<button id="lsDlMain" style="display:none">DXF</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
         (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
         '<button id="lsDlAll" style="background:linear-gradient(135deg,#e11d48,#be123c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลดไฟล์ .ai (ชุดชั้นตัด แยกเลเยอร์)</button>'+
+        (j.sticker_map_svg?'<button id="lsGoStick" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🏷️ เลือกชิ้นไม่ตัด (สติ๊กเกอร์)</button>':'')+
         '<button id="lsToWall" style="background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 ส่งเข้าจำลองผนัง</button>'+
         '<button id="lsPresent" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">📐 แผ่นนำเสนอแบบ</button>'+
         '<button id="lsJobSheet" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🧾 ใบสั่งผลิต</button>'+
@@ -5488,6 +5489,11 @@ $('goLayer').onclick=function(){
     if($('lsDlAi')&&j.ai_base64)$('lsDlAi').onclick=function(){var bin=atob(j.ai_base64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([u],{type:'application/postscript'}));a.download='layerset_'+t+'.ai';a.click();};
     if($('lsFindJob'))$('lsFindJob').onclick=function(){ if(typeof window.openJobsDlg==='function')window.openJobsDlg('find'); else alert('เปิดหน้าจำลองผนังเพื่อค้นหางาน'); };
     // 🏷️ คลิกชิ้นบนแผนที่ -> สลับ ตัด/สติ๊กเกอร์ แล้วสร้างใหม่ทันที
+    // 🏷️ ปุ่มลัดไปแผงเลือกสติ๊กเกอร์ (เดิมอยู่ใต้ภาพ 3 มิติ มองไม่เห็นถ้าไม่เลื่อนจอ)
+    if($('lsGoStick'))$('lsGoStick').onclick=function(){ var m=$('stickMap'); if(!m)return;
+      try{ m.scrollIntoView({behavior:'smooth',block:'center'}); }catch(_e){ m.scrollIntoView(); }
+      m.style.transition='box-shadow .25s'; m.style.boxShadow='0 0 0 4px #fecaca';
+      setTimeout(function(){ m.style.boxShadow='none'; },1600); };
     if($('stickMap')){ $('stickMap').onclick=function(e){ var p=e.target.closest('[data-pi]'); if(!p)return;
         var i=parseInt(p.getAttribute('data-pi'),10); if(isNaN(i))return;
         window._stickerIdx=window._stickerIdx||[];
