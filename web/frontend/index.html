@@ -7112,25 +7112,15 @@ function _wallPickPieces(pieces, f){
     ov.querySelector('#asmDone').onclick=function(){ if(!_items.length){ alert('เพิ่มชิ้นอย่างน้อย 1 ชิ้นก่อนนะคะ'); return; } compose(ov); };
     ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
   }
-  // 🔍 ซูมกระดานทั้งแผ่น (ทุกชิ้นโตขึ้น/เล็กลงพร้อมกัน) — สัดส่วนจริงไม่เปลี่ยน
-  function _zoomBoard(f){
-    if(!isFinite(f)||f<=0||Math.abs(f-1)<0.01)return;
-    _K=_K/f;
-    _items.forEach(function(it){ var e=it.el; if(!e)return;
-      e.style.width=(e.offsetWidth*f)+'px'; e.style.height=(e.offsetHeight*f)+'px';
-      e.style.left=(e.offsetLeft*f)+'px'; e.style.top=(e.offsetTop*f)+'px'; });
-  }
   function addItem(p,canv){
     var ar=(p.h||160)/(p.w||160);
     var w,h;
     if(p.meta){                                        // 🎯 เวกเตอร์: ขนาดชิ้นสัมพันธ์กันตามขนาดจริง (มม.)
-      if(!_K)_K=(p.meta.w_mm||100)/280.0;              // ชิ้นแรกกว้าง ~280px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
+      if(!_K)_K=(p.meta.w_mm||100)/220.0;              // ชิ้นแรกกว้าง ~220px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
       w=(p.meta.w_mm||100)/_K;
-      // ⚠️ ชิ้นเล็กจิ๋วเพราะสเกลกระดานถูกล็อกจากชิ้นใหญ่ -> ซูมกระดานทั้งแผ่นแทน (ไม่บิดสัดส่วน)
-      if(w<70){ var _f=Math.min(6, 70/Math.max(1,w)); _zoomBoard(_f); w=w*_f; }
+      // 📌 ชิ้นเดิมบนกระดาน 'ไม่ขยับ ไม่ย่อ' — แค่คุมชิ้นใหม่ให้อยู่ในช่วงที่ลากง่าย (ปรับต่อด้วยจุดมุมได้)
       var _bw=(canv&&canv.clientWidth)||900, _bh=(canv&&canv.clientHeight)||460;
-      if(w>_bw*0.9){ var _f2=(_bw*0.9)/w; _zoomBoard(_f2); w=w*_f2; }
-      if(w*ar>_bh*0.9){ var _f3=(_bh*0.9)/(w*ar); _zoomBoard(_f3); w=w*_f3; }
+      w=Math.max(90, Math.min(w, _bw*0.86, (_bh*0.86)/Math.max(0.05,ar)));
       h=w*ar;
     } else { w=Math.min(180,(p.w||160)); h=w*ar; }
     var el=document.createElement('div');
