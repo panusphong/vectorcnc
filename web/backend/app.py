@@ -1700,6 +1700,50 @@ def _vtrace_full_mm(img_path, real_width_mm):
             continue
     if not Ps:
         return None
+    # 🗑️ ทิ้ง 'กรอบหน้ากระดาษ/พื้นหลัง' ที่ติดมากับไฟล์ (เช่น composed_vector.pdf มีขอบหน้าเป็นวัตถุ)
+    #    กรอบนี้ร้ายมาก: มันครอบตัวอักษรทุกตัว -> ตอนประกอบรูปทรงจะนับตัวอักษรเป็น 'รู' ทั้งหมด
+    #    -> ตัวอักษรแหว่ง/เพี้ยน + มีเส้นตัดกรอบเกินมาในไฟล์
+    #    เงื่อนไข: กินพื้นที่เกือบทั้งภาพ + เป็นสี่เหลี่ยม + มีชิ้นอื่นอยู่ข้างในหลายชิ้น
+    try:
+        _bx = [p.bounds for p in Ps]
+        _X0 = min(b[0] for b in _bx); _Y0 = min(b[1] for b in _bx)
+        _X1 = max(b[2] for b in _bx); _Y1 = max(b[3] for b in _bx)
+        _AA = max(1e-6, (_X1 - _X0) * (_Y1 - _Y0))
+        _drop = set()
+        for _i9, _p9 in enumerate(Ps):
+            _b9 = _bx[_i9]
+            _a9 = (_b9[2] - _b9[0]) * (_b9[3] - _b9[1])
+            if _a9 < _AA * 0.85:
+                continue
+            _rect = _p9.area >= _a9 * 0.90          # เต็มกรอบ = สี่เหลี่ยม (ไม่ใช่ตัวอักษร)
+            _inside = sum(1 for _j9, _q9 in enumerate(Ps)
+                          if _j9 != _i9 and _b9[0] <= _bx[_j9][0] and _b9[2] >= _bx[_j9][2]
+                          and _b9[1] <= _bx[_j9][1] and _b9[3] >= _bx[_j9][3])
+            if _rect and _inside >= 3:
+                _drop.add(_i9)
+        if _drop and len(_drop) < len(Ps):
+            _keepP = [p for i, p in enumerate(Ps) if i not in _drop]
+            # ตัดออกจาก 'เส้นดิบ' ด้วย เพื่อไม่ให้กรอบไปโผล่ในไฟล์ตัด
+            try:
+                _rs9 = _RAW_SUBS.get("subs")
+                if _rs9 and len(_rs9) == len(Ps):
+                    _RAW_SUBS["subs"] = [s for i, s in enumerate(_rs9) if i not in _drop]
+                elif _rs9:
+                    _nk = []
+                    for _s9 in _rs9:
+                        _pt = [_s9["start"]] + [t[-1] for t in _s9["segs"]]
+                        _sx0 = min(p[0] for p in _pt); _sy0 = min(p[1] for p in _pt)
+                        _sx1 = max(p[0] for p in _pt); _sy1 = max(p[1] for p in _pt)
+                        if (_sx1 - _sx0) * (_sy1 - _sy0) < _AA * 0.85:
+                            _nk.append(_s9)
+                    if _nk:
+                        _RAW_SUBS["subs"] = _nk
+            except Exception:
+                pass
+            Ps = _keepP
+            _TRACE_ENG["frame_dropped"] = len(_drop)
+    except Exception:
+        pass
     _order = sorted(range(len(Ps)), key=lambda i: -Ps[i].area)
     _reps = [Ps[i].representative_point() for i in range(len(Ps))]
     _preps = {}
@@ -4091,6 +4135,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         out_layers = []
         # 🧭 รายงานเอนจิ้นที่ใช้จริง (จะได้รู้ทันทีว่าไฟล์เอนจิ้นบนเซิร์ฟเวอร์เป็นรุ่นไหน)
         try:
+            if _TRACE_ENG.get("frame_dropped"):
+                warns.append("🗑️ ตัด 'กรอบหน้ากระดาษ' ที่ติดมากับไฟล์ออก %d เส้น — "
+                             "กรอบนี้ทำให้ตัวอักษรถูกนับเป็นรูจนแหว่ง และมีเส้นตัดเกินในไฟล์"
+                             % _TRACE_ENG["frame_dropped"])
+                _TRACE_ENG["frame_dropped"] = 0
             _eng9 = _TRACE_ENG.get("mode", "")
             if _eng9 == "file-vector":
                 warns.append("🥇 เส้นตัด = เส้นโค้งจริงในไฟล์ .ai/.pdf (ไม่ผ่านการ trace) — คมที่สุด")
