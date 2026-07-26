@@ -3426,7 +3426,24 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
             return (p[0] + _dx, p[1] + _dy)
         lyname = _en_layer(L["name"])
         L = dict(L); L["subs"] = _dedup_subs(L.get("subs"))     # 🧹 กันเส้นซ้อนหลุดเข้าไฟล์ .ai
+        _isprint = (L.get("kind") == "print")
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s">%s</text>' % (cursor, topPad - fs * 0.6, fs * 0.9, L["color"], lyname))
+        if _isprint:
+            # 🖨️ เลเยอร์งานพิมพ์/สติ๊กเกอร์ = 'ตัวหนังสือทึบสีดำ' พร้อมพิมพ์จริง
+            #    รวมทุกเส้นเป็น path เดียว + fill-rule evenodd -> รูในตัวอักษร (ช่อง อ/ย/ู) โปร่งถูกต้อง ไม่ตัน
+            parts.append('<g id="PRINT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="#000000" fill-rule="evenodd" stroke="none">'
+                         % (_dxf_layer(lyname), lyname))
+            _dall = []
+            for sp in L["subs"]:
+                nsp = {"start": T(sp["start"]),
+                       "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
+                       "closed": True}
+                _dall.append(nesting._sp_d(nsp))
+            if _dall:
+                parts.append('<path d="%s"/>' % " ".join(_dall))
+            parts.append('</g>')
+            cursor += w + gap
+            continue
         parts.append('<g id="CUT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="%s" fill-opacity="0.14" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">'
                      % (_dxf_layer(lyname), lyname, L["color"], L["color"], lw))
         for sp in L["subs"]:
@@ -3940,7 +3957,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             _ai_extra = []
             try:
                 if _sticker_geom is not None and not _sticker_geom.is_empty:
-                    _ss = _poly_to_subs(_sticker_geom, tol=0.04)
+                    # 🖨️ งานพิมพ์: ใช้รูปทรงจริง (รวมรูในตัวอักษร) -> ตัวหนังสือทึบดำ อ่านออก ไม่เละ
+                    _ss = _poly_to_subs(_sticker_geom, tol=0.03)
                     if _punch_raw_subs:                       # ใช้เส้นดิบถ้ามี (คมกว่า)
                         from shapely.prepared import prep as _pp4
                         from shapely.geometry import Point as _Pt4
