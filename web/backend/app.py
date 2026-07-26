@@ -4116,6 +4116,22 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             _mgspec = json.loads(material_groups) if str(material_groups or "").strip() else []
         except Exception:
             _mgspec = []
+        # 🛡️ กันเคสร้ายแรง: กลุ่มวัสดุเก็บไว้เป็น 'หมายเลขชิ้น' — ถ้าจำนวนชิ้นของงานเปลี่ยน
+        #    (เปลี่ยนไฟล์ / เปลี่ยนขนาด / อัปเดตระบบ) หมายเลขจะชี้ผิดชิ้น แล้วไป 'หักชิ้นผิด'
+        #    ออกจากตัวป้าย -> ตัวอักษรแหว่งทั้งภาพ 3 มิติและไฟล์ตัด · ต้องทิ้งกลุ่มที่ไม่ตรงเสมอ
+        _mg_drop = 0
+        if _mgspec:
+            _ok = []
+            for _gs in _mgspec:
+                _n_at = int(_gs.get("pieces_n") or 0)
+                if _n_at and _n_at != len(_mat_pieces):
+                    _mg_drop += 1
+                    continue
+                _ok.append(_gs)
+            _mgspec = _ok
+            if _mg_drop:
+                warns.append("⚠️ ยกเลิกกลุ่มวัสดุเก่า %d กลุ่ม — จำนวนชิ้นของงานเปลี่ยนไปแล้ว "
+                             "(หมายเลขชิ้นไม่ตรง) กรุณาแตะเลือกคำแล้วจ่ายวัสดุใหม่" % _mg_drop)
         if _mgspec and _mat_pieces:
             from shapely.ops import unary_union as _uug
             _used = set()
