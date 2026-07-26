@@ -5681,12 +5681,21 @@ $('goLayer').onclick=function(){
           // 🎯 แบบจากด้านบน = auto ขนาดจริง (กว้าง×สูง) ตามสเกลผนัง + คิดราคาตามประเภทที่เลือก (เหมือนเพิ่มกล่องข้อความ)
           //    ตีกรอบแยกโลโก้/ตัวอักษร ใช้เฉพาะไฟล์ภาพล้วนที่ไม่ได้ทำแบบจากด้านบน
           try{
-            var _rwmm=parseFloat($('realW')&&$('realW').value)||0;
-            var _wwcm=parseFloat($('wWall')&&$('wWall').value)||400;
-            if(_rwmm>0&&_wwcm>0){ var _r=Math.max(0.02,Math.min(0.98,(_rwmm/10)/_wwcm));
+            // 📐 ขนาดบนผนัง = 'ขนาดนอกจริงของตัวป้าย' (จาก backend) — ไม่ใช่ realW ที่เป็นค่าก่อนบวกคิ้ว
+            var _rwmm=parseFloat(j.outer_w_mm)||parseFloat($('realW')&&$('realW').value)||0;
+            var _applySize=function(){
+              var _wwcm=parseFloat($('wWall')&&$('wWall').value)||400;
+              if(!(_rwmm>0&&_wwcm>0))return;
+              var _r=Math.max(0.02,Math.min(0.98,(_rwmm/10)/_wwcm));
               if($('wMode'))$('wMode').value='width';
-              if($('wRatio'))$('wRatio').value=String(Math.round(_r*1000)/1000);
-              if($('wSlider'))$('wSlider').value=String(Math.round(_r*100)); }
+              if($('wSlider'))$('wSlider').value=String(Math.round(_r*100));
+              // ⚠️ ตั้ง wRatio 'ทีหลัง' เสมอ — slider.oninput จะเขียนทับ wRatio เป็นทศนิยม 2 ตำแหน่ง (ขนาดเพี้ยน)
+              if($('wRatio'))$('wRatio').value=String(Math.round(_r*10000)/10000);
+              try{ if(typeof wallDraw==='function')wallDraw(); }catch(_e){}
+            };
+            window._wallApplySize=_applySize; _applySize();
+            // ⏱️ _wallLoad จะ 'จัดวางใหม่อัตโนมัติ' หลังภาพโหลดเสร็จ -> ต้องบังคับขนาดจริงซ้ำอีกรอบ
+            [220,600,1100].forEach(function(_ms){ setTimeout(function(){ try{_applySize();}catch(_e){} },_ms); });
             if($('wDsgnSplit'))$('wDsgnSplit').checked=false;              // แบบจากด้านบน = ป้ายชิ้นเดียว ไม่ตีกรอบแยก
             var _mst=$('mainSignType');
             if(_mst&&_mst.selectedIndex>=0&&typeof window._setWallType==='function'){ var _nm=(_mst.options[_mst.selectedIndex].textContent||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); if(_nm)window._setWallType(_nm); }
