@@ -1985,9 +1985,14 @@ def _poly_to_subs(geom, tol=0.04):
 
 
 _FIXSTAT = {"chips": 0, "holes": 0}      # นับเศษ/รูจิ๋วที่เก็บกวาดออก (ไว้แจ้งผู้ใช้)
+# 🔒 โหมดปลอดภัย = ปิดของใหม่ทั้งหมด กลับไปใช้เส้นทางเดิมของระบบเป๊ะ ๆ
+#    (ไม่เกลาเส้น · ไม่กวาดเศษ · ไม่ใช้กลุ่มวัสดุ) — เปิดไว้เป็นค่าเริ่มต้น
+_SAFE = {"on": False}
 
 
 def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
+    if _SAFE["on"]:
+        return geom                       # 🔒 โหมดปลอดภัย: ไม่แตะรูปเลย
     """🩹 เก็บงานรูปที่ได้จากการ offset (คิ้ว/แผ่นพื้น/อะคริลิคหด) ให้ 'เนียนกริบ พร้อมตัด'
 
     อาการที่แก้ (เกิดจากคณิตศาสตร์ของการขยาย-หดเส้น ไม่ใช่ความละเอียดของภาพ):
@@ -2078,6 +2083,8 @@ def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
 
 
 def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
+    if _SAFE["on"]:
+        return _poly_to_subs(geom, tol=0.04)   # 🔒 โหมดปลอดภัย: เส้นเดิมของระบบ 100%
     """✂️ เส้นตัดของ 'ชั้นที่ขยาย/หดจากรูปต้น' (คิ้ว · แผ่นพื้น · อะคริลิคหด)
 
     ปัญหาเดิม: รูปต้นถูก sample เป็นจุดถี่ ~0.5 มม. → shapely.buffer คำนวณ normal
@@ -3921,7 +3928,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
                     material_groups: str = Form(""),
-                    logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0)):
+                    logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
+                    safe_mode: str = Form("0")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -3930,6 +3938,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         f.write(await file.read())
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
+        # 🔒 โหมดปลอดภัย (ค่าเริ่มต้น) = ปิดของใหม่ทั้งหมด · ใช้เส้นทางเดิมของระบบเป๊ะ ๆ
+        _SAFE["on"] = str(safe_mode or "0").lower() in ("1", "on", "true")
+        if _SAFE["on"]:
+            material_groups = ""            # ไม่หักชิ้นใด ๆ ออกจากตัวป้ายเด็ดขาด
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
@@ -4085,11 +4097,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🔒 เก็บ 'เส้นต้นฉบับ' ไว้ทั้งหมด ไม่แก้รูปทรงเลย — แค่จัดกลุ่มว่าชิ้นไหนเป็นตัวเดียวกัน
                 _mat_pieces = sorted([p for p in _mp0 if p.geom_type == "Polygon" and not p.is_empty and p.area > 0.5],
                                      key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+            except Exception:
+                _mat_pieces = []
+        # 🧩 คลัสเตอร์ = 'ตัวอักษร 1 ตัว' (ตัว + เศษขอบที่ติดกัน) — ใช้บังคับให้จ่ายวัสดุครบทั้งตัวเสมอ
+        _mat_clust = [[i] for i in range(len(_mat_pieces))]
+        try:
+            if _mat_pieces:
                 _fb1 = full.bounds
                 _mat_clust = _merge_touching(_mat_pieces,
                                              tol=min(4.0, max(0.8, (_fb1[3] - _fb1[1]) * 0.05)))
-            except Exception:
-                _mat_pieces = []
+        except Exception:
+            _mat_clust = [[i] for i in range(len(_mat_pieces))]
         # 🗺️ แผนที่ให้ผู้ใช้ 'แตะคำ' เลือกชิ้น (สร้างก่อนหักกลุ่มออก — index ต้องตรงกับที่ผู้ใช้เห็น)
         _mat_map_svg = ""
         try:
@@ -4138,6 +4156,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             for _gi, _gs in enumerate(_mgspec[:8]):
                 try:
                     _idx = [int(v) for v in (_gs.get("pieces") or []) if 0 <= int(v) < len(_mat_pieces)]
+                    # 🔑 สำคัญที่สุด: ขยายให้ครบ 'ทั้งตัวอักษร' เสมอ
+                    #    เอนจิ้นซอยขอบบนตัวอักษรเป็นชิ้นเล็ก ๆ — ถ้าหักออกแค่บางชิ้น
+                    #    ตัวอักษรที่เหลือจะ 'แหว่ง' ทั้งภาพ 3 มิติและไฟล์ตัด
+                    try:
+                        _pick = set(_idx)
+                        for _cl in _mat_clust:
+                            if _pick & set(_cl):
+                                _pick |= set(_cl)
+                        _idx = sorted(_pick)
+                    except Exception:
+                        pass
                     _idx = [v for v in _idx if v not in _used]
                     _grec = SIGN_TYPES.get(str(_gs.get("type") or ""))
                     if not _idx or not _grec:
@@ -5060,6 +5089,10 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         f.write(await file.read())
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
+        # 🔒 โหมดปลอดภัย (ค่าเริ่มต้น) = ปิดของใหม่ทั้งหมด · ใช้เส้นทางเดิมของระบบเป๊ะ ๆ
+        _SAFE["on"] = str(safe_mode or "0").lower() in ("1", "on", "true")
+        if _SAFE["on"]:
+            material_groups = ""            # ไม่หักชิ้นใด ๆ ออกจากตัวป้ายเด็ดขาด
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
