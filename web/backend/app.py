@@ -1855,10 +1855,12 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
 
 
 def _mbuf(geom, d):
-    """offset เส้นแบบ 'มุมฉาก' (mitre) — ไม่ปัดมุมมน · ลดจุดบนโค้ง (resolution ต่ำ) เพื่อเครื่องดัดไม่กรีดถี่"""
+    """offset เส้นแบบ 'มุมฉาก' (mitre) — ไม่ปัดมุมมน · ลดจุดบนโค้ง (resolution ต่ำ) เพื่อเครื่องดัดไม่กรีดถี่
+       ⚠️ mitre_limit ต่ำ = มุมแคบมากจะถูกตัดเป็นมุมเฉียงแทน 'หนามแหลม' (หนามคือต้นเหตุห่วงเล็ก ๆ ที่มุม)
+       resolution สูงขึ้น = โค้งเนียนกว่าเดิม (ยังฟิตเป็นเบซิเยร์ทีหลังอยู่ดี จุดไม่บาน)"""
     if geom is None or geom.is_empty or abs(float(d)) < 1e-9:
         return geom
-    return geom.buffer(float(d), join_style=2, mitre_limit=4.0, resolution=12)
+    return geom.buffer(float(d), join_style=2, mitre_limit=2.0, resolution=24)
 
 
 def _clean_layer(geom, min_area_mm2=30.0, min_width_mm=1.8):
@@ -1919,6 +1921,99 @@ def _poly_to_subs(geom, tol=0.04):
     return subs
 
 
+_FIXSTAT = {"chips": 0, "holes": 0}      # นับเศษ/รูจิ๋วที่เก็บกวาดออก (ไว้แจ้งผู้ใช้)
+
+
+def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
+    """🩹 เก็บงานรูปที่ได้จากการ offset (คิ้ว/แผ่นพื้น/อะคริลิคหด) ให้ 'เนียนกริบ พร้อมตัด'
+
+    อาการที่แก้ (เกิดจากคณิตศาสตร์ของการขยาย-หดเส้น ไม่ใช่ความละเอียดของภาพ):
+      1) เส้นตัดกันเอง / วนเป็นห่วงเล็ก ๆ ที่มุมแหลม (swallowtail) — เห็นเป็น 'หยดน้ำ' ตรงมุม
+      2) หนามแหลมยาวจากการต่อมุมแบบ mitre ที่มุมแคบมาก
+      3) วง/รูเศษจิ๋วที่เหลือค้าง เมื่อลายบางกว่า 2 เท่าของระยะ offset (เช่น วงกลมซ้อนวงกลมใน 'ณ')
+      4) สะเก็ด/สลิเวอร์บางเฉียบที่เครื่องตัดเดินไม่ได้
+
+    วิธี: buffer(0) แก้เส้นตัดกัน -> opening ลบหนาม/สลิเวอร์ -> closing ปิดรูเข็ม -> ทิ้งวงจิ๋ว
+    ถ้าผลลัพธ์เพี้ยนเกิน 3% ของพื้นที่ -> คืนของเดิม (ปลอดภัยไว้ก่อน ห้ามรูปเปลี่ยน)
+    """
+    if geom is None or geom.is_empty:
+        return geom
+    from shapely.geometry import Polygon as _Pg7
+    from shapely.ops import unary_union as _uu7
+    W = max(50.0, float(ref_w_mm or 600.0))
+    # ระยะเก็บงาน: ต้องเล็กพอที่ 'ตัวหนังสือเล็ก ๆ' จะไม่หาย แต่ใหญ่พอลบห่วง/หนามที่มุม (0.20–0.45 มม.)
+    eps = max(0.20, min(0.45, W * 0.0006))
+    if band_mm > 0:
+        eps = min(eps, band_mm * 0.15)          # อย่าให้ใหญ่จนกินคิ้วบาง ๆ
+    _wmin = 0.30                                # ครึ่งหนึ่งของความกว้างต่ำสุดที่ตัดจริงได้ (0.6 มม.)
+    RJ = dict(join_style=1, resolution=16)                          # มุมมน = ไม่มีหนาม
+    _amin = 4.0                                                     # ตร.มม. เล็กกว่านี้ = เศษ ตัดจริงไม่ได้
+    try:
+        g = geom.buffer(0)                                          # 1) แก้เส้นตัดกันเอง (swallowtail)
+        if g is None or g.is_empty:
+            return geom
+        out = []
+        for p in (g.geoms if g.geom_type == "MultiPolygon" else [g]):
+            if p.geom_type != "Polygon" or p.is_empty:
+                continue
+            # 2) ทิ้ง 'ชิ้นเศษ' — เล็กเกิน หรือบางกว่า 2·eps ทั้งชิ้น (หยดน้ำ/สะเก็ดจากการ offset)
+            if p.area < _amin:
+                _FIXSTAT["chips"] += 1
+                continue
+            try:
+                if p.buffer(-_wmin, **RJ).is_empty:
+                    _FIXSTAT["chips"] += 1
+                    continue
+            except Exception:
+                pass
+            # 3) ทิ้ง 'รูจิ๋ว' ในชิ้น (เช่น วงกลมซ้อนวงกลมใน ณ) — เก็บเฉพาะรูที่ตัดได้จริง
+            holes = []
+            for h in p.interiors:
+                try:
+                    hp = _Pg7(h)
+                    if hp.area >= _amin and not hp.buffer(-_wmin, **RJ).is_empty:
+                        holes.append(h)
+                    else:
+                        _FIXSTAT["holes"] += 1
+                except Exception:
+                    holes.append(h)
+            q = _Pg7(p.exterior, holes).buffer(0)
+            # 4) opening 'ทีละชิ้น' — ลบหนาม/ห่วงที่มุมแหลม · ทำทีละชิ้นจึงไม่มีทางเชื่อมชิ้นอื่นเข้าด้วยกัน
+            #    ⚠️ ห้ามทำ closing รวม — มันจะดูดตัวอักษรที่อยู่ใกล้กันติดเป็นก้อนเดียว
+            try:
+                q2 = q.buffer(-eps, **RJ).buffer(eps, **RJ)
+                if (q2 is not None and not q2.is_empty
+                        and q2.geom_type in ("Polygon", "MultiPolygon")
+                        and abs(q2.area - q.area) <= max(6.0, q.area * 0.06)):
+                    q = q2
+            except Exception:
+                pass
+            if q is not None and not q.is_empty:
+                out.append(q)
+        if not out:
+            return geom.buffer(0)
+        g2 = _uu7(out) if len(out) > 1 else out[0]
+        # 4b) กวาดรอบสอง — opening อาจตัดคอคอดจนเกิด 'เศษใหม่' ขึ้นมาอีก ต้องเก็บให้เกลี้ยง
+        try:
+            _f2 = [p for p in (g2.geoms if g2.geom_type == "MultiPolygon" else [g2])
+                   if p.geom_type == "Polygon" and not p.is_empty and p.area >= _amin
+                   and not p.buffer(-_wmin, **RJ).is_empty]
+            if _f2:
+                g2 = _uu7(_f2) if len(_f2) > 1 else _f2[0]
+        except Exception:
+            pass
+        # 5) กันพลาด: พื้นที่ต้องเปลี่ยนน้อยมาก (รูปทรงจริงห้ามเพี้ยน)
+        #    หมายเหตุ: 'จำนวนชิ้นเพิ่ม' เป็นเรื่องปกติ — คอคอดที่บางกว่าดอกกัดจะถูกตัดขาดตามความจริง
+        if g2 is None or g2.is_empty or abs(g2.area - geom.area) > max(25.0, geom.area * 0.02):
+            return geom.buffer(0)
+        return g2
+    except Exception:
+        try:
+            return geom.buffer(0)
+        except Exception:
+            return geom
+
+
 def _cut_subs_offset(geom, ref_w_mm=600.0):
     """✂️ เส้นตัดของ 'ชั้นที่ขยาย/หดจากรูปต้น' (คิ้ว · แผ่นพื้น · อะคริลิคหด)
 
@@ -1934,6 +2029,7 @@ def _cut_subs_offset(geom, ref_w_mm=600.0):
     W = max(50.0, float(ref_w_mm or 600.0))
     r = max(0.30, min(0.70, W * 0.0008))      # แรงรีดคลื่น (มม.)
     tol = max(0.06, min(0.25, W * 0.0003))    # ความคลาดเคลื่อนตอนฟิตโค้ง (มม.)
+    geom = _fix_offset_geom(geom, W)          # 🩹 แก้ห่วง/หนาม/วงเศษ ก่อนฟิตโค้งเสมอ
     base = _poly_to_subs(geom, tol=0.04)      # เส้นแบบเดิม (ไว้เทียบ/ถอยกลับ)
     try:
         g2 = _smooth_cut(geom, r)
@@ -3706,6 +3802,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         warns = []
+        _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
         # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
@@ -3998,6 +4095,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                   g = o2 if (i2 is None or i2.is_empty) else o2.difference(i2)
                   if g.is_empty:
                       g = o2
+                  # 🩹 คิ้ว = จุดที่เกิดห่วง/หนาม/วงเศษมากที่สุด -> เก็บงานทันทีก่อนใช้ต่อ
+                  g = _fix_offset_geom(g, float(real_width_mm), band_mm=band)
+                  # ⚠️ ลายบางกว่า 2 เท่าของคิ้ว -> ช่องกลางถูกกินหมด (คิ้วชนกันเอง) แจ้งให้ลดคิ้ว
+                  try:
+                      if i2 is not None and not i2.is_empty:
+                          _thin = full.difference(_mbuf(_mbuf(full, -band * 0.5), band * 0.5))
+                          if (not _thin.is_empty) and _thin.area > full.area * 0.02:
+                              warns.append("⚠️ บางจุดของลายบางกว่าคิ้ว %.1f ซม. — ช่องกลางคิ้วจะตีบ "
+                                           "แนะนำลดคิ้วลง หรือขยายป้ายให้ใหญ่ขึ้น" % (band / 10.0))
+                  except Exception:
+                      pass
                   if bore_geom is None:
                       bore_geom = i2; frame_outer = o2
                   # 🅰️ งานตัดแยกทีละตัวอักษร: คิ้วของแต่ละตัวต้องไม่เชื่อมติดกันเป็นก้อนเดียว
@@ -4012,7 +4120,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                               _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
                               _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
                               if _gg is not None and not _gg.is_empty:
-                                  _acc += _cut_subs_offset(_gg, float(real_width_mm))
+                                  _acc += _cut_subs_offset(_fix_offset_geom(_gg, float(real_width_mm), band_mm=band), float(real_width_mm))
                           if _acc:
                               _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
                       except Exception:
@@ -4132,6 +4240,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                        "subs": _as, "w_mm": round(_ab[2] - _ab[0], 1), "h_mm": round(_ab[3] - _ab[1], 1)})
         if not out_layers:
             return JSONResponse({"error": "สร้างชั้นตัดไม่สำเร็จ"}, status_code=400)
+        # 🧹 รายงานการเก็บกวาดเส้นตัด (เศษ/ห่วง/รูจิ๋วจากการขยาย-หดเส้น — ตัดจริงไม่ได้อยู่แล้ว)
+        try:
+            if _FIXSTAT["chips"] or _FIXSTAT["holes"]:
+                warns.append("🧹 เก็บกวาดเส้นตัด: ลบเศษ/ห่วงที่มุม %d ชิ้น · รูจิ๋วตัดไม่ได้ %d รู "
+                             "(เล็กกว่า 4 ตร.มม. หรือบางกว่า 0.6 มม. — เครื่องตัดทำไม่ได้จริง)"
+                             % (_FIXSTAT["chips"], _FIXSTAT["holes"]))
+        except Exception:
+            pass
         # 🖨️ กล่องไฟล้อมตามทรง: หน้า = อะคริลิคขาว P433 ตัดเป็นแผ่นเต็มตามทรง แล้วจบด้วยงานพิมพ์
         if rec.get("face_finish") == "print":
             warns.append("หน้าอะคริลิคขาว P433 = ตัดเป็นแผ่นเต็มตามทรงชิ้นเดียว "
