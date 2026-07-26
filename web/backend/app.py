@@ -899,12 +899,13 @@ SIGN_TYPES = {
     "20": {"name": "ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)", "depth_cm": 0.5, "flat": True, "allow_text": True,
            "layers": [{"name": "หน้าแผ่นแบน", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)}],
            "walls": []},
-    "1": {"name": "ไฟออกหน้า มีคิ้ว", "depth_cm": 5.0,
+    # 🅰️ ตัวอักษรยกขอบไฟออกหน้า — 'ตัดแยกทีละตัว' (per_letter) เหมือนงานจริง ไม่เชื่อมเป็นก้อนเดียว
+    "1": {"name": "ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)", "depth_cm": 5.0, "per_letter": True, "allow_text": True,
           "layers": [{"name": "คิ้วหน้า", "off": 0.0, "kind": "frame", "band": 10.0, "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "อะคริลิคตู้ไฟ", "off": -2.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
                      {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบ", "h": 5.0}, {"name": "ยกขอบใน", "h": 2.0}]},
-    "2": {"name": "ไฟออกหน้า ไม่มีคิ้ว", "depth_cm": 5.0,
+    "2": {"name": "ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)", "depth_cm": 5.0, "per_letter": True, "allow_text": True,
           "layers": [{"name": "หน้าอะคริลิค", "off": 1.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                      {"name": "ไส้อะคริลิคใส", "off": -1.5, "kind": "solid", "color": "#dc2626", "rgb": (220, 38, 38)},
                      {"name": "แผ่นพื้น", "off": 0.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
@@ -1020,6 +1021,19 @@ SIGN_TYPES = {
     "25": {"name": "อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer", "depth_cm": 1.0, "flat": True, "no_light": True, "allow_text": True,
            "layers": [{"name": "ชั้นบน อะคริลิค 5mm (อักษร/โลโก้)", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
                       {"name": "ชั้นรอง อะคริลิค 5mm (ฐานเผื่อขอบ 1.5cm)", "off": 15.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": []},
+    # 🧍 สแตนดี้ (Standee) — แผ่นตั้งพื้น พิมพ์หน้า + ขาตั้งพับหลัง · ไม่มีไฟ
+    "26": {"name": "สแตนดี้ สี่เหลี่ยม", "depth_cm": 1.0, "flat": True, "no_light": True, "standee": True,
+           "box_shape": "rect", "box_pad_cm": 0.0, "allow_text": True,
+           "face_finish": "print", "face_material": "พลาสวูด 5mm / ฟิวเจอร์บอร์ด 5mm (พิมพ์หน้า)",
+           "layers": [{"name": "แผ่นสแตนดี้ (พิมพ์หน้า) ไดคัทสี่เหลี่ยม", "off": 0.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "ขาตั้งหลัง (พับ) + ลิ้นล็อก", "off": 0.0, "kind": "standee_leg", "color": "#16a34a", "rgb": (22, 163, 74)}],
+           "walls": []},
+    "27": {"name": "สแตนดี้ ล้อมตามทรง", "depth_cm": 1.0, "flat": True, "no_light": True, "standee": True,
+           "standee_pad_cm": 1.5, "allow_text": True,
+           "face_finish": "print", "face_material": "พลาสวูด 5mm / ฟิวเจอร์บอร์ด 5mm (พิมพ์หน้า)",
+           "layers": [{"name": "แผ่นสแตนดี้ (พิมพ์หน้า) ไดคัทตามทรง", "off": 15.0, "kind": "solid", "color": "#2563EB", "rgb": (37, 99, 235)},
+                      {"name": "ขาตั้งหลัง (พับ) + ลิ้นล็อก", "off": 0.0, "kind": "standee_leg", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": []},
 }
 
@@ -1260,6 +1274,10 @@ _TYPE_EN = {
     "อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer": "Acrylic Die-cut Letters/Logo · No Light · 2 Layers",
     "ไฟออกหน้า มีคิ้ว": "Front-lit · with Trim (Kim)",
     "ไฟออกหน้า ไม่มีคิ้ว": "Front-lit · no Trim",
+    "สแตนดี้ สี่เหลี่ยม": "Standee · Rectangular Board (printed + fold-out leg)",
+    "สแตนดี้ ล้อมตามทรง": "Standee · Contour Die-cut (printed + fold-out leg)",
+    "ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)": "Front-lit Built-up Letters (with Trim) · cut per letter",
+    "ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)": "Front-lit Built-up Letters (no Trim) · cut per letter",
     "ตัวอักษรไฟออกรอบ": "Edge-lit Letters (light all around)",
     "กล่องไฟฉลุหน้า": "Light Box · Cut-out Face",
     "กล่องไฟสี่เหลี่ยม ฉลุหน้า": "Rect Light Box · Punched Face",
@@ -1305,6 +1323,10 @@ def _en_layer(n):
         return "PRINT / STICKER (no metal cut)"
     if "แผ่นขอบข้าง" in n:
         return "Side Return Plates (fold)"
+    if "ขาตั้งหลัง" in n:
+        return "Standee Fold-out Leg + Lock Tab"
+    if "แผ่นสแตนดี้" in n:
+        return "Standee Board (printed face)"
     if "ไดคัทตามทรง" in n:
         return "Die-cut Contour Plate"
     if "ชั้นบน" in n:
@@ -3460,6 +3482,100 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
             % (Wt, Ht, Wt, Ht, "".join(parts)))
 
 
+# 🖨️ ============ ไฟล์งานพิมพ์หน้ากล่องไฟ (UV / สติ๊กเกอร์) ============
+_PRINT_MODES = {
+    "uv": {"th": "พิมพ์ UV ลงแผ่นโดยตรง", "en": "UV Direct Print",
+           "bleed": 0.0, "cutname": "TrimLine (แนวตัดแผ่น)", "cutcol": "#0d9488",
+           "note": "พิมพ์ UV ลงบนแผ่นอะคริลิค/พลาสวูดโดยตรง · ไม่มีเลย์เยอร์กาว · เผื่อขอบ 0 มม. (ตัดตามเส้น TrimLine)"},
+    "sticker": {"th": "พิมพ์สติ๊กเกอร์ + ไดคัท", "en": "Printed Sticker + Die-cut",
+                "bleed": 3.0, "cutname": "CutContour (เส้นไดคัทสติ๊กเกอร์)", "cutcol": "#ff00ff",
+                "note": "พิมพ์สติ๊กเกอร์แล้วไดคัทตามเส้น CutContour · เผื่อตก (bleed) 3 มม. รอบชิ้น · ลามิเนตกันแดดก่อนติด"},
+}
+
+
+# วัสดุที่ 'พิมพ์ลงผิว' ได้ ต่อประเภทป้าย (ใช้เขียนในบล็อกข้อมูลของไฟล์งานพิมพ์)
+_PRINT_MAT = {
+    "22": "พลาสวูด (พิมพ์ UV ลงผิวได้)", "23": "พลาสวูด 2 ชั้น (พิมพ์ UV ลงผิวได้)",
+    "24": "อะคริลิค (พิมพ์ UV ลงผิวได้)", "25": "อะคริลิค 2 ชั้น (พิมพ์ UV ลงผิวได้)",
+    "20": "แผ่นแบน ไดคัท (พิมพ์ UV ลงผิวได้)",
+}
+
+
+def _print_file_svg(art_href, bounds, mode="uv", title="", material="", extra_subs=None):
+    """ไฟล์งานพิมพ์ 'ขนาดจริง 1:1 (มม.)' สำหรับหน้ากล่องไฟ
+       - เลเยอร์ ARTWORK  = ภาพงานพิมพ์วางเต็มหน้าป้าย (ขนาดจริง)
+       - เลเยอร์ BLEED    = กรอบเผื่อตก (สติ๊กเกอร์ 3 มม. · UV 0 มม.)
+       - เลเยอร์ CutContour/TrimLine = เส้นไดคัท/เส้นตัดแผ่น (สปอตสีชมพูตามมาตรฐานโรงพิมพ์)
+       - เลเยอร์ INFO     = บล็อกข้อมูลงาน (ขนาด · วิธีพิมพ์ · วัสดุ)"""
+    from vectorcnc import nesting
+    M = _PRINT_MODES.get(str(mode or "uv").lower(), _PRINT_MODES["uv"])
+    x0, y0, x1, y1 = [float(v) for v in bounds]
+    W = max(1.0, x1 - x0); H = max(1.0, y1 - y0)
+    bl = float(M["bleed"])
+    PAD = max(24.0, min(W, H) * 0.09)             # ขอบกระดาษรอบชิ้นงาน
+    INFO = max(34.0, min(W, H) * 0.14)            # แถบข้อมูลด้านล่าง
+    TW = W + bl * 2 + PAD * 2
+    TH = H + bl * 2 + PAD * 2 + INFO
+    ax = PAD + bl; ay = PAD + bl                  # มุมซ้ายบนของ 'ตัวงานจริง'
+    fs = max(4.0, min(W, H) * 0.030)
+    lw = max(0.25, min(W, H) * 0.0016)
+    P = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+         'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
+         'width="%.2fmm" height="%.2fmm" viewBox="0 0 %.2f %.2f">' % (TW, TH, TW, TH)]
+    P.append('<rect x="0" y="0" width="%.2f" height="%.2f" fill="#ffffff"/>' % (TW, TH))
+    # 1) ARTWORK — ขนาดจริง 1:1
+    if art_href:
+        P.append('<g id="ARTWORK" inkscape:groupmode="layer" inkscape:label="ARTWORK (1:1)">'
+                 '<image href="%s" xlink:href="%s" x="%.3f" y="%.3f" width="%.3f" height="%.3f" '
+                 'preserveAspectRatio="none"/></g>' % (art_href, art_href, ax, ay, W, H))
+    # 2) BLEED — กรอบเผื่อตก (เฉพาะสติ๊กเกอร์)
+    if bl > 0:
+        P.append('<g id="BLEED" inkscape:groupmode="layer" inkscape:label="BLEED %.0fmm">'
+                 '<rect x="%.3f" y="%.3f" width="%.3f" height="%.3f" fill="none" stroke="#94a3b8" '
+                 'stroke-width="%.2f" stroke-dasharray="%.2f %.2f"/></g>'
+                 % (bl, ax - bl, ay - bl, W + bl * 2, H + bl * 2, lw, fs * 0.6, fs * 0.4))
+    # 3) CutContour / TrimLine — เส้นไดคัท (ตามรูปจริงถ้ามี ไม่งั้นเป็นกรอบสี่เหลี่ยม)
+    P.append('<g id="CutContour" inkscape:groupmode="layer" inkscape:label="%s" fill="none" '
+             'stroke="%s" stroke-width="%.2f">' % (M["cutname"], M["cutcol"], max(0.3, lw * 1.6)))
+    _drew = False
+    if extra_subs:
+        for sp in extra_subs:
+            try:
+                nsp = {"start": (sp["start"][0] - x0 + ax, sp["start"][1] - y0 + ay),
+                       "segs": [("L", (s[1][0] - x0 + ax, s[1][1] - y0 + ay)) if s[0] == "L"
+                                else ("C", (s[1][0] - x0 + ax, s[1][1] - y0 + ay),
+                                      (s[2][0] - x0 + ax, s[2][1] - y0 + ay),
+                                      (s[3][0] - x0 + ax, s[3][1] - y0 + ay)) for s in sp["segs"]],
+                       "closed": sp.get("closed", True)}
+                P.append('<path d="%s"/>' % nesting._sp_d(nsp)); _drew = True
+            except Exception:
+                pass
+    if not _drew:
+        P.append('<rect x="%.3f" y="%.3f" width="%.3f" height="%.3f"/>' % (ax, ay, W, H))
+    P.append('</g>')
+    # 4) INFO — บล็อกข้อมูลงาน (ไม่ต้องพิมพ์ · ลบทิ้งได้)
+    iy = PAD + bl * 2 + H + PAD * 0.55
+    P.append('<g id="INFO" inkscape:groupmode="layer" inkscape:label="INFO (do not print)">')
+    P.append('<line x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f" stroke="#cbd5e1" stroke-width="%.2f"/>'
+             % (PAD, iy - fs * 1.1, TW - PAD, iy - fs * 1.1, lw))
+    P.append('<text x="%.2f" y="%.2f" font-family="Prompt,Arial" font-size="%.2f" font-weight="800" fill="#0f172a">%s · %s</text>'
+             % (PAD, iy + fs * 0.9, fs * 1.25, _xesc(M["th"]), _xesc(M["en"])))
+    P.append('<text x="%.2f" y="%.2f" font-family="Prompt,Arial" font-size="%.2f" fill="#334155">'
+             'ขนาดงานจริง %.1f × %.1f ซม. · เผื่อตก %.0f มม. · %s</text>'
+             % (PAD, iy + fs * 2.4, fs, W / 10.0, H / 10.0, bl, _xesc(material or "-")))
+    P.append('<text x="%.2f" y="%.2f" font-family="Prompt,Arial" font-size="%.2f" fill="#64748b">%s</text>'
+             % (PAD, iy + fs * 3.7, fs * 0.9, _xesc(M["note"])))
+    if title:
+        P.append('<text x="%.2f" y="%.2f" font-family="Prompt,Arial" font-size="%.2f" fill="#64748b" text-anchor="end">%s</text>'
+                 % (TW - PAD, iy + fs * 0.9, fs * 0.95, _xesc(title)))
+    P.append('</g></svg>')
+    return "".join(P)
+
+
+def _xesc(t):
+    return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _mount_plate_files(plate_cm=10.0, arm="side1"):
     """ไฟล์ตัด 'เพลทยึด' 10cm เจาะ 4 รู (ตามจำนวนแขน) -> DXF + SVG (มม.) เข้าเลเซอร์/CNC ทำเพลทจริง"""
     import ezdxf, io, base64
@@ -3510,7 +3626,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.0)):
+                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
@@ -3690,8 +3806,46 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 g = _bx2(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(base)
                 if g.is_empty:
                     g = base
+            elif kind == "standee_leg":
+                # 🧍 ขาตั้งสแตนดี้: สามเหลี่ยมพับหลัง สูง ~45% ของงาน + ลิ้นล็อกล่าง (ตัดจากแผ่นเดียวกัน)
+                from shapely.geometry import Polygon as _Pg9, box as _bx9
+                from shapely.ops import unary_union as _uu9
+                _sb9 = full.bounds
+                _sw9 = _sb9[2] - _sb9[0]; _sh9 = _sb9[3] - _sb9[1]
+                _lh9 = max(200.0, min(900.0, _sh9 * 0.55))   # สูงขาตั้ง (20–90 ซม.)
+                _lw9 = max(150.0, min(_sw9 * 0.85, _lh9 * 0.62))   # ฐานขาตั้ง ~62% ของความสูง (ตั้งไม่ล้ม)
+                _hg9 = max(20.0, _lh9 * 0.05)                # แถบพับติดหลังแผ่น
+                _ox9 = _sb9[0]; _oy9 = _sb9[3] + 40.0        # วางใต้ตัวงาน (ไม่ทับ · ตัดจากแผ่นเดียวกัน)
+                _tri = _Pg9([(_ox9, _oy9 + _lh9),                       # มุมพับซ้าย (ติดแผ่น)
+                             (_ox9 + _lw9, _oy9 + _lh9),                # มุมพับขวา (ติดแผ่น)
+                             (_ox9 + _lw9 * 0.72, _oy9),                # ปลายเท้าขวา
+                             (_ox9 + _lw9 * 0.28, _oy9)])               # ปลายเท้าซ้าย (ฐานกว้าง ไม่ล้ม)
+                _hin = _bx9(_ox9, _oy9 + _lh9, _ox9 + _lw9, _oy9 + _lh9 + _hg9)
+                _tab = _bx9(_ox9 + _lw9 * 0.32, _oy9 + _lh9 + _hg9,
+                            _ox9 + _lw9 * 0.68, _oy9 + _lh9 + _hg9 * 2.0)        # ลิ้นล็อก
+                g = _uu9([_tri, _hin, _tab])
             elif kind == "frame":
                 band = TRIMW if TRIMW > 0 else float(L.get("band", 10.0))
+                # 🅰️ ตัดแยกทีละตัว: คิ้วต้องไม่กว้างจนตัวติดกันเป็น 'กล่องไฟล้อมตามทรง'
+                if rec.get("per_letter") and TRIM_OUT:
+                    try:
+                        _lts0 = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        if len(_lts0) > 1:
+                            _gapmin = 1e18
+                            for _i0 in range(len(_lts0)):
+                                for _j0 in range(_i0 + 1, len(_lts0)):
+                                    _d0 = _lts0[_i0].distance(_lts0[_j0])
+                                    if _d0 > 0.01:
+                                        _gapmin = min(_gapmin, _d0)
+                            if _gapmin < 1e17:
+                                _bcap = max(1.5, _gapmin * 0.42)
+                                if band > _bcap:
+                                    warns.append("🅰️ ตัดแยกทีละตัว: ลดคิ้วจาก %.1f ซม. เหลือ %.1f ซม. "
+                                                 "เพื่อไม่ให้ตัวอักษรเชื่อมติดกันเป็นกล่องเดียว"
+                                                 % (band / 10.0, _bcap / 10.0))
+                                    band = _bcap
+                    except Exception:
+                        pass
                 if TRIM_OUT:
                     o2 = _mbuf(full, off + band)    # ขอบนอกคิ้ว = ตัวต้น + ความหนาคิ้ว
                     i2 = base                        # ช่องกลาง = ตัวต้น (โชว์อะคริลิค) · รูใน(ไส้)จัดการโดย difference
@@ -3703,8 +3857,36 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     g = o2
                 if bore_geom is None:
                     bore_geom = i2; frame_outer = o2
+                # 🅰️ งานตัดแยกทีละตัวอักษร: คิ้วของแต่ละตัวต้องไม่เชื่อมติดกันเป็นก้อนเดียว
+                if rec.get("per_letter"):
+                    try:
+                        _lts = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        _acc = []
+                        for _lt in _lts:
+                            _o = _mbuf(_lt, off + band) if TRIM_OUT else _mbuf(_lt, off)
+                            _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
+                            _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
+                            if _gg is not None and not _gg.is_empty:
+                                _acc += _poly_to_subs(_gg, tol=0.04)
+                        if _acc:
+                            _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
+                    except Exception:
+                        pass
             else:
                 g = base
+                # 🅰️ ตัดแยกทีละตัวอักษร (ชั้น solid ที่มีค่าเผื่อ) -> ไม่ให้ตัวติดกันกลายเป็นชิ้นเดียว
+                if rec.get("per_letter") and abs(off) > 0.01:
+                    try:
+                        _lts = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
+                        _acc = []
+                        for _lt in _lts:
+                            _gg = _mbuf(_lt, off)
+                            if _gg is not None and not _gg.is_empty:
+                                _acc += _poly_to_subs(_gg, tol=0.04)
+                        if _acc:
+                            _use_raw_punch = _acc
+                    except Exception:
+                        pass
             # ⚠️ ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) จะทำให้ลายเส้นบางแตกเป็นเศษ -> เก็บกวาดทิ้ง
             junk = 0
             if off < -0.01:
@@ -3982,6 +4164,44 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
             ai_b64 = ""
+        # 🖨️ ============ ไฟล์งานพิมพ์หน้ากล่องไฟ (แยกไฟล์ · ขนาดจริง 1:1) ============
+        #     เลือกได้ตั้งแต่ตอนออกแบบว่า 'พิมพ์ UV' หรือ 'พิมพ์สติ๊กเกอร์ + ไดคัท'
+        print_b64 = ""; print_info = {}
+        _pmode = str(face_print or "uv").lower()
+        try:
+            _face_is_print = (rec.get("face_finish") == "print")
+            _has_sticker = (_sticker_geom is not None and not _sticker_geom.is_empty)
+            # 🖨️ เปิดไฟล์งานพิมพ์ให้ 'ทุกประเภทป้าย' — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว/ติดสติ๊กเกอร์
+            if _pmode not in ("none", "off") and full is not None and not full.is_empty:
+                _M = _PRINT_MODES.get(_pmode, _PRINT_MODES["uv"])
+                if _has_sticker and not _face_is_print:
+                    # เลือกเฉพาะบางชิ้นเป็นสติ๊กเกอร์ -> พิมพ์เฉพาะชิ้นนั้น (ทึบดำ พร้อมไดคัท)
+                    _pb = _sticker_geom.bounds
+                    _phref = ""
+                    _pcut = _poly_to_subs(_sticker_geom, tol=0.03)
+                    _pmat = "สติ๊กเกอร์พิมพ์ + ไดคัทตามรูป (เฉพาะชิ้นที่เลือก)"
+                else:
+                    # พิมพ์เต็มหน้างาน -> ใช้รูปงานจริงความละเอียดสูง + เส้นตัด/ไดคัทตามทรงงาน
+                    _pb = full.bounds
+                    _phref = _art_data_uri(inp, max_px=3200)
+                    _pcut = _poly_to_subs(full, tol=0.03)
+                    _pmat = str(rec.get("face_material", "")) or _PRINT_MAT.get(str(sign_type), "ตามสเปควัสดุหน้างาน")
+                    if _pmode == "sticker":
+                        _pmat = "สติ๊กเกอร์พิมพ์ + ลามิเนตกันแดด (ติดทับผิว %s)" % _pmat
+                _psvg = _print_file_svg(_phref, _pb, mode=_pmode,
+                                        title="VectorCNC · %s" % str(rec.get("name", "")),
+                                        material=_pmat, extra_subs=_pcut)
+                import cairosvg as _cs2
+                print_b64 = base64.b64encode(_cs2.svg2pdf(bytestring=_psvg.encode("utf-8"))).decode()
+                print_info = {"mode": _pmode, "label_th": _M["th"], "label_en": _M["en"],
+                              "bleed_mm": _M["bleed"], "cut_layer": _M["cutname"],
+                              "w_cm": round((_pb[2] - _pb[0]) / 10.0, 1),
+                              "h_cm": round((_pb[3] - _pb[1]) / 10.0, 1),
+                              "material": _pmat, "note": _M["note"]}
+                warns.append("🖨️ ไฟล์งานพิมพ์: %s · ขนาดจริง %.1f × %.1f ซม. · เผื่อตก %.0f มม. · เลเยอร์ %s"
+                             % (_M["th"], print_info["w_cm"], print_info["h_cm"], _M["bleed"], _M["cutname"]))
+        except Exception as _e5:
+            print_b64 = ""; print_info = {"error": str(_e5)}
         # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ) — 🌈 นีออน: เดินไฟตามเส้นนีออน
         # 🔌 เฉพาะ 'งานมีไฟ' เท่านั้น — งานแบน/ยกขอบ (ไม่มีไฟ) ข้ามการเดินไฟ LED
         #    งานมีไฟ = นีออน / edge-lit / back-lit / ชื่อประเภทมีคำว่า 'ไฟ' (ไฟออกหน้า·กล่องไฟ ฯลฯ)
@@ -4031,6 +4251,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                                                      full.bounds[3] - full.bounds[1]))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
+                "print_base64": print_b64, "print_info": print_info,     # 🖨️ ไฟล์งานพิมพ์ UV / สติ๊กเกอร์
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
     except Exception as e:
@@ -4318,7 +4539,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
-                    cut_smooth_mm: float = Form(0.0)):
+                    cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv")):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
     tmp = tempfile.mkdtemp()
@@ -4495,7 +4716,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             bom.append((L["name"], _mm,
                         ("%+.1f ซม." % (float(L["off"]) / 10.0)) if abs(float(L["off"])) > 1e-6 else "เต็มทรง", ""))
         if rec.get("face_finish") == "print":
-            bom.append(("หน้าอะคริลิคพิมพ์", (print_spec or "อะคริลิคขาวขุ่น P433"), "3mm / 5mm", "พิมพ์ UV / ติดสติกเกอร์"))
+            _pm0 = _PRINT_MODES.get(str(face_print or "uv").lower(), _PRINT_MODES["uv"])
+            bom.append(("หน้าอะคริลิคพิมพ์", (print_spec or "อะคริลิคขาวขุ่น P433"), "3mm / 5mm",
+                        "%s · เผื่อตก %.0f มม." % (_pm0["th"], _pm0["bleed"])))
         if led:
             bom.append(("ไฟ LED", "%s · 12V · IP65" % _ledtypen,
                         "%.2f ม. · %.0f W · ช่อง %s ซม. · ห่างขอบ %s ซม." % (led["total_m"], led["watts"], led_pitch_cm, _edge_cm), led_color))
@@ -4521,6 +4744,12 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     g = _bx3(lb[0] - 20.0, lb[1] - 20.0, lb[2] + 20.0, lb[3] + 20.0).intersection(full)
                 elif kind == "frame":
                     g = _mbuf(full, off + float(L.get("band", 10.0)))   # ขอบนอกคิ้ว
+                elif kind == "standee_leg":                             # 🧍 ขาตั้งสแตนดี้ (ชิ้นแยก)
+                    from shapely.geometry import box as _bxL
+                    _fbL = full.bounds
+                    _lhL = max(200.0, min(900.0, (_fbL[3] - _fbL[1]) * 0.55))
+                    _lwL = max(150.0, min((_fbL[2] - _fbL[0]) * 0.85, _lhL * 0.62))
+                    g = _bxL(0.0, 0.0, _lwL, _lhL * 1.12)
                 else:
                     g = _mbuf(full, off)
                 if g is None or g.is_empty:
@@ -4581,7 +4810,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "sales": sales or "-", "graphic": graphic or "-", "date": _dt.datetime.now().strftime("%d/%m/%Y"), "led_color": led_color,
                 "material": _matn, "led_type": ("Module" if str(led_type) == "module" else "Ribbon"),
                 "led_pitch_cm": led_pitch_cm, "led_edge_cm": _edge_cm, "wire": _wiren,
-                "print_spec": (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else "")),
+                "print_spec": ((("%s · " % _PRINT_MODES.get(str(face_print or "uv").lower(), _PRINT_MODES["uv"])["th"])
+                                if rec.get("face_finish") == "print" else "")
+                               + (print_spec or ("อะคริลิคขาว P433 3/5mm" if rec.get("face_finish") == "print" else ""))),
                 "delivery": delivery_date, "nesting_b64": nesting_b64}
         # 📐 มุมมอง Top / Front / Side ประกอบใบสั่งผลิต
         try:
