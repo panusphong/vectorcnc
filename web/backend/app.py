@@ -1663,8 +1663,10 @@ def _vtrace_full_mm(img_path, real_width_mm):
                     _p1, _p2, _p3 = _s[1], _s[2], _s[3]
                     _ln = (_m.hypot(_p1[0] - _cur[0], _p1[1] - _cur[1]) + _m.hypot(_p2[0] - _p1[0], _p2[1] - _p1[1])
                            + _m.hypot(_p3[0] - _p2[0], _p3[1] - _p2[1]))
-                    # 🔒 ค่าเดิมของระบบ (~1.1px) — ห้ามแก้ · เป็นค่าที่ให้เส้นตัดคมมาตลอด
-                    _ns = max(6, min(140, int(_ln / 1.1) + 2))
+                    # 🔬 sample โค้งถี่ (~0.45px) — ใช้เฉพาะสร้าง 'รูปทรง' สำหรับ buffer ทำคิ้ว/ยกขอบ
+                    #    เส้นดิบที่ส่งออกไฟล์ตัดไม่ถูกแตะ (เก็บแยกใน _RAW_SUBS) — คมเท่าปุ่มเสมอ
+                    #    ยิ่งถี่ = polygon เกาะเส้นโค้งจริงแม่นขึ้น -> ชั้นที่ offset ออกมาเนียนตามไปด้วย
+                    _ns = max(10, min(320, int(_ln / 0.45) + 2))
                     for _i2 in range(1, _ns + 1):
                         _t = _i2 / _ns; _mt = 1.0 - _t
                         _pts.append((_mt**3 * _cur[0] + 3 * _mt * _mt * _t * _p1[0] + 3 * _mt * _t * _t * _p2[0] + _t**3 * _p3[0],
@@ -2183,6 +2185,89 @@ def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
             return geom
 
 
+_RASTER_SRC = {"path": None, "w_mm": 0.0}     # ภาพต้นทาง + ขนาดจริง (ไว้ทำ offset แบบเดียวกับปุ่มแปลง)
+
+
+def _offset_subs_like_button(off_mm):
+    """🥇 ทำชั้นขยาย/หด 'ด้วยวิธีเดียวกับปุ่มแปลงเป็นเส้นตัด' เป๊ะ ๆ
+
+    หลักการที่พี่ชี้: ปุ่มแปลงคมเพราะ potrace อ่าน 'ภาพ' แล้วให้เส้นโค้งเนียนมาเลย
+    ดังนั้นชั้นคิ้ว/แผ่นพื้น/อะคริลิค ก็ควรทำแบบเดียวกัน:
+        ขยาย/หด 'ที่ตัวภาพ' (dilate/erode) -> ส่งเข้า potrace -> ได้เส้นโค้งเนียนเท่าปุ่ม
+    แทนที่จะไปขยายรูปทรงเรขาคณิตแล้วฟิตโค้งใหม่ (ซึ่งทำให้เส้นโย้)
+    คืน list ของ subs (มม.) หรือ None ถ้าทำไม่ได้
+    """
+    import os as _os9, tempfile as _tf9
+    try:
+        import cv2 as _cv9, numpy as _np9
+        from vectorcnc import trace_engine as _te9
+        _src = _RASTER_SRC.get("path"); _wmm = float(_RASTER_SRC.get("w_mm") or 0)
+        if not _src or not _os9.path.exists(_src) or _wmm <= 0:
+            return None
+        _im = _cv9.imdecode(_np9.fromfile(_src, dtype=_np9.uint8), _cv9.IMREAD_COLOR)
+        if _im is None:
+            return None
+        _g = _cv9.cvtColor(_im, _cv9.COLOR_BGR2GRAY)
+        # ขยายภาพให้ด้านยาว ~3000px ก่อน (ยิ่งละเอียด ขอบยิ่งเนียน · ตรงกับที่ปุ่มทำ)
+        _L = max(_g.shape[:2]); _TG = 3000.0
+        if _L < _TG:
+            _s = _TG / float(_L)
+            _g = _cv9.resize(_g, None, fx=_s, fy=_s, interpolation=_cv9.INTER_CUBIC)
+        _bd = _np9.concatenate([_g[0], _g[-1], _g[:, 0], _g[:, -1]])
+        _bg = float(_np9.median(_bd))
+        _m = ((_g < max(40.0, _bg - 45.0)) if _bg >= 128 else (_g > min(215.0, _bg + 45.0)))
+        _m = (_m.astype(_np9.uint8) * 255)
+        _ppm = _g.shape[1] / _wmm                       # พิกเซลต่อมิลลิเมตร
+        _r = int(round(abs(float(off_mm)) * _ppm))
+        if _r >= 1:
+            _k = _cv9.getStructuringElement(_cv9.MORPH_ELLIPSE, (_r * 2 + 1, _r * 2 + 1))
+            _m = _cv9.dilate(_m, _k) if float(off_mm) > 0 else _cv9.erode(_m, _k)
+        if not _m.any():
+            return None
+        _pad = max(4, _r + 4)
+        _m = _cv9.copyMakeBorder(_m, _pad, _pad, _pad, _pad, _cv9.BORDER_CONSTANT, value=0)
+        _tmp = _os9.path.join(_tf9.mkdtemp(), "off.png")
+        _cv9.imwrite(_tmp, 255 - _m)                    # วัตถุ = ดำ · พื้น = ขาว (เหมือนภาพงานปกติ)
+        _it = None
+        try:
+            _it = _te9.trace_potrace(_tmp, n_colors=2)
+        except Exception:
+            _it = None
+        if not _it:
+            return None
+        _subs = []
+        for _c9, _ss in _it:
+            _subs.extend(_ss)
+        if not _subs:
+            return None
+        return _subs                                    # (พิกัดพิกเซล — ผู้เรียกจัดตำแหน่งเอง)
+    except Exception:
+        return None
+
+
+def _fit_subs_to(subs, target_geom):
+    """จัดเส้นที่ได้จากภาพ ให้ทับ 'ตำแหน่ง+ขนาดจริง' ของชั้นนั้นเป๊ะ (สเกลเท่ากันทั้ง 2 แกน)"""
+    if not subs or target_geom is None or target_geom.is_empty:
+        return None
+    _x0 = _y0 = 1e18; _x1 = _y1 = -1e18
+    for s in subs:
+        for p in [s["start"]] + [t[-1] for t in s["segs"]]:
+            _x0 = min(_x0, p[0]); _y0 = min(_y0, p[1])
+            _x1 = max(_x1, p[0]); _y1 = max(_y1, p[1])
+    if _x1 <= _x0 or _y1 <= _y0:
+        return None
+    b = target_geom.bounds
+    sx = (b[2] - b[0]) / (_x1 - _x0); sy = (b[3] - b[1]) / (_y1 - _y0)
+    if abs(sy - sx) / max(1e-6, sx) > 0.05:            # สัดส่วนเพี้ยน -> ไม่ใช้ (กันรูปบิด)
+        return None
+    # 📐 ยึด 'แกนกว้าง' เป็นหลัก — ความกว้างต้องตรงเป๊ะกับที่ผู้ใช้กำหนดเสมอ
+    #    (เฉลี่ย 2 แกนจะทำให้กว้างคลาดไป 1–2 มม.)
+    s0 = sx
+    # จัดกึ่งกลางแนวตั้งให้กรอบพอดี (ส่วนต่างแนวตั้งน้อยมาก < 0.3%)
+    _ty = b[1] - _y0 * s0 + ((b[3] - b[1]) - (_y1 - _y0) * s0) / 2.0
+    return _subs_affine(subs, s0, b[0] - _x0 * s0, _ty)
+
+
 def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
     if _SAFE["on"]:
         return _poly_to_subs(geom, tol=0.04)   # 🔒 โหมดปลอดภัย: เส้นเดิมของระบบ 100%
@@ -2198,8 +2283,9 @@ def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
     if geom is None or geom.is_empty:
         return []
     W = max(50.0, float(ref_w_mm or 600.0))
-    r = max(0.30, min(0.70, W * 0.0008))      # แรงรีดคลื่น (มม.)
-    tol = max(0.06, min(0.25, W * 0.0003))    # ความคลาดเคลื่อนตอนฟิตโค้ง (มม.)
+    # 🎯 คมที่สุด: รีดเบา + ฟิตโค้งละเอียด (เกาะรูปแม่นระดับ 0.10 มม. — เครื่องตัดเดินได้ลื่น)
+    r = max(0.18, min(0.42, W * 0.0005))      # แรงรีดคลื่น (มม.)
+    tol = max(0.04, min(0.12, W * 0.00014))   # ความคลาดเคลื่อนตอนฟิตโค้ง (มม.)
     # 🧮 รูปที่ 'สร้างเอง' (สี่เหลี่ยม/ขาตั้ง/กล่องเรขาคณิต) จุดน้อยอยู่แล้ว -> ส่งออกตรง ๆ คมกว่า
     try:
         _npt = sum(len(p.exterior.coords) + sum(len(h.coords) for h in p.interiors)
@@ -2450,18 +2536,55 @@ def _metal_defs(tex, S, tex_img=""):
     if not t:
         return "", None, False
     lo, mid, hi_dark, hairline = t
-    d = ('<defs><linearGradient id="mtxg" x1="0%" y1="0%" x2="100%" y2="100%">'
-         '<stop offset="0" stop-color="{lo}"/><stop offset="0.25" stop-color="{md}"/>'
-         '<stop offset="0.45" stop-color="{lo}"/><stop offset="0.62" stop-color="{dk}"/>'
-         '<stop offset="0.8" stop-color="{md}"/><stop offset="1" stop-color="{lo}"/>'
+    # 🪙 โลหะจริงสะท้อนแบบ 'แถบ' — ครึ่งบนรับแสงฟ้า ครึ่งล่างรับเงาพื้น + มีเส้นขอบฟ้าคาดกลาง
+    #    ใส่ stop ถี่ขึ้น + ไฮไลต์คมช่วงบน = ดูเป็นสแตนเลสจริง ไม่ใช่ไล่สีเรียบ ๆ
+    d = ('<defs><linearGradient id="mtxg" x1="0%" y1="0%" x2="18%" y2="100%">'
+         '<stop offset="0" stop-color="{lo}"/>'
+         '<stop offset="0.07" stop-color="#ffffff" stop-opacity="0.95"/>'
+         '<stop offset="0.14" stop-color="{lo}"/>'
+         '<stop offset="0.28" stop-color="{md}"/>'
+         '<stop offset="0.40" stop-color="{lo}"/>'
+         '<stop offset="0.485" stop-color="#ffffff"/>'          # เส้นขอบฟ้า (สะท้อนคม)
+         '<stop offset="0.52" stop-color="{dk}"/>'
+         '<stop offset="0.62" stop-color="{md}"/>'
+         '<stop offset="0.74" stop-color="{dk}"/>'
+         '<stop offset="0.86" stop-color="{md}"/>'
+         '<stop offset="0.95" stop-color="{lo}"/>'
+         '<stop offset="1" stop-color="{md}"/>'
          '</linearGradient>').format(lo=lo, md=mid, dk=hi_dark)
-    if hairline:                                       # แฮร์ไลน์ = เส้นขนแมวถี่ๆ แนวนอน
-        _lh = max(2.0, S * 0.004)
-        d += ('<pattern id="mtxh" width="4" height="%.1f" patternUnits="userSpaceOnUse">'
-              '<rect width="4" height="%.1f" fill="none"/>'
-              '<line x1="0" y1="%.2f" x2="4" y2="%.2f" stroke="rgba(255,255,255,0.35)" stroke-width="0.5"/>'
-              '<line x1="0" y1="%.2f" x2="4" y2="%.2f" stroke="rgba(0,0,0,0.14)" stroke-width="0.4"/>'
-              '</pattern>') % (_lh, _lh, _lh * 0.3, _lh * 0.3, _lh * 0.75, _lh * 0.75)
+    if hairline:
+        # ✨ แฮร์ไลน์จริง = ขนแมวถี่มาก ไม่สม่ำเสมอ (มี noise) — ไม่ใช่เส้นเท่ากันเป๊ะ
+        _lh = max(1.6, S * 0.0022)
+        d += ('<pattern id="mtxh" width="6" height="%.2f" patternUnits="userSpaceOnUse">'
+              '<rect width="6" height="%.2f" fill="none"/>'
+              '<line x1="0" y1="%.2f" x2="6" y2="%.2f" stroke="rgba(255,255,255,0.42)" stroke-width="%.2f"/>'
+              '<line x1="0" y1="%.2f" x2="6" y2="%.2f" stroke="rgba(0,0,0,0.16)" stroke-width="%.2f"/>'
+              '<line x1="0" y1="%.2f" x2="6" y2="%.2f" stroke="rgba(255,255,255,0.18)" stroke-width="%.2f"/>'
+              '</pattern>'
+              '<filter id="mtxn" x="0" y="0" width="100%%" height="100%%">'
+              '<feTurbulence type="fractalNoise" baseFrequency="0.9 0.02" numOctaves="2" result="n"/>'
+              '<feColorMatrix in="n" type="saturate" values="0"/>'
+              '<feComponentTransfer><feFuncA type="linear" slope="0.16"/></feComponentTransfer>'
+              '</filter>') % (_lh, _lh,
+                              _lh * 0.18, _lh * 0.18, _lh * 0.16,
+                              _lh * 0.52, _lh * 0.52, _lh * 0.13,
+                              _lh * 0.80, _lh * 0.80, _lh * 0.10)
+    else:
+        # 💎 ผิวเงา = 3 ชั้นซ้อน ให้เหมือนโลหะขัดเงาจริง
+        #    (1) ไฮไลต์ดวงไฟนุ่ม  (2) แถบสะท้อนเฉียงคม  (3) ขอบสว่าง (fresnel) รอบชิ้น
+        d += ('<radialGradient id="mtxs" cx="30%" cy="18%" r="58%">'
+              '<stop offset="0" stop-color="#ffffff" stop-opacity="0.62"/>'
+              '<stop offset="0.30" stop-color="#ffffff" stop-opacity="0.20"/>'
+              '<stop offset="0.65" stop-color="#ffffff" stop-opacity="0.04"/>'
+              '<stop offset="1" stop-color="#ffffff" stop-opacity="0"/>'
+              '</radialGradient>'
+              '<linearGradient id="mtxb" x1="0%" y1="0%" x2="100%" y2="60%">'
+              '<stop offset="0.30" stop-color="#ffffff" stop-opacity="0"/>'
+              '<stop offset="0.40" stop-color="#ffffff" stop-opacity="0.42"/>'
+              '<stop offset="0.445" stop-color="#ffffff" stop-opacity="0.85"/>'
+              '<stop offset="0.49" stop-color="#ffffff" stop-opacity="0.30"/>'
+              '<stop offset="0.58" stop-color="#ffffff" stop-opacity="0"/>'
+              '</linearGradient>')
     d += '</defs>'
     return d, "url(#mtxg)", hairline
 
@@ -2756,9 +2879,20 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _faceFillUse = _texFace
         for pg in polys:                               # หน้าปกติ (ไม่มีรูปพิมพ์)
             parts.append('<path class="%s" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (_faceCls, faced(pg, F), _faceFillUse, edge, lw))
-        if _texFace and _mtxhair:                      # ✨ แฮร์ไลน์: เส้นขนแมวทับบนผิว
+        if _texFace and _mtxhair:                      # ✨ แฮร์ไลน์: เส้นขนแมว + เกรนสุ่มทับบนผิว
             for pg in polys:
                 parts.append('<path d="%s" fill="url(#mtxh)" fill-rule="evenodd"/>' % faced(pg, F))
+            for pg in polys:
+                parts.append('<path d="%s" fill="#ffffff" fill-rule="evenodd" filter="url(#mtxn)" opacity="0.5"/>'
+                             % faced(pg, F))
+        elif _texFace:                                 # 💎 ผิวเงา: ไฮไลต์ดวงไฟ + แถบสะท้อนเฉียง + ขอบสว่าง
+            for pg in polys:
+                parts.append('<path d="%s" fill="url(#mtxs)" fill-rule="evenodd"/>' % faced(pg, F))
+            for pg in polys:
+                parts.append('<path d="%s" fill="url(#mtxb)" fill-rule="evenodd"/>' % faced(pg, F))
+            for pg in polys:                           # ขอบสว่างบาง ๆ (fresnel) — ทำให้ชิ้นดูมีมิติ
+                parts.append('<path d="%s" fill="none" stroke="#ffffff" stroke-opacity="0.55" '
+                             'stroke-width="%.2f" stroke-linejoin="round"/>' % (faced(pg, F), lw * 0.9))
         # ✨ เงาสะท้อนเฉียง (specular sheen) — ผิวหน้าดูเป็นวัสดุจริงแบบ product mockup (ไม่ใส่ class -> รอดจากการย้อมสีฝั่ง client)
         parts.append('<defs><linearGradient id="w3dSheen" x1="0" y1="0" x2="1" y2="1">'
                      '<stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>'
@@ -4065,6 +4199,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
         _raw_b0 = (full.bounds if (full is not None and not full.is_empty) else None)   # 📌 ตำแหน่งอ้างอิงของ 'เส้นดิบ'
+        # 🥇 จำภาพต้นทาง + ขนาดจริง ไว้ทำชั้นขยาย/หด 'ด้วยวิธีเดียวกับปุ่มแปลงเป็นเส้นตัด'
+        try:
+            _RASTER_SRC["path"] = inp
+            _RASTER_SRC["w_mm"] = float(_raw_b0[2] - _raw_b0[0]) if _raw_b0 else float(real_width_mm)
+        except Exception:
+            _RASTER_SRC["path"] = None
         # 🖼️ ============ ภาพแบน (FLAT) — ก๊อบเก็บไว้ก่อนขึ้นรูปทรงใด ๆ ทั้งสิ้น ============
         #    หลักการ: การตัดฉลุ = วางแผ่นบาง ๆ แล้วดูที่ 'เส้น' อย่างเดียว
         #    เก็บเส้นทุกเส้นตามขนาดจริง (กว้าง×สูง ที่ผู้ใช้กำหนด) ไว้ 1 ชุด แล้วใช้ชุดนี้ตลอด
@@ -4557,6 +4697,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
               # 🏆 ลำดับคุณภาพเส้นตัด:
               #    1) เส้นโค้งดิบจากเอนจิ้น (ชั้น off=0) — คมที่สุด เท่าปุ่มแปลงเป็นเส้นตัด
               #    2) ชั้นที่ขยาย/หด (คิ้ว·แผ่นพื้น·อะคริลิค) — รีดคลื่น buffer แล้วฟิตโค้ง (เนียน จุดน้อย)
+              # 🥇 ชั้นขยาย/หด: ทำแบบ 'ปุ่มแปลงเป็นเส้นตัด' — ขยายที่ภาพ แล้ว trace ใหม่
+              #    ได้เส้นโค้งเนียนจาก potrace โดยตรง (ไม่ต้องฟิตใหม่ = ไม่โย้)
+              if (_use_raw_punch is None and abs(off) > 0.01 and kind in ("solid", "frame")
+                      and not rec.get("wrap") and not rec.get("box_shape") and not _mat_groups):
+                  try:
+                      _rb = _offset_subs_like_button(off if kind != "frame" else (off + band))
+                      _rb = _fit_subs_to(_rb, g if kind != "frame" else o2) if _rb else None
+                      if _rb and kind == "frame":
+                          _ri = _offset_subs_like_button(off)      # ขอบในของคิ้ว
+                          _ri = _fit_subs_to(_ri, i2) if _ri else None
+                          if _ri:
+                              _rb = _rb + _ri
+                          else:
+                              _rb = None
+                      if _rb:
+                          _use_raw_punch = _rb
+                  except Exception:
+                      pass
               if _use_raw_punch:
                   subs = _use_raw_punch                     # 🥇 เส้นโค้งดิบจากเอนจิ้น — คมที่สุด ไม่แตะ
               else:
