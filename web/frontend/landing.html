@@ -372,6 +372,73 @@ fetch('/api/plans').then(function(r){return r.json();}).then(function(j){
     '<div style="grid-column:1/-1;text-align:center;color:#94a3b8">ไม่สามารถโหลดแพ็กเกจได้ / Could not load plans</div>';
 });
 setLang(LANG);
+
+/* ═══════════════════════════════════════════════════════════════
+   📊 เก็บสถิติหน้าขาย (landing) — ส่งเข้า /api/track
+   เก็บถาวรที่ Google Sheet ฝั่งเซิร์ฟเวอร์ ไม่หายตอน deploy
+   วัด: เข้าหน้าแรก · เลื่อนดูลึกแค่ไหน · กดปุ่มไหน · อยู่นานเท่าไหร่
+   ═══════════════════════════════════════════════════════════════ */
+(function(){
+  var SID = (function(){
+    try{ var k='vc_sid', v=localStorage.getItem(k);
+      if(!v){ v = Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem(k,v); }
+      return v; }catch(e){ return 'anon'+Date.now().toString(36); }
+  })();
+  var T0 = Date.now(), SENT = {}, MAXSCROLL = 0;
+  function dev(){ var w=innerWidth; return w<640?'mobile':(w<1024?'tablet':'desktop'); }
+  function brw(){ var u=navigator.userAgent;
+    if(/Edg\//.test(u))return 'Edge'; if(/OPR\//.test(u))return 'Opera';
+    if(/Chrome\//.test(u))return 'Chrome'; if(/Safari\//.test(u))return 'Safari';
+    if(/Firefox\//.test(u))return 'Firefox'; return 'Other'; }
+  function refhost(){ try{ return document.referrer ? new URL(document.referrer).hostname : 'direct'; }
+    catch(e){ return 'direct'; } }
+  function send(ev, menu, dur, beacon){
+    var body = JSON.stringify({ sid:SID, account:'guest', ev:ev, page:'landing',
+      menu:menu||'', ref:document.referrer||'', refhost:refhost(),
+      device:dev(), browser:brw(), dur:dur||0 });
+    try{
+      if(beacon && navigator.sendBeacon){
+        navigator.sendBeacon('/api/track', new Blob([body],{type:'text/plain;charset=UTF-8'}));
+      }else{
+        fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:body, keepalive:true}).catch(function(){});
+      }
+    }catch(e){}
+  }
+  // 1) เข้าหน้าแรก
+  send('visit','landing_open');
+  // 2) เลื่อนดูลึกแค่ไหน (25 / 50 / 75 / 100%) — บอกว่าคนอ่านถึงส่วนราคาไหม
+  addEventListener('scroll', function(){
+    var h = document.documentElement.scrollHeight - innerHeight;
+    if(h <= 0) return;
+    var p = Math.round(scrollY / h * 100);
+    if(p > MAXSCROLL) MAXSCROLL = p;
+    [25,50,75,100].forEach(function(m){
+      if(p >= m && !SENT['s'+m]){ SENT['s'+m]=1; send('scroll','scroll_'+m); }
+    });
+  }, {passive:true});
+  // 3) กดปุ่มอะไร — โดยเฉพาะ "ทดลองฟรี" ที่พี่อยากรู้
+  addEventListener('click', function(e){
+    var a = e.target && e.target.closest ? e.target.closest('a,button') : null;
+    if(!a) return;
+    var txt = (a.innerText||a.textContent||'').replace(/\s+/g,' ').trim().slice(0,40);
+    var href = a.getAttribute('href')||'';
+    var isTrial = /\/app/.test(href) || /ทดลอง|เริ่มใช้|Start free|Launch app/i.test(txt);
+    send(isTrial ? 'trial_click' : 'click', (isTrial?'ทดลองใช้: ':'') + (txt||href));
+  }, true);
+  // 4) อยู่นานเท่าไหร่ + เลื่อนไปได้ลึกสุดกี่ % (ยิงตอนปิด/สลับแท็บ)
+  var LEFT = false;
+  function leave(){
+    if(LEFT) return; LEFT = true;
+    send('leave','maxscroll_'+MAXSCROLL, Math.round((Date.now()-T0)/1000), true);
+  }
+  addEventListener('pagehide', leave);
+  addEventListener('beforeunload', leave);
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) leave(); });
+  // 5) ยังอยู่บนหน้า — เต้นทุก 30 วิ (กันนับเวลาขาดตอน)
+  setInterval(function(){ if(!document.hidden && !LEFT)
+    send('heartbeat','landing', Math.round((Date.now()-T0)/1000)); }, 30000);
+})();
 </script>
 </body>
 </html>
