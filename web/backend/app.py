@@ -1301,6 +1301,8 @@ def _dxf_layer(name):
 
 def _en_layer(n):
     n = str(n)
+    if "งานพิมพ์ / สติ๊กเกอร์" in n:
+        return "PRINT / STICKER (no metal cut)"
     if "แผ่นขอบข้าง" in n:
         return "Side Return Plates (fold)"
     if "ไดคัทตามทรง" in n:
@@ -1433,6 +1435,34 @@ def _sticker_groups(pieces, W, H):
             _gx = max(bb[i][0], bb[j][0]) - min(bb[i][2], bb[j][2])
             if _gx <= _mn * 0.55:                           # ชิดกันพอที่จะเป็นคำเดียวกัน
                 _join(i, j)
+    # 🇹🇭 รอบเก็บตก: สระ/วรรณยุกต์/จุด (ชิ้นเล็กลอยอยู่ 'บน-ล่าง' ของคำ) -> ผูกเข้ากับคำที่อยู่ใต้/เหนือมัน
+    _bag0 = {}
+    for i in range(n):
+        _bag0.setdefault(_find(i), []).append(i)
+    _cores = [g for g in _bag0.values() if len(g) >= 2 or (bb[g[0]][3] - bb[g[0]][1]) > 0]
+    for i in range(n):
+        _hi = bb[i][3] - bb[i][1]; _wi = bb[i][2] - bb[i][0]
+        if len(_bag0.get(_find(i), [])) > 1:
+            continue                                        # อยู่ในคำแล้ว
+        _best = None; _bd = 1e18
+        for g in _cores:
+            if _find(i) == _find(g[0]) or len(g) < 2:
+                continue
+            gx0 = min(bb[j][0] for j in g); gx1 = max(bb[j][2] for j in g)
+            gy0 = min(bb[j][1] for j in g); gy1 = max(bb[j][3] for j in g)
+            _gh = gy1 - gy0
+            if _hi > _gh * 0.85:                            # ไม่ใช่ชิ้นเล็ก -> ข้าม
+                continue
+            _cx = (bb[i][0] + bb[i][2]) / 2.0
+            if _cx < gx0 - _wi or _cx > gx1 + _wi:          # ต้องอยู่ในช่วงแนวนอนของคำ
+                continue
+            _dy = (gy0 - bb[i][3]) if bb[i][3] < gy0 else ((bb[i][1] - gy1) if bb[i][1] > gy1 else 0.0)
+            if _dy > _gh * 0.75:                            # ห่างเกินไป (คนละบรรทัด)
+                continue
+            if _dy < _bd:
+                _bd = _dy; _best = g
+        if _best is not None:
+            _join(_best[0], i)
     _bag = {}
     for i in range(n):
         _bag.setdefault(_find(i), []).append(i)
@@ -3906,7 +3936,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
             _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
-            ai_svg = _layerset_ai_svg(out_layers, art_href=_art_ai, art_bounds=full.bounds)
+            # 🖨️ เลเยอร์ 'งานพิมพ์/สติ๊กเกอร์' — ชิ้นที่ไม่ตัด (พิมพ์+ไดคัทสติ๊กเกอร์) แยกออกมาในไฟล์เดียวกัน
+            _ai_extra = []
+            try:
+                if _sticker_geom is not None and not _sticker_geom.is_empty:
+                    _ss = _poly_to_subs(_sticker_geom, tol=0.04)
+                    if _punch_raw_subs:                       # ใช้เส้นดิบถ้ามี (คมกว่า)
+                        from shapely.prepared import prep as _pp4
+                        from shapely.geometry import Point as _Pt4
+                        _pk4 = _pp4(_sticker_geom.buffer(1.0)); _rs4 = []
+                        for _sp4 in (_RAW_SUBS.get("subs") or []):
+                            _an4 = [_sp4["start"]] + [s[-1] for s in _sp4["segs"]]
+                            _st4 = max(1, len(_an4) // 8)
+                            if any(_pk4.intersects(_Pt4(p[0], p[1])) for p in _an4[::_st4]):
+                                _rs4.append(_sp4)
+                        if _rs4:
+                            _ss = _rs4
+                    if _ss:
+                        _sb4 = _sticker_geom.bounds
+                        _ai_extra.append({"name": "งานพิมพ์ / สติ๊กเกอร์ (ไม่ตัดโลหะ)", "off": 0.0, "kind": "print",
+                                          "color": "#e11d48", "rgb": (225, 29, 72), "subs": _ss,
+                                          "w_mm": round(_sb4[2] - _sb4[0], 1), "h_mm": round(_sb4[3] - _sb4[1], 1)})
+            except Exception:
+                pass
+            ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai, art_bounds=full.bounds)
             import cairosvg as _cs
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
