@@ -465,7 +465,12 @@ select.numin{cursor:pointer}
                 <span style="font-size:10px;color:#92700a">👆 ลากโลโก้/อักษรบนพรีวิวเพื่อย้ายตำแหน่งเองได้</span>
               </div>
               <canvas id="bxPreview" style="width:100%;border:1px dashed #f59e0b;border-radius:6px;background:#fff;margin-top:6px;display:none;touch-action:none;cursor:move"></canvas>
-              <button type="button" id="bxCompGo" class="btn" style="width:100%;margin-top:6px;background:#b45309;color:#fff;border:none;font-size:12px;font-weight:700">🖼️ สร้างหน้ากล่อง + ทำ 3 มิติ</button>
+              <!-- 🔗 ปิดปุ่มนี้แล้ว — รวมการทำงานไปที่ปุ่ม "🏭 สร้างไฟล์สั่งผลิต" ทางขวาปุ่มเดียว
+                   (ยังคง element ไว้เพราะโค้ดส่วนอื่นเรียกใช้ ถ้าลบทิ้งจะพังเป็นจุด ๆ) -->
+              <button type="button" id="bxCompGo" class="btn" style="display:none">🖼️ สร้างหน้ากล่อง + ทำ 3 มิติ</button>
+              <div class="hint" style="margin-top:6px;color:#92700a;background:#fffbeb;border:1px dashed #f59e0b;border-radius:6px;padding:6px 8px">
+                ออกแบบเสร็จแล้วกด <b>“🏭 สร้างไฟล์สั่งผลิต”</b> ทางขวาได้เลย — ระบบจะประกอบหน้ากล่องให้เองอัตโนมัติ ไม่ต้องกดปุ่มแยกอีกแล้ว
+              </div>
               <div class="hint" style="margin:5px 0 0">เช่น <b>Women / ห้องน้ำหญิง | Man / ห้องน้ำชาย</b> + อัปโหลดไอคอน · <b>ลากบนพรีวิวเพื่อย้าย</b> · สไลเดอร์ปรับขนาด (อักษรเท่ากันทุกช่อง)</div>
             </div>
           </div>
@@ -5415,9 +5420,29 @@ var TRIMW=1, TRIMDIR='out';
     if(!lg.length && !sg.length && !window._bxBg){ alert('ใส่ภาพพื้นหลัง / โลโก้ / ข้อความ อย่างน้อย 1 อย่างก่อนค่ะ'); return; }
     sync(); var c=document.createElement('canvas'); render(c,3,false);
     c.toBlob(function(bl){ if(!bl){alert('สร้างหน้ากล่องไม่สำเร็จ');return;} fileObj=new File([bl],'box_face.png',{type:'image/png'}); if($('realW')&&!(parseFloat($('realW').value)>0))$('realW').value=Math.round(c.width/3/12*10); if(cb)cb(); },'image/png'); }
-  if($('bxCompGo'))$('bxCompGo').onclick=function(){ var font=($('bxFont')&&$('bxFont').value)||'Prompt'; try{loadGFont(font);}catch(_e){}
-    var go=function(){ compose(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} }); };
-    if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(go).catch(go); } else setTimeout(go,150); };
+  /* 🔗 รวมปุ่มให้เหลือจุดเดียว: ปุ่ม "สร้างไฟล์สั่งผลิต" ทางขวาทำหน้ากล่องให้เองก่อนเสมอ
+     (เดิมต้องกดปุ่มซ้าย "สร้างหน้ากล่อง + ทำ 3 มิติ" ก่อน ไม่งั้นได้ภาพเก่า)
+     window._bxCompose(cb) = โหลดฟอนต์ให้เสร็จ -> ประกอบหน้ากล่องเป็นไฟล์ภาพ -> เรียก cb() */
+  window._bxCompose=function(cb){
+    var font=($('bxFont')&&$('bxFont').value)||'Prompt';
+    try{loadGFont(font);}catch(_e){}
+    var run=function(){ try{ compose(function(){ if(cb)cb(); }); }catch(_e){ if(cb)cb(); } };
+    if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(run).catch(run); }
+    else setTimeout(run,150);
+  };
+  /* มีหน้ากล่องให้ประกอบไหม = ผู้ใช้กรอกข้อความ หรืออัปโหลดโลโก้ หรือติ๊กใช้ภาพเป็นพื้นหลัง */
+  window._bxHasDesign=function(){
+    try{
+      if(!$('bxCompText')) return false;                       // ไม่มีแผงออกแบบหน้ากล่อง
+      if($('bxBgUseChk')&&$('bxBgUseChk').checked) return true; // ใช้ภาพที่อัปโหลดเป็นพื้นหลัง
+      if(String($('bxCompText').value||'').trim()) return true; // มีข้อความ
+      if((window._bxLogos||[]).length) return true;             // มีโลโก้
+    }catch(_e){}
+    return false;
+  };
+  if($('bxCompGo'))$('bxCompGo').onclick=function(){
+    window._bxCompose(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} });
+  };
 })();
 // 🧹 เคลียร์ผลลัพธ์ (ตอนเปลี่ยนประเภทป้าย / กดปุ่มเคลียร์) — กันของเก่าค้าง
 window.clearDesignResult=function(){ try{
@@ -5434,6 +5459,15 @@ window.clearDesignAll=function(){ try{
 }catch(_e){} };
 if($('mainClear'))$('mainClear').onclick=function(){ if(confirm('เคลียร์งานปัจจุบันทั้งหมด?'))window.clearDesignAll(); };
 $('goLayer').onclick=function(){
+  /* 🔗 ปุ่มเดียวจบ: ถ้ามีการออกแบบหน้ากล่องค้างอยู่ ให้ประกอบหน้ากล่องใหม่ก่อนเสมอ
+     แล้วค่อยวิ่งต่อ — ผู้ใช้จะได้ไม่ต้องจำว่าต้องกดปุ่มซ้ายก่อน (และไม่ได้ภาพเก่าติดมา)
+     _bxRun กันวนซ้ำ เพราะ compose() จะเรียกปุ่มนี้อีกรอบ */
+  if(!window._bxRun && window._bxHasDesign && window._bxHasDesign() && window._bxCompose){
+    window._bxRun=true;
+    var _self=this;
+    window._bxCompose(function(){ try{ _self.onclick.call(_self); } finally { window._bxRun=false; } });
+    return;
+  }
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) เพื่อออกชุดชั้นตัด + ภาพ 3 มิติ');return;}
@@ -5475,8 +5509,17 @@ $('goLayer').onclick=function(){
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
   fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
   fd.append('arm_edge_cm',($('fArmEdge')&&$('fArmEdge').value)||'25');
-  fd.append('arm_gap_cm',(($('mainArmGap')&&$('mainArmGap').value)
-            ||($('fArmGap')&&$('fArmGap').value)||'0'));   // 📏 ระยะห่างระหว่าง 2 แขน
+  // 📏 ระยะห่างระหว่าง 2 แขน — มี 2 ช่องให้กรอก เอาช่องที่ "มีค่ามากกว่า 0" จริง ๆ
+  // ⚠️ ห้ามใช้ || เฉย ๆ เพราะช่องว่างจะคืนสตริง "0" ซึ่ง JavaScript ถือว่าเป็นจริง
+  //    -> ค่าที่พี่กรอกอีกช่องจะถูกข้ามทิ้งทั้งหมด (บั๊กเดิม: กรอก 35 แล้วไม่มีอะไรเกิดขึ้น)
+  (function(){
+    var _g=0;
+    ['mainArmGap','fArmGap'].forEach(function(id){
+      var el=$(id); if(!el)return; var v=parseFloat(el.value);
+      if(isFinite(v)&&v>_g) _g=v;
+    });
+    fd.append('arm_gap_cm',String(_g||0));
+  })();
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   _apiFetch((API||'')+'/api/layer-set',fd).then(_apiJson).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
