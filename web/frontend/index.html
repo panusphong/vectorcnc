@@ -385,12 +385,17 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10px;color:#64748b">แขน standoff (ซม.)</label><input class="numin" id="fStand" type="number" value="5" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#64748b">เลื่อนรูสายไฟ (ซม.)</label><input class="numin" id="fWire" type="number" value="0" style="padding:5px;width:100%"></div>
             </div>
-            <div style="display:flex;gap:6px;margin-top:6px">
+            <div class="hint">2 แขน ซ้าย-ขวา · เฟรมกรอบสี่เหลี่ยมหลังอักษร · ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพหน้า/หลัง + รูเจาะ + จับระยะ</div>
+          </div>
+          <!-- 🦾 ตั้งค่าแขนแขวน — ใช้ได้ทุกประเภทป้ายที่เลือกแขน (เดิมซ่อนอยู่ในกล่องโครงแขวน เห็นเฉพาะป้ายอักษร+โครง) -->
+          <div id="armAdjPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #bfdbfe;border-radius:10px;background:#f0f7ff">
+            <div style="font-size:11.5px;font-weight:800;color:#1d4ed8;margin-bottom:6px">🦾 ตั้งค่าแขนแขวน</div>
+            <div style="display:flex;gap:6px">
               <div style="flex:1"><label style="font-size:10px;color:#64748b">ความยาวแขน (ซม.)</label><input class="numin" id="fArmLen" type="number" value="30" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#64748b">ระยะแขนจากขอบซ้าย/ขวา (ซม.)</label><input class="numin" id="fArmEdge" type="number" value="25" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#64748b">📏 ระยะห่างระหว่าง 2 แขน (ซม.)</label><input class="numin" id="fArmGap" type="number" min="0" step="0.5" value="0" placeholder="0 = อัตโนมัติ" style="padding:5px;width:100%"></div>
             </div>
-            <div class="hint">2 แขน ซ้าย-ขวา · เฟรมกรอบสี่เหลี่ยมหลังอักษร · ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพหน้า/หลัง + รูเจาะ + จับระยะ</div>
+            <div class="hint" style="margin-bottom:0">ระยะห่าง 2 แขน = วัดกึ่งกลางแขนถึงกึ่งกลางแขน · ใส่ 0 = ให้ระบบจัดให้ · ระบบจะจับระยะนี้ลงภาพ 3 มิติให้ช่างเจาะรูฝ้า/ผนังได้ตรง</div>
           </div>
           <!-- 🌈 นีออนเฟล็กซ์: เลือกสี 12 สี -->
           <div id="neonPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #a5f3fc;border-radius:10px;background:#ecfeff">
@@ -487,6 +492,11 @@ select.numin{cursor:pointer}
             <div style="width:92px"><input class="numin" id="mainArmTravel" type="number" value="10" min="0" title="ระยะเลื่อน ±ซม." style="padding:6px;width:100%"></div>
           </div>
           <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · เลือกซ้าย/ขวา · <b>ปรับได้</b> = โครงในเลื่อนขึ้น-ลง ±ซม. — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
+          <!-- 📏 แขนคู่ (บน 2 / ข้าง 2) -> ให้กำหนดระยะห่างระหว่างแขนได้ทุกประเภทป้าย -->
+          <div id="armGap2" style="display:none;margin-top:6px">
+            <label style="font-size:10px;color:#64748b">📏 ระยะห่างระหว่าง 2 แขน (ซม.) — วัดกึ่งกลางถึงกึ่งกลาง</label>
+            <input class="numin" id="mainArmGap" type="number" min="0" step="0.5" value="0" placeholder="0 = ให้ระบบจัดให้" style="padding:6px;width:100%">
+          </div>
           <!-- 📋 รายละเอียดสั่งผลิต (ใช้ในใบสั่งผลิต) -->
           <div style="margin-top:8px;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc">
             <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px">📋 รายละเอียดสั่งผลิต (ใบสั่งผลิต)</div>
@@ -5149,6 +5159,16 @@ function _glowBody(){
   var svg=img.querySelector('svg'); if(!svg)return null;
   return svg.getElementById?svg.getElementById('w3dBody'):svg.querySelector('#w3dBody');
 }
+
+/* 🦾 แผงตั้งค่าแขน: โชว์เมื่อเลือกแขน (ทุกประเภทป้าย) · ช่องระยะห่าง: เฉพาะแขนคู่ */
+function _syncArmUI(){
+  var v=($('mainArm')&&$('mainArm').value)||'none';
+  var pan=$('armAdjPanel'), g2=$('armGap2');
+  if(pan) pan.style.display=(v==='none')?'none':'block';
+  if(g2)  g2.style.display=(v==='top2'||v==='side2')?'block':'none';
+}
+try{ if($('mainArm')) $('mainArm').addEventListener('change',_syncArmUI); _syncArmUI(); }catch(_e){}
+
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
@@ -5455,7 +5475,8 @@ $('goLayer').onclick=function(){
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
   fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
   fd.append('arm_edge_cm',($('fArmEdge')&&$('fArmEdge').value)||'25');
-  fd.append('arm_gap_cm',($('fArmGap')&&$('fArmGap').value)||'0');   // 📏 ระยะห่างระหว่าง 2 แขน
+  fd.append('arm_gap_cm',(($('mainArmGap')&&$('mainArmGap').value)
+            ||($('fArmGap')&&$('fArmGap').value)||'0'));   // 📏 ระยะห่างระหว่าง 2 แขน
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   _apiFetch((API||'')+'/api/layer-set',fd).then(_apiJson).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
