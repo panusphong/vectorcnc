@@ -2332,6 +2332,8 @@ def _offset_subs_from_geom(geom, off_mm, px_per_mm=5.0):
 #    -> ตั้งงบเวลาไว้ พอหมดงบให้ถอยไปใช้วิธีเดิมทันที 'ได้ไฟล์ช้ากว่าไม่ได้ไฟล์เลย'
 _SHARPSTAT = {"ok": 0, "reject": 0, "skip": 0, "t0": 0.0, "budget": 8.0,
               "calls": 0, "max_calls": 48}
+# 📏 ขนาดจริงของ logo ที่วางลงหน้ากล่องแบบพิมพ์ (ตัววาดภาพ 3 มิติคำนวณแล้วเขียนกลับมาให้)
+_ARTFIT = {"w_mm": 0.0, "h_mm": 0.0}
 
 
 def _subs_probe(subs, n=10):
@@ -2834,7 +2836,7 @@ def _notes_overlay_svg(svg_str, notes):
 
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
-               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
+               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
                metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None,
                mat_overlays=None, mat_cut=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
@@ -3039,6 +3041,17 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             if art_adj:                                # 🎯 ผู้ใช้ปรับ logo ในกล่อง: ย่อ/ขยาย + เลื่อนตำแหน่ง
                 try:
                     _s = float(art_adj.get("s", 1.0)) or 1.0
+                    # 📏 ผู้ใช้กำหนดขนาด logo เป็น ซม. (เช่น สูง 26.2 ซม.)
+                    #    รูปถูกวางแบบ preserveAspectRatio="meet" -> ขนาดจริงคือด้านที่ 'พอดีก่อน'
+                    #    จึงคำนวณขนาดที่วางได้จริงก่อน แล้วค่อยหาสเกลที่ทำให้ได้ ซม. ตามสั่งเป๊ะ
+                    _tw9 = float(art_adj.get("w_mm", 0) or 0); _th9 = float(art_adj.get("h_mm", 0) or 0)
+                    _ar9 = float(art_adj.get("ar", 0) or 0)
+                    if (_tw9 > 1.0 or _th9 > 1.0) and _ar9 > 0 and _bw > 0.1 and _bh > 0.1:
+                        _fh9 = min(_bh, _bw / _ar9); _fw9 = _fh9 * _ar9
+                        if _fh9 > 0.1:
+                            _s = (_th9 / _fh9) if _th9 > 1.0 else (_tw9 / _fw9)
+                            _s = max(0.02, min(20.0, _s))
+                            _ARTFIT["w_mm"] = round(_fw9 * _s, 1); _ARTFIT["h_mm"] = round(_fh9 * _s, 1)
                     _bw *= _s; _bh *= _s
                     _cx += float(art_adj.get("dx", 0.0)); _cy += float(art_adj.get("dy", 0.0))
                 except Exception:
@@ -3346,8 +3359,16 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         elif _mount == "top2":
             _isround = str(rec.get("box_shape") or "") in ("circle", "oval")
             _fxs = (0.40, 0.60) if _isround else (0.30, 0.70)   # ทรงกลม/วงรี -> แขนชิด center กล่อง
+            # 📏 ผู้ใช้กำหนด 'ระยะห่างระหว่างแขน 2 ข้าง' เป็น ซม. ได้ (วัดกึ่งกลางแขนถึงกึ่งกลางแขน)
+            #    ช่างต้องรู้เลขนี้เพื่อเจาะรูฝ้า/คานให้ตรง — คุมไม่ให้เกินตัวกล่อง (เหลือขอบ 3 ซม.)
+            _gap = max(0.0, float(arm_gap_cm or 0.0)) * 10.0
+            _gapmax = max(20.0, W - 60.0)
+            if _gap > 10.0:
+                _gap = min(_gap, _gapmax)
+                _fxs = (0.5 - _gap / (2.0 * W), 0.5 + _gap / (2.0 * W))
+            _axs = []
             for fx in _fxs:
-                _ax = b[0] + W * fx; _ty = b[1]
+                _ax = b[0] + W * fx; _ty = b[1]; _axs.append(_ax)
                 try:                                            # แตะ 'ผิวบนสุด' ของกล่องจริง (กันแขนลอยเหนือวงกลม)
                     from shapely.geometry import LineString as _LS
                     _it = full.intersection(_LS([(_ax, b[1] - 10.0), (_ax, b[3] + 10.0)]))
@@ -3364,13 +3385,32 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                              % (padL * 0.5, _cy - 5.0, (padL + W + dvx) - padL * 0.5, 5.0, "#e2e8f0", surf, lw * 0.8))
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
+            # 📏 เส้นบอก 'ระยะห่างระหว่างแขน' — ช่างเอาไปเจาะรูฝ้า/คานได้ตรง
+            if len(_axs) == 2:
+                _g0 = F((_axs[0], b[1])); _g1 = F((_axs[1], b[1]))
+                _gx0 = _g0[0] + dvx / 2.0; _gx1 = _g1[0] + dvx / 2.0
+                _gy = _cy + _plate * 0.85
+                arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#dc2626" stroke-width="%.2f"/>'
+                                 % (_gx0, _gy, _gx1, _gy, lw))
+                for _gx, _sg in ((_gx0, 1.0), (_gx1, -1.0)):
+                    arm_parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="#dc2626" '
+                                     'stroke-width="%.2f"/>' % (_gx + aw * _sg, _gy - aw * 0.6, _gx, _gy,
+                                                                _gx + aw * _sg, _gy + aw * 0.6, lw))
+                arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                                 'font-weight="800" fill="#dc2626" text-anchor="middle">ระยะห่างแขน %.1f cm</text>'
+                                 % ((_gx0 + _gx1) / 2.0, _gy - fs * 0.45, fs * 0.85, abs(_axs[1] - _axs[0]) / 10.0))
         else:                                  # side1/side2 — แขนแนวนอน "ทางซ้าย/ขวาของภาพ" (คู่ขนาน)
             _avx = (-_aL) if _aside == "left" else _aL
             _ex = b[0] if _aside == "left" else b[2]
             if _mount == "side1":
                 atts = [F((_ex, midY))]
             else:                              # side2 = แขนคู่ ขนานกัน (บน + ล่าง) ยื่นออกด้านข้าง
-                atts = [F((_ex, b[1] + H * 0.30)), F((_ex, b[1] + H * 0.70))]
+                _gapV = max(0.0, float(arm_gap_cm or 0.0)) * 10.0   # 📏 ระยะห่างแขนบน-ล่าง (ผู้ใช้กำหนดได้)
+                _fys = (0.30, 0.70)
+                if _gapV > 10.0:
+                    _gapV = min(_gapV, max(20.0, H - 60.0))
+                    _fys = (0.5 - _gapV / (2.0 * H), 0.5 + _gapV / (2.0 * H))
+                atts = [F((_ex, b[1] + H * _fys[0])), F((_ex, b[1] + H * _fys[1]))]
             for a in atts:
                 specs.append((a, (a[0] + _avx, a[1])))
             _wx = atts[0][0] + _avx                       # ตำแหน่งผนัง (ปลายแขน)
@@ -4348,6 +4388,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
                     led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0),
+                    arm_gap_cm: float = Form(0.0),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
@@ -4405,6 +4446,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _FLAT["h_mm"] = round(_raw_b0[3] - _raw_b0[1], 2)
         except Exception:
             _FLAT["subs"] = None
+        _prewarn = []; _ART_AR = 0.0
         # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
         if rec.get("wrap"):
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
@@ -4412,11 +4454,40 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             _pl_b0 = (_punch_logo.bounds if _punch_logo is not None else None)   # bbox ก่อนจัดวาง (ไว้คำนวณ transform ของเส้นดิบ)
-            full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm),
-                                 float(box_h_cm or 0.0) * 10.0)     # 📐 ผู้ใช้กำหนด กว้าง×สูง กล่องเองได้อิสระ
+            try:                       # 🖼️ เก็บสัดส่วนงานศิลป์ไว้ (กล่องแบบพิมพ์หน้าใช้กำหนดขนาด logo เป็น ซม.)
+                _ab0 = full.bounds
+                _ART_AR = ((_ab0[2] - _ab0[0]) / (_ab0[3] - _ab0[1])) if (_ab0[3] - _ab0[1]) > 0.01 else 0.0
+            except Exception:
+                _ART_AR = 0.0
+            # 📏 ขนาดที่ผู้ใช้กรอก = 'ขนาดนอกสุดของกล่องที่ผลิตจริง' ซึ่งรวมคิ้วที่ยื่นออกนอกแล้ว
+            #    ถ้าเอาไปตั้งให้ตัวกล่องเปล่า ๆ คิ้วจะบวกทับออกไปอีกข้างละ 1 ความกว้างคิ้ว
+            #    (กรอก 45 ซม. คิ้ว 1 ซม. -> ได้ 47 ซม.) จึงต้องหักส่วนที่คิ้วยื่นออกก่อนเสมอ
+            _box_grow = 0.0
+            try:
+                if (str(trim_dir or "out").lower() != "in"):
+                    _tw0 = max(0.0, float(trim_width_cm or 0.0)) * 10.0
+                    for _L0 in rec.get("layers", []):
+                        # ⚠️ off/band ในตาราง SIGN_TYPES เป็น 'มิลลิเมตร' อยู่แล้ว ห้ามคูณ 10 ซ้ำ
+                        #    นับเฉพาะชั้น 'คิ้ว' ที่เห็นจากด้านหน้าและเป็นตัวกำหนดขนาดนอกจริง
+                        #    (แผ่นพื้นด้านหลังยื่นเกิน 1 มม. ไม่นับ เพราะมองไม่เห็นและไม่ใช่ขนาดป้าย)
+                        if _L0.get("kind") != "frame":
+                            continue
+                        _o0 = float(_L0.get("off", 0.0))
+                        _b0 = _tw0 if _tw0 > 0 else float(_L0.get("band", 10.0))
+                        _box_grow = max(_box_grow, _o0 + _b0)
+            except Exception:
+                _box_grow = 0.0
+            _tw_box = max(20.0, float(real_width_mm) - 2.0 * _box_grow)
+            _th_box = (max(20.0, float(box_h_cm) * 10.0 - 2.0 * _box_grow)
+                       if float(box_h_cm or 0.0) > 0 else 0.0)
+            if _box_grow > 0.05:      # ⚠️ ยังไม่มีตัวแปร warns ตรงนี้ — พักไว้ก่อน แล้วค่อยเติมทีหลัง
+                _prewarn.append("📐 กล่อง: หักคิ้วที่ยื่นออกนอกข้างละ %.1f ซม. แล้ว — ขนาดนอกสุดที่ผลิตจริง "
+                                "= %.1f ซม. ตรงตามที่กรอก" % (_box_grow / 10.0, float(real_width_mm) / 10.0))
+            full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, _tw_box,
+                                 _th_box)                            # 📐 ผู้ใช้กำหนด กว้าง×สูง กล่องเองได้อิสระ
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
-        warns = []
+        warns = list(_prewarn)                           # 📐 คำเตือนที่เกิดตอนขึ้นรูปกล่อง (ก่อนมีตัวแปร warns)
         _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
         # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน · ⏱️ เริ่มจับงบเวลาของงานนี้
         import time as _tm0
@@ -4426,9 +4497,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
         # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
         #    ใส่ค่าใดค่าหนึ่งก็พอ — อีกด้านคำนวณตามสัดส่วนเดิมให้อัตโนมัติ · ใส่ทั้งคู่ = ยึด 'สูง'
-        _logo_wh = [0.0, 0.0]
+        _logo_wh = [0.0, 0.0]; _ART_TGT = None
         try:
             _lw_t = float(logo_w_cm or 0.0) * 10.0; _lh_t = float(logo_h_cm or 0.0) * 10.0
+            # 🖨️ กล่องไฟ 'หน้าพิมพ์' (ไม่ได้ฉลุ): งานศิลป์ถูกวางเป็นรูปบนหน้ากล่อง ไม่มีรูปทรง logo ให้วัด
+            #    -> ส่งขนาดเป้าหมาย + สัดส่วนงาน เข้าไปให้ตัววาดภาพ 3 มิติคำนวณสเกลเอง (ได้ ซม. เป๊ะ)
+            if (_lw_t > 1.0 or _lh_t > 1.0) and _punch_logo is None and rec.get("box_shape") \
+                    and float(_ART_AR or 0) > 0:
+                _ART_TGT = {"w_mm": _lw_t, "h_mm": _lh_t, "ar": float(_ART_AR)}
             if (_lw_t > 1.0 or _lh_t > 1.0) and _punch_logo is not None and not _punch_logo.is_empty:
                 _lb0 = _punch_logo.bounds
                 _lw0 = _lb0[2] - _lb0[0]; _lh0 = _lb0[3] - _lb0[1]
@@ -4443,7 +4519,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             pass
         _laDX = float(logo_dx_cm or 0.0) * 10.0; _laDY = float(logo_dy_cm or 0.0) * 10.0
         _art_adj = ({"s": _laS, "dx": _laDX, "dy": _laDY}
-                    if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5) else None)
+                    if (abs(_laS - 1.0) > 0.005 or abs(_laDX) > 0.5 or abs(_laDY) > 0.5 or _ART_TGT) else None)
+        if _ART_TGT and _art_adj:
+            _art_adj.update(_ART_TGT)          # 📏 ขนาด logo เป็น ซม. บนหน้ากล่องแบบพิมพ์
+        _ARTFIT["w_mm"] = 0.0; _ARTFIT["h_mm"] = 0.0
         try:
             if _punch_logo is not None and _art_adj:
                 from shapely import affinity as _aff
@@ -5102,7 +5181,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    art_href=_art, mount=_m3d, arm_len_cm=float(arm_len_cm),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
-                                   arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
+                                   arm_edge_cm=float(arm_edge_cm), arm_gap_cm=float(arm_gap_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
                                    metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
                                    bore_subs=_punch_raw_subs, mat_overlays=_mat_ov, mat_cut=_mat_cut)
@@ -5382,10 +5461,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "sticker_sel": sorted(_stick_sel),
                 # 🧱 แผนที่ชิ้น สำหรับ 'จ่ายวัสดุคนละแบบในป้ายเดียว' (แตะคำเดียว = ทั้งคำ) — ใช้ได้ทุกประเภทป้าย
                 # 📏 ขนาดจริงของ logo บนหน้ากล่อง (ซม.) — ให้หน้าเว็บเติมกลับในช่องกรอก
-                "logo_w_cm": (_logo_wh[0] if _logo_wh[0] else
+                "logo_w_cm": (_logo_wh[0] or round(_ARTFIT.get("w_mm", 0) / 10.0, 1) or
                               (round((_punch_logo.bounds[2] - _punch_logo.bounds[0]) / 10.0, 1)
                                if _punch_logo is not None and not _punch_logo.is_empty else 0)),
-                "logo_h_cm": (_logo_wh[1] if _logo_wh[1] else
+                "logo_h_cm": (_logo_wh[1] or round(_ARTFIT.get("h_mm", 0) / 10.0, 1) or
                               (round((_punch_logo.bounds[3] - _punch_logo.bounds[1]) / 10.0, 1)
                                if _punch_logo is not None and not _punch_logo.is_empty else 0)),
                 # 🖼️ ภาพแบนที่เก็บไว้ก่อนขึ้นรูปทรง (ไว้ตรวจว่าเส้นครบตั้งแต่ต้น)
