@@ -2834,6 +2834,43 @@ def _notes_overlay_svg(svg_str, notes):
     return svg_str.replace("</svg>", "".join(out) + "</svg>")
 
 
+def _armdim_h(out, spans, y, fs, lw, aw, col="#dc2626"):
+    """📏 เส้นจับระยะแนวนอนของแขนแขวน — [(x0, x1, ค่าเป็นซม., ชื่อ), ...]
+       ช่างเอาไปเจาะรูฝ้า/คานได้ตรงโดยไม่ต้องวัดเอง"""
+    for _x0, _x1, _val, _nm in spans:
+        if _val < 0.3 or abs(_x1 - _x0) < fs * 0.8:      # สั้นเกินกว่าจะเขียนตัวเลขได้ -> ข้าม
+            continue
+        out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                   % (_x0, y, _x1, y, col, lw))
+        for _xx, _sg in ((_x0, 1.0), (_x1, -1.0)):
+            out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                       % (_xx + aw * 0.6 * _sg, y - aw * 0.4, _xx, y, _xx + aw * 0.6 * _sg, y + aw * 0.4, col, lw))
+        _m = (_x0 + _x1) / 2.0
+        out.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#fff" opacity="0.9"/>'
+                   % (_m - fs * 1.9, y - fs * 1.02, fs * 3.8, fs * 0.86, fs * 0.13))
+        out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+                   'fill="%s" text-anchor="middle">%s %.1f cm</text>' % (_m, y - fs * 0.36, fs * 0.68, col, _nm, _val))
+
+
+def _armdim_v(out, spans, x, fs, lw, aw, col="#dc2626"):
+    """📏 เส้นจับระยะแนวตั้งของแขนแขวน (แขนยื่นจากด้านข้าง 2 ตัว)"""
+    for _y0, _y1, _val, _nm in spans:
+        if _val < 0.3 or abs(_y1 - _y0) < fs * 0.8:
+            continue
+        out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                   % (x, _y0, x, _y1, col, lw))
+        for _yy, _sg in ((_y0, 1.0), (_y1, -1.0)):
+            out.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                       % (x - aw * 0.4, _yy + aw * 0.6 * _sg, x, _yy, x + aw * 0.4, _yy + aw * 0.6 * _sg, col, lw))
+        _m = (_y0 + _y1) / 2.0
+        _rot = ' transform="rotate(-90 %.1f %.1f)"' % (x, _m)
+        out.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#fff" opacity="0.9"%s/>'
+                   % (x - fs * 1.9, _m - fs * 0.44, fs * 3.8, fs * 0.86, fs * 0.13, _rot))
+        out.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+                   'fill="%s" text-anchor="middle"%s>%s %.1f cm</text>'
+                   % (x, _m + fs * 0.2, fs * 0.68, col, _rot, _nm, _val))
+
+
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
@@ -3448,20 +3485,14 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                              % (padL * 0.5, _cy - 5.0, (padL + W + dvx) - padL * 0.5, 5.0, "#e2e8f0", surf, lw * 0.8))
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (padL * 0.5, _cy, padL + W + dvx, _cy, surf, lw * 1.6))
-            # 📏 เส้นบอก 'ระยะห่างระหว่างแขน' — ช่างเอาไปเจาะรูฝ้า/คานได้ตรง
+            # 📏 จับระยะแขนแนวนอน: ห่างกันเท่าไหร่ + ห่างขอบซ้าย/ขวาเท่าไหร่
             if len(_axs) == 2:
-                _g0 = F((_axs[0], b[1])); _g1 = F((_axs[1], b[1]))
-                _gx0 = _g0[0] + dvx / 2.0; _gx1 = _g1[0] + dvx / 2.0
                 _gy = _cy + _plate * 0.85
-                arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#dc2626" stroke-width="%.2f"/>'
-                                 % (_gx0, _gy, _gx1, _gy, lw))
-                for _gx, _sg in ((_gx0, 1.0), (_gx1, -1.0)):
-                    arm_parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="#dc2626" '
-                                     'stroke-width="%.2f"/>' % (_gx + aw * _sg, _gy - aw * 0.6, _gx, _gy,
-                                                                _gx + aw * _sg, _gy + aw * 0.6, lw))
-                arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
-                                 'font-weight="800" fill="#dc2626" text-anchor="middle">ระยะห่างแขน %.1f cm</text>'
-                                 % ((_gx0 + _gx1) / 2.0, _gy - fs * 0.45, fs * 0.85, abs(_axs[1] - _axs[0]) / 10.0))
+                _P = lambda _x: F((_x, b[1]))[0] + dvx / 2.0
+                _armdim_h(arm_parts, [(_P(b[0]), _P(_axs[0]), (_axs[0] - b[0]) / 10.0, "ถึงขอบซ้าย"),
+                                      (_P(_axs[0]), _P(_axs[1]), abs(_axs[1] - _axs[0]) / 10.0, "ระยะห่างแขน"),
+                                      (_P(_axs[1]), _P(b[2]), (b[2] - _axs[1]) / 10.0, "ถึงขอบขวา")],
+                          _gy, fs, lw, aw)
         else:                                  # side1/side2 — แขนแนวนอน "ทางซ้าย/ขวาของภาพ" (คู่ขนาน)
             _avx = (-_aL) if _aside == "left" else _aL
             _ex = b[0] if _aside == "left" else b[2]
@@ -3474,6 +3505,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                     _gapV = min(_gapV, max(20.0, H - 60.0))
                     _fys = (0.5 - _gapV / (2.0 * H), 0.5 + _gapV / (2.0 * H))
                 atts = [F((_ex, b[1] + H * _fys[0])), F((_ex, b[1] + H * _fys[1]))]
+                _ays = [b[1] + H * _fys[0], b[1] + H * _fys[1]]   # 📏 เก็บไว้จับระยะ
             for a in atts:
                 specs.append((a, (a[0] + _avx, a[1])))
             _wx = atts[0][0] + _avx                       # ตำแหน่งผนัง (ปลายแขน)
@@ -3485,6 +3517,15 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                              % (min(_wx, _wsx), _wy0, abs(_wsx - _wx), _wy1 - _wy0, "#e2e8f0", surf, lw * 0.8))
             arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
                              % (_wx, _wy0, _wx, _wy1, surf, lw * 1.6))
+            # 📏 จับระยะแขนแนวตั้ง (แขนข้าง 2 ตัว): ห่างกันเท่าไหร่ + ห่างขอบบน/ล่างเท่าไหร่
+            if _mount == "side2" and len(_ays) == 2:
+                _dx9 = fs * 1.5 if _aside == "left" else -fs * 1.5
+                _gx9 = F((_ex, b[1]))[0] + _dx9
+                _Q = lambda _y: F((_ex, _y))[1]
+                _armdim_v(arm_parts, [(_Q(b[1]), _Q(_ays[0]), (_ays[0] - b[1]) / 10.0, "ถึงขอบบน"),
+                                      (_Q(_ays[0]), _Q(_ays[1]), abs(_ays[1] - _ays[0]) / 10.0, "ระยะห่างแขน"),
+                                      (_Q(_ays[1]), _Q(b[3]), (b[3] - _ays[1]) / 10.0, "ถึงขอบล่าง")],
+                          _gx9, fs, lw, aw)
         _adj = str(arm_adjust).lower() == "adjustable"
 
         def _lerp(pp, qq, t):
