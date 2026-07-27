@@ -3002,8 +3002,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     except Exception:
         _dimg = []
     if _dimg:                                             # เผื่อพื้นที่นอกป้ายสำหรับเส้นบอกระยะ
-        padB += (len(_dimg) + 1) * fs * 1.9
-        padR += fs * 6.5
+        #  +2 แถว/คอลัมน์ สำหรับ 'ระยะห่างขอบ 4 ด้าน' ที่ย้ายออกมาไว้นอกกรอบ (ห้ามทับตัวงาน)
+        padB += (len(_dimg) + 3) * fs * 1.9
+        padR += fs * 11.0
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
     _edgelit = bool(rec.get("edge_lit"))
@@ -3351,36 +3352,61 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">สูง %.1f ซม.</text>'
                          % (_xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, _dfs, _dc, _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, (_g9[3] - _g9[1]) / 10.0))
         # 📐 ระยะขอบ 4 ด้าน (ซ้าย · ขวา · บน · ล่าง) ของกลุ่มแรก — ช่างต้องรู้ว่าวางงานห่างขอบเท่าไหร่
-        #    มาตรฐานเดียวกันทุกประเภทป้าย ไม่ใช่เฉพาะกล่องฉลุหน้า
+        #    ⚠️ ต้องวาง 'นอกตัวป้าย' เสมอ — ห้ามลากทับหน้างาน ไม่งั้นบังแบบจนดูไม่รู้เรื่อง
+        #    ใช้หลักเขียนแบบจริง: เส้นช่วย (witness line) ยิงออกจากขอบ แล้วเส้นวัดอยู่นอกกรอบ
         try:
             _g0 = _dimg[0]
             _cc = "#7c3aed"; _clw = max(0.5, lw * 0.8)
-            _my = (_g0[1] + _g0[3]) / 2.0 + oy; _mx = (_g0[0] + _g0[2]) / 2.0 + ox
-            _edges = (("ซ้าย",  (b[0] + ox, _my), (_g0[0] + ox, _my), (_g0[0] - b[0]) / 10.0, "h"),
-                      ("ขวา",   (_g0[2] + ox, _my), (b[2] + ox, _my), (b[2] - _g0[2]) / 10.0, "h"),
-                      ("บน",    (_mx, b[1] + oy), (_mx, _g0[1] + oy), (_g0[1] - b[1]) / 10.0, "v"),
-                      ("ล่าง",  (_mx, _g0[3] + oy), (_mx, b[3] + oy), (b[3] - _g0[3]) / 10.0, "v"))
-            for _nm, _p0, _p1, _val, _ax9 in _edges:
-                if _val < 0.15:                    # ชิดขอบพอดี ไม่ต้องจับระยะ
-                    continue
-                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
-                             % (_p0[0], _p0[1], _p1[0], _p1[1], _cc, _clw))
-                for _pp, _sg in ((_p0, 1), (_p1, -1)):
-                    if _ax9 == "h":
-                        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
-                                     % (_pp[0] + _sg * aw * 0.6, _pp[1] - aw * 0.35, _pp[0], _pp[1],
-                                        _pp[0] + _sg * aw * 0.6, _pp[1] + aw * 0.35, _cc, _clw))
-                    else:
-                        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
-                                     % (_pp[0] - aw * 0.35, _pp[1] + _sg * aw * 0.6, _pp[0], _pp[1],
-                                        _pp[0] + aw * 0.35, _pp[1] + _sg * aw * 0.6, _cc, _clw))
-                _tx9 = (_p0[0] + _p1[0]) / 2.0; _ty9 = (_p0[1] + _p1[1]) / 2.0
-                _rot = "" if _ax9 == "h" else ' transform="rotate(-90 %.1f %.1f)"' % (_tx9, _ty9)
+            _dash = ' stroke-dasharray="%.1f %.1f" opacity="0.5"' % (fs * 0.25, fs * 0.2)
+
+            def _lab9(_x, _y, _t, _rot=""):
                 parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
-                             'opacity="0.86"%s/>' % (_tx9 - fs * 1.5, _ty9 - fs * 0.62, fs * 3.0, fs * 0.9, fs * 0.14, _rot))
+                             'opacity="0.9"%s/>' % (_x - fs * 1.85, _y - fs * 0.55, fs * 3.7, fs * 0.86, fs * 0.13, _rot))
                 parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
-                             'fill="%s" text-anchor="middle"%s>%s %.1f ซม.</text>'
-                             % (_tx9, _ty9 + fs * 0.06, fs * 0.68, _cc, _rot, _nm, _val))
+                             'fill="%s" text-anchor="middle"%s>%s</text>'
+                             % (_x, _y + fs * 0.12, fs * 0.66, _cc, _rot, _t))
+
+            # ── ซ้าย/ขวา: เส้นวัดอยู่ 'ใต้ป้าย' ถัดจากแถวจับระยะโลโก้
+            _yc = _yBase + (len(_dimg) + 1) * fs * 1.75 + fs * 0.5
+            for _nm, _x0, _x1, _val in (("ห่างขอบซ้าย", b[0] + ox, _g0[0] + ox, (_g0[0] - b[0]) / 10.0),
+                                        ("ห่างขอบขวา", _g0[2] + ox, b[2] + ox, (b[2] - _g0[2]) / 10.0)):
+                if _val < 0.15 or abs(_x1 - _x0) < fs * 0.6:
+                    continue
+                for _wx in (_x0, _x1):        # เส้นช่วย ลากลงจากใต้ป้ายถึงเส้นวัด (ไม่ทับตัวงาน)
+                    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"%s/>'
+                                 % (_wx, b[3] + oy, _wx, _yc, _cc, _clw * 0.8, _dash))
+                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (_x0, _yc, _x1, _yc, _cc, _clw))
+                for _xx, _sg in ((_x0, 1.0), (_x1, -1.0)):
+                    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                                 % (_xx + aw * 0.6 * _sg, _yc - aw * 0.4, _xx, _yc,
+                                    _xx + aw * 0.6 * _sg, _yc + aw * 0.4, _cc, _clw))
+                _lab9((_x0 + _x1) / 2.0, _yc - fs * 0.62, "%s %.1f ซม." % (_nm, _val))
+
+            # ── บน/ล่าง: เส้นวัดอยู่ 'ขวาป้าย' ถัดจากคอลัมน์จับระยะโลโก้
+            #    ⚠️ กล่องไฟ 2 หน้า มีแผ่นพรีวิว 'Face 2' วางอยู่ทางขวา ต้องเลยมันไปอีก ไม่งั้นทับกัน
+            _xc = padL + W + dvx + fs * 1.2 + fs * 2.6 * 2 + fs * 1.6
+            if _is2face:
+                _xc += W * 0.78 + fs * 5.0
+            for _nm, _y0, _y1, _val in (("ห่างขอบบน", b[1] + oy, _g0[1] + oy, (_g0[1] - b[1]) / 10.0),
+                                        ("ห่างขอบล่าง", _g0[3] + oy, b[3] + oy, (b[3] - _g0[3]) / 10.0)):
+                if _val < 0.15 or abs(_y1 - _y0) < fs * 0.6:
+                    continue
+                # เส้นช่วยแบบ 'ขีดสั้น' 2 ท่อน — ไม่ลากยาวข้ามของอื่นให้รก (มาตรฐานงานเขียนแบบ)
+                for _wy in (_y0, _y1):
+                    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"%s/>'
+                                 % (b[2] + ox, _wy, b[2] + ox + fs * 1.1, _wy, _cc, _clw * 0.8, _dash))
+                    parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"%s/>'
+                                 % (_xc - fs * 1.1, _wy, _xc, _wy, _cc, _clw * 0.8, _dash))
+                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (_xc, _y0, _xc, _y1, _cc, _clw))
+                for _yy, _sg in ((_y0, 1.0), (_y1, -1.0)):
+                    parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                                 % (_xc - aw * 0.4, _yy + aw * 0.6 * _sg, _xc, _yy,
+                                    _xc + aw * 0.4, _yy + aw * 0.6 * _sg, _cc, _clw))
+                _mid9 = (_y0 + _y1) / 2.0
+                _lab9(_xc, _mid9, "%s %.1f ซม." % (_nm, _val),
+                      ' transform="rotate(-90 %.1f %.1f)"' % (_xc, _mid9))
         except Exception:
             pass
     # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
@@ -3519,8 +3545,8 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                              % (_wx, _wy0, _wx, _wy1, surf, lw * 1.6))
             # 📏 จับระยะแขนแนวตั้ง (แขนข้าง 2 ตัว): ห่างกันเท่าไหร่ + ห่างขอบบน/ล่างเท่าไหร่
             if _mount == "side2" and len(_ays) == 2:
-                _dx9 = fs * 1.5 if _aside == "left" else -fs * 1.5
-                _gx9 = F((_ex, b[1]))[0] + _dx9
+                # ⚠️ ต้องอยู่ 'นอกทุกอย่าง' — เลยแนวผนังออกไปอีก ไม่ทับกล่องและไม่ทับแขน
+                _gx9 = _wx + (-fs * 1.9 if _aside == "left" else fs * 1.9)
                 _Q = lambda _y: F((_ex, _y))[1]
                 _armdim_v(arm_parts, [(_Q(b[1]), _Q(_ays[0]), (_ays[0] - b[1]) / 10.0, "ถึงขอบบน"),
                                       (_Q(_ays[0]), _Q(_ays[1]), abs(_ays[1] - _ays[0]) / 10.0, "ระยะห่างแขน"),
