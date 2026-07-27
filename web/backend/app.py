@@ -1791,16 +1791,26 @@ def _vtrace_full_mm(img_path, real_width_mm):
             except Exception:
                 pass
         _parent[_i] = _best; _depth[_i] = 0 if _best < 0 else _depth[_best] + 1
-    _out = []
+    _out = []; _used = 0; _lost = []
     for _i in range(len(Ps)):
         if _depth[_i] % 2 == 0:
             _hs = [list(Ps[_j].exterior.coords) for _j in range(len(Ps)) if _parent[_j] == _i]
             try:
                 _pg2 = _Pg(list(Ps[_i].exterior.coords), _hs).buffer(0)
             except Exception:
-                continue
+                _lost.append(("สร้างรูปทรงไม่สำเร็จ", Ps[_i].area)); continue
             if _pg2 is not None and not _pg2.is_empty and _pg2.area > 3.0:
-                _out.append(_pg2)
+                _out.append(_pg2); _used += 1 + len(_hs)
+            else:
+                _lost.append(("เล็กกว่า 3 ตร.มม.", Ps[_i].area))
+    # 🧭 บันทึกไว้รายงานให้ผู้ใช้เห็น: เข้ามากี่เส้น · ใช้จริงกี่เส้น · หายกี่เส้น เพราะอะไร
+    try:
+        _TRACE_ENG["rings_in"] = len(Ps)
+        _TRACE_ENG["rings_used"] = _used
+        _TRACE_ENG["rings_lost"] = _lost[:6]
+        _TRACE_ENG["holes"] = sum(1 for _d in _depth if _d % 2 == 1)
+    except Exception:
+        pass
     if not _out:
         return None
     _u = _uu(_out)
@@ -2873,7 +2883,8 @@ def _armdim_v(out, spans, x, fs, lw, aw, col="#dc2626"):
 
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
-               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
+               arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0,
+               leg_h_cm=70.0, leg_span_cm=0.0, caster_mm=75.0, caster_lock=True, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
                metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None,
                mat_overlays=None, mat_cut=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
@@ -2912,7 +2923,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     _is2face = bool(art_href) and ("2 หน้า" in str(rec.get("name", "")))
     if _is2face:
         padR += W * 0.78 + fs * 5.0
-    if _mount in ("top2", "letterframe"):
+    if _mount == "floor":                     # 🦿 ขาตั้งพื้น + ล้อเลื่อน -> เผื่อพื้นที่ด้านล่าง
+        padB += max(0.0, float(leg_h_cm)) * 10.0 + float(caster_mm) + fs * 4.6
+        padL += fs * 3.2
+    elif _mount in ("top2", "letterframe"):
         padT += _armpad
     elif _mount in ("side1", "side2"):        # แขนแนวนอน ซ้าย/ขวาของภาพ
         if _aside == "left":
@@ -3409,8 +3423,72 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                       ' transform="rotate(-90 %.1f %.1f)"' % (_xc, _mid9))
         except Exception:
             pass
-    # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
+    # 🦿 ขาตั้งพื้น + ล้อเลื่อน (กล่องไฟเคลื่อนย้ายได้) — ขาคู่ 2 ข้าง + คานล่าง + ล้อ 4 ตัว
     arm_parts = []
+    if _mount == "floor":
+        _lh = max(5.0, float(leg_h_cm)) * 10.0          # ความสูงขา (พื้นถึงใต้กล่อง)
+        _cd9 = max(20.0, float(caster_mm))              # เส้นผ่านศูนย์กลางล้อ
+        _lsp = max(0.0, float(leg_span_cm)) * 10.0      # ระยะห่างขา 2 ข้าง (0 = อัตโนมัติ)
+        if _lsp < 10.0 or _lsp > W * 0.98:
+            _lsp = W * 0.62
+        _lt = max(14.0, S * 0.030)                      # ความหนาเสา (เหล็กกล่อง)
+        _stC = (arm_color or "").strip() or (side_color or "") or "#8b93a0"
+        _stD = "#4b525d"
+        _cx9 = (b[0] + b[2]) / 2.0
+        _lxs = [_cx9 - _lsp / 2.0, _cx9 + _lsp / 2.0]
+        _yTop = F((b[0], b[3]))[1]                      # ใต้กล่อง (ระนาบหน้า)
+        _yBeam = _yTop + _lh                            # คานล่าง
+        _yFloor = _yBeam + _cd9                         # พื้น
+
+        def _post(_x, _dx=0.0):
+            _px = F((_x, b[3]))[0] + _dx
+            return ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" stroke="%s" '
+                    'stroke-width="%.2f"/>' % (_px - _lt / 2.0, _yTop, _lt, _lh, _lt * 0.12, _stC, _stD, lw), _px)
+        # เสาคู่หลัง (เยื้องตามความลึกกล่อง) วาดก่อนให้ดูมีมิติ
+        for _x in _lxs:
+            _s9, _ = _post(_x, dvx)
+            arm_parts.append(_s9.replace(_stC, _shade_hex(_stC, 0.72)))
+        _pxs = []
+        for _x in _lxs:
+            _s9, _px = _post(_x); arm_parts.append(_s9); _pxs.append(_px)
+        # คานล่างเชื่อมขา (เหล็กกล่องนอน) + คานเยื้องหลัง
+        arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                         % (_pxs[0] - _lt * 1.6 + dvx, _yBeam - _lt * 0.5 + dvy * 0.0,
+                            (_pxs[1] - _pxs[0]) + _lt * 3.2, _lt * 0.86, _lt * 0.12,
+                            _shade_hex(_stC, 0.72), _stD, lw))
+        arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                         % (_pxs[0] - _lt * 1.6, _yBeam - _lt * 0.5, (_pxs[1] - _pxs[0]) + _lt * 3.2,
+                            _lt * 0.86, _lt * 0.12, _stC, _stD, lw))
+        # 🛞 ล้อเลื่อน 4 ตัว (หน้า 2 · หลัง 2) + แป้นล้อ + เบรกล็อก
+        _wr = _cd9 / 2.0
+        for _dxq, _sc in ((dvx, 0.72), (0.0, 1.0)):
+            for _px in _pxs:
+                _wx9 = _px + _dxq
+                arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="1.5" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                                 % (_wx9 - _lt * 0.62, _yBeam + _lt * 0.36, _lt * 1.24, _lt * 0.30,
+                                    _shade_hex(_stC, _sc * 0.9), _stD, lw * 0.8))
+                arm_parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                                 % (_wx9, _yFloor - _wr, _wr, _shade_hex("#2b3038", _sc), "#1b1f26", lw * 0.9))
+                arm_parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s" stroke="%s" stroke-width="%.2f"/>'
+                                 % (_wx9, _yFloor - _wr, _wr * 0.34, _shade_hex("#c9ced6", _sc), "#7d858f", lw * 0.7))
+                if caster_lock and _dxq == 0.0:          # คันเบรก (เฉพาะล้อหน้า ให้เห็นชัด)
+                    arm_parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="1.2" fill="#ef4444" stroke="#b91c1c" stroke-width="%.2f"/>'
+                                     % (_wx9 - _wr * 0.16, _yFloor - _wr * 0.30, _wr * 1.05, _wr * 0.26, lw * 0.6))
+        # พื้นห้อง
+        arm_parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#94a3b8" stroke-width="%.2f"/>'
+                         % (padL * 0.4, _yFloor, padL + W + dvx + fs * 1.5, _yFloor, lw * 1.4))
+        # 📏 จับระยะ: สูงขา · สูงรวม · ระยะห่างขา (วางนอกตัวกล่องทั้งหมด)
+        _xdim = padL - fs * 3.2
+        _armdim_v(arm_parts, [(_yTop, _yBeam, _lh / 10.0, "สูงขา"),
+                              (F((b[0], b[1]))[1], _yFloor, (H + _lh + _cd9) / 10.0, "สูงรวม")],
+                  _xdim, fs, lw, aw, col="#0d9488")
+        _armdim_h(arm_parts, [(_pxs[0], _pxs[1], _lsp / 10.0, "ระยะห่างขา")],
+                  _yFloor + fs * 1.9, fs, lw, aw, col="#0d9488")
+        arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
+                         'fill="#0d9488" text-anchor="middle">ขาตั้ง 2 ข้าง + คานล่าง · ล้อเลื่อน Ø%.0f มม. 4 ตัว%s</text>'
+                         % (padL + W / 2.0, _yFloor + fs * 3.4, fs * 0.82, _cd9,
+                            " (มีเบรก 2 ตัว)" if caster_lock else ""))
+    # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
     if _mount in ("top2", "side1", "side2", "letterframe"):
         tw = 25.0
         # 🦾 สีแขนยึด: เลือกเองได้ (arm_color) · ไม่เลือก -> วิ่งตามพื้นผิว/สีกล่องไฟ (metal_tex > side_color > เหล็กมาตรฐาน)
@@ -4519,6 +4597,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
                     led_pitch_cm: float = Form(6.0), arm_edge_cm: float = Form(20.0),
                     arm_gap_cm: float = Form(0.0),
+                    leg_h_cm: float = Form(70.0), leg_span_cm: float = Form(0.0),
+                    caster_mm: float = Form(75.0), caster_lock: str = Form('1'),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
@@ -4691,12 +4771,27 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              "กรอบนี้ทำให้ตัวอักษรถูกนับเป็นรูจนแหว่ง และมีเส้นตัดเกินในไฟล์"
                              % _TRACE_ENG["frame_dropped"])
                 _TRACE_ENG["frame_dropped"] = 0
+            # 🧭 รายงาน 'ทุกครั้ง' ว่าใช้เอนจิ้นตัวไหน + เส้นเข้า/ออกเท่าไหร่
+            #    เดิมรายงานเฉพาะ 2 กรณี ทำให้ตอนใช้ potrace เงียบสนิท ตรวจสอบไม่ได้เลยว่าเกิดอะไรขึ้น
             _eng9 = _TRACE_ENG.get("mode", "")
-            if _eng9 == "file-vector":
-                warns.append("🥇 เส้นตัด = เส้นโค้งจริงในไฟล์ .ai/.pdf (ไม่ผ่านการ trace) — คมที่สุด")
-            elif _eng9 == "vtracer-button":
-                warns.append("🧭 เอนจิ้นเส้นตัด: vtracer ค่าเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' 100%")
-            _TRACE_ENG["mode"] = ""
+            _ENGN = {"file-vector": "🥇 เส้นโค้งจริงในไฟล์ .ai/.pdf (ไม่ trace เลย — คมที่สุด)",
+                     "potrace-button": "potrace (ตัวเดียวกับปุ่ม 'แปลงเป็นเส้นตัด')",
+                     "vtracer-button": "⚠️ vtracer (ตัวสำรอง — potrace ทำงานไม่สำเร็จ)"}
+            _ri = int(_TRACE_ENG.get("rings_in", 0) or 0)
+            _ru = int(_TRACE_ENG.get("rings_used", 0) or 0)
+            _msg9 = "🧭 เอนจิ้นเส้นตัด: %s" % (_ENGN.get(_eng9) or (_eng9 or "ไม่ทราบ"))
+            if _ri:
+                _msg9 += " · อ่านเส้นได้ %d เส้น (เนื้อ %d · รู %d) → ใช้จริง %d เส้น" % (
+                    _ri, _ri - int(_TRACE_ENG.get("holes", 0) or 0),
+                    int(_TRACE_ENG.get("holes", 0) or 0), _ru)
+                if _ru < _ri:
+                    _msg9 += " · ⚠️ หายไป %d เส้น" % (_ri - _ru)
+            warns.append(_msg9)
+            for _why, _ar in (_TRACE_ENG.get("rings_lost") or []):
+                warns.append("   ↳ เส้นที่หาย: %s (พื้นที่ %.1f ตร.มม. ≈ ⌀%.1f มม.)"
+                             % (_why, _ar, 2.0 * (max(0.0, _ar) / 3.14159) ** 0.5))
+            for _k9 in ("mode", "rings_in", "rings_used", "rings_lost", "holes"):
+                _TRACE_ENG[_k9] = "" if _k9 == "mode" else 0
         except Exception:
             pass
         # 🔦 คุณภาพไฟล์ตัดกล่องฉลุ: ล้างเศษจิ๋ว/ชิ้นบางเกินฉลุ + ลบขอบหยักจาก trace ก่อนเจาะ
@@ -5311,7 +5406,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    art_href=_art, mount=_m3d, arm_len_cm=float(arm_len_cm),
                                    plate_cm=10.0, arm_side=str(arm_side or "right"),
                                    arm_adjust=str(arm_adjust or "fixed"), arm_travel_cm=float(arm_travel_cm),
-                                   arm_edge_cm=float(arm_edge_cm), arm_gap_cm=float(arm_gap_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
+                                   arm_edge_cm=float(arm_edge_cm), arm_gap_cm=float(arm_gap_cm),
+                                   leg_h_cm=float(leg_h_cm), leg_span_cm=float(leg_span_cm),
+                                   caster_mm=float(caster_mm),
+                                   caster_lock=str(caster_lock or '1') not in ('0','off','false'),
+                                   art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
                                    metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
                                    bore_subs=_punch_raw_subs, mat_overlays=_mat_ov, mat_cut=_mat_cut)
@@ -5881,6 +5980,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     job_no: str = Form(""), sales: str = Form(""),
                     return_depth_cm: float = Form(0.0), n_colors: int = Form(6),
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
+                    leg_h_cm: float = Form(70.0), leg_span_cm: float = Form(0.0),
+                    caster_mm: float = Form(75.0), caster_lock: str = Form("1"),
                     led_pitch_cm: float = Form(6.0), led_watt_per_m: float = Form(12.0),
                     led_volt: float = Form(12.0), led_color: str = Form("Warm White 3000K"),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
@@ -6020,6 +6121,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             try:
                 persp = _iso3d_svg(body3d, rec, round(full.length / 10.0, 1), inner_bore=_bore, art_href=_art,
                                    mount=str(arm or "none"), arm_len_cm=float(arm_len_cm), plate_cm=10.0,
+                                   leg_h_cm=float(leg_h_cm), leg_span_cm=float(leg_span_cm),
+                                   caster_mm=float(caster_mm),
+                                   caster_lock=str(caster_lock or "1") not in ("0", "off", "false"),
                                    art_adj=_art_adj, metal_tex=str(metal_tex or ""),
                                    face_color=(face_color or None), side_color=(side_color or None),
                                    arm_color=str(arm_color or ""), metal_tex_img=str(metal_tex_img or ""),
@@ -6117,6 +6221,20 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             bom.append(("สายไฟเมน", _wiren, "ทนกระแส ~15A", str(wire_type)))
         if rec.get("mount_frame"):
             bom.append(("โครงแขวน", "เหล็กกล่องชุบ 1 นิ้ว", "standoff %s ซม." % frame_standoff_cm, "เจาะรูน็อต/สายไฟ"))
+        # 🦿 ขาตั้งพื้น + ล้อเลื่อน — ลง BOM ให้ฝ่ายจัดซื้อสั่งของได้ทันที
+        if str(arm or "").lower() == "floor":
+            try:
+                _lh9 = max(5.0, float(leg_h_cm)); _cm9 = max(20.0, float(caster_mm))
+                _lk9 = str(caster_lock or "1") not in ("0", "off", "false")
+                _sp9 = float(leg_span_cm or 0)
+                bom.append(("ขาตั้ง (เสา)", "เหล็กกล่องชุบ 1 นิ้ว", "สูง %.0f ซม. × 2 ต้น" % _lh9,
+                            "ระยะห่างขา %s" % ("%.0f ซม." % _sp9 if _sp9 > 1 else "อัตโนมัติ")))
+                bom.append(("ขาตั้ง (คานล่าง)", "เหล็กกล่องชุบ 1 นิ้ว", "เชื่อมยึดขา 2 ต้น", "รองรับแป้นล้อ"))
+                bom.append(("ล้อเลื่อน", "ล้อ PU แป้นหมุน", "Ø%.0f มม. × 4 ตัว" % _cm9,
+                            "มีเบรก 2 ตัว" if _lk9 else "ไม่มีเบรก"))
+                bom.append(("น็อตยึดล้อ", "สกรูเกลียวปล่อย/น็อต", "ชุดละ 4 ตัว × 4 ล้อ", "พร้อมแหวนรอง"))
+            except Exception:
+                pass
         # 📐 Cut layers — ชิ้นตัดแยกชั้น + allowance + ขนาดตัดต่อชิ้น (ให้ตรงกับพรีวิวหน้าออกแบบ)
         cut_rows = []
         _cut_layers = []     # เก็บ geometry แต่ละชั้นไว้วาด 'ภาพไฟล์ตัด' รวม
