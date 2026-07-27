@@ -2226,13 +2226,16 @@ def _offset_subs_like_button(off_mm):
             return None
         _pad = max(4, _r + 4)
         _m = _cv9.copyMakeBorder(_m, _pad, _pad, _pad, _pad, _cv9.BORDER_CONSTANT, value=0)
-        _tmp = _os9.path.join(_tf9.mkdtemp(), "off.png")
-        _cv9.imwrite(_tmp, 255 - _m)                    # วัตถุ = ดำ · พื้น = ขาว (เหมือนภาพงานปกติ)
+        # 🧹 ลบไฟล์ชั่วคราวทิ้งเสมอ (ดิสก์เซิร์ฟเวอร์เต็ม = worker ตาย = ต่อ backend ไม่ได้)
         _it = None
-        try:
-            _it = _te9.trace_potrace(_tmp, n_colors=2)
-        except Exception:
-            _it = None
+        with _tf9.TemporaryDirectory(prefix="vcnc_offb_") as _dir9:
+            _tmp = _os9.path.join(_dir9, "off.png")
+            _cv9.imwrite(_tmp, 255 - _m)                # วัตถุ = ดำ · พื้น = ขาว (เหมือนภาพงานปกติ)
+            del _m, _g
+            try:
+                _it = _te9.trace_potrace(_tmp, n_colors=2)
+            except Exception:
+                _it = None
         if not _it:
             return None
         _subs = []
@@ -2303,12 +2306,16 @@ def _offset_subs_from_geom(geom, off_mm, px_per_mm=5.0):
             _m8 = _cv8.dilate(_m8, _k8) if float(off_mm) > 0 else _cv8.erode(_m8, _k8)
         if not _m8.any():
             return None
-        _tmp8 = _o8.path.join(_t8.mkdtemp(), "offg.png")
-        _cv8.imwrite(_tmp8, 255 - _m8)                     # วัตถุ = ดำ · พื้น = ขาว
-        try:
-            _it8 = _te8.trace_potrace(_tmp8, n_colors=2)
-        except Exception:
-            _it8 = None
+        # 🧹 ไฟล์ชั่วคราวต้องลบทิ้งเสมอ — งานตัดแยกทีละตัวเรียกฟังก์ชันนี้หลายสิบครั้ง/งาน
+        #    ถ้าปล่อยค้างไว้ ดิสก์ของเซิร์ฟเวอร์จะเต็มแล้ว worker ตาย -> หน้าเว็บขึ้น "Failed to fetch"
+        with _t8.TemporaryDirectory(prefix="vcnc_off_") as _dir8:
+            _tmp8 = _o8.path.join(_dir8, "offg.png")
+            _cv8.imwrite(_tmp8, 255 - _m8)                 # วัตถุ = ดำ · พื้น = ขาว
+            del _m8                                        # คืนแรมของภาพก่อนเข้า potrace
+            try:
+                _it8 = _te8.trace_potrace(_tmp8, n_colors=2)
+            except Exception:
+                _it8 = None
         if not _it8:
             return None
         _subs8 = []
@@ -2323,7 +2330,8 @@ def _offset_subs_from_geom(geom, off_mm, px_per_mm=5.0):
 #    ⚠️ การขยายที่ภาพ + potrace กินเวลา/แรมมาก (ป้าย 8 ตัวอักษร ~8 วินาที)
 #    ถ้าป้ายซับซ้อนหรือมีหลายกลุ่มวัสดุ อาจใช้เวลาจนเซิร์ฟเวอร์ตัดสาย (502/504)
 #    -> ตั้งงบเวลาไว้ พอหมดงบให้ถอยไปใช้วิธีเดิมทันที 'ได้ไฟล์ช้ากว่าไม่ได้ไฟล์เลย'
-_SHARPSTAT = {"ok": 0, "reject": 0, "skip": 0, "t0": 0.0, "budget": 8.0}
+_SHARPSTAT = {"ok": 0, "reject": 0, "skip": 0, "t0": 0.0, "budget": 8.0,
+              "calls": 0, "max_calls": 48}
 
 
 def _subs_probe(subs, n=10):
@@ -2358,11 +2366,15 @@ def _sharp_offset(seed_geom, off_mm, target_geom):
     try:
         if target_geom is None or target_geom.is_empty:
             return None
-        # ⏱️ หมดงบเวลาแล้ว -> ถอยทันที ไม่งั้นเซิร์ฟเวอร์จะตัดสายแล้วผู้ใช้ไม่ได้ไฟล์เลย
+        # ⏱️ หมดงบเวลา หรือเรียกครบเพดานแล้ว -> ถอยทันที
+        #    ไม่งั้นป้ายที่มีตัวอักษรเยอะจะทำให้เซิร์ฟเวอร์ตาย แล้วผู้ใช้ไม่ได้ไฟล์เลยสักไฟล์
         import time as _tm
-        if _SHARPSTAT.get("t0") and (_tm.time() - _SHARPSTAT["t0"]) > _SHARPSTAT.get("budget", 20.0):
+        if (_SHARPSTAT.get("calls", 0) >= _SHARPSTAT.get("max_calls", 48)
+                or (_SHARPSTAT.get("t0")
+                    and (_tm.time() - _SHARPSTAT["t0"]) > _SHARPSTAT.get("budget", 8.0))):
             _SHARPSTAT["skip"] = _SHARPSTAT.get("skip", 0) + 1
             return None
+        _SHARPSTAT["calls"] = _SHARPSTAT.get("calls", 0) + 1
         _raw = _offset_subs_from_geom(seed_geom, off_mm)
         if not _raw:
             return None
@@ -2946,6 +2958,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             d += " " + ringd(list(h.coords), tf)
         return d
     parts = []
+    # 🔆 เปิดกลุ่ม 'ตัวป้าย' — แสงไฟ (ออกหน้า/ออกหลัง/ออกรอบ) ต้องเรืองจากกลุ่มนี้เท่านั้น
+    #    ห้ามเรืองจากพื้นหลังสี่เหลี่ยม หรือจากเส้นบอกมิติ/ตัวเลข ซึ่งไม่ใช่ชิ้นงานจริง
+    #    (ฝั่งหน้าเว็บใส่ filter ที่ #w3dBody ตัวเดียว -> ได้ฮาโลตามรูปตัวอักษรเป๊ะ)
+    parts.append('<g id="w3dBody">')
     # 🪙 พื้นผิวสแตนเลส (เงา/แฮร์ไลน์) — ใช้กับ 'ผิวโลหะ' (หน้ากล่องฉลุ หรือหน้าป้ายปกติ)
     _mtxd, _mtxfill, _mtxhair = _metal_defs(metal_tex, S, metal_tex_img)
     if _mtxd:
@@ -3210,6 +3226,8 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     if _edgelit:                                       # 💡 ไฟออกรอบ: เส้นขอบกล่องบางๆ (ไม่มีคิ้ว/ไม่มีกรอบในหน้า) — แสงฟุ้งอยู่ 'ด้านนอก' (ฮาโลหลังสุด)
         for pg in polys:
             parts.append('<path d="%s" fill="none" stroke="#e6c672" stroke-width="%.2f" stroke-linejoin="round" opacity="0.55"/>' % (faced(pg, F), max(1.0, S * 0.004)))
+    # 🔆 ปิดกลุ่ม 'ตัวป้าย' — ตั้งแต่บรรทัดนี้ลงไปเป็นเส้นบอกมิติ/ตัวเลข/โน้ต ซึ่ง 'ห้ามเรืองแสง'
+    parts.append('</g>')
     aw = fs * 0.55
     xh = padL - fs * 1.7; y0 = padT; y1 = padT + H       # สูง (ซ้าย)
     parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (xh, y0, xh, y1, cd, lw))
@@ -4403,7 +4421,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน · ⏱️ เริ่มจับงบเวลาของงานนี้
         import time as _tm0
         _SHARPSTAT["ok"] = 0; _SHARPSTAT["reject"] = 0; _SHARPSTAT["skip"] = 0
-        _SHARPSTAT["t0"] = _tm0.time()
+        _SHARPSTAT["calls"] = 0; _SHARPSTAT["t0"] = _tm0.time()
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
         # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
