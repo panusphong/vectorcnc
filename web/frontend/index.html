@@ -311,10 +311,6 @@ select.numin{cursor:pointer}
               <option value="sticker">พิมพ์สติ๊กเกอร์ + ไดคัท ไปติดทับ (เผื่อตก 3 มม.)</option>
               <option value="none">ไม่ต้องสร้างไฟล์พิมพ์</option>
             </select>
-            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer">
-            <input type="checkbox" id="safeMode" onchange="window._SAFEMODE=this.checked;try{$('goLayer').click();}catch(_e){}">
-            🔒 โหมดปลอดภัย — ใช้เส้นทางเดิมของระบบล้วน ๆ (ปิดกลุ่มวัสดุ + ปิดการเกลาเส้น)
-          </label>
           <div class="hint" id="facePrintHint" style="margin-bottom:0">พิมพ์ UV = พิมพ์ลงบนแผ่นอะคริลิค/พลาสวูด/หน้ากล่องไฟโดยตรง · ระบบจะสร้าง <b>ไฟล์งานพิมพ์ขนาดจริง 1:1</b> ให้อัตโนมัติ พร้อมเลเยอร์ TrimLine / CutContour</div>
           </div>
         </div>
@@ -2329,6 +2325,34 @@ var API='';
 var fileObj=null,lastSvg='',lastDxf='',lastName='vectorcnc',lastDesignSvg='';
 function $(id){return document.getElementById(id);}
 
+/* ===== 🛟 อ่านคำตอบจาก backend ให้ปลอดภัย =====
+   ถ้าเซิร์ฟเวอร์ตอบเป็นหน้า HTML (เช่น 502/504 ตอนงานหนักเกินเวลา, เซิร์ฟเวอร์รีสตาร์ท,
+   หรือหลุด session) การเรียก r.json() ตรง ๆ จะพังเป็น "SyntaxError: Unexpected token '<'"
+   ซึ่งไม่บอกอะไรเลย — ตัวนี้จะดึงสถานะจริงกับข้อความจริงออกมาให้เห็นแทน */
+function _apiJson(r){
+  var ct=(r.headers.get('content-type')||'');
+  if(ct.indexOf('application/json')>=0){
+    return r.json().then(function(j){
+      if(!r.ok && !j.error){ j.error='เซิร์ฟเวอร์ตอบกลับผิดพลาด ('+r.status+')'; }
+      return j;
+    });
+  }
+  return r.text().then(function(t){
+    var msg;
+    if(r.status===502||r.status===503||r.status===504){
+      msg='⏱️ เซิร์ฟเวอร์ตอบไม่ทัน ('+r.status+') — งานนี้หนักเกินเวลาที่กำหนด '
+         +'ลองลดขนาดไฟล์ภาพ หรือลดจำนวนกลุ่มวัสดุ แล้วกดใหม่อีกครั้ง';
+    }else if(r.status===0||!r.status){
+      msg='📡 ต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจอินเทอร์เน็ตแล้วลองใหม่';
+    }else{
+      msg='เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูล JSON (สถานะ '+r.status+')';
+      var s=String(t||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+      if(s){ msg+=' · '+s.slice(0,220); }
+    }
+    return {error:msg,_status:r.status};
+  });
+}
+
 /* ===== 🧊 3D Sign Viewer (Three.js r128) — หมุนดูรอบตัว ===== */
 (function(){
   var scene,camera,renderer,group,haloGrp,rafId,ready=false;
@@ -2721,7 +2745,7 @@ function $(id){return document.getElementById(id);}
       var fd=new FormData(); fd.append('file',f);
       fd.append('real_width_mm',String(wcm*10)); fd.append('max_pts','6000');
       fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
-      .then(function(r){return r.json();}).then(function(j){
+      .then(_apiJson).then(function(j){
         btn.disabled=false; btn.textContent=old;
         if(j.error){q('v3dHint').textContent='❌ '+j.error;return;}
         G=j; q('v3dHint').style.display='none';
@@ -3008,7 +3032,7 @@ function $(id){return document.getElementById(id);}
       if(W3.type){ fd.append('sign_type',W3.type);
         fd.append('trim_width_cm',String(W3.tw)); fd.append('trim_dir','out'); }
       fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
-      .then(function(r){return r.json();}).then(function(j){
+      .then(_apiJson).then(function(j){
         W3.busy=false;
         if(j.error){ fail('❌ '+j.error); return; }
         W3.G=j;
@@ -3025,7 +3049,7 @@ function $(id){return document.getElementById(id);}
   function loadTypes(){
     var sel=q('w3Type'); if(!sel||sel._done)return; sel._done=1;
     fetch((typeof API!=='undefined'?API:'')+'/api/sign-types')
-    .then(function(r){return r.json();}).then(function(j){
+    .then(_apiJson).then(function(j){
       (j.types||[]).forEach(function(t){
         var o=document.createElement('option'); o.value=t.key;
         o.textContent=t.key+' · '+t.label+(t.has_trim?' (มีคิ้ว)':'');
@@ -3167,7 +3191,7 @@ var VC_GUARDED = ['btnWall','btnCsheet'];     // ปุ่มที่มีต�
     if(k) H['X-Internal-Key'] = k;
 
     fetch((typeof API!=='undefined'?API:'')+'/api/whoami', {headers: H})
-    .then(function(r){ return r.json(); })
+    .then(_apiJson)
     .then(function(j){
       VC_INTERNAL = !!(j && j.internal);
       window.VC_INTERNAL = VC_INTERNAL;
@@ -3555,7 +3579,7 @@ window.setLang=setLang; window.t=t;
     var k=adminKey();
     fetch((typeof API!=='undefined'?API:'')+'/api/stats?days=30'+(fresh?'&fresh=1':'')+akq(),
           {headers: k?{'X-Admin-Key':k}:{}})
-    .then(function(r){return r.json();}).then(function(j){
+    .then(_apiJson).then(function(j){
       if(j&&j.ok)render(j);
       else if(j&&j.error==='forbidden')
         q('swCards').innerHTML='<div class="sw-c"><div class="k">🔒 สถิติ</div><div class="v">—</div><div class="s">'+(j.msg||'เฉพาะผู้ดูแลระบบ')+'</div></div>';
@@ -3600,7 +3624,7 @@ window.setLang=setLang; window.t=t;
     var k=adminKey();
     fetch((typeof API!=='undefined'?API:'')+'/api/whoami?_=1'+akq(),
           {headers: k?{'X-Admin-Key':k}:{}})
-    .then(function(r){return r.json();})
+    .then(_apiJson)
     .then(function(j){
       if(j && j.is_admin){
         if(q('statsGate')){ q('statsGate').style.display='block';
@@ -3775,7 +3799,7 @@ window.setLang=setLang; window.t=t;
     if(!job.total){ if(!confirm('ยังไม่มีราคา (ยังไม่ได้กดคิดราคา) — ทำใบเสนอราคาต่อไหม?'))return; }
     var b=q('btnQuote'); btnBusy(b,'⏳ สร้าง...');
     fetch((typeof API!=='undefined'?API:'')+'/api/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(job)})
-      .then(function(r){return r.json();}).then(function(j){ btnDone(b);
+      .then(_apiJson).then(function(j){ btnDone(b);
         if(j.error){ q('jpOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>'; return; }
         var bin=atob(j.html_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
         var blob=new Blob([u],{type:'text/html'}); var url=URL.createObjectURL(blob);
@@ -3793,7 +3817,7 @@ window.setLang=setLang; window.t=t;
     try{ if(window._lastBom)files.bom=window._lastBom; }catch(e){}
     var b=q('btnPacket'); btnBusy(b,'⏳ รวมไฟล์...');
     fetch((typeof API!=='undefined'?API:'')+'/api/job-packet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:job,files:files})})
-      .then(function(r){return r.json();}).then(function(j){ btnDone(b);
+      .then(_apiJson).then(function(j){ btnDone(b);
         if(j.error){ q('jpOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>'; return; }
         var bin=atob(j.zip_base64),u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
         var blob=new Blob([u],{type:'application/zip'}); var a=document.createElement('a');
@@ -4016,7 +4040,7 @@ function genDesign(){
   $('aiOut').innerHTML='<div style="text-align:center;padding:14px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">Claude กำลังออกแบบ...</div></div>';
   var fd=new FormData();
   fd.append('brief',brief);fd.append('style',$('aiStyle').value||'');fd.append('width_mm',$('realW').value||'600');
-  fetch((API||'')+'/api/design',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/design',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('aiGen').disabled=false;$('aiGen').textContent='✨ สร้างใหม่';
     if(j.error){$('aiOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     lastDesignSvg=ensureXmlns(sanitizeSvg(j.svg));
@@ -4082,7 +4106,7 @@ function runNest(){
   fd.append('file',fileObj);fd.append('qty',$('nQty').value||'10');fd.append('real_width_mm',$('nPW').value||'300');
   fd.append('real_height_mm',(NLOCK?'0':($('nPH').value||'0')));
   fd.append('sheet_w',sw);fd.append('sheet_h',sh);fd.append('gap',$('nGap').value||'5');fd.append('parts_mode',NPM);
-  fetch((API||'')+'/api/nest',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/nest',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('nGo').disabled=false;$('nGo').textContent='▦ จัดวางใหม่';
     if(j.error){$('nOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     lastNestDxf=j.dxf_base64||'';
@@ -4201,7 +4225,7 @@ function runMulti(){
     meta.files.push({label:mfLabel(i),name:m.name,real_width_mm:m.wmm||300,real_height_mm:(m.lock!==false?0:(m.hmm||0)),qty:m.qty,mode:m.mode});
     fd.append('file'+n,m.file);n++;}
   fd.append('meta',JSON.stringify(meta));
-  fetch((API||'')+'/api/nest-multi',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/nest-multi',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('mfGo').disabled=false;$('mfGo').textContent='▦ จัดวางรวม';
     if(j.error){$('mfOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     MFB64={combined:j.dxf_combined_base64||'',pdf:j.pdf_base64||'',files:j.per_file_dxf||[]};
@@ -4235,7 +4259,7 @@ function runMultiLS(){
     meta.files.push({label:mfLabel(i),name:m.name,sign_type:m.type||'1',real_width_mm:m.wmm||600,real_height_mm:(m.lock!==false?0:(m.hmm||0)),qty:m.qty,n_colors:6});
     fd.append('file'+n,m.file);n++;}
   fd.append('meta',JSON.stringify(meta));
-  fetch((API||'')+'/api/nest-layerset',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/nest-layerset',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('mfGo').disabled=false;$('mfGo').textContent='🏭 ตัดตามโครงสร้าง (แยกวัสดุ)';
     if(j.error){$('mfOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     var dlB64=function(b64,name){var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u],{type:'application/dxf'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();};
@@ -4354,7 +4378,7 @@ function runLayer(){
   fd.append('file',f);fd.append('sign_type',LSEL);fd.append('real_width_mm',$('lsW').value||'600');
   fd.append('real_height_mm',(LSLOCK?'0':($('lsH').value||'0')));fd.append('n_colors','6');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');fd.append('return_depth_cm',String(RDEPTH||0));
-  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('lsOut').innerHTML='<div style="color:#EF4444;font-size:13px;padding:10px">'+j.error+'</div>';return;}
     LSDXF=j.dxf_base64||'';
@@ -4401,7 +4425,7 @@ document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(t){
 var IK_READY=false;
 function ikInit(){
   if(IK_READY)return; IK_READY=true;
-  fetch(API+'/api/brief-fields').then(function(r){return r.json();}).then(function(j){
+  fetch(API+'/api/brief-fields').then(_apiJson).then(function(j){
     IK_MATS=j.materials||[];
     var mo=IK_MATS.map(function(m){return '<option value="'+m.key+'">'+m.label+'</option>';}).join('');
     if($('ikPcMat'))$('ikPcMat').innerHTML=mo;
@@ -4429,7 +4453,7 @@ if($('ikExGo'))$('ikExGo').onclick=function(){
   // 🖼️ PSD/PSB -> แตกเป็น 'เลเยอร์' (raster) ผ่าน ai-split · คลิกชิ้น = ดาวน์โหลด PNG โปร่งใสทันที
   if(/\.(psd|psb)$/i.test(f.name||'')){
     var pfd=new FormData(); pfd.append('file',f); pfd.append('max_px','1600');
-    fetch(API+'/api/ai-split',{method:'POST',body:pfd}).then(function(r){return r.json();}).then(function(j){
+    fetch(API+'/api/ai-split',{method:'POST',body:pfd}).then(_apiJson).then(function(j){
       if(j.error){$('ikExMsg').textContent='❌ '+j.error;return;}
       var ps=j.pieces||[];
       if(!ps.length){$('ikExMsg').textContent='❌ ไม่พบเลเยอร์/ชิ้นในไฟล์ PSD';return;}
@@ -4447,7 +4471,7 @@ if($('ikExGo'))$('ikExGo').onclick=function(){
     return;
   }
   var fd=new FormData();fd.append('file',f);
-  fetch(API+'/api/extract-assets',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch(API+'/api/extract-assets',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j.error){$('ikExMsg').textContent='❌ '+j.error;return;}
     IK_TOK=j.token;
     var as=j.assets||[];
@@ -4466,7 +4490,7 @@ if($('ikExGo'))$('ikExGo').onclick=function(){
         el.style.opacity='.5';
         fetch(API+'/api/extract-asset',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({token:IK_TOK,kind:a.kind,page:a.page,bbox:a.bbox,xref:a.xref||0})})
-        .then(function(r){return r.json();}).then(function(k){
+        .then(_apiJson).then(function(k){
           el.style.opacity='1';
           if(k.error){alert('❌ '+k.error);return;}
           if(k.kind==='image'){ikDl(k.png_base64,'asset_'+a.id+'.png','image/png');alert('📷 ได้ภาพแล้ว — ภาพ raster ต้องส่งเข้า "ดราฟท์ .ai" ต่อเพื่อแปลงเป็นเวกเตอร์');}
@@ -4490,7 +4514,7 @@ function ikPcFD(){
 if($('ikPcGo'))$('ikPcGo').onclick=function(){
   var fd=ikPcFD(); if(!fd){$('ikPcMsg').textContent='เลือกไฟล์ก่อนนะ';return;}
   $('ikPcMsg').textContent='กำลังตรวจ...';$('ikPcOut').innerHTML='';$('ikPcFix').style.display='none';
-  fetch(API+'/api/check-producible',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch(API+'/api/check-producible',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j.error){$('ikPcMsg').textContent='❌ '+j.error;return;}
     $('ikPcMsg').textContent='';
     var v=ikVerdict(j.verdict), s=j.stats||{};
@@ -4518,7 +4542,7 @@ if($('ikPcGo'))$('ikPcGo').onclick=function(){
 if($('ikPcFix'))$('ikPcFix').onclick=function(){
   var fd=ikPcFD(); if(!fd)return;
   $('ikPcMsg').textContent='กำลังแก้อัตโนมัติ...';
-  fetch(API+'/api/autofix',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch(API+'/api/autofix',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j.error){$('ikPcMsg').textContent='❌ '+j.error;return;}
     $('ikPcMsg').textContent='';
     var a=ikVerdict(j.after.verdict);
@@ -4544,7 +4568,7 @@ if($('ikCcNames'))$('ikCcNames').onclick=function(){
   $('ikCcNMsg').textContent='กำลังคิดชื่อ...';
   fetch(API+'/api/concept-names',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({biz:$('ikCcBiz').value,tone:$('ikCcTone').value,detail:$('ikCcDetail').value})})
-  .then(function(r){return r.json();}).then(function(j){
+  .then(_apiJson).then(function(j){
     $('ikCcNMsg').textContent=(j.source==='ai'?'(จาก AI)':'(คลังคำสำรอง — ตั้งค่า ANTHROPIC_API_KEY เพื่อใช้ AI)');
     $('ikCcNames_out').innerHTML='<div class="ik-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">'+
       (j.names||[]).map(function(n){return '<div class="ik-asset" style="text-align:left;padding:10px 12px" data-n="'+String(n.name).replace(/"/g,'&quot;')+'">'+
@@ -4626,7 +4650,7 @@ function cc3d(){
       cap_mm:parseFloat($('ikCcCap').value||200), return_cm:FX.rd,
       face_color:(lit?fxLight(FX.temp):FX.art), bg:(FX.mode==='off'?'#f4f6fa':'#0f1319'),
       label:CC_NM+' · '+c.layout_label})})
-  .then(function(r){return r.json();}).then(function(j){
+  .then(_apiJson).then(function(j){
     CC_3DBUSY=false;
     if(j.error){$('ikCc3dMsg').textContent='❌ '+j.error;return;}
     $('ikCc3dMsg').textContent=j.w_mm+' × '+j.h_mm+' มม. · ยกขอบ '+j.depth_cm+' ซม. · '+j.font;
@@ -4647,7 +4671,7 @@ function ccUse(cb,fillOverride){
   fetch(API+'/api/concept-use',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name:CC_NM,sub:CC_SUB,style:c.style,layout:c.layout,
       cap_mm:parseFloat($('ikCcCap').value||200),fill:(fillOverride||FX.art)})})
-  .then(function(r){return r.json();}).then(function(k){
+  .then(_apiJson).then(function(k){
     if(k.error){alert('❌ '+k.error);return;}
     cb(k,c);
   }).catch(function(e){alert('❌ '+e);});
@@ -4879,7 +4903,7 @@ if($('ikCcGo'))$('ikCcGo').onclick=function(){
   fetch(API+'/api/concept',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name:nm,sub:sub,cap_mm:parseFloat($('ikCcCap').value||200),
       material:$('ikCcMat').value||'acrylic',layouts:lay})})
-  .then(function(r){return r.json();}).then(function(j){
+  .then(_apiJson).then(function(j){
     if(j.error){$('ikCcMsg').textContent='❌ '+j.error;return;}
     $('ikCcMsg').textContent='ได้ '+j.count+' แบบ (เรียงตามคะแนนผลิตได้)';
     CC_LIST=j.concepts||[]; CC_NM=nm; CC_SUB=sub;
@@ -4891,7 +4915,7 @@ if($('ikCcGo'))$('ikCcGo').onclick=function(){
 if($('ikBrGo'))$('ikBrGo').onclick=function(){
   var vals={};(IK_BR||[]).forEach(function(f){var el=$('ikbr_'+f.key);if(el)vals[f.key]=el.value;});
   fetch(API+'/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:vals})})
-  .then(function(r){return r.json();}).then(function(j){
+  .then(_apiJson).then(function(j){
     IK_BRTXT=j.text||'';
     var col=j.ready?'#16a34a':(j.score>=70?'#f59e0b':'#ef4444');
     $('ikBrOut').innerHTML='<div class="ik-card">'+
@@ -5386,7 +5410,6 @@ $('goLayer').onclick=function(){
   fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');   // 🖨️ UV / สติ๊กเกอร์
   try{ fd.append('material_groups',JSON.stringify(window._matGroups||[])); }catch(_e){}   // 🧱 ป้ายเดียว หลายวัสดุ
   fd.append('logo_w_cm',($('laWcm')&&$('laWcm').value)||'0');   // 📏 ขนาดจริงของ logo บนหน้ากล่อง
-  fd.append('safe_mode',(window._SAFEMODE?'1':'0'));   // 🔒 กดปุ่มโหมดปลอดภัยเมื่อสงสัยว่ารูปเพี้ยน
   fd.append('logo_h_cm',($('laHcm')&&$('laHcm').value)||'0');
   fd.append('return_depth_cm',String(RDEPTH||(($('bxD')&&parseFloat($('bxD').value))||0)));fd.append('n_colors',$('nColors')?$('nColors').value:'6');   // ⚠️ ความลึก: ใช้ค่าช่องกล่องถ้ายังไม่แตะชิป (ตรงกับที่ตาเห็น)
   fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
@@ -5404,7 +5427,7 @@ $('goLayer').onclick=function(){
   fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
   fd.append('arm_edge_cm',($('fArmEdge')&&$('fArmEdge').value)||'25');
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
-  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/layer-set',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
     try{
@@ -5632,7 +5655,7 @@ $('goLayer').onclick=function(){
       fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
       fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
       try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
-      fetch((API||'')+'/api/job-sheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+      fetch((API||'')+'/api/job-sheet',{method:'POST',body:fd}).then(_apiJson).then(function(j){
         btn.disabled=false;btn.textContent=old;
         if(j.error){if(w)w.close();alert('ผิดพลาด: '+j.error);return;}
         if(w){w.document.open();w.document.write(j.html);w.document.close();}
@@ -5972,7 +5995,7 @@ $('aiDraft').onclick=function(){
     btn.textContent='⏳ กำลังสร้างไฟล์งานพิมพ์...';
     $('aiOut').textContent='กำลังฝังภาพ + สร้างเส้นไดคัท...';
   }
-  fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('aiOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     try{ window._lastAiB64=j.ai_base64||''; }catch(e){}   /* เก็บให้ซองงานโรงงาน */
@@ -6017,7 +6040,7 @@ $('srGo').onclick=function(){
   fd.append('reg_mode',$('srReg').value||'ccd');
   fd.append('qty',$('srQty').value||'0');
   fd.append('white_base',($('srWhite')&&$('srWhite').checked)?'1':'0');
-  fetch((API||'')+'/api/step-repeat',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/step-repeat',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('srOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     var nm=(lastName||'sheet');
@@ -6049,7 +6072,7 @@ if($('mfGo'))$('mfGo').onclick=function(){
   fd.append('bars',($('mfBars')&&$('mfBars').value)||'1');fd.append('gap_cm',($('mfGap')&&$('mfGap').value)||'20');
   fd.append('bar_y_cm',($('mfBarY')&&$('mfBarY').value)||'0');fd.append('frame_x_cm',($('mfX')&&$('mfX').value)||'0');
   fd.append('standoff_cm',($('mfStand')&&$('mfStand').value)||'5');fd.append('wire_offset_cm',($('mfWire')&&$('mfWire').value)||'0');
-  fetch((API||'')+'/api/mount-frame',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/mount-frame',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('mfOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     var nm=(lastName||'letters');
@@ -6071,7 +6094,7 @@ if($('ledGo'))$('ledGo').onclick=function(){
   fd.append('file',fileObj);fd.append('real_width_mm',$('realW').value||'600');
   fd.append('pitch_cm',($('ledPitch')&&$('ledPitch').value)||'6');fd.append('watt_per_m',($('ledWpm')&&$('ledWpm').value)||'12');
   fd.append('volt',($('ledVolt')&&$('ledVolt').value)||'12');fd.append('spare',($('ledSpare')&&$('ledSpare').value)||'1.3');
-  fetch((API||'')+'/api/led-layout',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/led-layout',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('ledOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     $('ledOut').innerHTML='✅ เส้นไฟ '+j.segments+' เส้น · ความยาวรวม <b>'+j.total_m+' ม.</b> · <b>'+j.watts+' W</b> · '+j.amps+' A (@'+(($('ledVolt')&&$('ledVolt').value)||12)+'V)<br>🔌 หม้อแปลงแนะนำ: <b style="color:#d97706">'+j.transformer_w+' W</b>'+(j.note?(' · '+j.note):'');
@@ -6097,7 +6120,7 @@ $('dl3d').onclick=function(){
     fd.append('return_depth_cm',($('stl3dDepth')&&$('stl3dDepth').value)||'5');
     fd.append('trim_width_cm',(typeof TRIMW!=='undefined'?TRIMW:1)); fd.append('trim_dir',(typeof TRIMDIR!=='undefined'?TRIMDIR:'out'));
     fd.append('n_colors',$('nColors')?$('nColors').value:'6'); fd.append('fmt',fmt);
-    fetch((API||'')+'/api/export-3d-layered',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    fetch((API||'')+'/api/export-3d-layered',{method:'POST',body:fd}).then(_apiJson).then(function(j){
       btn.disabled=false;btn.textContent=old;
       if(j.error){$('stlOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
       var mime={stl:'model/stl',obj:'text/plain',tmf:'model/3mf'};
@@ -6111,7 +6134,7 @@ $('dl3d').onclick=function(){
   var fd2=new FormData();
   fd2.append('file',fileObj);fd2.append('width_mm',$('realW').value||'600');
   fd2.append('thickness_mm',$('stlThick').value||'30');fd2.append('n_colors',$('nColors')?$('nColors').value:'6');
-  fetch((API||'')+'/api/export-3d',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/export-3d',{method:'POST',body:fd2}).then(_apiJson).then(function(j){
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('stlOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     _dl3dSave(j.stl_base64, base+'.stl','model/stl');
@@ -6120,7 +6143,7 @@ $('dl3d').onclick=function(){
 };
 
 // ---- api health ----
-fetch((API||'')+'/api/health').then(function(r){return r.json();}).then(function(j){
+fetch((API||'')+'/api/health').then(_apiJson).then(function(j){
   $('apiStatus').textContent=j.ok?'🟢 พร้อม':'🔴 ไม่พร้อม';$('apiStatus').style.color=j.ok?'#10B981':'#EF4444';
 }).catch(function(){$('apiStatus').textContent='🔴 ต่อ backend ไม่ได้';$('apiStatus').style.color='#EF4444';});
 
@@ -6433,7 +6456,7 @@ $('go').onclick=function(){
   fd.append('tabs',$('tabs').checked?'3':'0');
   fd.append('enhance',($('enhance')&&$('enhance').checked)?'1':'0');
   fd.append('mode',MODE);
-  fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/vectorize',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('go').disabled=false;paintMode();
     if(j.error){$('after').innerHTML='<div style="color:#EF4444;font-size:13px;padding:14px">ผิดพลาด: '+j.error+'</div>';return;}
     LS_ACTIVE=false;try{var _ab=document.querySelector('.app-body');if(_ab)_ab.classList.remove('full-stage');}catch(_e){}if($('dlSvg'))$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (มม.)';if($('layerStage'))$('layerStage').style.display='none';
@@ -6630,7 +6653,7 @@ function csRun(){
   fd.append('led_color',$('csLed').value); fd.append('install',$('csInstall').value);
   fd.append('wire_gauge',$('csWire').value); fd.append('wire_length_m',$('csWlen').value||'5');
   fd.append('qty_sets',$('csQty').value||'1');
-  fetch((API||'')+'/api/checksheet',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/checksheet',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     b.disabled=false; b.textContent='📋 สร้าง Check Sheet';
     if(!j.ok){ csMsg('ผิดพลาด: '+(j.error||'สร้างไม่สำเร็จ'),true); return; }
     csMsg('✅ สร้างสำเร็จ · Job '+ (j.job_id||''));
@@ -6671,7 +6694,7 @@ if($('mGo'))$('mGo').onclick=function(){
   $('mErr').textContent='';$('mPrev').innerHTML='<div class="spinner"></div>';$('mRes').style.display='none';
   $('mGo').disabled=true;$('mGo').textContent='กำลังวัด...';
   var fd=new FormData();fd.append('file',measFile);fd.append('area_w_cm',$('mAw').value||'0');fd.append('area_h_cm',$('mAh').value||'0');
-  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     $('mGo').disabled=false;$('mGo').textContent='วัดขนาด';
     if(j.error){$('mErr').textContent='ผิดพลาด: '+j.error;$('mPrev').innerHTML='ยังไม่มีภาพ';return;}
     measResult=j;
@@ -7385,7 +7408,7 @@ function wallSetImg(f){
   if(/\.(ai|pdf|eps|ps|svg|psd|psb)$/i.test(f.name||'')){
     $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังแตกชิ้นจากไฟล์เวกเตอร์...</div>';
     var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','1200');
-    fetch((API||'')+'/api/ai-split',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
+    fetch((API||'')+'/api/ai-split',{method:'POST',body:vfd}).then(_apiJson).then(function(j){
       if(j&&j.pieces&&j.count>0){
         if(j.count===1){ var p=j.pieces[0]; _wallSignOrig=p.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(p.png, f.name+' (เวกเตอร์)'); }
         else { _wallPickPieces(j.pieces, f); }
@@ -7397,7 +7420,7 @@ function wallSetImg(f){
   if($('wCut') && !$('wCut').checked){ var rr=new FileReader(); rr.onload=function(){ _wallLoad(rr.result, f.name); }; rr.readAsDataURL(f); return; }
   $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div><div style="font-size:11px;color:#5A6B8C;margin-top:4px">กำลังตัดพื้นหลัง...</div>';
   var fd=new FormData(); fd.append('file',f);
-  fetch((API||'')+'/api/cutout',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/cutout',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j&&j.png){ _wallLoad(j.png, f.name+' ✂ ตัดพื้นหลังแล้ว'); }
     else { var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name+' (พื้นหลังเดิม)'); }; rd.readAsDataURL(f); }
   }).catch(function(){ var rd=new FileReader(); rd.onload=function(){ _wallLoad(rd.result, f.name); }; rd.readAsDataURL(f); });
@@ -7405,7 +7428,7 @@ function wallSetImg(f){
 function _wallRasterWhole(f){
   $('wDrop').innerHTML='<div class="spinner" style="width:22px;height:22px;margin:0 auto"></div>';
   var vfd=new FormData(); vfd.append('file',f); vfd.append('max_px','2200');
-  fetch((API||'')+'/api/rasterize',{method:'POST',body:vfd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/rasterize',{method:'POST',body:vfd}).then(_apiJson).then(function(j){
     if(j&&j.png){ _wallSignOrig=j.png; if($('wEditBg'))$('wEditBg').style.display='block'; _wallLoad(j.png, (f.name||'ไฟล์')+' (ทั้งแผ่น)'); }
     else { $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">แปลงไม่ได้: '+((j&&j.error)||'?')+'</span>'; }
   }).catch(function(e){ $('wDrop').innerHTML='<span style="color:#EF4444;font-size:12px">ต่อ backend ไม่ได้</span>'; });
@@ -7457,7 +7480,7 @@ function _wallPickPieces(pieces, f){
     if(/\.(ai|pdf|eps|ps)$/i.test(nm)){                 // 🎯 เวกเตอร์ -> แตกชิ้นแบบเวกเตอร์ (คมเท่าต้นฉบับ)
       var fd2=new FormData(); fd2.append('file',f);
       fd2.append('split_gap',String(window._splitGap||0));   // 🔧 ความละเอียดการแยกชิ้น (0=อัตโนมัติ)
-      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(function(r){return r.json();}).then(function(j){
+      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd2}).then(_apiJson).then(function(j){
         // 📄 เก็บ 'ทั้งแผ่น' ไว้เป็นตัวเลือกแรกเสมอ — ปลอดภัยที่สุด ไม่เสี่ยงกับการแตกชิ้นผิด
         var _pageA=(j&&j.assets)?j.assets.filter(function(a){return a.kind==='page'&&a.thumb;}):[];
         var as=(j&&j.assets)?j.assets.filter(function(a){return a.kind!=='page'&&a.thumb;}):[];
@@ -7476,7 +7499,7 @@ function _wallPickPieces(pieces, f){
   }
   function procRaster(f,cb){
     var fd=new FormData(); fd.append('file',f); fd.append('max_px','3000');
-    fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    fetch((API||'')+'/api/ai-split',{method:'POST',body:fd}).then(_apiJson).then(function(j){
       if(j&&j.pieces&&j.count>0){ cb(j.pieces.map(function(p){return {png:p.png,w:p.w,h:p.h,meta:null};})); }
       else cb([]);
     }).catch(function(){ cb([]); });
@@ -7928,7 +7951,7 @@ function _wallPickPieces(pieces, f){
     var pend=list.length, any=false;
     list.forEach(function(oldTok){
       var fd=new FormData(); fd.append('file',window._asmFiles[oldTok]);
-      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+      fetch((API||'')+'/api/extract-assets',{method:'POST',body:fd}).then(_apiJson).then(function(j){
         if(j&&j.token){ any=true;
           window._asmFiles[j.token]=window._asmFiles[oldTok];
           _items.forEach(function(it){ if(it.meta&&it.meta.token===oldTok)it.meta.token=j.token; });   // bbox เดิมใช้ได้ (ไฟล์เดียวกัน)
@@ -7954,7 +7977,7 @@ function _wallPickPieces(pieces, f){
       var _tok0=''; for(var _qi=0;_qi<_items.length;_qi++){ if(_items[_qi].meta&&_items[_qi].meta.token){_tok0=_items[_qi].meta.token;break;} }
       fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({token:_tok0,items:items})})
-      .then(function(r){return r.json();}).then(function(j){
+      .then(_apiJson).then(function(j){
         // 🔁 ไฟล์ต้นทางหมดอายุ (deploy ใหม่ = เซิร์ฟเวอร์รีสตาร์ต) -> อัปไฟล์เดิมใหม่เงียบ ๆ แล้วรวมซ้ำ 1 รอบ
         var _stale = (!j || !j.ai_base64 || (j.requested && j.count < j.requested));
         if(_stale && !_retried){
@@ -8095,7 +8118,7 @@ if($('wDlAi'))$('wDlAi').onclick=function(){
     fd.append('file',new File([blob],'design.png',{type:'image/png'}));
     fd.append('width_mm',String(wmm));fd.append('engine','print');
     fd.append('white_base','0');fd.append('cut_contour','1');fd.append('cut_mode','diecut');
-    fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    fetch((API||'')+'/api/draft-ai',{method:'POST',body:fd}).then(_apiJson).then(function(j){
       btn.disabled=false;btn.textContent=old;
       if(j.error){alert('ผิดพลาด: '+j.error);return;}
       var bin=atob(j.ai_base64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
@@ -8127,7 +8150,7 @@ function wallAutoMeasure(){
   if(!_wallBgFile){ alert('อัปโหลดภาพผนัง+ป้าย ที่ช่อง "ภาพพื้นหลังผนัง" ก่อน'); return; }
   var fd=new FormData(); fd.append('file',_wallBgFile); fd.append('area_w_cm',$('wWall').value||'0'); fd.append('area_h_cm',$('hWall').value||'0');
   if($('wInfo'))$('wInfo').innerHTML='🔎 กำลังตรวจจับป้าย...';
-  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  fetch((API||'')+'/api/measure',{method:'POST',body:fd}).then(_apiJson).then(function(j){
     if(j.error){ measResult=null; if($('wInfo'))$('wInfo').innerHTML='ตรวจจับไม่ได้ ('+j.error+') — ลากกรอบเองได้'; wallDraw(); return; }
     measResult=j;
     var nb=_wPartsToBoxes(j.parts, function(a,b,c,d){return {fx:a,fy:b,fw:c,fh:d};});
@@ -8161,7 +8184,7 @@ function wallDetectDesign(){
   fetch(_wallSignOrig).then(function(r){return r.blob();}).then(function(bl){
     var fd=new FormData(); fd.append('file',new File([bl],'sign.png',{type:bl.type||'image/png'})); fd.append('area_w_cm',s.w.toFixed(1)); fd.append('area_h_cm',s.h.toFixed(1));
     return fetch((API||'')+'/api/measure',{method:'POST',body:fd});
-  }).then(function(r){return r.json();}).then(function(j){
+  }).then(_apiJson).then(function(j){
     if(j.error){ if($('wInfo'))$('wInfo').innerHTML='ตรวจจับไม่ได้ ('+j.error+') — ลากกรอบเองได้'; return; }
     function mp(fx,fy,fw,fh){ return {fx:f.sLx+fx*f.sWf, fy:f.sTy+fy*f.sHf, fw:fw*f.sWf, fh:fh*f.sHf}; }
     var nb=_wPartsToBoxes(j.parts, mp);
