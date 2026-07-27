@@ -22,5 +22,12 @@ COPY web ./web
 
 WORKDIR /app/web/backend
 ENV PORT=8000
+# 👷 จำนวน worker = จำนวนงานที่ทำ 'พร้อมกันจริง ๆ' ได้
+#    งานสร้างไฟล์ตัดกิน CPU เต็ม ๆ และเป็น async def -> 1 worker = ทำได้ทีละ 1 คน คนอื่นเข้าคิว
+#    วัดจริง: 3 คนยิงพร้อมกันบน 1 worker -> คนที่ 3 รอ 12.98 วิ ทั้งที่งานตัวเองใช้ 4.4 วิ
+#    ตั้งเท่าจำนวน CPU ของแพ็กเกจ (Render Pro Plus = 4 CPU / 8 GB)
+#    แรมที่ใช้จริง ~250 MB ต่อ worker -> 4 workers ≈ 1 GB จาก 8 GB (เหลือเฟือ)
+#    เปลี่ยนค่าได้จาก Environment ของ Render โดยไม่ต้อง build ใหม่: WEB_CONCURRENCY
+ENV WEB_CONCURRENCY=4
 # โฮสต์ (Render/Railway/Fly) จะ inject $PORT ให้เอง
-CMD uvicorn app:app --host 0.0.0.0 --port ${PORT}
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY} --timeout-keep-alive 65
