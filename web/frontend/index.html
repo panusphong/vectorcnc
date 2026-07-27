@@ -234,6 +234,10 @@ select.numin{cursor:pointer}
         <button class="nav-btn" id="btnCsheet" data-i18n="nav.bom" style="display:block;width:100%;text-align:left;margin:2px 0">📋 BOM Check Sheet</button>
       </span>
     </span>
+    <!-- 🔎 ค้นหางานที่บันทึกไว้ — ต้องอยู่บนสุดและกดได้ตลอดเวลา
+         (เดิมซ่อนอยู่ในแถบผลลัพธ์ 3 มิติ = ต้องสร้างงานใหม่ก่อนถึงจะค้นของเก่าได้ ซึ่งกลับหัวกลับหาง) -->
+    <button class="nav-btn" id="btnFindJobTop" title="เปิดงานที่เคยบันทึกไว้"
+            style="background:#475569;color:#fff;font-weight:700;border-color:#475569">🔎 ค้นหางาน</button>
     <button class="nav-btn" id="btnIntake" data-i18n="nav.intake" style="background:#0d9488;color:#fff;font-weight:700;border-color:#0d9488">🚀 Intake Studio</button>
     <button class="nav-btn" id="btnManual" data-i18n="nav.manual" style="background:#4f46e5;color:#fff;font-weight:700">📖 คู่มือ</button>
     <!-- 🌐 สวิตช์ภาษา: ตัวที่ไฮไลต์ = ภาษาที่ใช้อยู่ -->
@@ -4446,6 +4450,11 @@ function ikDlTxt(txt,name){var a=document.createElement('a');a.href='data:text/p
 function ikVerdict(v){return v==='pass'?['#16a34a','ผลิตได้ ✓']:(v==='fix'?['#f59e0b','ต้องแก้ก่อน']:['#ef4444','ผลิตไม่ได้ ✕']);}
 
 if($('btnIntake'))$('btnIntake').onclick=function(){var o=$('intakeOverlay');if(o){o.style.display='block';o.scrollTop=0;ikInit();}};
+/* 🔎 ค้นหางาน (ปุ่มบนสุด) — เปิดได้ทันทีโดยไม่ต้องสร้างงาน 3 มิติก่อน */
+if($('btnFindJobTop'))$('btnFindJobTop').onclick=function(){
+  if(typeof window.openJobsDlg==='function'){ window.openJobsDlg('find'); }
+  else { alert('ระบบค้นหางานยังโหลดไม่เสร็จ รอสักครู่แล้วลองใหม่ค่ะ'); }
+};
 document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(t){
   t.onclick=function(){
     document.querySelectorAll('#intakeOverlay .ik-tab').forEach(function(x){x.classList.remove('on');});
