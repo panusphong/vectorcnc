@@ -486,6 +486,7 @@ select.numin{cursor:pointer}
               <option value="top2">แขนยื่นลงจากด้านบน 2 แขน</option>
               <option value="side1">แขนยื่นจากด้านข้าง 1 แขน</option>
               <option value="side2">แขนยื่นจากด้านข้าง 2 แขน</option>
+              <option value="floor">🦿 ขาตั้งพื้น + ล้อเลื่อน (เคลื่อนย้ายได้)</option>
             </select>
             <div style="width:96px"><input class="numin" id="mainArmLen" type="number" value="30" min="10" max="100" title="ความยาวแขน (ซม.)" style="padding:6px;width:100%"></div>
           </div>
@@ -501,6 +502,23 @@ select.numin{cursor:pointer}
             <div style="width:92px"><input class="numin" id="mainArmTravel" type="number" value="10" min="0" title="ระยะเลื่อน ±ซม." style="padding:6px;width:100%"></div>
           </div>
           <div class="hint" style="margin-top:2px">เหล็กกล่อง 1 นิ้ว · เพลทยึด 10×10 ซม. เจาะ 4 รู · เลือกซ้าย/ขวา · <b>ปรับได้</b> = โครงในเลื่อนขึ้น-ลง ±ซม. — โชว์ในภาพ 3 มิติ + ได้ไฟล์ตัดเพลท</div>
+          <!-- 🦿 ขาตั้งพื้น + ล้อเลื่อน — กล่องไฟแบบเข็นย้ายได้ (ขาคู่ 2 ข้าง + คานล่าง + ล้อ 4 ตัว) -->
+          <div id="legPanel" style="display:none;margin-top:6px;padding:9px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
+            <div style="font-size:11.5px;font-weight:800;color:#0f766e;margin-bottom:6px">🦿 ขาตั้งพื้น + ล้อเลื่อน</div>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">สูงขา (ซม.)</label><input class="numin" id="legH" type="number" min="10" step="1" value="70" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ระยะห่างขา (ซม.)</label><input class="numin" id="legSpan" type="number" min="0" step="1" value="0" placeholder="0 = อัตโนมัติ" style="padding:5px;width:100%"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:5px;align-items:flex-end">
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">ขนาดล้อ Ø (มม.)</label>
+                <select class="numin" id="casterMm" style="padding:5px;width:100%">
+                  <option value="50">50 มม. (เบา)</option><option value="75" selected>75 มม. (มาตรฐาน)</option>
+                  <option value="100">100 มม. (หนัก)</option><option value="125">125 มม. (หนักมาก)</option>
+                </select></div>
+              <label style="flex:1;display:flex;align-items:center;gap:5px;font-size:10.5px;color:#0f766e;padding-bottom:6px"><input type="checkbox" id="casterLock" checked> ล้อมีเบรก 2 ตัว</label>
+            </div>
+            <div class="hint" style="margin-bottom:0">สูงรวม = สูงกล่อง + สูงขา + ขนาดล้อ · ระบบจับระยะให้ครบในภาพ 3 มิติ และลงใบสั่งผลิตให้สั่งของได้เลย</div>
+          </div>
           <!-- 📏 แขนคู่ (บน 2 / ข้าง 2) -> ให้กำหนดระยะห่างระหว่างแขนได้ทุกประเภทป้าย -->
           <div id="armGap2" style="display:none;margin-top:6px">
             <label style="font-size:10px;color:#64748b">📏 ระยะห่างระหว่าง 2 แขน (ซม.) — วัดกึ่งกลางถึงกึ่งกลาง</label>
@@ -2130,6 +2148,7 @@ select.numin{cursor:pointer}
           <option value="top2">แขวนเพดาน 2 แขน (ยื่นลงจากบน)</option>
           <option value="side1">แขนข้าง 1 แขน</option>
           <option value="side2">แขนข้าง 2 แขน</option>
+          <option value="floor">🦿 ขาตั้งพื้น + ล้อเลื่อน (+2,500 บาท)</option>
         </select>
         <div id="wArmRow" style="display:none;gap:6px;margin-top:5px">
           <div style="flex:1"><label style="font-size:10px;color:var(--muted)">ยาวแขน (ซม.)</label><input class="numin" id="wArmLen" type="number" value="30" min="10" max="120" style="padding:5px;width:100%"></div>
@@ -5052,7 +5071,7 @@ window.restoreDesignJob=function(d,job){
     }catch(_e){}
     // 🦾 แขน / โครงแขวน / จำนวนสี / ข้อมูลผลิต (วัสดุ·ไฟ·สายไฟ·พิมพ์·เซล·กราฟิก·ส่งมอบ)
     if(d.arm&&typeof d.arm==='object'){ _sv('mainArm',d.arm.m); _sv('mainArmLen',d.arm.len); _sv('mainArmSide',d.arm.side); _sv('mainArmAdjust',d.arm.adj); _sv('mainArmTravel',d.arm.trv); }
-    if(d.frame){ _sv('fBars',d.frame.bars); _sv('fLevel',d.frame.level); _sv('fGap',d.frame.gap); _sv('fXshift',d.frame.x); _sv('fStand',d.frame.stand); _sv('fWire',d.frame.wire); _sv('fArmEdge',d.frame.edge); _sv('fArmLen',d.frame.alen); _sv('fArmGap',d.frame.agap); }
+    if(d.frame){ _sv('fBars',d.frame.bars); _sv('fLevel',d.frame.level); _sv('fGap',d.frame.gap); _sv('fXshift',d.frame.x); _sv('fStand',d.frame.stand); _sv('fWire',d.frame.wire); _sv('fArmEdge',d.frame.edge); _sv('fArmLen',d.frame.alen); _sv('fArmGap',d.frame.agap); _sv('legH',d.frame.legh); _sv('legSpan',d.frame.legsp); _sv('casterMm',d.frame.cast); }
     if(d.ncolors)_sv('nColors',d.ncolors);
     if(d.pm){ _sv('pmMaterial',d.pm.mat); _sv('pmLedType',d.pm.ledt); _sv('pmLedPitch',d.pm.pitch); _sv('pmLedColor',d.pm.ledc); _sv('pmWire',d.pm.wire); _sv('pmPrint',d.pm.print); _sv('pmSales',d.pm.sales); _sv('pmGraphic',d.pm.graphic); _sv('pmDelivery',d.pm.deliv); }
     if(d.la){ if($('laScale')){ $('laScale').value=d.la.s||100; if($('laScaleV'))$('laScaleV').textContent=String(d.la.s||100); }
@@ -5177,9 +5196,11 @@ function _glowBody(){
 /* 🦾 แผงตั้งค่าแขน: โชว์เมื่อเลือกแขน (ทุกประเภทป้าย) · ช่องระยะห่าง: เฉพาะแขนคู่ */
 function _syncArmUI(){
   var v=($('mainArm')&&$('mainArm').value)||'none';
-  var pan=$('armAdjPanel'), g2=$('armGap2');
-  if(pan) pan.style.display=(v==='none')?'none':'block';
+  var pan=$('armAdjPanel'), g2=$('armGap2'), lp=$('legPanel');
+  var isArm=(v==='top2'||v==='side1'||v==='side2');
+  if(pan) pan.style.display=isArm?'block':'none';        // ตั้งค่าแขน = เฉพาะแบบแขน
   if(g2)  g2.style.display=(v==='top2'||v==='side2')?'block':'none';
+  if(lp)  lp.style.display=(v==='floor')?'block':'none'; // 🦿 ขาตั้งพื้น = คนละชุดกับแขน
 }
 try{ if($('mainArm')) $('mainArm').addEventListener('change',_syncArmUI); _syncArmUI(); }catch(_e){}
 
@@ -5529,6 +5550,11 @@ $('goLayer').onclick=function(){
     });
     fd.append('arm_gap_cm',String(_g||0));
   })();
+  // 🦿 ขาตั้งพื้น + ล้อเลื่อน
+  fd.append('leg_h_cm',($('legH')&&$('legH').value)||'70');
+  fd.append('leg_span_cm',($('legSpan')&&$('legSpan').value)||'0');
+  fd.append('caster_mm',($('casterMm')&&$('casterMm').value)||'75');
+  fd.append('caster_lock',($('casterLock')&&$('casterLock').checked)?'1':'0');
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   _apiFetch((API||'')+'/api/layer-set',fd).then(_apiJson).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
@@ -5961,7 +5987,7 @@ $('goLayer').onclick=function(){
         trimw:(typeof TRIMW!=='undefined'?TRIMW:1)||1,trimdir:(typeof TRIMDIR!=='undefined'?TRIMDIR:'out')||'out',
         ncolors:_gv('nColors')||'6',
         arm:{m:_gv('mainArm'),len:_gv('mainArmLen'),side:_gv('mainArmSide'),adj:_gv('mainArmAdjust'),trv:_gv('mainArmTravel')},
-        frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen'),agap:_gv('fArmGap')},
+        frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen'),agap:_gv('fArmGap'),legh:_gv('legH'),legsp:_gv('legSpan'),cast:_gv('casterMm')},
         glow:(typeof GLOW!=='undefined'?{mode:GLOW.mode,temp:GLOW.temp,acr:GLOW.acr||null,kelvin:GLOW.kelvin||''}:null),
         pm:{mat:_gv('pmMaterial'),ledt:_gv('pmLedType'),pitch:_gv('pmLedPitch'),ledc:_gv('pmLedColor'),wire:_gv('pmWire'),print:_gv('pmPrint'),sales:_gv('pmSales'),graphic:_gv('pmGraphic'),deliv:_gv('pmDelivery')},
         la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0,
@@ -6019,6 +6045,15 @@ $('goLayer').onclick=function(){
     };
     if($('lsToWall'))$('lsToWall').onclick=function(){
       if(!fileObj&&!window._lsFaceSvg){alert('ไม่พบภาพแบบ');return;}
+      /* 🦾 ส่งวิธีติดตั้งที่เลือกไว้ด้านบน (แขน / ขาตั้งพื้น) ลงไปหน้าประเมินราคาด้วย
+         จะได้ไม่ต้องเลือกซ้ำ และราคาชุดขา 2,500 บาท ขึ้นเองอัตโนมัติ */
+      try{
+        var _am=($('mainArm')&&$('mainArm').value)||'none';
+        if($('wArm')&&_am){ $('wArm').value=_am;
+          if(typeof _wArmToggle==='function')_wArmToggle();
+          if($('mainArmLen')&&$('wArmLen'))$('wArmLen').value=$('mainArmLen').value;
+          if($('mainArmSide')&&$('wArmSide'))$('wArmSide').value=$('mainArmSide').value; }
+      }catch(_e){}
       // 🖼️ ใช้ "ภาพหน้าตรง 3D" (มีคิ้ว/งานพิมพ์/เงา) วางบนผนัง — ถ้าไม่มีค่อย fallback ภาพต้นฉบับ
       var _svgToPng=function(svg,cb){ try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));
         var im=new Image(); im.onload=function(){ var sc=2; var c=document.createElement('canvas');
@@ -8383,6 +8418,8 @@ function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey,
   var minTot=isPrint&&rawTotal>0&&rawTotal<300; var total=minTot?300:rawTotal;
   return {isPrint:isPrint,isLight:isLight,rawArea:rawArea,billable:billable,minA:minA,tier:tier,per:per,material:material,colorFee:colorFee,transFee:transFee,frameRate:frameRate,framePrice:framePrice,rawTotal:rawTotal,minTot:minTot,total:total,tiered:(item.t==='t')};
 }
+/* 🦿 ราคาชุดขาตั้งพื้น + ล้อเลื่อน (บาท/ชุด) — แก้ตรงนี้ที่เดียว มีผลทุกที่ */
+var LEG_SET_THB=2500;
 var _wLast=null;
 function _pDetail(r){ var ex=['\u0e27\u0e31\u0e2a\u0e14\u0e38 '+Math.round(r.material).toLocaleString()+' ('+r.per.toLocaleString()+'/\u0e15\u0e23.\u0e21.)'];
   if(r.transFee)ex.push('\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07 1,000'); if(r.colorFee)ex.push('\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 1,500'); if(r.framePrice)ex.push('\u0e42\u0e04\u0e23\u0e07 '+Math.round(r.framePrice).toLocaleString());
@@ -8416,7 +8453,10 @@ function wallPrice(){ if(!$('wPResult'))return;
   // \ud83c\udfa8 \u0e04\u0e48\u0e32\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 \u2014 \u0e1a\u0e27\u0e01\u0e40\u0e02\u0e49\u0e32\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e14\u0e35\u0e22\u0e27 (\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22)
   if(colorTotal>0){ lines.push({colorLine:true,n:nColor,fee:colorTotal}); total+=colorTotal; }
   // 🦾 แขนยึด/แขวน = คิดราคาเท่าโครงเหล็ก (1,800/ตร.ม.) เป็นบรรทัดแยกชัดเจน เพิ่มเสมอเมื่อเลือกแขน
-  if(_armSel!=='none'){
+  // 🦿 ขาตั้งพื้น + ล้อเลื่อน = ราคาเหมา 2,500 บาท/ชุด (ไม่คิดตาม ตร.ม. เพราะเป็นชุดสำเร็จ)
+  if(_armSel==='floor'){
+    lines.push({legLine:true,fee:LEG_SET_THB}); total+=LEG_SET_THB;
+  } else if(_armSel!=='none'){
     var _aa=wallSignAreaSqm(); var _asqm=Math.max(0,(_aa.w/100)*(_aa.h/100));
     var _armRate=1800; var _armCost=Math.round(_asqm*_armRate);
     if(_armCost>0){ lines.push({armLine:true,arm:_armSel,sqm:_asqm,rate:_armRate,fee:_armCost}); total+=_armCost; }
@@ -8492,6 +8532,7 @@ function wallPrice(){ if(!$('wPResult'))return;
   var multi=_valid.length>1;
   var html=lines.map(function(l){
     if(l.colorLine)return '<div style="margin-bottom:3px">\ud83c\udfa8 <b>\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e2a\u0e35 \u00d7 1,500</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
+    if(l.legLine){ return '<div style="margin-bottom:3px">\ud83e\uddbf <b>ขาตั้งพื้น + ล้อเลื่อน</b> <span style="font-size:10px;opacity:.85">ขาคู่ 2 ข้าง + คานล่าง + ล้อ 4 ตัว · เหมาชุด</span> \u2192 <b>'+l.fee.toLocaleString()+' บาท</b></div>'; }
     if(l.armLine){ var _an=(l.arm==='top2'?'\u0e41\u0e02\u0e27\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 2 \u0e41\u0e02\u0e19':l.arm==='side1'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 1 \u0e41\u0e02\u0e19':l.arm==='side2'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 2 \u0e41\u0e02\u0e19':'\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14'); return '<div style="margin-bottom:3px">\ud83e\uddbe <b>\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14/\u0e41\u0e02\u0e27\u0e19</b> <span style="font-size:10px;opacity:.85">'+_an+' \u00b7 '+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+' (\u0e40\u0e17\u0e48\u0e32\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01)</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.frameLine){ var _fn=(l.kind==='stainless'?'\u0e42\u0e04\u0e23\u0e07\u0e2a\u0e41\u0e15\u0e19\u0e40\u0e25\u0e2a':'\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01'); return '<div style="margin-bottom:3px">\ud83d\udd29 <b>'+_fn+'</b> <span style="font-size:10px;opacity:.85">'+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.facadeLine){ var _wd=(l.wrap>0)?(' <span style="font-size:9.5px;opacity:.8">(\u0e2b\u0e19\u0e49\u0e32 '+l.front.toFixed(2)+' + '+(l.wrapTxt||'\u0e2b\u0e38\u0e49\u0e21')+' '+l.wrap.toFixed(2)+')</span>'):''; return '<div style="margin-bottom:3px">\ud83c\udfe2 <b>\u0e07\u0e32\u0e19\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+(l.name?l.name+' \u00b7 ':'')+l.sqm.toFixed(2)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+'</span>'+_wd+' \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
@@ -8538,7 +8579,10 @@ setTimeout(function(){ var host=$('wAcrSw'), off=$('wAcrOff'), cust=$('wAcrCusto
   if(cust)cust.oninput=function(){ setAcr(cust.value); };
 },0);
 // 🦾 แขนยึดในหน้าจำลองผนัง — โชว์/ซ่อนช่องตั้งค่า + วาดใหม่
-function _wArmToggle(){ var v=($('wArm')&&$('wArm').value)||'none'; if($('wArmRow'))$('wArmRow').style.display=(v==='none')?'none':'flex'; if($('wArmSideWrap'))$('wArmSideWrap').style.display=(v==='side1'||v==='side2')?'block':'none'; }
+function _wArmToggle(){ var v=($('wArm')&&$('wArm').value)||'none';
+  /* 🦿 ขาตั้งพื้น ไม่มีความยาวแขน/ระยะห่างขอบ -> ซ่อนช่องของแขนไป */
+  if($('wArmRow'))$('wArmRow').style.display=(v==='none'||v==='floor')?'none':'flex';
+  if($('wArmSideWrap'))$('wArmSideWrap').style.display=(v==='side1'||v==='side2')?'block':'none'; }
 ['wArm','wArmLen','wArmEdge','wArmSide'].forEach(function(id){ var el=$(id); if(el){ el.oninput=function(){_wArmToggle();wallDraw();}; el.onchange=function(){_wArmToggle();wallDraw();}; } });
 try{_wArmToggle();}catch(_e){}
 if($('wPType')){ $('wPType').onchange=wallDraw; $('wPType').oninput=wallDraw; }
