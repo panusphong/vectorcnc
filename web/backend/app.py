@@ -2245,7 +2245,7 @@ def _offset_subs_like_button(off_mm):
         return None
 
 
-def _offset_subs_from_geom(geom, off_mm, px_per_mm=8.0):
+def _offset_subs_from_geom(geom, off_mm, px_per_mm=5.0):
     """🥈 วิธีเดียวกับ _offset_subs_like_button แต่ 'เริ่มจากรูปทรง' แทนภาพต้นฉบับ
 
     ใช้ตอนที่ชั้นนั้นไม่ได้กินพื้นที่ทั้งภาพ — เช่น ป้ายที่แยกวัสดุหลายกลุ่ม
@@ -2266,9 +2266,12 @@ def _offset_subs_from_geom(geom, off_mm, px_per_mm=8.0):
         _w8 = _b8[2] - _b8[0]; _h8 = _b8[3] - _b8[1]
         if _w8 <= 0 or _h8 <= 0:
             return None
-        # ความละเอียด: ยิ่งสูงขอบยิ่งคม แต่คุมไม่ให้ภาพใหญ่เกิน (ยาวสุด ~6000 px)
+        # ความละเอียด: 5 px/มม. = ละเอียด 0.2 มม. ซึ่งเกินพอสำหรับงานป้าย
+        #    (potrace ฟิตเส้นโค้งระดับต่ำกว่าพิกเซลอยู่แล้ว) · คุมด้านยาวไม่เกิน 3000 px
+        #    ⚠️ อย่าดันเลข 2 ตัวนี้ขึ้นโดยไม่จับเวลา — งานตัดแยกทีละตัวเรียกฟังก์ชันนี้
+        #    หลายสิบครั้งต่อหนึ่งงาน ต้นทุนคูณกันทันที
         _ppm = float(px_per_mm)
-        _ppm = min(_ppm, 6000.0 / max(_w8, _h8))
+        _ppm = min(_ppm, 3000.0 / max(_w8, _h8))
         if _ppm < 1.5:
             return None
         _pad = int(round(abs(float(off_mm)) * _ppm)) + 6
@@ -2316,7 +2319,11 @@ def _offset_subs_from_geom(geom, off_mm, px_per_mm=8.0):
         return None
 
 
-_SHARPSTAT = {"ok": 0, "reject": 0}       # 📊 นับชิ้นที่ได้เส้น 'คมกริบ' vs ที่ด่านตรวจตีกลับ
+# 📊 นับชิ้นที่ได้เส้น 'คมกริบ' vs ที่ด่านตรวจตีกลับ + ⏱️ งบเวลาของงานนี้
+#    ⚠️ การขยายที่ภาพ + potrace กินเวลา/แรมมาก (ป้าย 8 ตัวอักษร ~8 วินาที)
+#    ถ้าป้ายซับซ้อนหรือมีหลายกลุ่มวัสดุ อาจใช้เวลาจนเซิร์ฟเวอร์ตัดสาย (502/504)
+#    -> ตั้งงบเวลาไว้ พอหมดงบให้ถอยไปใช้วิธีเดิมทันที 'ได้ไฟล์ช้ากว่าไม่ได้ไฟล์เลย'
+_SHARPSTAT = {"ok": 0, "reject": 0, "skip": 0, "t0": 0.0, "budget": 8.0}
 
 
 def _subs_probe(subs, n=10):
@@ -2350,6 +2357,11 @@ def _sharp_offset(seed_geom, off_mm, target_geom):
     """
     try:
         if target_geom is None or target_geom.is_empty:
+            return None
+        # ⏱️ หมดงบเวลาแล้ว -> ถอยทันที ไม่งั้นเซิร์ฟเวอร์จะตัดสายแล้วผู้ใช้ไม่ได้ไฟล์เลย
+        import time as _tm
+        if _SHARPSTAT.get("t0") and (_tm.time() - _SHARPSTAT["t0"]) > _SHARPSTAT.get("budget", 20.0):
+            _SHARPSTAT["skip"] = _SHARPSTAT.get("skip", 0) + 1
             return None
         _raw = _offset_subs_from_geom(seed_geom, off_mm)
         if not _raw:
@@ -4334,10 +4346,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         f.write(await file.read())
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
-        # 🔒 โหมดปลอดภัย (ค่าเริ่มต้น) = ปิดของใหม่ทั้งหมด · ใช้เส้นทางเดิมของระบบเป๊ะ ๆ
-        _SAFE["on"] = str(safe_mode or "0").lower() in ("1", "on", "true")
-        if _SAFE["on"]:
-            material_groups = ""            # ไม่หักชิ้นใด ๆ ออกจากตัวป้ายเด็ดขาด
+        # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
+        #    ปิดตายไว้ ห้ามเปิดจากภายนอก (ยังรับพารามิเตอร์ไว้กันหน้าเว็บเวอร์ชันเก่ายิงมาแล้วพัง)
+        _SAFE["on"] = False
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
@@ -4389,7 +4400,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         warns = []
         _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
-        _SHARPSTAT["ok"] = 0; _SHARPSTAT["reject"] = 0   # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน
+        # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน · ⏱️ เริ่มจับงบเวลาของงานนี้
+        import time as _tm0
+        _SHARPSTAT["ok"] = 0; _SHARPSTAT["reject"] = 0; _SHARPSTAT["skip"] = 0
+        _SHARPSTAT["t0"] = _tm0.time()
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
         # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
@@ -4919,10 +4933,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                  "junk": junk})
         # 📊 รายงานคุณภาพเส้นตัด — พี่จะได้เห็นว่าชิ้นไหนได้เส้นคมกริบแล้ว ชิ้นไหนยังใช้วิธีเดิม
         try:
-            if _SHARPSTAT.get("ok") or _SHARPSTAT.get("reject"):
-                warns.append("✂️ เส้นตัดคมกริบ (ขยายที่ภาพ + potrace) %d ชิ้น · "
-                             "ถอยไปใช้วิธีเดิมเพราะตรวจไม่ผ่าน %d ชิ้น"
-                             % (int(_SHARPSTAT.get("ok", 0)), int(_SHARPSTAT.get("reject", 0))))
+            if _SHARPSTAT.get("ok") or _SHARPSTAT.get("reject") or _SHARPSTAT.get("skip"):
+                _msg = ("✂️ เส้นตัดคมกริบ (ขยายที่ภาพ + potrace) %d ชิ้น · ตรวจไม่ผ่าน %d ชิ้น"
+                        % (int(_SHARPSTAT.get("ok", 0)), int(_SHARPSTAT.get("reject", 0))))
+                if _SHARPSTAT.get("skip"):
+                    _msg += (" · ข้ามเพราะหมดงบเวลา %d ชิ้น (งานซับซ้อน — ชิ้นที่ข้ามใช้เส้นวิธีเดิม)"
+                             % int(_SHARPSTAT["skip"]))
+                warns.append(_msg)
         except Exception:
             pass
         full, rec = _MAIN_FULL, _MAIN_REC      # 🔙 คืนตัวหลักให้ขั้นตอนถัดไป (3 มิติ · มุมมอง · ใบสั่งผลิต)
@@ -5663,10 +5680,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         f.write(await file.read())
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
-        # 🔒 โหมดปลอดภัย (ค่าเริ่มต้น) = ปิดของใหม่ทั้งหมด · ใช้เส้นทางเดิมของระบบเป๊ะ ๆ
-        _SAFE["on"] = str(safe_mode or "0").lower() in ("1", "on", "true")
-        if _SAFE["on"]:
-            material_groups = ""            # ไม่หักชิ้นใด ๆ ออกจากตัวป้ายเด็ดขาด
+        # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
+        #    ปิดตายไว้ ห้ามเปิดจากภายนอก (ยังรับพารามิเตอร์ไว้กันหน้าเว็บเวอร์ชันเก่ายิงมาแล้วพัง)
+        _SAFE["on"] = False
         rec = SIGN_TYPES.get(str(sign_type))
         if not rec:
             return JSONResponse({"error": "ไม่รู้จักแบบป้ายนี้"}, status_code=400)
