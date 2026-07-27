@@ -2887,11 +2887,38 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     try:
         # ✅ ใช้ได้ทุกประเภทป้าย: กล่องฉลุ -> วัดจากรูฉลุ · ป้ายอื่น ๆ -> วัดจากตัวอักษร/โลโก้เอง
         _src_pieces = []
-        _dim_src = None
+        _dim_src = None; _dim_isart = False
         if inner_bore is not None and not inner_bore.is_empty:
             _dim_src = (inner_bore.geoms if inner_bore.geom_type == "MultiPolygon" else [inner_bore])
         elif art_geom is not None and not art_geom.is_empty:      # กล่องไฟทรงเรขาคณิต -> ใช้รูปงานจริงที่วางในกล่อง
             _dim_src = (art_geom.geoms if art_geom.geom_type == "MultiPolygon" else [art_geom])
+        elif art_href and rec.get("box_shape"):
+            # 🖨️ กล่องไฟ 'หน้าพิมพ์': งานเป็นภาพ ไม่ใช่รูปทรง — คำนวณกรอบที่ภาพจะถูกวางจริง
+            #    (สูตรเดียวกับตอนวาด) เพื่อให้จับระยะได้เหมือนกล่องฉลุหน้าทุกประการ
+            from shapely.geometry import box as _bxD
+            _ARTIN0 = max(2.0, S * 0.004) if bool(rec.get("no_trim") or rec.get("edge_lit")) else 14.0
+            _iaD = full.buffer(-_ARTIN0)
+            if _iaD is not None and not _iaD.is_empty:
+                _abD = _iaD.bounds
+                _cxD = (_abD[0] + _abD[2]) / 2.0; _cyD = (_abD[1] + _abD[3]) / 2.0
+                _bwD = _abD[2] - _abD[0]; _bhD = _abD[3] - _abD[1]
+                if rec.get("box_shape") in ("circle", "oval"):
+                    _bwD *= 0.68; _bhD *= 0.68
+                _arD = float((art_adj or {}).get("ar", 0) or 0)
+                _sD = float((art_adj or {}).get("s", 1.0) or 1.0)
+                if art_adj:
+                    _twD = float(art_adj.get("w_mm", 0) or 0); _thD = float(art_adj.get("h_mm", 0) or 0)
+                    if (_twD > 1.0 or _thD > 1.0) and _arD > 0 and _bwD > 0.1 and _bhD > 0.1:
+                        _fhD = min(_bhD, _bwD / _arD)
+                        if _fhD > 0.1:
+                            _sD = (_thD / _fhD) if _thD > 1.0 else (_twD / (_fhD * _arD))
+                            _sD = max(0.02, min(20.0, _sD))
+                    _cxD += float(art_adj.get("dx", 0.0)); _cyD += float(art_adj.get("dy", 0.0))
+                _bwD *= _sD; _bhD *= _sD
+                if _arD > 0:                       # preserveAspectRatio="meet" -> ได้ขนาดจริงตามสัดส่วนงาน
+                    _fhD = min(_bhD, _bwD / _arD); _bwD = _fhD * _arD; _bhD = _fhD
+                _dim_src = [_bxD(_cxD - _bwD / 2.0, _cyD - _bhD / 2.0, _cxD + _bwD / 2.0, _cyD + _bhD / 2.0)]
+                _dim_isart = True
         elif not rec.get("wrap"):
             _dim_src = polys                                       # อักษรยกขอบ/แบน/ไดคัท ฯลฯ
         for _pg0 in (_dim_src or []):
@@ -2929,7 +2956,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 _dim2 += _cl if _cl else [_gp]
             _dimg = [g for g in _dim2 if (g[2] - g[0]) > W * 0.015 and (g[3] - g[1]) > H * 0.02]
             # ข้ามกลุ่มที่ ≈ ทั้งป้าย (ซ้ำกับเส้นบอกขนาดกล่องอยู่แล้ว)
-            _dimg = [g for g in _dimg if not ((g[2] - g[0]) > W * 0.95 and (g[3] - g[1]) > H * 0.95)]
+            #   ⚠️ ยกเว้น 'กรอบงานพิมพ์บนหน้ากล่อง' — ต่อให้เต็มหน้าก็ยังต้องบอกขนาด
+            #      เพราะเป็นคนละอย่างกับขนาดกล่อง (ช่างต้องรู้ว่างานพิมพ์กว้าง×สูงเท่าไหร่)
+            if not _dim_isart:
+                _dimg = [g for g in _dimg if not ((g[2] - g[0]) > W * 0.95 and (g[3] - g[1]) > H * 0.95)]
             _dimg.sort(key=lambda g: (g[1], g[0]))
             _dimg = _dimg[:6]
     except Exception:
@@ -3283,6 +3313,39 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_xr, _g9[1] + oy, _xr, _g9[3] + oy, _dc, _dlw))
             parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">สูง %.1f ซม.</text>'
                          % (_xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, _dfs, _dc, _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, (_g9[3] - _g9[1]) / 10.0))
+        # 📐 ระยะขอบ 4 ด้าน (ซ้าย · ขวา · บน · ล่าง) ของกลุ่มแรก — ช่างต้องรู้ว่าวางงานห่างขอบเท่าไหร่
+        #    มาตรฐานเดียวกันทุกประเภทป้าย ไม่ใช่เฉพาะกล่องฉลุหน้า
+        try:
+            _g0 = _dimg[0]
+            _cc = "#7c3aed"; _clw = max(0.5, lw * 0.8)
+            _my = (_g0[1] + _g0[3]) / 2.0 + oy; _mx = (_g0[0] + _g0[2]) / 2.0 + ox
+            _edges = (("ซ้าย",  (b[0] + ox, _my), (_g0[0] + ox, _my), (_g0[0] - b[0]) / 10.0, "h"),
+                      ("ขวา",   (_g0[2] + ox, _my), (b[2] + ox, _my), (b[2] - _g0[2]) / 10.0, "h"),
+                      ("บน",    (_mx, b[1] + oy), (_mx, _g0[1] + oy), (_g0[1] - b[1]) / 10.0, "v"),
+                      ("ล่าง",  (_mx, _g0[3] + oy), (_mx, b[3] + oy), (b[3] - _g0[3]) / 10.0, "v"))
+            for _nm, _p0, _p1, _val, _ax9 in _edges:
+                if _val < 0.15:                    # ชิดขอบพอดี ไม่ต้องจับระยะ
+                    continue
+                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>'
+                             % (_p0[0], _p0[1], _p1[0], _p1[1], _cc, _clw))
+                for _pp, _sg in ((_p0, 1), (_p1, -1)):
+                    if _ax9 == "h":
+                        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                                     % (_pp[0] + _sg * aw * 0.6, _pp[1] - aw * 0.35, _pp[0], _pp[1],
+                                        _pp[0] + _sg * aw * 0.6, _pp[1] + aw * 0.35, _cc, _clw))
+                    else:
+                        parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
+                                     % (_pp[0] - aw * 0.35, _pp[1] + _sg * aw * 0.6, _pp[0], _pp[1],
+                                        _pp[0] + aw * 0.35, _pp[1] + _sg * aw * 0.6, _cc, _clw))
+                _tx9 = (_p0[0] + _p1[0]) / 2.0; _ty9 = (_p0[1] + _p1[1]) / 2.0
+                _rot = "" if _ax9 == "h" else ' transform="rotate(-90 %.1f %.1f)"' % (_tx9, _ty9)
+                parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
+                             'opacity="0.86"%s/>' % (_tx9 - fs * 1.5, _ty9 - fs * 0.62, fs * 3.0, fs * 0.9, fs * 0.14, _rot))
+                parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
+                             'fill="%s" text-anchor="middle"%s>%s %.1f ซม.</text>'
+                             % (_tx9, _ty9 + fs * 0.06, fs * 0.68, _cc, _rot, _nm, _val))
+        except Exception:
+            pass
     # 🦾 แขนยึด + เพลท 10cm (เหล็กกล่อง 1 นิ้ว) — วาดในระนาบภาพ ให้เห็นชัดว่าติดตั้งยังไง
     arm_parts = []
     if _mount in ("top2", "side1", "side2", "letterframe"):
