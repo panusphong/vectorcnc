@@ -388,6 +388,7 @@ select.numin{cursor:pointer}
             <div style="display:flex;gap:6px;margin-top:6px">
               <div style="flex:1"><label style="font-size:10px;color:#64748b">ความยาวแขน (ซม.)</label><input class="numin" id="fArmLen" type="number" value="30" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#64748b">ระยะแขนจากขอบซ้าย/ขวา (ซม.)</label><input class="numin" id="fArmEdge" type="number" value="25" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#64748b">📏 ระยะห่างระหว่าง 2 แขน (ซม.)</label><input class="numin" id="fArmGap" type="number" min="0" step="0.5" value="0" placeholder="0 = อัตโนมัติ" style="padding:5px;width:100%"></div>
             </div>
             <div class="hint">2 แขน ซ้าย-ขวา · เฟรมกรอบสี่เหลี่ยมหลังอักษร · ปรับแล้วกด "🏭 ชุดชั้นตัด + 3 มิติ" ใหม่ → อัปเดตภาพหน้า/หลัง + รูเจาะ + จับระยะ</div>
           </div>
@@ -5027,7 +5028,7 @@ window.restoreDesignJob=function(d,job){
     }catch(_e){}
     // 🦾 แขน / โครงแขวน / จำนวนสี / ข้อมูลผลิต (วัสดุ·ไฟ·สายไฟ·พิมพ์·เซล·กราฟิก·ส่งมอบ)
     if(d.arm&&typeof d.arm==='object'){ _sv('mainArm',d.arm.m); _sv('mainArmLen',d.arm.len); _sv('mainArmSide',d.arm.side); _sv('mainArmAdjust',d.arm.adj); _sv('mainArmTravel',d.arm.trv); }
-    if(d.frame){ _sv('fBars',d.frame.bars); _sv('fLevel',d.frame.level); _sv('fGap',d.frame.gap); _sv('fXshift',d.frame.x); _sv('fStand',d.frame.stand); _sv('fWire',d.frame.wire); _sv('fArmEdge',d.frame.edge); _sv('fArmLen',d.frame.alen); }
+    if(d.frame){ _sv('fBars',d.frame.bars); _sv('fLevel',d.frame.level); _sv('fGap',d.frame.gap); _sv('fXshift',d.frame.x); _sv('fStand',d.frame.stand); _sv('fWire',d.frame.wire); _sv('fArmEdge',d.frame.edge); _sv('fArmLen',d.frame.alen); _sv('fArmGap',d.frame.agap); }
     if(d.ncolors)_sv('nColors',d.ncolors);
     if(d.pm){ _sv('pmMaterial',d.pm.mat); _sv('pmLedType',d.pm.ledt); _sv('pmLedPitch',d.pm.pitch); _sv('pmLedColor',d.pm.ledc); _sv('pmWire',d.pm.wire); _sv('pmPrint',d.pm.print); _sv('pmSales',d.pm.sales); _sv('pmGraphic',d.pm.graphic); _sv('pmDelivery',d.pm.deliv); }
     if(d.la){ if($('laScale')){ $('laScale').value=d.la.s||100; if($('laScaleV'))$('laScaleV').textContent=String(d.la.s||100); }
@@ -5454,6 +5455,7 @@ $('goLayer').onclick=function(){
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
   fd.append('led_pitch_cm',($('pmLedPitch')&&$('pmLedPitch').value)||'6');
   fd.append('arm_edge_cm',($('fArmEdge')&&$('fArmEdge').value)||'25');
+  fd.append('arm_gap_cm',($('fArmGap')&&$('fArmGap').value)||'0');   // 📏 ระยะห่างระหว่าง 2 แขน
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   _apiFetch((API||'')+'/api/layer-set',fd).then(_apiJson).then(function(j){
     if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
@@ -5886,7 +5888,7 @@ $('goLayer').onclick=function(){
         trimw:(typeof TRIMW!=='undefined'?TRIMW:1)||1,trimdir:(typeof TRIMDIR!=='undefined'?TRIMDIR:'out')||'out',
         ncolors:_gv('nColors')||'6',
         arm:{m:_gv('mainArm'),len:_gv('mainArmLen'),side:_gv('mainArmSide'),adj:_gv('mainArmAdjust'),trv:_gv('mainArmTravel')},
-        frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen')},
+        frame:{bars:_gv('fBars'),level:_gv('fLevel'),gap:_gv('fGap'),x:_gv('fXshift'),stand:_gv('fStand'),wire:_gv('fWire'),edge:_gv('fArmEdge'),alen:_gv('fArmLen'),agap:_gv('fArmGap')},
         glow:(typeof GLOW!=='undefined'?{mode:GLOW.mode,temp:GLOW.temp,acr:GLOW.acr||null,kelvin:GLOW.kelvin||''}:null),
         pm:{mat:_gv('pmMaterial'),ledt:_gv('pmLedType'),pitch:_gv('pmLedPitch'),ledc:_gv('pmLedColor'),wire:_gv('pmWire'),print:_gv('pmPrint'),sales:_gv('pmSales'),graphic:_gv('pmGraphic'),deliv:_gv('pmDelivery')},
         la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0,
