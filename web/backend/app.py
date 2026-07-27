@@ -2245,6 +2245,149 @@ def _offset_subs_like_button(off_mm):
         return None
 
 
+def _offset_subs_from_geom(geom, off_mm, px_per_mm=8.0):
+    """🥈 วิธีเดียวกับ _offset_subs_like_button แต่ 'เริ่มจากรูปทรง' แทนภาพต้นฉบับ
+
+    ใช้ตอนที่ชั้นนั้นไม่ได้กินพื้นที่ทั้งภาพ — เช่น ป้ายที่แยกวัสดุหลายกลุ่ม
+    (กลุ่ม A = ตัวหลัก · กลุ่ม B = "ร้านผลไม้" พลาสวูด) ซึ่งใช้ภาพต้นฉบับทั้งใบไม่ได้
+    เพราะจะได้เส้นของ 'ทุกชิ้น' มาปนกัน
+
+    วาดรูปทรงลงภาพขาวดำละเอียด -> dilate/erode ตามระยะ offset -> potrace
+    ได้เส้นโค้งเนียนแบบเดียวกับปุ่มแปลงเป็นเส้นตัด แทนการ buffer แล้วฟิตโค้งใหม่ (ซึ่งโย้)
+    คืน subs พิกัดพิกเซล (ผู้เรียกใช้ _fit_subs_to จัดตำแหน่งต่อ) หรือ None
+    """
+    import os as _o8, tempfile as _t8
+    try:
+        if geom is None or geom.is_empty:
+            return None
+        import cv2 as _cv8, numpy as _np8
+        from vectorcnc import trace_engine as _te8
+        _b8 = geom.bounds
+        _w8 = _b8[2] - _b8[0]; _h8 = _b8[3] - _b8[1]
+        if _w8 <= 0 or _h8 <= 0:
+            return None
+        # ความละเอียด: ยิ่งสูงขอบยิ่งคม แต่คุมไม่ให้ภาพใหญ่เกิน (ยาวสุด ~6000 px)
+        _ppm = float(px_per_mm)
+        _ppm = min(_ppm, 6000.0 / max(_w8, _h8))
+        if _ppm < 1.5:
+            return None
+        _pad = int(round(abs(float(off_mm)) * _ppm)) + 6
+        _W8 = int(round(_w8 * _ppm)) + _pad * 2
+        _H8 = int(round(_h8 * _ppm)) + _pad * 2
+        if _W8 < 8 or _H8 < 8 or _W8 * _H8 > 60_000_000:
+            return None
+        _m8 = _np8.zeros((_H8, _W8), _np8.uint8)
+
+        def _ring(cs):
+            a = _np8.asarray(cs, dtype=_np8.float64)
+            a[:, 0] = (a[:, 0] - _b8[0]) * _ppm + _pad
+            # ⚠️ ห้ามพลิกแกน Y — พิกัดงานในระบบนี้มาจาก potrace อยู่แล้ว (Y ชี้ลงเหมือนภาพ)
+            #    ถ้าพลิก เส้นที่ได้จะกลับหัว แล้ว _fit_subs_to จะวางทับผิดที่ทั้งชั้น
+            a[:, 1] = (a[:, 1] - _b8[1]) * _ppm + _pad
+            return _np8.round(a).astype(_np8.int32)
+
+        for _pg in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+            if _pg.geom_type != "Polygon" or _pg.is_empty:
+                continue
+            _cv8.fillPoly(_m8, [_ring(_pg.exterior.coords)], 255)
+            for _in in _pg.interiors:                      # รูใน (เช่น รูตัว อ) ต้องเจาะจริง
+                _cv8.fillPoly(_m8, [_ring(_in.coords)], 0)
+        if not _m8.any():
+            return None
+        _r8 = int(round(abs(float(off_mm)) * _ppm))
+        if _r8 >= 1:
+            _k8 = _cv8.getStructuringElement(_cv8.MORPH_ELLIPSE, (_r8 * 2 + 1, _r8 * 2 + 1))
+            _m8 = _cv8.dilate(_m8, _k8) if float(off_mm) > 0 else _cv8.erode(_m8, _k8)
+        if not _m8.any():
+            return None
+        _tmp8 = _o8.path.join(_t8.mkdtemp(), "offg.png")
+        _cv8.imwrite(_tmp8, 255 - _m8)                     # วัตถุ = ดำ · พื้น = ขาว
+        try:
+            _it8 = _te8.trace_potrace(_tmp8, n_colors=2)
+        except Exception:
+            _it8 = None
+        if not _it8:
+            return None
+        _subs8 = []
+        for _c8, _ss8 in _it8:
+            _subs8.extend(_ss8)
+        return _subs8 or None
+    except Exception:
+        return None
+
+
+_SHARPSTAT = {"ok": 0, "reject": 0}       # 📊 นับชิ้นที่ได้เส้น 'คมกริบ' vs ที่ด่านตรวจตีกลับ
+
+
+def _subs_probe(subs, n=10):
+    """สุ่มจุดตลอด 'เส้นโค้งจริง' (ไม่ใช่แค่ปลายเส้น) — ใช้ตรวจสอบเส้นตัด"""
+    import numpy as _np
+    _o = []
+    for _s in subs or []:
+        _cur = _s.get("start")
+        if _cur is None:
+            continue
+        _o.append(tuple(_cur))
+        for _t in _s.get("segs", []):
+            if len(_t) == 3:
+                _p1, _p2, _p3 = _t
+                for _i in range(1, n + 1):
+                    _u = _i / float(n); _v = 1.0 - _u
+                    _o.append((_v ** 3 * _cur[0] + 3 * _v * _v * _u * _p1[0] + 3 * _v * _u * _u * _p2[0] + _u ** 3 * _p3[0],
+                               _v ** 3 * _cur[1] + 3 * _v * _v * _u * _p1[1] + 3 * _v * _u * _u * _p2[1] + _u ** 3 * _p3[1]))
+                _cur = _p3
+            else:
+                _o.append(tuple(_t[-1])); _cur = _t[-1]
+    return _np.asarray(_o) if _o else None
+
+
+def _sharp_offset(seed_geom, off_mm, target_geom):
+    """🥇 เส้นตัดคมกริบของชั้นที่ 'ขยาย/หด' — ทำแบบเดียวกับปุ่มแปลงเป็นเส้นตัด
+       (ขยายที่ภาพ -> potrace) แล้ว **ตรวจสอบก่อนใช้จริง**
+
+    ⚠️ กฎเหล็ก: ถ้าเส้นที่ได้ไม่ทับรูปทรงเป้าหมาย (สเกล/ตำแหน่งเพี้ยน) ต้องคืน None
+       ให้ผู้เรียกถอยไปใช้วิธีเดิม — 'ห้ามส่งเส้นที่ยังพิสูจน์ไม่ได้ออกไปเป็นไฟล์ตัด'
+    """
+    try:
+        if target_geom is None or target_geom.is_empty:
+            return None
+        _raw = _offset_subs_from_geom(seed_geom, off_mm)
+        if not _raw:
+            return None
+        _fit = _fit_subs_to(_raw, target_geom)
+        if not _fit:
+            return None
+        _p = _subs_probe(_fit)
+        if _p is None or len(_p) < 8:
+            return None
+        _tb = target_geom.bounds
+        _bw = _tb[2] - _tb[0]; _bh = _tb[3] - _tb[1]
+        if _bw <= 0 or _bh <= 0:
+            return None
+        # 1) กรอบต้องตรง — คลาดได้ไม่เกิน 0.4% ของด้าน (หรือ 0.5 มม.)
+        _tol = max(0.5, min(_bw, _bh) * 0.004)
+        if (abs(_p[:, 0].min() - _tb[0]) > _tol or abs(_p[:, 0].max() - _tb[2]) > _tol
+                or abs(_p[:, 1].min() - _tb[1]) > _tol or abs(_p[:, 1].max() - _tb[3]) > _tol):
+            return None
+        # 2) เส้นต้องเกาะขอบรูปทรงเป้าหมายจริง
+        #    วัดที่เปอร์เซ็นไทล์ 98 ไม่ใช่ค่าสูงสุด — เพราะ 'มุม' ของสองวิธีต่างกันโดยธรรมชาติ
+        #    (ขยายที่ภาพ = มุมมน · buffer = มุมแหลม) ซึ่งเป็นจุดส่วนน้อยและไม่ใช่ความผิดพลาด
+        import numpy as _np2
+        from shapely.geometry import Point as _Pt2
+        _bd = target_geom.boundary
+        _step = max(1, len(_p) // 400)                    # สุ่มพอประมาณ ไม่ถ่วงเวลา
+        _d = _np2.asarray([_bd.distance(_Pt2(float(_q[0]), float(_q[1]))) for _q in _p[::_step]])
+        if len(_d) < 8:
+            return None
+        if float(_np2.percentile(_d, 98)) > max(0.6, min(_bw, _bh) * 0.006):
+            _SHARPSTAT["reject"] = _SHARPSTAT.get("reject", 0) + 1
+            return None
+        _SHARPSTAT["ok"] = _SHARPSTAT.get("ok", 0) + 1
+        return _fit
+    except Exception:
+        return None
+
+
 def _fit_subs_to(subs, target_geom):
     """จัดเส้นที่ได้จากภาพ ให้ทับ 'ตำแหน่ง+ขนาดจริง' ของชั้นนั้นเป๊ะ (สเกลเท่ากันทั้ง 2 แกน)"""
     if not subs or target_geom is None or target_geom.is_empty:
@@ -2669,7 +2812,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
                metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None,
-               mat_overlays=None):
+               mat_overlays=None, mat_cut=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -2677,8 +2820,21 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
 
     def _esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
     b = full.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0)
+    # 🧱 หลายวัสดุในป้ายเดียว: พื้นที่ของ 'กลุ่มวัสดุอื่น' ต้องไม่ถูกดันหนาตามตัวหลัก
+    #    (เช่น ตัวหลักไฟออกหน้า 50 มม. แต่ "ร้านผลไม้" เป็นพลาสวูด 10 มม.)
+    #    -> เจาะพื้นที่กลุ่มออกจาก 'ตัวที่วาด' ก่อน แล้วค่อยวาดทับด้วยความหนาของกลุ่มเอง
+    #    ⚠️ กรอบภาพ/มิติ ยังใช้ full เต็มใบเหมือนเดิม — ไม่กระทบไฟล์ตัด
+    _drawg = full
+    if mat_cut is not None and not mat_cut.is_empty:
+        try:
+            _dg9 = full.difference(mat_cut.buffer(0.15, join_style=2))
+            if (not _dg9.is_empty) and _dg9.area > full.area * 0.02:
+                _drawg = _dg9
+        except Exception:
+            _drawg = full
+    polys = [p for p in (list(_drawg.geoms) if _drawg.geom_type == "MultiPolygon" else [_drawg])
+             if p.geom_type == "Polygon" and not p.is_empty]
     D = float(rec.get("depth_cm", 5.0)) * 10.0
     ang = math.radians(30); dvx = D * math.cos(ang); dvy = -D * math.sin(ang)
     fs = max(6.0, S * 0.032); lw = max(0.6, S * 0.003); cd = "#dc2626"
@@ -2832,8 +2988,8 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         _ARTIN = max(2.0, S * 0.004) if _notrim else 14.0   # ไม่มีคิ้ว = พิมพ์เกือบเต็มหน้า (ไม่เว้นกรอบขาว)
         kimFill = "#fffdf5" if _notrim else "#a9b4c4"   # ไม่มีคิ้ว = หน้าอะคริลิคขาวเรืองแสงเต็มหน้า
         try:
-            _ik = full.buffer(-_KIM) if _KIM > 0 else full
-            _ia = full.buffer(-_ARTIN)
+            _ik = _drawg.buffer(-_KIM) if _KIM > 0 else _drawg
+            _ia = _drawg.buffer(-_ARTIN)
         except Exception:
             _ik = None; _ia = None
         _ikp = ([] if _ik is None or _ik.is_empty else (list(_ik.geoms) if _ik.geom_type == "MultiPolygon" else [_ik]))
@@ -2909,6 +3065,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             if _og is None or _og.is_empty:
                 continue
             _of = _ov.get("fill") or "#f5f5f4"
+            _owall = _shade_hex(_of, 0.72)          # สีผนังข้าง = สีวัสดุของกลุ่มเอง (เข้มลง) ไม่ใช่เทากลาง
             # 🎨 พื้นผิวของกลุ่มนี้ (สแตนเลส/ลายไม้/ลามิเนต ที่ผู้ใช้เลือกเอง) — id ไม่ชนกับตัวหลัก
             _ovd, _ovf = _ov_paint(_ov.get("tex"), _ov.get("tex_img"), S, _ovi)
             if _ovd:
@@ -2929,9 +3086,9 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 for _i7 in range(len(_co) - 1):
                     _a = _co[_i7]; _b = _co[_i7 + 1]
                     parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f L %.1f %.1f Z" fill="%s" '
-                                 'fill-opacity="0.55" stroke="none"/>'
+                                 'fill-opacity="0.92" stroke="none"/>'
                                  % (_a[0] + ox, _a[1] + oy, _b[0] + ox, _b[1] + oy,
-                                    _Fo(_b)[0], _Fo(_b)[1], _Fo(_a)[0], _Fo(_a)[1], "#94a3b8"))
+                                    _Fo(_b)[0], _Fo(_b)[1], _Fo(_a)[0], _Fo(_a)[1], _owall))
             for pg in _ops:
                 if pg.geom_type == "Polygon" and not pg.is_empty:
                     parts.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>'
@@ -4232,6 +4389,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         warns = []
         _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
+        _SHARPSTAT["ok"] = 0; _SHARPSTAT["reject"] = 0   # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน
         # 🎯 ผู้ใช้ปรับ logo ในกล่องเอง: ย่อ/ขยาย (%) + เลื่อน ซ้าย-ขวา/ขึ้น-ลง (ซม.)
         _laS = max(0.1, float(logo_scale or 100.0) / 100.0)
         # 📏 กำหนด 'ขนาดจริงของ logo บนหน้ากล่อง' เป็น ซม. ได้เลย (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ)
@@ -4643,11 +4801,26 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           _lts = _MFL.split_letters(full)
                           _acc = []
                           for _lt in _lts:
-                              _o = _mbuf(_lt, off + band) if TRIM_OUT else _mbuf(_lt, off)
-                              _i = _mbuf(_lt, off) if TRIM_OUT else _mbuf(_lt, off - band)
+                              _oOff = (off + band) if TRIM_OUT else off
+                              _iOff = off if TRIM_OUT else (off - band)
+                              _o = _mbuf(_lt, _oOff)
+                              _i = _mbuf(_lt, _iOff)
                               _gg = _o if (_i is None or _i.is_empty) else _o.difference(_i)
-                              if _gg is not None and not _gg.is_empty:
-                                  _acc += _cut_subs_offset(_fix_offset_geom(_gg, float(real_width_mm), band_mm=band), float(real_width_mm))
+                              if _gg is None or _gg.is_empty:
+                                  continue
+                              # 🥇 คมกริบ: ขยาย/หด 'ที่ภาพของตัวอักษรตัวนี้' แล้ว potrace (เหมือนปุ่มแปลงเส้นตัด)
+                              #    ไม่ใช่ buffer เรขาคณิตแล้วฟิตโค้งใหม่ ซึ่งทำให้เส้นโย้
+                              _shp = None
+                              try:
+                                  _ro = _sharp_offset(_lt, _oOff, _o)
+                                  _ri = _sharp_offset(_lt, _iOff, _i) \
+                                      if (_i is not None and not _i.is_empty) else []
+                                  if _ro and (_ri or _i is None or _i.is_empty):
+                                      _shp = list(_ro) + list(_ri or [])
+                              except Exception:
+                                  _shp = None
+                              _acc += _shp if _shp else _cut_subs_offset(
+                                  _fix_offset_geom(_gg, float(real_width_mm), band_mm=band), float(real_width_mm))
                           if _acc:
                               _use_raw_punch = _acc     # ใช้เส้นชุดนี้เป็นเส้นตัดของชั้นนี้ (แยกตัวจริง)
                       except Exception:
@@ -4663,8 +4836,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           _acc = []
                           for _lt in _lts:
                               _gg = _mbuf(_lt, off)
-                              if _gg is not None and not _gg.is_empty:
-                                  _acc += _cut_subs_offset(_gg, float(real_width_mm))
+                              if _gg is None or _gg.is_empty:
+                                  continue
+                              _shp = None                 # 🥇 คมกริบแบบเดียวกับปุ่มแปลงเส้นตัด
+                              try:
+                                  _shp = _sharp_offset(_lt, off, _gg)
+                              except Exception:
+                                  _shp = None
+                              _acc += _shp if _shp else _cut_subs_offset(_gg, float(real_width_mm))
                           if _acc:
                               _use_raw_punch = _acc
                       except Exception:
@@ -4700,13 +4879,20 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
               # 🥇 ชั้นขยาย/หด: ทำแบบ 'ปุ่มแปลงเป็นเส้นตัด' — ขยายที่ภาพ แล้ว trace ใหม่
               #    ได้เส้นโค้งเนียนจาก potrace โดยตรง (ไม่ต้องฟิตใหม่ = ไม่โย้)
               if (_use_raw_punch is None and abs(off) > 0.01 and kind in ("solid", "frame")
-                      and not rec.get("wrap") and not rec.get("box_shape") and not _mat_groups):
+                      and not rec.get("wrap") and not rec.get("box_shape")):
                   try:
-                      _rb = _offset_subs_like_button(off if kind != "frame" else (off + band))
-                      _rb = _fit_subs_to(_rb, g if kind != "frame" else o2) if _rb else None
+                      # 🖼️ ป้ายวัสดุเดียว = ขยายที่ 'ภาพต้นฉบับ' ได้เลย (คมที่สุด)
+                      # 🧱 ป้ายแยกหลายวัสดุ = ภาพต้นฉบับมีชิ้นของกลุ่มอื่นปนอยู่
+                      #     -> ต้องขยายจาก 'รูปทรงของบิลด์นี้' แทน มิฉะนั้นเส้นของกลุ่มอื่นจะหลุดเข้ามา
+                      if _mat_groups:
+                          def _mk(_v, _tg, _seed=full):
+                              return _sharp_offset(_seed, _v, _tg)
+                      else:
+                          def _mk(_v, _tg):
+                              return _fit_subs_to(_offset_subs_like_button(_v), _tg)
+                      _rb = _mk(off if kind != "frame" else (off + band), g if kind != "frame" else o2)
                       if _rb and kind == "frame":
-                          _ri = _offset_subs_like_button(off)      # ขอบในของคิ้ว
-                          _ri = _fit_subs_to(_ri, i2) if _ri else None
+                          _ri = _mk(off, i2)                       # ขอบในของคิ้ว
                           if _ri:
                               _rb = _rb + _ri
                           else:
@@ -4731,6 +4917,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                  "color": L["color"], "rgb": L["rgb"], "grp": (_btag[:-1] or "A"),
                                  "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
                                  "junk": junk})
+        # 📊 รายงานคุณภาพเส้นตัด — พี่จะได้เห็นว่าชิ้นไหนได้เส้นคมกริบแล้ว ชิ้นไหนยังใช้วิธีเดิม
+        try:
+            if _SHARPSTAT.get("ok") or _SHARPSTAT.get("reject"):
+                warns.append("✂️ เส้นตัดคมกริบ (ขยายที่ภาพ + potrace) %d ชิ้น · "
+                             "ถอยไปใช้วิธีเดิมเพราะตรวจไม่ผ่าน %d ชิ้น"
+                             % (int(_SHARPSTAT.get("ok", 0)), int(_SHARPSTAT.get("reject", 0))))
+        except Exception:
+            pass
         full, rec = _MAIN_FULL, _MAIN_REC      # 🔙 คืนตัวหลักให้ขั้นตอนถัดไป (3 มิติ · มุมมอง · ใบสั่งผลิต)
         # 🧱 แผ่นขอบข้าง (return) — ชิ้นตัดจริงของผนังข้าง: แถบกว้าง = ความลึกกล่อง/ตัวป้าย
         try:
@@ -4842,10 +5036,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 🧱 หลายวัสดุ: ภาพ 3 มิติ/ใบเสนอ ต้องเห็น 'ป้ายเต็มใบ' ทุกกลุ่ม
             #    กลุ่ม B/C/D วาดทับด้วย 'สีวัสดุของตัวเอง' + ความหนาของตัวเอง (เช่น พลาสวูดขาว 10 มม.)
             _mat_ov = []
+            _mat_cut = None
             if _mat_groups:
                 try:
                     from shapely.ops import unary_union as _uu3d
                     body3d = _uu3d([body3d] + [g["geom"] for g in _mat_groups])   # กรอบภาพต้องคลุมทุกกลุ่ม
+                    # 🧱 พื้นที่ที่ 'ไม่ใช่ความหนาของตัวหลัก' — เจาะออกจากตัวที่วาด 3 มิติ
+                    #    เพื่อให้กลุ่มพลาสวูด 10 มม. หนา 10 มม. จริง ไม่ใช่ 50 มม. ตามตัวหลัก
+                    _mat_cut = _uu3d([g["geom"] for g in _mat_groups])
                 except Exception:
                     pass
                 for _g3 in _mat_groups:
@@ -4872,7 +5070,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    arm_edge_cm=float(arm_edge_cm), art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
                                    metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
-                                   bore_subs=_punch_raw_subs, mat_overlays=_mat_ov)
+                                   bore_subs=_punch_raw_subs, mat_overlays=_mat_ov, mat_cut=_mat_cut)
         except Exception:
             svg3d = ""
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
@@ -7410,13 +7608,89 @@ def robots_txt():
         "Disallow: /*?ak=\n"
         "Disallow: /*?u=\n"
         "\n"
-        "User-agent: GPTBot\n"
-        "Allow: /$\n"
-        "Allow: /welcome\n"
-        "Disallow: /api/\n"
-        "\n"
-        f"Sitemap: {site}/sitemap.xml\n"
+        # 🤖 GEO — เปิดให้ "AI ค้นหา" เก็บข้อมูลได้ (ChatGPT · Claude · Perplexity · Gemini · Meta)
+        #    ยุคนี้ลูกค้าถาม AI ก่อน Google ถ้าปิดบอทพวกนี้ = AI ไม่รู้จักเรา ไม่แนะนำเราเลย
+        + "".join(
+            "User-agent: %s\n"
+            "Allow: /$\n"
+            "Allow: /welcome\n"
+            "Allow: /llms.txt\n"
+            "Disallow: /api/\n"
+            "Disallow: /admin/\n"
+            "\n" % _bot
+            for _bot in (
+                "GPTBot", "OAI-SearchBot", "ChatGPT-User",      # OpenAI / ChatGPT
+                "ClaudeBot", "Claude-SearchBot", "Claude-User",  # Anthropic / Claude
+                "PerplexityBot", "Perplexity-User",              # Perplexity
+                "Google-Extended",                               # Gemini / AI Overviews
+                "Applebot-Extended",                             # Apple Intelligence
+                "meta-externalagent",                            # Meta AI
+                "Amazonbot", "cohere-ai", "CCBot",
+            )
+        )
+        + f"Sitemap: {site}/sitemap.xml\n"
     )
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse)
+def llms_txt():
+    """📄 llms.txt — มาตรฐานใหม่สำหรับ 'AI ค้นหา' (GEO / AEO)
+       บอก AI ตรง ๆ ว่าเว็บนี้คืออะไร ทำอะไรได้ ใช้ยังไง เพื่อให้ AI ตอบลูกค้าถูก
+       และอ้างอิงเราเวลามีคนถามว่า 'มีโปรแกรมทำไฟล์ตัดป้ายมั้ย'"""
+    site = _site_url()
+    if not _sell_mode():
+        return "# VectorCNC\n\n> ยังไม่เปิดให้บริการสาธารณะ\n"
+    return f"""# VectorCNC
+
+> เครื่องมือออนไลน์สำหรับช่างทำป้ายและโรงงาน CNC / เลเซอร์ ในประเทศไทย
+> อัปโหลดโลโก้หรือภาพ แล้วได้ไฟล์ตัดพร้อมผลิตทันที (.ai / SVG / DXF)
+> ไม่ต้องติดตั้งโปรแกรม ใช้ผ่านเว็บได้เลย · ทดลองใช้ฟรี · ภาษาไทยเต็มระบบ
+
+VectorCNC แก้ปัญหาที่ช่างป้ายไทยเจอทุกวัน: ลูกค้าส่งโลโก้มาเป็น JPG เบลอ ๆ
+แล้วช่างต้องนั่งไล่ Pen Tool ใน Illustrator เป็นชั่วโมงกว่าจะได้เส้นตัด
+VectorCNC ทำให้เสร็จใน 2 นาที พร้อมชั้นตัดครบทุกชิ้นตามประเภทป้าย
+
+## ทำอะไรได้บ้าง
+
+- **แปลงภาพเป็นเส้นตัด**: JPG / PNG / PSD / AI / PDF / EPS / SVG → เส้นโค้งเบซิเยร์คมระดับผลิตจริง
+  ใช้เอนจิ้น potrace คุณภาพเทียบ Image Trace ของ Illustrator ขยายเป็นป้ายกี่เมตรก็ไม่แตก
+- **ชุดชั้นตัดอัตโนมัติ 26 ประเภทป้าย**: ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว / ไม่มีคิ้ว) · ไฟออกหลัง ·
+  ไฟออกรอบ · กล่องไฟฉลุหน้า · กล่องไฟล้อมทรง / กลม / เหลี่ยม / วงรี · นีออนเฟล็กซ์ ·
+  พลาสวูด-อะคริลิคไดคัท · ตัวอักษรโลหะไม่มีไฟ · สแตนดี้สี่เหลี่ยม / ล้อมตามทรง
+  ระบบคำนวณคิ้ว แผ่นพื้น ผนังยกขอบ และรูร้อยสายให้เองตามความหนาวัสดุที่กรอก
+- **ป้ายเดียวหลายวัสดุ**: ลากเลือกเฉพาะคำ แล้วจ่ายวัสดุ / ความหนา / สี คนละแบบให้แต่ละส่วนได้
+  (เช่น ชื่อร้านเป็นอะคริลิคไฟออกหน้า ส่วนคำโปรยเป็นพลาสวูด 10 มม. สีขาว) ในไฟล์เดียว
+- **ภาพ 3 มิติเสนอลูกค้า**: พื้นผิวสแตนเลสเงา / แฮร์ไลน์ / ทอง / โรสโกลด์ / ดำด้าน
+  อัปโหลดลายไม้-ลามิเนตเองได้ · จำลองไฟออกหน้า-หลัง-รอบ อุณหภูมิสี 2700K–11000K
+- **ใบสั่งผลิต A3 แผ่นเดียว**: ภาพ 3 มิติ + Top / Front / Side / Back View + BOM แยกวัสดุ + แผน LED
+- **ไฟล์งานพิมพ์ 1:1**: สร้างไฟล์พิมพ์ UV หรือสติ๊กเกอร์ไดคัทขนาดจริง พร้อมเลเยอร์ CutContour
+- **จัดวางลงแผ่น (nesting)** คำนวณจำนวนแผ่นที่ต้องใช้ และ **จำลองป้ายบนผนัง** ตามสเกลจริง
+
+## คำถามที่พบบ่อย
+
+**ใช้ยังไง** — เปิด {site} → อัปโหลดไฟล์ → กรอกขนาดป้ายจริงเป็นเซนติเมตร →
+เลือกประเภทป้ายกับวัสดุ → กดสร้างไฟล์สั่งผลิต → ได้ .ai แยกเลเยอร์ทุกชั้นตัด
+
+**รองรับไฟล์อะไรบ้าง** — นำเข้า: JPG PNG PSD AI PDF EPS SVG · ส่งออก: .ai SVG DXF STL
+
+**ต้องติดตั้งโปรแกรมไหม** — ไม่ต้อง ใช้ผ่านเบราว์เซอร์ ทำงานบนมือถือและแท็บเล็ตได้
+
+**ไฟล์ที่ได้เข้าเครื่องอะไรได้** — CypCut / เลเซอร์ไฟเบอร์ (DXF) · LightBurn (SVG) ·
+เราท์เตอร์ CNC · Illustrator / CorelDRAW (.ai) · เครื่องพิมพ์ UV (PDF 1:1)
+
+**เหมาะกับใคร** — ร้านป้าย โรงงานตัดเลเซอร์ ช่างอะคริลิค นักออกแบบกราฟิก
+เอเจนซี่ที่ต้องส่งไฟล์ให้โรงงาน และเจ้าของธุรกิจที่อยากได้ป้ายหน้าร้าน
+
+**ราคา** — ทดลองใช้ฟรี ไม่ต้องใช้บัตรเครดิต
+
+**ให้บริการที่ไหน** — ออนไลน์ทั่วประเทศไทย อินเทอร์เฟซภาษาไทย หน่วยเป็นเซนติเมตร/มิลลิเมตร
+
+## ลิงก์
+
+- หน้าหลัก: {site}/
+- เริ่มใช้งาน: {site}/app
+- แผนผังเว็บ: {site}/sitemap.xml
+"""
 
 
 @app.get("/sitemap.xml")
