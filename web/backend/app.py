@@ -2481,6 +2481,31 @@ def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
             return _poly_to_subs(geom, tol=0.02)
     except Exception:
         pass
+    # 📐 รูปทรง 'เส้นตรงล้วน' (กรอบคิ้วสี่เหลี่ยม · แถบขอบข้าง · ขาตั้ง) ห้ามเอาไปฟิตเป็นเส้นโค้ง
+    #    เดิมเช็คแค่ 'จำนวนจุดดิบ' — แต่ buffer โปรยจุดถี่ไว้บนเส้นตรงจนเกิน 64 จุด
+    #    กรอบสี่เหลี่ยมเลยหลุดไปเข้าตัวฟิตโค้ง แล้วออกมาเป็นเส้นโย้ (วัดได้เบี้ยว 10-18 มม.)
+    #    ✅ วิธีที่ถูก: ลดจุดที่อยู่บนเส้นตรงเดียวกันทิ้งก่อน ถ้าเหลือจุดน้อย + พื้นที่ไม่เปลี่ยน
+    #       = เป็นรูปเรขาคณิตแน่นอน -> ส่งเส้นตรงออกไปตรง ๆ คมกริบ 100%
+    #    ⚠️ บทเรียน 2 ข้อจากการวัดจริง:
+    #       1) 'พื้นที่ไม่เปลี่ยน' ใช้ไม่ได้ — มุมที่ถูกตัดกับที่ถูกเติมหักล้างกัน
+    #          พื้นที่เท่าเดิมทั้งที่รูปเพี้ยน 4.79 มม.
+    #       2) hausdorff_distance ของ shapely วัดจาก 'จุดยอด' เท่านั้น จุดของรูปที่ลดแล้ว
+    #          อยู่บนรูปเดิมอยู่แล้วเสมอ จึงได้ค่าต่ำหลอกตา (0.039 มม. ทั้งที่เพี้ยน 4.79 มม.)
+    #    ✅ วิธีที่ใช้จริง: ลดจุดด้วยค่าเผื่อจิ๋ว 0.005 มม.
+    #       เส้นตรงแท้ ๆ จุดอยู่บนเส้นเดียวกันเป๊ะ -> ลดได้หมดแม้ค่าเผื่อจิ๋ว
+    #       ส่วนโค้งของตัวอักษร -> ลดแทบไม่ได้ จึงไม่มีทางหลุดเข้ามา
+    try:
+        _sm0 = geom.simplify(0.005, preserve_topology=True)
+        if _sm0 is not None and not _sm0.is_empty and geom.area > 0:
+            _n2 = sum(len(p.exterior.coords) + sum(len(h.coords) for h in p.interiors)
+                      for p in (_sm0.geoms if _sm0.geom_type == "MultiPolygon" else [_sm0])
+                      if p.geom_type == "Polygon")
+            # พื้นที่ที่ 'ไม่ทับกัน' ระหว่างรูปเดิมกับรูปที่ลดจุด ต้องแทบเป็นศูนย์
+            _dif = geom.symmetric_difference(_sm0).area
+            if _n2 <= 64 and _dif <= geom.area * 0.00002:
+                return _poly_to_subs(_sm0, tol=0.02)
+    except Exception:
+        pass
     # 🔒 ชั้นที่ 'ตัดตามรูปตรง ๆ' (off = 0 · งานพิมพ์ · สติ๊กเกอร์) = ส่งเส้นต้นฉบับออกไปเลย
     #    ห้ามรีด ห้ามเกลา ห้ามลบชิ้น — ไม่งั้นตัวอักษรจะโดนกัดมุมจนแหว่ง
     if not clean:
@@ -3489,6 +3514,10 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         _armdim_v(arm_parts, [(_yTop, _yBeam, _lh / 10.0, "สูงขา"),
                               (F((b[0], b[1]))[1], _yFloor, (H + _lh + _cd9) / 10.0, "สูงรวม")],
                   _xdim, fs, lw, aw, col="#0d9488")
+        # 📏 'จากพื้น (ล้อ) ถึงใต้ตัวป้าย' — ตัวเลขที่ช่างกับลูกค้าถามบ่อยที่สุด
+        #    ว่าป้ายจะลอยสูงจากพื้นเท่าไหร่ (= สูงขา + ขนาดล้อ) วางไว้คนละฝั่งกับชุดบน ไม่ทับกัน
+        _armdim_v(arm_parts, [(_yTop, _yFloor, (_lh + _cd9) / 10.0, "พื้นถึงใต้ป้าย")],
+                  padL + W + dvx + fs * 1.6, fs, lw, aw, col="#0d9488")
         _armdim_h(arm_parts, [(_pxs[0], _pxs[1], _lsp / 10.0, "ระยะห่างขา")],
                   _yFloor + fs * 1.9, fs, lw, aw, col="#0d9488")
         arm_parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
@@ -4390,7 +4419,22 @@ def _neon_led_info(neon_full, color="#00e5ff", neon_subs=None, watt_per_m=8.0, v
             "neon": True}
 
 
-def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
+def _svg_to_png_uri(svg_text, width_px=1500):
+    """แปลง SVG -> PNG data URI (ไว้ฝังลงไฟล์ .ai)
+       ฝังเป็นภาพเพราะเปิดได้แน่นอนทุกโปรแกรม และไม่มีปัญหา id ของ <defs> ชนกัน"""
+    if not svg_text:
+        return ""
+    try:
+        import cairosvg, base64 as _b64
+        png = cairosvg.svg2png(bytestring=str(svg_text).encode("utf-8"),
+                               output_width=int(max(400, min(3000, width_px))),
+                               background_color="white")
+        return "data:image/png;base64," + _b64.b64encode(png).decode()
+    except Exception:
+        return ""
+
+
+def _layerset_ai_svg(out_layers, art_href="", art_bounds=None, design_href=""):
     """SVG สำหรับบันทึกเป็น .ai — แยกแต่ละชั้นโครงสร้างเป็น 'กลุ่ม/เลเยอร์' ชัดเจน (Illustrator เลือกแยกได้)
        + พาเนล 'งานพิมพ์' (ภาพจริง) วางไว้เป็นเลเยอร์แรก · เรียงข้างกันไม่ทับ"""
     from vectorcnc import nesting
@@ -4411,6 +4455,18 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None):
     topPad = fs * 2.4
     maxH = max([b[3] - b[1] for _, b in metas] + [1.0])
     parts = []; cursor = fs
+    # 🧊 เลเยอร์ 'แบบที่ออกแบบเสร็จแล้ว' — ป้ายประกอบเต็มตัว พร้อมขาตั้ง/ล้อ/แขน + เส้นจับระยะ
+    #    ช่างเปิดไฟล์ .ai แล้วเห็นทันทีว่าของจริงหน้าตายังไง ไม่ต้องเปิดหน้าเว็บดูคู่กัน
+    #    ปิดเลเยอร์นี้ใน Illustrator ก่อนส่งเข้าเครื่องตัดได้ (ไม่ปนกับชั้นตัด)
+    if design_href:
+        _dh = maxH; _dw = maxH * 0.78
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#7c3aed">DESIGN (assembled preview)</text>'
+                     % (cursor, topPad - fs * 0.6, fs * 0.9))
+        parts.append('<g id="DESIGN" inkscape:groupmode="layer" inkscape:label="DESIGN (assembled preview)">'
+                     '<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                     'preserveAspectRatio="xMidYMid meet"/></g>'
+                     % (design_href, design_href, cursor, topPad, _dw, _dh))
+        cursor += _dw + gap
     # 🖨️ เลเยอร์งานพิมพ์ (ภาพจริง) — วางเป็นพาเนลแรก
     if art_href and art_bounds is not None:
         aw = art_bounds[2] - art_bounds[0]; ah = art_bounds[3] - art_bounds[1]
@@ -4695,8 +4751,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 _box_grow = 0.0
             _tw_box = max(20.0, float(real_width_mm) - 2.0 * _box_grow)
-            _th_box = (max(20.0, float(box_h_cm) * 10.0 - 2.0 * _box_grow)
-                       if float(box_h_cm or 0.0) > 0 else 0.0)
+            # 📏 ความสูงกล่อง: หน้าเว็บส่งมา 2 ชื่อ แล้วแต่ประเภทป้าย
+            #    box_h_cm      -> กล่องฉลุหน้า
+            #    real_height_mm -> กล่องแบบพิมพ์หน้า (1 หน้า / 2 หน้า)
+            #    เดิมอ่านแค่ box_h_cm ตัวเดียว -> กล่องแบบพิมพ์เลยไม่เคยได้ความสูงที่ผู้ใช้กรอก
+            #    (กรอก 100 ซม. แต่ได้ 96.1 ซม. เพราะปล่อยให้สูงตามสัดส่วนภาพแทน)
+            _h_in = float(box_h_cm or 0.0) * 10.0
+            if _h_in <= 1.0:
+                _h_in = float(real_height_mm or 0.0)
+            _th_box = (max(20.0, _h_in - 2.0 * _box_grow) if _h_in > 1.0 else 0.0)
             if _box_grow > 0.05:      # ⚠️ ยังไม่มีตัวแปร warns ตรงนี้ — พักไว้ก่อน แล้วค่อยเติมทีหลัง
                 _prewarn.append("📐 กล่อง: หักคิ้วที่ยื่นออกนอกข้างละ %.1f ซม. แล้ว — ขนาดนอกสุดที่ผลิตจริง "
                                 "= %.1f ซม. ตรงตามที่กรอก" % (_box_grow / 10.0, float(real_width_mm) / 10.0))
@@ -5255,8 +5318,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                   # 🧈 ทุกชั้น ทุกประเภทป้าย: ฟิตโค้งเนียน
                   #    ชั้นที่ 'ขยาย/หด' เท่านั้นที่กวาดเศษได้ — ชั้นที่ตัดตามรูปตรง ๆ (off=0) ห้ามลบชิ้นใด ๆ
                   #    (สระ/วรรณยุกต์/จุดเล็ก ๆ คือเนื้องานจริง ไม่ใช่เศษจากการ offset)
+                  # 📐 กล่องไฟทรงเรขาคณิต (สี่เหลี่ยม/กลม/วงรี) = รูปที่ระบบสร้างเองจากตัวเลข
+                  #    ไม่ต้องเกลาและ 'ห้ามฟิตเป็นเส้นโค้ง' — เดิมกรอบคิ้วสี่เหลี่ยมถูกฟิตโค้ง
+                  #    จนขอบโย้ วัดได้เบี้ยวถึง 7.6-12.9 มม. ทั้งที่ควรเป็นเส้นตรงเป๊ะ
+                  _isgeo = bool(rec.get("box_shape")) and kind in ("solid", "frame", "backing")
                   subs = _cut_subs_offset(g, float(real_width_mm),
-                                          clean=(abs(off) > 0.01 or kind in ("frame", "punch", "backing")))
+                                          clean=(False if _isgeo else
+                                                 (abs(off) > 0.01 or kind in ("frame", "punch", "backing"))))
               subs = _dedup_subs(subs)                     # 🧹 ไฟล์ตัดสะอาด: ไม่มีเส้นซ้อนให้เครื่องเดินซ้ำ
               if not subs:
                   continue
@@ -5608,7 +5676,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                           "w_mm": round(_sb4[2] - _sb4[0], 1), "h_mm": round(_sb4[3] - _sb4[1], 1)})
             except Exception:
                 pass
-            ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai, art_bounds=full.bounds)
+            # 🧊 แนบ 'แบบที่ออกแบบเสร็จแล้ว' (ภาพ 3 มิติพร้อมขา/ล้อ/แขน + เส้นจับระยะ) ลงไฟล์ .ai ด้วย
+            _design_uri = ""
+            try:
+                _design_uri = _svg_to_png_uri(svg3d, width_px=1500)
+            except Exception:
+                _design_uri = ""
+            ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai,
+                                      art_bounds=full.bounds, design_href=_design_uri)
             import cairosvg as _cs
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
