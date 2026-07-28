@@ -5811,9 +5811,14 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
                 "svg_face": svg_face, "led": led_info,
+                # 🖼️ ต้องส่ง 'เส้นดิบจากเอนจิ้น' เข้าไปด้วยเสมอ — ให้มองเป็นภาพแบน ๆ ภาพเดียว
+                #    แล้วลากเส้นตัดออกมาตรง ๆ (เหมือนแผนที่กลุ่มวัสดุที่ทำถูกอยู่แล้ว)
+                #    ถ้าไม่ส่ง จะตกไปทางสำรองที่วาดเป็น 'ก้อนทึบสีเทาเข้ม'
+                #    -> พื้นกลายเป็นดำ และชิ้นที่อยู่ในรู (เช่น ตัวหมีในวงกลม) หายไปทั้งชิ้น
                 "sticker_map_svg": (_sticker_map_svg(full, _stick_pieces, _stick_sel,
                                                      _sticker_groups(_stick_pieces, full.bounds[2] - full.bounds[0],
-                                                                     full.bounds[3] - full.bounds[1]))
+                                                                     full.bounds[3] - full.bounds[1]),
+                                                     raw_subs=(_FLAT.get("subs") or _RAW_SUBS.get("subs")))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
                 # 🧱 แผนที่ชิ้น สำหรับ 'จ่ายวัสดุคนละแบบในป้ายเดียว' (แตะคำเดียว = ทั้งคำ) — ใช้ได้ทุกประเภทป้าย
