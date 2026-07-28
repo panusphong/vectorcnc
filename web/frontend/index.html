@@ -286,6 +286,15 @@ select.numin{cursor:pointer}
             <div style="flex:1"><label style="font-size:10px;color:#64748b">บรรทัดแรกใหญ่กว่า (เท่า)</label><input class="numin" id="tsHead" type="number" min="1" max="4" step="0.1" value="1.8" style="padding:5px;width:100%"></div>
             <label style="flex:1;display:flex;align-items:center;gap:5px;font-size:10.5px;color:#0f766e;padding-bottom:6px"><input type="checkbox" id="tsBold" checked> ตัวหนา</label>
           </div>
+          <!-- 🎨 ปรับ 'สี + ขนาด' แยกอิสระทีละแถว -->
+          <div style="margin-top:7px;padding-top:6px;border-top:1px dashed #99f6e4">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <b style="font-size:11px;color:#0f766e">🎨 ปรับรายแถว (สี + ขนาด)</b>
+              <button type="button" id="tsRowReset" class="btn ghost" style="margin-left:auto;font-size:10px;padding:3px 7px">↺ ล้างค่ารายแถว</button>
+            </div>
+            <div id="tsRows" style="max-height:190px;overflow:auto"></div>
+            <div id="tsWarn" style="display:none;font-size:10.5px;margin-top:5px;padding:5px 7px;border-radius:6px;background:#fffbeb;color:#92400e;border:1px solid #fde68a"></div>
+          </div>
           <canvas id="tsPrev" style="width:100%;margin-top:7px;border:1px dashed #0d9488;border-radius:7px;background:#fff"></canvas>
           <button type="button" id="tsGo" class="btn" style="width:100%;margin-top:6px;background:#0f766e;color:#fff;border:none;font-weight:700;font-size:12px">✅ ใช้แบบนี้ → ไปเลือกประเภทป้าย</button>
           <div class="hint" style="margin-bottom:0">ระบบจะย่อ/ขยายให้พอดีป้ายอัตโนมัติ · กดแล้วเลือก "ประเภทป้าย" เช่น กล่องไฟ 2 หน้า แล้วกดสร้างไฟล์สั่งผลิตได้เลย</div>
@@ -5257,6 +5266,69 @@ function _glowBody(){
     return String(($('tsText')&&$('tsText').value)||'').split('\n')
       .map(function(s){return s.replace(/\s+$/,'');}).filter(function(s){return s.trim()!=='';});
   }
+  /* 🎨 ค่ารายแถว: [{size: เท่า, color: '#000000'}] — ผูกกับลำดับบรรทัดใน textarea
+     พิมพ์เพิ่ม/ลบบรรทัด ค่าจะเลื่อนตาม ไม่หลุด · แถวที่ไม่เคยแตะ = ใช้ค่าเริ่มต้น */
+  window._tsRows = window._tsRows || [];
+  function rowOf(i,n){
+    var r=window._tsRows[i];
+    if(!r){ r={size:(i===0?null:1),color:null}; window._tsRows[i]=r; }
+    return r;
+  }
+  function sizeOf(i){
+    var r=window._tsRows[i];
+    if(r&&isFinite(parseFloat(r.size))&&parseFloat(r.size)>0) return parseFloat(r.size);
+    var headK=Math.max(1,parseFloat(($('tsHead')&&$('tsHead').value)||1.8)||1.8);
+    return i===0?headK:1;                       // ไม่ได้ตั้งเอง = ใช้กติกาเดิม
+  }
+  function colorOf(i){
+    var r=window._tsRows[i];
+    return (r&&r.color)?r.color:'#000000';
+  }
+  /* ⚠️ สีอ่อนมากบนพื้นขาว = ตอนแปลงเป็นเส้นตัดอาจจับขอบไม่ได้ ต้องเตือนก่อนสั่งผลิต */
+  function tooLight(hex){
+    try{
+      var h=String(hex||'').replace('#',''); if(h.length===3) h=h.replace(/./g,'$&$&');
+      var r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);
+      return (0.299*r+0.587*g+0.114*b) > 205;
+    }catch(e){ return false; }
+  }
+  function renderRows(){
+    var box=$('tsRows'); if(!box)return;
+    var L=lines();
+    if(!L.length){ box.innerHTML='<div style="font-size:10.5px;color:#94a3b8">— พิมพ์ข้อความก่อน แล้วจะปรับสี/ขนาดรายแถวได้ —</div>';
+      var w0=$('tsWarn'); if(w0)w0.style.display='none'; return; }
+    var html='',light=[];
+    for(var i=0;i<L.length;i++){
+      rowOf(i,L.length);
+      var c=colorOf(i);
+      if(tooLight(c)) light.push(i+1);
+      html+='<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px">'
+        +'<span style="font-size:10px;color:#94a3b8;width:16px;text-align:right">'+(i+1)+'</span>'
+        +'<span style="flex:1;font-size:11.5px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+String(L[i]).replace(/"/g,'&quot;')+'">'+String(L[i]).replace(/[&<>]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[m];})+'</span>'
+        +'<input class="numin tsRowSize" data-i="'+i+'" type="number" min="0.2" max="6" step="0.1" value="'+sizeOf(i).toFixed(1)+'" title="ขนาด (เท่า)" style="width:56px;padding:3px;font-size:11px">'
+        +'<input class="tsRowColor" data-i="'+i+'" type="color" value="'+c+'" title="สีตัวอักษรแถวนี้" style="width:30px;height:26px;border:none;background:none;padding:0;cursor:pointer">'
+        +'</div>';
+    }
+    box.innerHTML=html;
+    var wn=$('tsWarn');
+    if(wn){
+      if(light.length){
+        wn.style.display='block';
+        wn.textContent='⚠️ แถวที่ '+light.join(', ')+' ใช้สีอ่อนมาก — ตอนแปลงเป็นเส้นตัดระบบอาจจับขอบตัวอักษรไม่ได้ '
+          +'ถ้าเป็นงานพิมพ์อย่างเดียวใช้ได้ปกติ แต่ถ้าต้องตัดจริงแนะนำใช้สีเข้มค่ะ';
+      } else wn.style.display='none';
+    }
+    Array.prototype.forEach.call(box.querySelectorAll('.tsRowSize'),function(el){
+      el.oninput=function(){ var i=+this.getAttribute('data-i');
+        window._tsRows[i]=window._tsRows[i]||{}; window._tsRows[i].size=parseFloat(this.value)||1; prev(); };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.tsRowColor'),function(el){
+      el.oninput=function(){ var i=+this.getAttribute('data-i');
+        window._tsRows[i]=window._tsRows[i]||{}; window._tsRows[i].color=this.value; renderRows(); prev(); };
+    });
+  }
+  if($('tsRowReset'))$('tsRowReset').onclick=function(){ window._tsRows=[]; renderRows(); prev(); };
+
   /* วาดลงผืนผ้าใบ — คืนขนาดจริงเป็น มม. ให้ผู้เรียกใช้ต่อ */
   function draw(cv){
     var L=lines(); if(!L.length) return null;
@@ -5265,7 +5337,6 @@ function _glowBody(){
     var Pc=Math.max(0,parseFloat(($('tsPad')&&$('tsPad').value)||0)||0);
     var font=($('tsFont')&&$('tsFont').value)||'Prompt';
     var align=($('tsAlign')&&$('tsAlign').value)||'center';
-    var headK=Math.max(1,parseFloat(($('tsHead')&&$('tsHead').value)||1.8)||1.8);
     var bold=!($('tsBold')&&!$('tsBold').checked);
     var Wmm=Wc*10, Hmm=Hc*10, Pmm=Pc*10;
     cv.width=Math.round(Wmm*PX); cv.height=Math.round(Hmm*PX);
@@ -5273,7 +5344,7 @@ function _glowBody(){
     g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
     var areaW=(Wmm-2*Pmm)*PX, areaH=(Hmm-2*Pmm)*PX;
     if(areaW<=0||areaH<=0) return null;
-    var wt=L.map(function(_,i){ return i===0?headK:1; });          // บรรทัดแรกใหญ่กว่า
+    var wt=L.map(function(_,i){ return sizeOf(i); });               // 🎨 ขนาดของแต่ละแถว (ตั้งเองได้)
     var sumW=wt.reduce(function(a,b){return a+b;},0);
     var gapK=0.30;                                                  // ช่องไฟระหว่างบรรทัด
     /* หาขนาดตัวอักษรที่ใหญ่ที่สุดที่ยังอยู่ในกรอบทั้งกว้างและสูง */
@@ -5291,11 +5362,12 @@ function _glowBody(){
     }
     var totalH=unit*sumW+unit*gapK*(L.length-1);
     var y=Pmm*PX+(areaH-totalH)/2;
-    g.fillStyle='#000'; g.textBaseline='top';
+    g.textBaseline='top';
     g.textAlign=(align==='left')?'left':(align==='right'?'right':'center');
     var ax=(align==='left')?Pmm*PX:(align==='right'?(Wmm-Pmm)*PX:cv.width/2);
     for(var k=0;k<L.length;k++){
       var ph=unit*wt[k];
+      g.fillStyle=colorOf(k);                    // 🎨 สีของแถวนี้ (ตั้งเองได้อิสระ)
       g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
       var m=g.measureText(L[k]);
       var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
@@ -5313,7 +5385,7 @@ function _glowBody(){
     if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+f+'"').then(go).catch(go); }
     else setTimeout(go,120);
   }
-  function schedule(){ clearTimeout(_t); _t=setTimeout(prev,220); }
+  function schedule(){ clearTimeout(_t); _t=setTimeout(function(){ renderRows(); prev(); },220); }
   /* เติมรายชื่อฟอนต์ (ไทยขึ้นก่อน) */
   function fillFonts(){
     var s=$('tsFont'); if(!s||s.options.length)return;
@@ -5327,7 +5399,7 @@ function _glowBody(){
     var p=$('txtSignPanel'); if(!p)return;
     var open=(p.style.display==='none'||!p.style.display);
     p.style.display=open?'block':'none';
-    if(open){ fillFonts(); if(!$('tsText').value){ $('tsText').focus(); } prev(); }
+    if(open){ fillFonts(); if(!$('tsText').value){ $('tsText').focus(); } renderRows(); prev(); }
   };
   ['tsText','tsW','tsH','tsPad','tsAlign','tsHead','tsBold'].forEach(function(id){
     var el=$(id); if(!el)return;
@@ -5361,7 +5433,7 @@ function _glowBody(){
         ta.value=cur?(cur+'\n'+L.join('\n')):L.join('\n');   // มีข้อความอยู่แล้ว = ต่อท้าย ไม่ทับของเดิม
       }
       ocrMsg('✅ '+(j.msg||('อ่านได้ '+L.length+' บรรทัด'))+' · ตรวจแก้ในช่องด้านล่างได้เลย',true);
-      prev();
+      renderRows(); prev();
     })['catch'](function(){
       if(btn){ btn.disabled=false; btn.textContent=old; }
       ocrMsg('อ่านภาพไม่สำเร็จ ลองใหม่อีกครั้งค่ะ',false);
