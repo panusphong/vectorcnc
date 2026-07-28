@@ -1569,13 +1569,30 @@ def _sticker_map_svg(box_g, pieces, sel, groups=None, raw_subs=None):
         try:
             if raw_subs:
                 from vectorcnc import nesting as _ns9
+                # 📐 บีบเส้นให้อยู่ในกรอบภาพเสมอ — กันงานล้นขอบแผนที่ (เช่นอักษรยกขอบไฟออกหน้า)
+                #    เส้นดิบอาจกว้าง/สูงกว่ารูปที่ใช้ตีกรอบเล็กน้อย ถ้าวาดตรง ๆ จะโผล่ออกนอกกรอบ
+                _ax = []; _ay = []
+                for _sp in raw_subs:
+                    _pts9 = [_sp["start"]]
+                    for _g in _sp["segs"]:
+                        _pts9.extend(_g[1:])          # รวม 'จุดควบคุมโค้ง' ด้วย ไม่งั้นโค้งยังปูดออกนอกกรอบได้
+                    for _q in _pts9:
+                        _ax.append(_q[0]); _ay.append(_q[1])
+                _k9 = 1.0; _ox = b[0]; _oy = b[1]
+                if _ax:
+                    _aw = max(_ax) - min(_ax); _ah = max(_ay) - min(_ay)
+                    if _aw > 0.01 and _ah > 0.01:
+                        _k9 = min(1.0, W / _aw, H / _ah)
+                        _ox = min(_ax) - (W - _aw * _k9) / (2.0 * _k9)
+                        _oy = min(_ay) - (H - _ah * _k9) / (2.0 * _k9)
+
+                def _T9(_pt):
+                    return ((_pt[0] - _ox) * _k9, (_pt[1] - _oy) * _k9)
                 _p9 = []
                 for _sp in raw_subs:
-                    _n9 = {"start": (_sp["start"][0] - b[0], _sp["start"][1] - b[1]),
-                           "segs": [("L", (s[1][0] - b[0], s[1][1] - b[1])) if s[0] == "L" else
-                                    ("C", (s[1][0] - b[0], s[1][1] - b[1]),
-                                     (s[2][0] - b[0], s[2][1] - b[1]),
-                                     (s[3][0] - b[0], s[3][1] - b[1])) for s in _sp["segs"]],
+                    _n9 = {"start": _T9(_sp["start"]),
+                           "segs": [("L", _T9(s[1])) if s[0] == "L" else
+                                    ("C", _T9(s[1]), _T9(s[2]), _T9(s[3])) for s in _sp["segs"]],
                            "closed": _sp.get("closed", True)}
                     _p9.append('<path d="%s"/>' % _ns9._sp_d(_n9))
                 if _p9:
