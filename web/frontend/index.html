@@ -258,6 +258,38 @@ select.numin{cursor:pointer}
     <div class="app-body">
       <div class="side">
         <div class="drop" id="drop"><div class="ic">📤</div><b data-i18n="drop.title">ลากไฟล์มาวาง</b><span data-i18n="drop.sub">รูป (JPG PNG PSD) หรือเวกเตอร์ (AI PDF SVG EPS)</span></div>
+        <!-- ⌨️ ลูกค้าหน้าร้านเขียนกระดาษมา — ไม่มีไฟล์ .ai/.jpg ก็เริ่มออกแบบได้เลย
+             พิมพ์ข้อความ + จัดวางเอง -> ระบบสร้างเป็นแบบให้ แล้วโยนเข้าประเภทป้ายได้ทันที -->
+        <button class="btn" id="txtSignBtn" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;border:none;font-weight:700;font-size:12.5px">⌨️ พิมพ์ข้อความเอง (ไม่ต้องมีไฟล์) — ลูกค้าเขียนกระดาษมา</button>
+        <div id="txtSignPanel" style="display:none;margin-top:6px;padding:10px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
+          <div style="font-size:11.5px;font-weight:800;color:#0f766e;margin-bottom:6px">⌨️ พิมพ์แบบป้ายเอง</div>
+          <!-- 📷 ลูกค้าถ่ายกระดาษ/ป้ายเดิมมาให้ -> อ่านเป็นตัวอักษรวางลงช่องนี้เลย แล้วค่อยแก้ -->
+          <div style="display:flex;gap:6px;margin-bottom:5px">
+            <input type="file" id="tsOcrFile" accept="image/*" style="display:none">
+            <button type="button" id="tsOcrBtn" class="btn" style="flex:1;background:#7c3aed;color:#fff;border:none;font-weight:700;font-size:11.5px;padding:6px">📷 อ่านข้อความจากภาพ (ถ่ายกระดาษ/ป้ายเดิมมาก็ได้)</button>
+          </div>
+          <div id="tsOcrMsg" style="display:none;font-size:11px;margin-bottom:5px;padding:5px 7px;border-radius:6px"></div>
+          <textarea id="tsText" rows="6" placeholder="พิมพ์ทีละบรรทัด เช่น&#10;ชำนิ&#10;มือถือ&#10;เครื่องเสียงรถยนต์&#10;คอมพิวเตอร์&#10;อุปกรณ์ช่าง&#10;เงินสด!" style="width:100%;padding:6px;font-size:12px;font-family:inherit;border:1px solid #cbd5e1;border-radius:7px;line-height:1.5"></textarea>
+          <div style="display:flex;gap:6px;margin-top:5px">
+            <div style="flex:1"><label style="font-size:10px;color:#64748b">กว้างป้าย (ซม.)</label><input class="numin" id="tsW" type="number" min="5" value="65" style="padding:5px;width:100%"></div>
+            <div style="flex:1"><label style="font-size:10px;color:#64748b">สูงป้าย (ซม.)</label><input class="numin" id="tsH" type="number" min="5" value="100" style="padding:5px;width:100%"></div>
+            <div style="flex:1"><label style="font-size:10px;color:#64748b">เว้นขอบ (ซม.)</label><input class="numin" id="tsPad" type="number" min="0" step="0.5" value="4" style="padding:5px;width:100%"></div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:5px">
+            <div style="flex:2"><label style="font-size:10px;color:#64748b">ฟอนต์</label><select class="numin" id="tsFont" style="padding:5px;width:100%;font-size:11px"></select></div>
+            <div style="flex:1"><label style="font-size:10px;color:#64748b">จัดชิด</label>
+              <select class="numin" id="tsAlign" style="padding:5px;width:100%;font-size:11px">
+                <option value="center">กึ่งกลาง</option><option value="left">ชิดซ้าย</option><option value="right">ชิดขวา</option>
+              </select></div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:flex-end">
+            <div style="flex:1"><label style="font-size:10px;color:#64748b">บรรทัดแรกใหญ่กว่า (เท่า)</label><input class="numin" id="tsHead" type="number" min="1" max="4" step="0.1" value="1.8" style="padding:5px;width:100%"></div>
+            <label style="flex:1;display:flex;align-items:center;gap:5px;font-size:10.5px;color:#0f766e;padding-bottom:6px"><input type="checkbox" id="tsBold" checked> ตัวหนา</label>
+          </div>
+          <canvas id="tsPrev" style="width:100%;margin-top:7px;border:1px dashed #0d9488;border-radius:7px;background:#fff"></canvas>
+          <button type="button" id="tsGo" class="btn" style="width:100%;margin-top:6px;background:#0f766e;color:#fff;border:none;font-weight:700;font-size:12px">✅ ใช้แบบนี้ → ไปเลือกประเภทป้าย</button>
+          <div class="hint" style="margin-bottom:0">ระบบจะย่อ/ขยายให้พอดีป้ายอัตโนมัติ · กดแล้วเลือก "ประเภทป้าย" เช่น กล่องไฟ 2 หน้า แล้วกดสร้างไฟล์สั่งผลิตได้เลย</div>
+        </div>
         <button class="btn" id="asmBtn" style="width:100%;margin-top:6px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:700;font-size:12.5px">🧩 แตกชิ้น + เลือก + จัดวาง (.ai / .pdf / .psd รวมหลายแบบ)</button>
         <button class="btn" id="cropBtn" style="display:none;width:100%;margin-top:6px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;border:none;font-weight:700;font-size:12.5px">✂️ เลือกพื้นที่ในภาพ → แยกเป็นชิ้น (JPG/PNG)</button>
         <button class="btn" id="cropUndo" style="display:none;width:100%;margin-top:5px;background:#e2e8f0;border:none;font-weight:700;font-size:11.5px">↩ กลับไปใช้ภาพเต็มเดิม</button>
@@ -3491,8 +3523,12 @@ window.setLang=setLang; window.t=t;
     }catch(e){return '';}
   }
   function send(ev,menu,beacon){
+    /* 👤 แนบชื่อเล่น/ชื่อจริงไปด้วย — หน้าสถิติจะได้แสดงว่าใครใช้จริง ไม่ใช่ guest ลอย ๆ */
+    var _nk='',_fl='';
+    try{ _nk=(typeof CURRENT_NICK!=='undefined'&&CURRENT_NICK)?String(CURRENT_NICK):''; }catch(e){}
+    try{ _fl=(typeof CURRENT_FULL!=='undefined'&&CURRENT_FULL)?String(CURRENT_FULL):''; }catch(e){}
     var body=JSON.stringify({sid:SID,account:acct(),ev:ev,page:location.pathname,
-      menu:menu||'',ref:document.referrer||'',refhost:refhost(),
+      menu:menu||'',ref:document.referrer||'',refhost:refhost(),nick:_nk,fullname:_fl,
       device:device(),browser:browser(),dur:Math.round((Date.now()-T0)/1000)});
     var url=(typeof API!=='undefined'?API:'')+'/api/track';
     try{
@@ -3603,12 +3639,29 @@ window.setLang=setLang; window.t=t;
     chart(j.daily);
     rows(q('swMenus'),j.menus,' ครั้ง');
     rows(q('swRefs'),j.refs,'');
-    rows(q('swAccs'),j.accounts,'');
+    /* 👤 แสดง "ชื่อเล่น (ชื่อจริง)" ถ้ามี — ไม่มีก็ใช้ username เหมือนเดิม */
+    function who(x){
+      var nk=(x&&x.nick)||'', fl=(x&&x.fullname)||'', ac=(x&&x.account)||'guest';
+      if(!nk&&!fl) return esc(ac);
+      var main=esc(nk||fl);
+      var sub=[]; if(nk&&fl) sub.push(esc(fl)); if(ac&&ac!=='guest') sub.push(esc(ac));
+      return main+(sub.length?('<span style="color:#94a3b8;font-weight:400"> · '+sub.join(' · ')+'</span>'):'');
+    }
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+    var _ac=q('swAccs');
+    if(_ac){
+      _ac.innerHTML=(j.accounts||[]).length? (j.accounts||[]).map(function(a){
+        return '<tr><td style="font-weight:600;color:#0f172a">'+who(a)+'</td>'+
+          '<td style="color:#94a3b8;white-space:nowrap">รวม '+fmtSec(a.sec||0)+' · ล่าสุด '+fmtTs(a.last)+'</td>'+
+          '<td class="n">'+(a.sessions||0)+'</td></tr>';
+      }).join('') : '<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';
+    }
     var r=q('swRecent');
     var EV={visit:'🟢 เข้าเว็บ',menu:'🧭 เปิดเมนู',heartbeat:'⏱ อยู่บนหน้า',leave:'⚪ ออก'};
     r.innerHTML=(j.recent||[]).length? (j.recent||[]).map(function(x){
       return '<tr><td style="color:#94a3b8;white-space:nowrap">'+fmtTs(x.ts)+'</td>'+
-        '<td style="font-weight:600;color:#0f172a">'+(x.account||'guest')+'</td>'+
+        '<td style="font-weight:600;color:#0f172a">'+who(x)+'</td>'+
         '<td>'+(EV[x.ev]||x.ev)+(x.menu?(' · <b style="color:#0d9488">'+x.menu+'</b>'):'')+'</td>'+
         '<td style="color:#94a3b8;white-space:nowrap">'+(x.ref||'เข้าตรง')+' · '+(x.device||'')+'</td>'+
         '<td class="n">'+(x.dur?fmtSec(x.dur):'')+'</td></tr>';
@@ -5192,6 +5245,153 @@ function _glowBody(){
   var svg=img.querySelector('svg'); if(!svg)return null;
   return svg.getElementById?svg.getElementById('w3dBody'):svg.querySelector('#w3dBody');
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ⌨️ พิมพ์แบบป้ายเอง — สำหรับลูกค้าหน้าร้านที่เขียนกระดาษมา ไม่มีไฟล์ .ai/.jpg
+   วาดข้อความลงผืนผ้าใบตามสัดส่วนป้ายจริง → ได้ภาพขาว-ดำ → เข้าระบบเหมือนอัปโหลดไฟล์
+   จากนั้นเลือกประเภทป้าย (กล่องไฟ ฯลฯ) แล้วสร้างไฟล์สั่งผลิตได้ตามปกติทุกขั้นตอน
+   ═══════════════════════════════════════════════════════════════════ */
+(function(){
+  var PX = 4;                                    // พิกเซลต่อ 1 มม. (ละเอียดพอสำหรับ trace)
+  function lines(){
+    return String(($('tsText')&&$('tsText').value)||'').split('\n')
+      .map(function(s){return s.replace(/\s+$/,'');}).filter(function(s){return s.trim()!=='';});
+  }
+  /* วาดลงผืนผ้าใบ — คืนขนาดจริงเป็น มม. ให้ผู้เรียกใช้ต่อ */
+  function draw(cv){
+    var L=lines(); if(!L.length) return null;
+    var Wc=parseFloat(($('tsW')&&$('tsW').value)||65)||65;
+    var Hc=parseFloat(($('tsH')&&$('tsH').value)||100)||100;
+    var Pc=Math.max(0,parseFloat(($('tsPad')&&$('tsPad').value)||0)||0);
+    var font=($('tsFont')&&$('tsFont').value)||'Prompt';
+    var align=($('tsAlign')&&$('tsAlign').value)||'center';
+    var headK=Math.max(1,parseFloat(($('tsHead')&&$('tsHead').value)||1.8)||1.8);
+    var bold=!($('tsBold')&&!$('tsBold').checked);
+    var Wmm=Wc*10, Hmm=Hc*10, Pmm=Pc*10;
+    cv.width=Math.round(Wmm*PX); cv.height=Math.round(Hmm*PX);
+    var g=cv.getContext('2d');
+    g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
+    var areaW=(Wmm-2*Pmm)*PX, areaH=(Hmm-2*Pmm)*PX;
+    if(areaW<=0||areaH<=0) return null;
+    var wt=L.map(function(_,i){ return i===0?headK:1; });          // บรรทัดแรกใหญ่กว่า
+    var sumW=wt.reduce(function(a,b){return a+b;},0);
+    var gapK=0.30;                                                  // ช่องไฟระหว่างบรรทัด
+    /* หาขนาดตัวอักษรที่ใหญ่ที่สุดที่ยังอยู่ในกรอบทั้งกว้างและสูง */
+    var unit=areaH/(sumW+gapK*(L.length-1));                        // ความสูงต่อ 1 หน่วยน้ำหนัก
+    for(var pass=0;pass<24;pass++){
+      var over=1;
+      for(var i=0;i<L.length;i++){
+        var px=unit*wt[i]; if(px<1)px=1;
+        g.font=(bold?'700 ':'400 ')+px+'px "'+font+'", sans-serif';
+        var w=g.measureText(L[i]).width;
+        if(w>areaW) over=Math.max(over,w/areaW);
+      }
+      if(over<=1.001) break;
+      unit=unit/over;
+    }
+    var totalH=unit*sumW+unit*gapK*(L.length-1);
+    var y=Pmm*PX+(areaH-totalH)/2;
+    g.fillStyle='#000'; g.textBaseline='top';
+    g.textAlign=(align==='left')?'left':(align==='right'?'right':'center');
+    var ax=(align==='left')?Pmm*PX:(align==='right'?(Wmm-Pmm)*PX:cv.width/2);
+    for(var k=0;k<L.length;k++){
+      var ph=unit*wt[k];
+      g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
+      var m=g.measureText(L[k]);
+      var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
+      g.fillText(L[k],ax,y+(ph-asc)*0.5);
+      y+=ph+unit*gapK;
+    }
+    return {w:Wmm,h:Hmm};
+  }
+  var _t=null;
+  function prev(){
+    var cv=$('tsPrev'); if(!cv)return;
+    var f=($('tsFont')&&$('tsFont').value)||'Prompt';
+    try{ loadGFont(f); }catch(_e){}
+    var go=function(){ try{ draw(cv); }catch(_e){} };
+    if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+f+'"').then(go).catch(go); }
+    else setTimeout(go,120);
+  }
+  function schedule(){ clearTimeout(_t); _t=setTimeout(prev,220); }
+  /* เติมรายชื่อฟอนต์ (ไทยขึ้นก่อน) */
+  function fillFonts(){
+    var s=$('tsFont'); if(!s||s.options.length)return;
+    try{
+      GFONTS_TH.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent='🇹🇭 '+f; s.appendChild(o); });
+      GFONTS_EN.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent=f; s.appendChild(o); });
+    }catch(_e){ var o=document.createElement('option'); o.value='Prompt'; o.textContent='Prompt'; s.appendChild(o); }
+    s.value='Prompt';
+  }
+  if($('txtSignBtn'))$('txtSignBtn').onclick=function(){
+    var p=$('txtSignPanel'); if(!p)return;
+    var open=(p.style.display==='none'||!p.style.display);
+    p.style.display=open?'block':'none';
+    if(open){ fillFonts(); if(!$('tsText').value){ $('tsText').focus(); } prev(); }
+  };
+  ['tsText','tsW','tsH','tsPad','tsAlign','tsHead','tsBold'].forEach(function(id){
+    var el=$(id); if(!el)return;
+    el.addEventListener(el.type==='checkbox'?'change':'input',schedule);
+  });
+  if($('tsFont'))$('tsFont').addEventListener('change',prev);
+  /* 📷 อ่านข้อความจากภาพ -> เติมลงช่องพิมพ์ ให้ผู้ใช้ตรวจแก้เองได้ทันที */
+  function ocrMsg(t,ok){
+    var m=$('tsOcrMsg'); if(!m)return;
+    m.style.display='block';
+    m.style.background=ok?'#ecfdf5':'#fef2f2';
+    m.style.color=ok?'#065f46':'#991b1b';
+    m.style.border='1px solid '+(ok?'#a7f3d0':'#fecaca');
+    m.textContent=t;
+  }
+  if($('tsOcrBtn'))$('tsOcrBtn').onclick=function(){ var f=$('tsOcrFile'); if(f)f.click(); };
+  if($('tsOcrFile'))$('tsOcrFile').onchange=function(){
+    var f=this.files&&this.files[0]; if(!f)return;
+    var btn=$('tsOcrBtn'), old=btn?btn.textContent:'';
+    if(btn){ btn.disabled=true; btn.textContent='⏳ กำลังอ่านภาพ...'; }
+    ocrMsg('กำลังอ่านข้อความจากภาพ...',true);
+    var fd=new FormData(); fd.append('file',f);
+    _apiFetch((typeof API!=='undefined'?API:'')+'/api/ocr-text',fd).then(_apiJson).then(function(j){
+      if(btn){ btn.disabled=false; btn.textContent=old; }
+      if(j&&j.error){ ocrMsg(j.error,false); return; }
+      var L=(j&&j.lines)||[];
+      if(!L.length){ ocrMsg((j&&j.msg)||'อ่านข้อความไม่ออก — พิมพ์เองได้เลยค่ะ',false); return; }
+      var ta=$('tsText');
+      if(ta){
+        var cur=String(ta.value||'').trim();
+        ta.value=cur?(cur+'\n'+L.join('\n')):L.join('\n');   // มีข้อความอยู่แล้ว = ต่อท้าย ไม่ทับของเดิม
+      }
+      ocrMsg('✅ '+(j.msg||('อ่านได้ '+L.length+' บรรทัด'))+' · ตรวจแก้ในช่องด้านล่างได้เลย',true);
+      prev();
+    })['catch'](function(){
+      if(btn){ btn.disabled=false; btn.textContent=old; }
+      ocrMsg('อ่านภาพไม่สำเร็จ ลองใหม่อีกครั้งค่ะ',false);
+    });
+    this.value='';
+  };
+  if($('tsGo'))$('tsGo').onclick=function(){
+    var cv=$('tsPrev'); if(!cv){return;}
+    var r=null; try{ r=draw(cv); }catch(_e){ r=null; }
+    if(!r){ alert('พิมพ์ข้อความอย่างน้อย 1 บรรทัดก่อนค่ะ'); return; }
+    var btn=this, old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังสร้างแบบ...';
+    cv.toBlob(function(bl){
+      btn.disabled=false; btn.textContent=old;
+      if(!bl){ alert('สร้างแบบไม่สำเร็จ ลองใหม่อีกครั้งค่ะ'); return; }
+      fileObj=new File([bl],'text_design.png',{type:'image/png'});
+      lastName='text_design';
+      /* 📏 ใส่ขนาดป้ายจริงให้ทุกช่องที่ระบบใช้ — จะได้ไม่ต้องกรอกซ้ำ */
+      if($('realW'))   $('realW').value=Math.round(r.w);
+      if($('realWcm')) $('realWcm').value=Math.round(r.w/10);
+      if($('realHcm')) $('realHcm').value=Math.round(r.h/10);
+      if($('bxW'))     $('bxW').value=Math.round(r.w/10);
+      if($('bxH'))     $('bxH').value=Math.round(r.h/10);
+      if($('fname'))   $('fname').textContent='แบบที่พิมพ์เอง · '+Math.round(r.w/10)+'×'+Math.round(r.h/10)+' ซม.';
+      try{ var im=$('thumbImg'); if(im){ im.src=cv.toDataURL('image/png'); var th=$('thumb'); if(th)th.style.display='block'; } }catch(_e){}
+      try{ if($('go'))$('go').disabled=false; }catch(_e){}
+      try{ if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }catch(_e){}
+      try{ var sel=$('mainSignType'); if(sel){ sel.scrollIntoView({behavior:'smooth',block:'center'}); sel.focus(); } }catch(_e){}
+    },'image/png');
+  };
+})();
 
 /* 🦾 แผงตั้งค่าแขน: โชว์เมื่อเลือกแขน (ทุกประเภทป้าย) · ช่องระยะห่าง: เฉพาะแขนคู่ */
 function _syncArmUI(){
@@ -6807,6 +7007,15 @@ var PRICING_BASE='https://script.google.com/macros/s/AKfycbxhEXR2HHZrzggznK4DJFu
 function _qp(k){try{return new URLSearchParams(location.search).get(k)||'';}catch(e){return'';}}
 var CURRENT_USER=_qp('u')||_qp('user')||_qp('username')||_qp('uid')||'';   // ชื่อผู้ใช้ที่ CRM Hub ส่งมาเปิด VectorCNC
 try{ if(CURRENT_USER){ sessionStorage.setItem('vcnc_user',CURRENT_USER); } else { CURRENT_USER=sessionStorage.getItem('vcnc_user')||''; } }catch(e){}
+/* 👤 ชื่อเล่น + ชื่อจริง จาก CRM Hub — ใช้แสดงในหน้าสถิติ (จะได้รู้ว่าใครเข้ามาใช้จริง)
+   รับได้ 2 ทาง: (1) query ?nn= &fn= ที่ CRM Hub ส่งมา  (2) คำตอบจาก /api/auth ตอนล็อกอินหน้านี้
+   ไม่มีก็ปล่อยว่าง ระบบเดิมทำงานเหมือนเดิมทุกอย่าง */
+var CURRENT_NICK=_qp('nn')||_qp('nick')||_qp('nickname')||'';
+var CURRENT_FULL=_qp('fn')||_qp('fullname')||_qp('name')||'';
+try{
+  if(CURRENT_NICK) sessionStorage.setItem('vcnc_nick',CURRENT_NICK); else CURRENT_NICK=sessionStorage.getItem('vcnc_nick')||'';
+  if(CURRENT_FULL) sessionStorage.setItem('vcnc_full',CURRENT_FULL); else CURRENT_FULL=sessionStorage.getItem('vcnc_full')||'';
+}catch(e){}
 (function(){ if(!CURRENT_USER) return; var nr=document.querySelector('.nav-right'); if(!nr) return;
   var c=document.createElement('span'); c.id='userChip'; c.title='ดูประวัติการเข้าใช้';
   c.style.cssText='display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);background:var(--panel2);border:1px solid var(--line);padding:7px 12px;border-radius:10px;cursor:pointer';
