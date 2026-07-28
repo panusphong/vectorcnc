@@ -1935,9 +1935,21 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             _polys = []
             if _hier is not None:
                 _hier = _hier[0]
+
+                def _lvl(_i):
+                    """ความลึกของวงในผังชั้น: 0 = ขอบนอก · 1 = รู · 2 = ชิ้นที่อยู่ในรู · 3 = รูของชิ้นนั้น"""
+                    _d = 0; _p = _hier[_i][3]
+                    while _p != -1 and _d < 64:
+                        _d += 1; _p = _hier[_p][3]
+                    return _d
                 for _i, _c in enumerate(_cnts):
-                    if _hier[_i][3] != -1 or _cv.contourArea(_c) < _amin_px:
-                        continue                          # เอาเฉพาะขอบนอก (ลูก = รู) · เก็บชิ้นเล็ก เช่นตัวอักษรจิ๋ว
+                    # 🐻 ============ เก็บ 'ชิ้นที่อยู่ในรู' ด้วย (parity: คู่ = เนื้อ · คี่ = รู) ============
+                    #    เดิมเอาเฉพาะขอบนอกสุด (ชั้น 0) เท่านั้น -> อะไรที่ซ้อนลึกกว่านั้นถูกทิ้งหมด
+                    #    โลโก้ After You: จานหยัก(0) -> วงในเป็นรู(1) -> ตัวหมีอยู่ในรู(2) -> ก้นหอยเป็นรูของหมี(3)
+                    #    ชั้น 2 กับ 3 จึงหายเกลี้ยง = 'หมีหาย' และตัวหนังสือเล็กที่ซ้อนในกรอบก็หายด้วย
+                    #    ซ้ำร้าย พอรูปไม่ครบ ตัวตรวจ 'เส้นโค้งจริงในไฟล์' เทียบไม่ผ่าน 90% เลยถูกปัดทิ้งตามไปอีก
+                    if (_lvl(_i) % 2) == 1 or _cv.contourArea(_c) < _amin_px:
+                        continue                          # ชั้นคี่ = รู (ถูกใส่เป็น hole ของแม่อยู่แล้ว)
                     _ext = _ring_mm(_c)
                     if not _ext:
                         continue
@@ -1965,6 +1977,25 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             pass                                        # ✅ vtracer สำเร็จ — ใช้ผลนั้นเลย
         except Exception:
             full = None
+        # 🐻 ============ กันดีเทลหายตอนแรสเตอร์ (ต้นเหตุ 'หมีหาย' / 'Dessert Café หาย') ============
+        #    เอนจิ้น trace ย่อภาพให้ด้านยาวเหลือ 1040-1600 px ก่อนเสมอ (เพื่อให้เส้นโค้งเนียน)
+        #    งานป้ายเป็นแนวนอนยาว เช่น 8.9:1 -> ด้านสั้นเหลือแค่ 179 px
+        #    ตัวหมีในโลโก้เหลือ ~50 px · ก้นหอยกับ 'Dessert Café' ละลายหายไปเลย
+        #    แต่ไฟล์ .ai/.pdf 'มีเส้นโค้งจริง' อยู่แล้ว (46 เส้น) มากกว่าที่ trace ได้ (34 เส้น)
+        #    -> ถ้าไฟล์มีเส้นมากกว่าอย่างมีนัยยะ แปลว่าแรสเตอร์กินหาย ให้ใช้เส้นในไฟล์แทนทั้งดุ้น
+        #    (ไม่ไปแตะเอนจิ้น trace ที่ปุ่ม 'แปลงเป็นเส้นตัด' ใช้ร่วมกัน — ของเดิมที่ดีอยู่แล้วไม่ถูกกระทบ)
+        try:
+            _rsn9 = len(_RAW_SUBS.get("subs") or [])
+            if _file_subs and _rsn9 and len(_file_subs) > _rsn9 * 1.10:
+                _pcs9 = [pc for pc in vector_import.full_pieces_mm(inp, float(real_width_mm))
+                         if pc["poly"].area > 4.0]
+                if _pcs9:
+                    _f9 = unary_union([_piece_poly_with_holes(pc) for pc in _pcs9])
+                    if _f9 is not None and not _f9.is_empty:
+                        full = _f9
+                        _TRACE_ENG["raster_lost"] = len(_file_subs) - _rsn9
+        except Exception:
+            pass
         # 🥇 ถ้าอ่านเส้นจากไฟล์ได้ -> ใช้ 'เส้นในไฟล์' เป็นเส้นตัด (คมกว่า trace ทุกกรณี)
         #    จัดพิกัดให้ตรงกับรูปทรงที่ใช้คำนวณ (bbox เดียวกัน) แล้วแทนที่เส้นดิบของ vtracer
         if _file_subs and _file_ref and full is not None and not full.is_empty:
