@@ -1898,6 +1898,15 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                     _TRACE_ENG["rings_in"] = len(_file_subs)
                     _TRACE_ENG["rings_used"] = len(_file_subs)
                     _TRACE_ENG["holes"] = 0
+                    # ⚡ ลดจุดในรูปลงเล็กน้อยก่อนส่งต่อ (0.05 มม. — ละเอียดกว่าเครื่องตัดหลายเท่า มองไม่เห็น)
+                    #    เส้นโค้งจริงเก็บไว้ที่ _RAW_SUBS แล้ว รูปนี้ใช้แค่คำนวณชั้นยกขอบ/คิ้ว/แผ่นพื้น
+                    #    ไม่ลด: รูปมีจุดมากกว่าเดิม 1.9 เท่า -> งานยกขอบคำนวณนานจนเซิร์ฟเวอร์ตอบไม่ทัน (502)
+                    try:
+                        _sm9 = _fu9.simplify(0.05, preserve_topology=True)
+                        if _sm9 is not None and not _sm9.is_empty:
+                            _fu9 = _sm9
+                    except Exception:
+                        pass
                     full = _fu9
             except Exception:
                 full = None
