@@ -115,7 +115,6 @@ def _extract_subpaths_pdf(path, filetype=None):
         #      2) เส้นนั้นอยู่นอกหน้ากระดาษเกือบทั้งเส้น (ทับหน้ากระดาษไม่ถึง 35%)
         #    ตัวอักษรที่ล้นขอบนิดหน่อย -> เข้าไม่ครบทั้งสองข้อ -> เก็บไว้เสมอ
         _PAD = max(2.0, 0.02 * max(W, H))
-
         def _inpage(sp):
             try:
                 xs = [sp['start'][0]]; ys = [sp['start'][1]]
@@ -148,7 +147,7 @@ def _extract_subpaths_pdf(path, filetype=None):
                     sp['closed'] = abs(lp[0] - sp['start'][0]) < 1.0 and abs(lp[1] - sp['start'][1]) < 1.0
                     sp['draw'] = di                       # กลุ่มเส้นที่มาจาก fill เดียวกัน (นอก+ใน = กรอบ)
                     if not _inpage(sp):
-                        return                            # ✂️ เส้นนอกหน้ากระดาษ (ของที่ถูกกรอบครอบซ่อนไว้) -> ไม่เอา
+                        return                            # ✂️ เส้นนอกหน้ากระดาษ -> ไม่เอา
                     bucket.append(sp)
 
             for it in dr.get('items', []):
