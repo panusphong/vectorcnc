@@ -70,7 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-20-led-along-letter-contour+row-bars+holes-on-letters-at-bar+stroke-width",
+            "build": "2026-07-28-c",
+        "build_note": "รูป+เส้นใช้ชุดเดียวกัน · ขนาดวัดจากขอบนอกคิ้ว · เส้นตัดใน .ai เป็นเส้นเปล่า",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1859,8 +1860,34 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                 _file_subs = _fs2; _file_ref = (_fx0, _fy0, _fx1, _fy1)
         except Exception:
             _file_subs = None; _file_ref = None
-        # 🏆 เส้นทางหลัก: เอนจิ้นเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' (vtracer Bézier) — เนียน/คม/มุมชัด ตามที่พิสูจน์แล้วหน้างาน
+        # 🎯 ============ ไฟล์เวกเตอร์: ใช้ 'เส้นในไฟล์' เป็นตัวหลักไปเลย ============
+        #    ปุ่ม 'แปลงเป็นเส้นตัด' อ่านไฟล์ .ai/.pdf ตรง ๆ (ไม่ trace) แล้วได้เส้นครบทุกเส้นอยู่แล้ว
+        #    เดิมตรงนี้กลับไปแรสเตอร์ + trace ก่อน แล้วค่อยมาเทียบว่าจะรับเส้นในไฟล์ไหม
+        #    ทางอ้อมนั้นคือต้นเหตุทั้งหมด: แรสเตอร์กินดีเทลหาย (หมี/ก้นหอย/ตัวอักษรริม)
+        #    แล้ว 'รูปที่ใช้จัดวาง' กับ 'เส้นที่วาด' ก็กลายเป็นคนละชุดจนงานล้นออกนอกแผ่น
+        #    ตอนนี้เอาเส้นในไฟล์เป็นทั้ง 'รูป' และ 'เส้น' ชุดเดียวกัน = ได้แบบเดียวกับปุ่มเป๊ะ
+        if _file_subs and _file_ref:
+            try:
+                _pl9 = [_piece_poly_with_holes(pc) for pc in (_fp or [])
+                        if pc.get("poly") is not None and not pc["poly"].is_empty and pc["poly"].area > 4.0]
+                _fu9 = unary_union(_pl9) if _pl9 else None
+                if _fu9 is not None and not _fu9.is_empty:
+                    _gb9 = _fu9.bounds
+                    _sc9 = (_gb9[2] - _gb9[0]) / max(1e-6, (_file_ref[2] - _file_ref[0]))
+                    _RAW_SUBS["subs"] = _subs_affine(_file_subs, _sc9,
+                                                     _gb9[0] - _file_ref[0] * _sc9,
+                                                     _gb9[1] - _file_ref[1] * _sc9)
+                    _TRACE_ENG["mode"] = "file-vector"
+                    _TRACE_ENG["rings_in"] = len(_file_subs)
+                    _TRACE_ENG["rings_used"] = len(_file_subs)
+                    _TRACE_ENG["holes"] = 0
+                    full = _fu9
+            except Exception:
+                full = None
+        # 🏆 สำรอง: อ่านเส้นในไฟล์ไม่สำเร็จ -> ค่อยแรสเตอร์ + trace (ของเดิม ไม่แตะ)
         try:
+            if full is not None and not full.is_empty:
+                raise _SkipFallback()
             import fitz as _fzv
             _dv = _fzv.open(inp); _pgv = _dv[0]
             # 🔍 7200px: เส้นขนแมวในโลโก้ (เช่น เกลียวเขาแพะ กว้าง ~0.08 มม.) ได้ 2-3 พิกเซล -> ไม่ขาดเป็นท่อน
@@ -1873,6 +1900,8 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                 full = _vtrace_full_mm(_vpng, float(real_width_mm))
             finally:
                 _CUT_SMOOTH["mm"] = _sv0
+        except _SkipFallback:
+            pass                                   # ✅ ได้เส้นจากไฟล์แล้ว — ไม่ต้องแรสเตอร์
         except Exception:
             full = None
         try:
@@ -1977,25 +2006,6 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             pass                                        # ✅ vtracer สำเร็จ — ใช้ผลนั้นเลย
         except Exception:
             full = None
-        # 🐻 ============ กันดีเทลหายตอนแรสเตอร์ (ต้นเหตุ 'หมีหาย' / 'Dessert Café หาย') ============
-        #    เอนจิ้น trace ย่อภาพให้ด้านยาวเหลือ 1040-1600 px ก่อนเสมอ (เพื่อให้เส้นโค้งเนียน)
-        #    งานป้ายเป็นแนวนอนยาว เช่น 8.9:1 -> ด้านสั้นเหลือแค่ 179 px
-        #    ตัวหมีในโลโก้เหลือ ~50 px · ก้นหอยกับ 'Dessert Café' ละลายหายไปเลย
-        #    แต่ไฟล์ .ai/.pdf 'มีเส้นโค้งจริง' อยู่แล้ว (46 เส้น) มากกว่าที่ trace ได้ (34 เส้น)
-        #    -> ถ้าไฟล์มีเส้นมากกว่าอย่างมีนัยยะ แปลว่าแรสเตอร์กินหาย ให้ใช้เส้นในไฟล์แทนทั้งดุ้น
-        #    (ไม่ไปแตะเอนจิ้น trace ที่ปุ่ม 'แปลงเป็นเส้นตัด' ใช้ร่วมกัน — ของเดิมที่ดีอยู่แล้วไม่ถูกกระทบ)
-        try:
-            _rsn9 = len(_RAW_SUBS.get("subs") or [])
-            if _file_subs and _rsn9 and len(_file_subs) > _rsn9 * 1.10:
-                _pcs9 = [pc for pc in vector_import.full_pieces_mm(inp, float(real_width_mm))
-                         if pc["poly"].area > 4.0]
-                if _pcs9:
-                    _f9 = unary_union([_piece_poly_with_holes(pc) for pc in _pcs9])
-                    if _f9 is not None and not _f9.is_empty:
-                        full = _f9
-                        _TRACE_ENG["raster_lost"] = len(_file_subs) - _rsn9
-        except Exception:
-            pass
         # 🥇 ถ้าอ่านเส้นจากไฟล์ได้ -> ใช้ 'เส้นในไฟล์' เป็นเส้นตัด (คมกว่า trace ทุกกรณี)
         #    จัดพิกัดให้ตรงกับรูปทรงที่ใช้คำนวณ (bbox เดียวกัน) แล้วแทนที่เส้นดิบของ vtracer
         if _file_subs and _file_ref and full is not None and not full.is_empty:
@@ -2022,28 +2032,6 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                                 _hit += 1
                     _ratio = (_hit / float(_tot)) if _tot else 0.0
                     if _ratio >= 0.90:                                   # เส้นอยู่บนรูปจริง ≥90% -> ใช้ได้
-                        # 🧩 ============ 'รูปที่ใช้จัดวาง' ต้องมาจากเส้นชุดเดียวกับ 'เส้นที่วาดออกมา' ============
-                        #    เดิม: full = รูปจาก trace (แรสเตอร์) · เส้นตัด = เส้นโค้งจริงในไฟล์ -> คนละชุดกัน
-                        #    ถ้าแรสเตอร์กินตัวอักษรริมหายไป full จะ 'แคบกว่าความจริง'
-                        #    ระบบเอา full ที่แคบไปคำนวณการย่อ/จัดวางลงกล่อง แล้ววาดด้วยเส้นจริงที่กว้างกว่า
-                        #    -> งานล้นออกนอกแผ่นด้านขวา ตัวอักษรตัวสุดท้ายโดนขอบแผ่นตัด
-                        #    วัดจากไฟล์จริงของหน้างาน: แผ่น 120.0 ซม. · งาน 117.2 ซม.
-                        #       เว้นซ้าย 3.87 ซม. แต่เว้นขวา -1.07 ซม. (ล้นออกไป 1.07 ซม.)
-                        #       ส่วนต่าง 4.9 ซม. = ส่วนที่แรสเตอร์มองไม่เห็น
-                        #    แก้: พอรับเส้นในไฟล์มาเป็นเส้นตัดแล้ว ให้สร้าง 'รูปทรง' จากไฟล์เดียวกันด้วยเสมอ
-                        try:
-                            _pcsF = [pc for pc in vector_import.full_pieces_mm(inp, float(real_width_mm))
-                                     if pc["poly"].area > 4.0]
-                            if _pcsF:
-                                _fF = unary_union([_piece_poly_with_holes(pc) for pc in _pcsF])
-                                if _fF is not None and not _fF.is_empty:
-                                    _gF = _fF.bounds
-                                    _scF = (_gF[2] - _gF[0]) / max(1e-6, (_fb[2] - _fb[0]))
-                                    _cand = _subs_affine(_file_subs, _scF,
-                                                         _gF[0] - _fb[0] * _scF, _gF[1] - _fb[1] * _scF)
-                                    full = _fF
-                        except Exception:
-                            pass
                         _RAW_SUBS["subs"] = _cand
                         _TRACE_ENG["mode"] = "file-vector"
             except Exception:
