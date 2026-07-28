@@ -2022,6 +2022,28 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                                 _hit += 1
                     _ratio = (_hit / float(_tot)) if _tot else 0.0
                     if _ratio >= 0.90:                                   # เส้นอยู่บนรูปจริง ≥90% -> ใช้ได้
+                        # 🧩 ============ 'รูปที่ใช้จัดวาง' ต้องมาจากเส้นชุดเดียวกับ 'เส้นที่วาดออกมา' ============
+                        #    เดิม: full = รูปจาก trace (แรสเตอร์) · เส้นตัด = เส้นโค้งจริงในไฟล์ -> คนละชุดกัน
+                        #    ถ้าแรสเตอร์กินตัวอักษรริมหายไป full จะ 'แคบกว่าความจริง'
+                        #    ระบบเอา full ที่แคบไปคำนวณการย่อ/จัดวางลงกล่อง แล้ววาดด้วยเส้นจริงที่กว้างกว่า
+                        #    -> งานล้นออกนอกแผ่นด้านขวา ตัวอักษรตัวสุดท้ายโดนขอบแผ่นตัด
+                        #    วัดจากไฟล์จริงของหน้างาน: แผ่น 120.0 ซม. · งาน 117.2 ซม.
+                        #       เว้นซ้าย 3.87 ซม. แต่เว้นขวา -1.07 ซม. (ล้นออกไป 1.07 ซม.)
+                        #       ส่วนต่าง 4.9 ซม. = ส่วนที่แรสเตอร์มองไม่เห็น
+                        #    แก้: พอรับเส้นในไฟล์มาเป็นเส้นตัดแล้ว ให้สร้าง 'รูปทรง' จากไฟล์เดียวกันด้วยเสมอ
+                        try:
+                            _pcsF = [pc for pc in vector_import.full_pieces_mm(inp, float(real_width_mm))
+                                     if pc["poly"].area > 4.0]
+                            if _pcsF:
+                                _fF = unary_union([_piece_poly_with_holes(pc) for pc in _pcsF])
+                                if _fF is not None and not _fF.is_empty:
+                                    _gF = _fF.bounds
+                                    _scF = (_gF[2] - _gF[0]) / max(1e-6, (_fb[2] - _fb[0]))
+                                    _cand = _subs_affine(_file_subs, _scF,
+                                                         _gF[0] - _fb[0] * _scF, _gF[1] - _fb[1] * _scF)
+                                    full = _fF
+                        except Exception:
+                            pass
                         _RAW_SUBS["subs"] = _cand
                         _TRACE_ENG["mode"] = "file-vector"
             except Exception:
