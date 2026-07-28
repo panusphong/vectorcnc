@@ -6324,7 +6324,11 @@ $('goLayer').onclick=function(){
         if($('wArm')&&_am){ $('wArm').value=_am;
           if(typeof _wArmToggle==='function')_wArmToggle();
           if($('mainArmLen')&&$('wArmLen'))$('wArmLen').value=$('mainArmLen').value;
-          if($('mainArmSide')&&$('wArmSide'))$('wArmSide').value=$('mainArmSide').value; }
+          if($('mainArmSide')&&$('wArmSide'))$('wArmSide').value=$('mainArmSide').value;
+          /* 🦿 ขาตั้งพื้น + ล้อ: หน้าประเมินราคาอ่านค่าจากช่องหน้าออกแบบด้านบนโดยตรง
+             (สูงขา · ระยะห่างขา · ขนาดล้อ · เบรก) จึงไม่ต้องคัดลอกค่าซ้ำ */
+          try{ if(typeof wallDraw==='function')wallDraw(); }catch(_e){}
+        }
       }catch(_e){}
       // 🖼️ ใช้ "ภาพหน้าตรง 3D" (มีคิ้ว/งานพิมพ์/เงา) วางบนผนัง — ถ้าไม่มีค่อย fallback ภาพต้นฉบับ
       var _svgToPng=function(svg,cb){ try{ var url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));
@@ -7404,6 +7408,57 @@ function _wSignSideAt(ay, side, sx, sy, sw, sh){
     for(var x2=iw-1;x2>=0;x2--){ if(dat[(row*iw+x2)*4+3]>40) return sx + (x2/iw)*sw; } return sx+sw;
   }catch(e){ return def; }
 }
+/* 🦿 วาด 'ขาตั้งพื้น + ล้อเลื่อน' บนภาพจำลองผนัง — ต้องเหมือนแบบที่ออกแบบไว้ด้านบน
+   เดิมหน้านี้แค่บวกราคาชุดขา 2,500 บาท แต่ไม่วาดอะไรเลย ป้ายเลยลอยกลางผนัง ผิดจากของจริง
+   ค่าที่ใช้ดึงจากช่องหน้าออกแบบด้านบนโดยตรง (สูงขา · ระยะห่างขา · ขนาดล้อ) */
+function _wDrawLegs(g,sx,sy,sw,sh,ppm,M,wh){
+  var legHcm  = parseFloat(($('legH')&&$('legH').value))||70;
+  var spanCm  = parseFloat(($('legSpan')&&$('legSpan').value))||0;
+  var castMm  = parseFloat(($('casterMm')&&$('casterMm').value))||75;
+  var lock    = !($('casterLock')&&!$('casterLock').checked);
+  var legH = legHcm*ppm, cast = (castMm/10)*ppm;
+  var signWpx = sw;
+  var span = (spanCm>1? spanCm*ppm : signWpx*0.62);
+  span = Math.max(signWpx*0.18, Math.min(span, signWpx*0.96));
+  var tube = Math.max(4, signWpx*0.035);
+  var cx = sx+sw/2, yTop = sy+sh;
+  var xs = [cx-span/2, cx+span/2];
+  var yBeam = yTop+legH, yFloor = yBeam+cast;
+  g.save();
+  // เสา 2 ต้น
+  g.fillStyle='#8b93a0'; g.strokeStyle='#5b626d'; g.lineWidth=Math.max(1,tube*0.09);
+  for(var i=0;i<xs.length;i++){ g.fillRect(xs[i]-tube/2,yTop,tube,legH); g.strokeRect(xs[i]-tube/2,yTop,tube,legH); }
+  // คานล่างเชื่อมขา
+  g.fillRect(xs[0]-tube*1.4, yBeam-tube*0.45, (xs[1]-xs[0])+tube*2.8, tube*0.9);
+  g.strokeRect(xs[0]-tube*1.4, yBeam-tube*0.45, (xs[1]-xs[0])+tube*2.8, tube*0.9);
+  // ล้อ 4 ตัว (คู่หน้า/คู่หลังเยื้องเล็กน้อยให้ดูมีมิติ)
+  for(var d=0; d<2; d++){
+    var off = d? tube*0.75 : 0, al = d? 0.55 : 1;
+    for(var k=0;k<xs.length;k++){
+      var wx = xs[k]+off, r = cast/2;
+      g.globalAlpha=al;
+      g.fillStyle='#6b7280'; g.fillRect(wx-tube*0.55, yBeam+tube*0.35, tube*1.1, tube*0.3);
+      g.beginPath(); g.arc(wx, yFloor-r, r, 0, 6.2832);
+      g.fillStyle='#2b3038'; g.fill(); g.strokeStyle='#1b1f26'; g.stroke();
+      g.beginPath(); g.arc(wx, yFloor-r, r*0.34, 0, 6.2832);
+      g.fillStyle='#c9ced6'; g.fill();
+      if(lock&&d===0){ g.fillStyle='#ef4444'; g.fillRect(wx-r*0.16, yFloor-r*0.30, r*1.05, r*0.26); }
+      g.globalAlpha=1;
+    }
+  }
+  // เส้นพื้น + ตัวเลขระยะ (พื้นถึงใต้ป้าย / สูงรวม)
+  g.strokeStyle='#94a3b8'; g.lineWidth=2; g.beginPath();
+  g.moveTo(sx-sw*0.35,yFloor); g.lineTo(sx+sw*1.35,yFloor); g.stroke();
+  g.strokeStyle='#0d9488'; g.fillStyle='#0d9488'; g.lineWidth=1.5;
+  g.font='bold 13px sans-serif'; g.textAlign='center';
+  var xd = sx+sw+Math.max(26,sw*0.13);
+  g.beginPath(); g.moveTo(xd,yTop); g.lineTo(xd,yFloor); g.stroke();
+  g.save(); g.translate(xd-6,(yTop+yFloor)/2); g.rotate(-Math.PI/2);
+  g.fillText('พื้นถึงใต้ป้าย '+(legHcm+castMm/10).toFixed(1)+' ซม.',0,0); g.restore();
+  g.fillText('ระยะห่างขา '+(span/ppm).toFixed(1)+' ซม.', cx, yFloor+22);
+  g.restore();
+}
+
 function _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,signWcm,mode){
   var col='#475569'; mode=mode||'top2';
   var armW=Math.max(3,Math.round(sw*0.014));
@@ -7645,7 +7700,8 @@ function wallDraw(){
   var mLcm=(sx-M)/ppm, mRcm=((M+ww)-(sx+sw))/ppm, mTcm=(sy-M)/ppm, mBcm=((M+wh)-(sy+sh))/ppm;
   try{
     var _armSel=($('wArm')&&$('wArm').value)||'none';
-    if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }         // เลือกแขน = วาดแขนตามที่เลือก
+    if(_armSel==='floor'){ _wDrawLegs(g,sx,sy,sw,sh,ppm,M,wh); }                        // 🦿 ขาตั้งพื้น + ล้อเลื่อน
+    else if(_armSel!=='none'){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,_armSel); }    // เลือกแขน = วาดแขนตามที่เลือก
     else if(_wFrameKind()){ _wDrawFrame(g,M,ww,wh,ppm,sx,sy,sw,sh,s.w,'top2'); _wDrawSteelRails(g,sx,sy,sw,sh,ppm,true); }  // โครงเหล็ก = แขน + คานคู่ (วาดก่อนภาพ = อยู่หลังตัวอักษร โผล่เฉพาะช่องที่ไม่โดนบัง)
   }catch(_e){}
   if(wallImg){
