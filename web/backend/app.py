@@ -2646,7 +2646,21 @@ def _art_data_uri(path, max_px=1400):
     """crop รูปงานให้เหลือเฉพาะตัวงาน (ตัดพื้นขาว/โปร่ง) -> data URI (PNG) ไว้แปะบนหน้า 3 มิติ"""
     from PIL import Image
     import io as _io, base64 as _b64, numpy as _np
-    im = Image.open(path).convert("RGBA")
+    # 🖼️ ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.svg) เปิดด้วย PIL ตรง ๆ ไม่ได้ -> เดิมจะ error เงียบ ๆ
+    #    ผลคือกล่องไฟแบบ 'พิมพ์หน้า' ได้หน้าเปล่า งานออกแบบไม่เข้าไปในกล่องเลย
+    #    -> เรนเดอร์หน้าแรกเป็นภาพก่อน แล้วค่อยครอป/ย่อเหมือนเดิม
+    _src = path
+    try:
+        from vectorcnc import vector_import as _vi9
+        if _vi9.is_vector_file(path):
+            import fitz as _fz9
+            _d9 = _fz9.open(path); _p9 = _d9[0]
+            _z9 = max(1.0, min(8.0, float(max_px) * 1.6 / max(1.0, _p9.rect.width)))
+            _pm9 = _p9.get_pixmap(matrix=_fz9.Matrix(_z9, _z9), alpha=True)
+            _src = _io.BytesIO(_pm9.tobytes("png")); _d9.close()
+    except Exception:
+        _src = path
+    im = Image.open(_src).convert("RGBA")
     a = _np.asarray(im)
     rgb = a[:, :, :3]; alpha = a[:, :, 3]
     mask = ((rgb.min(axis=2) < 245) | (alpha < 250)) & (alpha > 12)   # ไม่ใช่ขาว/ไม่โปร่ง
