@@ -1704,7 +1704,9 @@ def _vtrace_full_mm(img_path, real_width_mm):
                 continue
             if _p.geom_type == 'MultiPolygon':
                 _p = max(_p.geoms, key=lambda q: q.area)
-            if _p.area > 0.5:
+            # 📌 กฎ: 'วาดเส้นตัดให้ได้ตามต้นแบบ' — ห้ามทิ้งชิ้นงานของลูกค้าเด็ดขาด
+            #    เก็บทุกวงที่เป็นรูปทรงจริง · กันเฉพาะวงที่พังจนไม่มีพื้นที่ (เศษคำนวณ ไม่ใช่ชิ้นงาน)
+            if _p.area > 0.001:
                 Ps.append(_p)
         except Exception:
             continue
@@ -1799,10 +1801,12 @@ def _vtrace_full_mm(img_path, real_width_mm):
                 _pg2 = _Pg(list(Ps[_i].exterior.coords), _hs).buffer(0)
             except Exception:
                 _lost.append(("สร้างรูปทรงไม่สำเร็จ", Ps[_i].area)); continue
-            if _pg2 is not None and not _pg2.is_empty and _pg2.area > 3.0:
+            # 📌 ห้ามทิ้งชิ้นงานของลูกค้า — จุดจิ๋ว/สระ/accent เล็ก ๆ ก็คือเนื้องานจริง
+            #    เดิมทิ้งชิ้นที่ < 3 ตร.มม. (≈ ⌀2 มม.) ซึ่งกินรายละเอียดจริงของงานได้
+            if _pg2 is not None and not _pg2.is_empty and _pg2.area > 0.001:
                 _out.append(_pg2); _used += 1 + len(_hs)
             else:
-                _lost.append(("เล็กกว่า 3 ตร.มม.", Ps[_i].area))
+                _lost.append(("รูปทรงพังจนไม่มีพื้นที่", Ps[_i].area))
     # 🧭 บันทึกไว้รายงานให้ผู้ใช้เห็น: เข้ามากี่เส้น · ใช้จริงกี่เส้น · หายกี่เส้น เพราะอะไร
     try:
         _TRACE_ENG["rings_in"] = len(Ps)
@@ -2128,7 +2132,10 @@ def _fix_offset_geom(geom, ref_w_mm=600.0, band_mm=0.0):
         eps = min(eps, band_mm * 0.15)          # อย่าให้ใหญ่จนกินคิ้วบาง ๆ
     _wmin = 0.30                                # ครึ่งหนึ่งของความกว้างต่ำสุดที่ตัดจริงได้ (0.6 มม.)
     RJ = dict(join_style=1, resolution=16)                          # มุมมน = ไม่มีหนาม
-    _amin = 4.0                                                     # ตร.มม. เล็กกว่านี้ = เศษ ตัดจริงไม่ได้
+    # 📌 กฎ: ห้ามกินชิ้นงานของลูกค้า — ใช้เกณฑ์ 'เครื่องตัดทำไม่ได้จริง' เท่านั้น
+    #    เดิม 4.0 ตร.มม. (≈ ⌀2.3 มม.) ใหญ่เกินไป · จุด/รูเล็กในตัวอักษรจริงก็โดนกิน
+    #    0.5 ตร.มม. ≈ ⌀0.8 มม. = เล็กกว่าลำเลเซอร์/ดอกกัดทุกตัว จึงเป็นเศษคำนวณแน่นอน
+    _amin = 0.5                                                     # ตร.มม. เล็กกว่านี้ = เศษ ตัดจริงไม่ได้
     try:
         g = geom.buffer(0)                                          # 1) แก้เส้นตัดกันเอง (swallowtail)
         if g is None or g.is_empty:
@@ -5184,10 +5191,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                               _use_raw_punch = _acc
                       except Exception:
                           pass
-              # ⚠️ ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) จะทำให้ลายเส้นบางแตกเป็นเศษ -> เก็บกวาดทิ้ง
+              # 📌 กฎ: ห้ามลบชิ้นงานของลูกค้า — หน้าที่เราคือ 'วาดเส้นตัดตามต้นแบบ' เท่านั้น
+              #    ชั้นที่หดเข้า (เช่น อะคริลิค −0.25 ซม.) อาจมีชิ้นเล็ก/บางจนตัดยาก
+              #    -> ไม่ลบทิ้งแล้ว แค่ 'นับแล้วเตือน' ให้ช่างตัดสินใจเอง (เดิมลบเงียบ ๆ)
               junk = 0
               if off < -0.01:
-                  g, junk = _clean_layer(g)
+                  try:
+                      _keepg, junk = _clean_layer(g)      # ใช้แค่ 'จำนวน' ไม่เอารูปที่ถูกลบ
+                  except Exception:
+                      junk = 0
               if g is None or g.is_empty:
                   continue
               # 🏆 หลักการ: 'ตัดฉลุบนแผ่นแบน = ดูที่เส้นอย่างเดียว' — ชั้นที่ค่าเผื่อ 0 ใช้เส้นดิบทุกเส้น
@@ -7035,8 +7047,18 @@ async def api_login(request: Request, username: str = Form(""), password: str = 
     else:                                              # staff / team / พนักงาน ฯลฯ = ทีมงานภายใน
         role = "internal"
     tok = A.sign(str(j.get("email") or u), str(j.get("plan") or "pro"), days=30, role=role)
-    resp = JSONResponse({"ok": True, "username": u, "nickname": j.get("nickname") or u,
-                         "role": role, "redirect": "/app?u=" + _upq(u)})
+    # 👤 ชื่อเล่น/ชื่อจริงจาก CRM Hub — ส่งกลับให้หน้าเว็บเก็บไว้ใช้ในสถิติ
+    #    CRM Hub อาจตั้งชื่อคีย์ไม่เหมือนกัน จึงลองหลายชื่อ · ไม่มีก็ปล่อยว่าง (ไม่พังแน่นอน)
+    _nick = str(j.get("nickname") or j.get("nick") or j.get("ชื่อเล่น") or "").strip()
+    _full = str(j.get("fullname") or j.get("name") or j.get("full_name")
+                or j.get("ชื่อ") or j.get("ชื่อจริง") or "").strip()
+    _redir = "/app?u=" + _upq(u)
+    if _nick:
+        _redir += "&nn=" + _upq(_nick)          # ส่งชื่อไปกับลิงก์ด้วย เผื่อเปิดคนละแท็บ
+    if _full:
+        _redir += "&fn=" + _upq(_full)
+    resp = JSONResponse({"ok": True, "username": u, "nickname": _nick or u,
+                         "fullname": _full, "role": role, "redirect": _redir})
     try:
         resp.set_cookie("vc_acc", tok, httponly=True, samesite="lax", secure=True)
     except Exception:
@@ -8291,7 +8313,97 @@ def _an_conn():
         device TEXT, browser TEXT, dur INTEGER DEFAULT 0)""")
     c.execute("CREATE INDEX IF NOT EXISTS i_day ON ev(day)")
     c.execute("CREATE INDEX IF NOT EXISTS i_sid ON ev(sid)")
+    # 👤 ชื่อจริง/ชื่อเล่น ของคนที่ล็อกอินผ่าน CRM Hub — เพิ่มทีหลังแบบไม่ทำลายข้อมูลเดิม
+    #    (ฐานข้อมูลเก่าที่ยังไม่มี 2 คอลัมน์นี้จะถูกเติมให้อัตโนมัติ แถวเดิมเป็นค่าว่าง)
+    for _col in ("nick", "fullname"):
+        try:
+            c.execute("ALTER TABLE ev ADD COLUMN %s TEXT DEFAULT ''" % _col)
+        except Exception:
+            pass          # มีอยู่แล้ว = ไม่ต้องทำอะไร
     return c
+
+
+def _ocr_prep(img):
+    """เตรียมภาพก่อนอ่าน: ขาวดำ + ปรับแสงเงา + ขยายให้ตัวอักษรใหญ่พอ
+       ภาพถ่ายจากมือถือมักเอียง/มีเงา/ความละเอียดต่ำ — ขั้นนี้ช่วยได้เยอะ"""
+    import cv2 as _cv, numpy as _np
+    g = _cv.cvtColor(img, _cv.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    h, w = g.shape[:2]
+    if max(h, w) < 1600:                       # ตัวเล็กเกิน -> ขยายก่อน อ่านแม่นขึ้นชัดเจน
+        s = 1600.0 / max(h, w)
+        g = _cv.resize(g, None, fx=s, fy=s, interpolation=_cv.INTER_CUBIC)
+    g = _cv.bilateralFilter(g, 7, 45, 45)      # ลด noise แต่คงขอบตัวอักษร
+    # แสงไม่สม่ำเสมอ (เงามือ/แสงข้าง) -> ปรับเฉพาะจุด
+    g = _cv.adaptiveThreshold(g, 255, _cv.ADAPTIVE_THRESH_GAUSSIAN_C, _cv.THRESH_BINARY, 41, 15)
+    return g
+
+
+def _ocr_cloud(raw):
+    """🌩️ Cloud OCR — ใช้เมื่อ Tesseract อ่านไม่ออก (ลายมือ)
+       เปิดใช้โดยตั้ง env: OCR_API_URL (+ OCR_API_KEY)
+       รูปแบบที่รองรับ: Google Cloud Vision images:annotate
+       ไม่ได้ตั้ง = ข้ามไปเฉย ๆ ไม่มีค่าใช้จ่าย ไม่พัง"""
+    url = (os.environ.get("OCR_API_URL") or "").strip()
+    key = (os.environ.get("OCR_API_KEY") or "").strip()
+    if not url:
+        return None
+    try:
+        import urllib.request as _u, json as _j, base64 as _b
+        body = _j.dumps({"requests": [{"image": {"content": _b.b64encode(raw).decode()},
+                                       "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
+                                       "imageContext": {"languageHints": ["th", "en"]}}]}).encode()
+        full = url + (("&" if "?" in url else "?") + "key=" + key if key else "")
+        req = _u.Request(full, data=body, headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=25) as r:
+            j = _j.loads(r.read().decode("utf-8", "ignore") or "{}")
+        t = (((j.get("responses") or [{}])[0].get("fullTextAnnotation") or {}).get("text") or "")
+        return t or None
+    except Exception:
+        return None
+
+
+@app.post("/api/ocr-text")
+async def api_ocr_text(file: UploadFile = File(...), psm: int = Form(6)):
+    """📷 อ่านข้อความจากภาพ -> ส่งกลับเป็นบรรทัด ๆ ให้เอาไปวางบนกระดานออกแบบ
+       ลำดับ: tesseract (ฟรี บนเซิร์ฟเวอร์) -> ถ้าอ่านไม่ออกและตั้ง Cloud ไว้ จึงค่อยเรียก Cloud
+       อ่านผิดได้ ผู้ใช้แก้ต่อเองในกระดานได้ทันที"""
+    try:
+        raw = await file.read()
+        if not raw:
+            return {"ok": False, "error": "empty", "msg": "ไม่พบไฟล์ภาพ"}
+        import cv2 as _cv, numpy as _np
+        img = _cv.imdecode(_np.frombuffer(raw, _np.uint8), _cv.IMREAD_COLOR)
+        if img is None:
+            return {"ok": False, "error": "bad_image", "msg": "เปิดไฟล์ภาพไม่ได้ (รองรับ JPG/PNG)"}
+        text = ""; eng = ""
+        try:
+            import pytesseract
+            prep = _ocr_prep(img)
+            _cfg = "--psm %d" % max(1, min(13, int(psm or 6)))
+            for _lang in ("tha+eng", "eng"):          # ไทย+อังกฤษก่อน · ไม่มีโมเดลไทยค่อยถอยเป็น eng
+                try:
+                    text = pytesseract.image_to_string(prep, lang=_lang, config=_cfg) or ""
+                    eng = "tesseract:" + _lang
+                    if text.strip():
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            text = ""
+        _lines = [s.strip() for s in str(text or "").splitlines() if s.strip()]
+        # อ่านไม่ออก (หรือได้แต่ขยะสั้น ๆ) -> ลอง Cloud ถ้าพี่เปิดไว้
+        if len("".join(_lines)) < 4:
+            _c = _ocr_cloud(raw)
+            if _c:
+                _lines = [s.strip() for s in _c.splitlines() if s.strip()]
+                eng = "cloud"
+        _lines = _lines[:24]                          # ป้ายจริงไม่เกินนี้ กันขยะยาว
+        return {"ok": True, "engine": eng or "none", "lines": _lines,
+                "text": "\n".join(_lines),
+                "msg": ("อ่านได้ %d บรรทัด — ตรวจแก้ได้เลยก่อนสร้างแบบ" % len(_lines)) if _lines
+                       else "อ่านข้อความไม่ออก (ลายมือหวัดหรือภาพไม่ชัด) — พิมพ์เองได้เลย"}
+    except Exception as e:
+        return {"ok": False, "error": "ocr_failed", "msg": "อ่านภาพไม่สำเร็จ: %s" % str(e)[:90]}
 
 
 @app.post("/api/track")
@@ -8307,13 +8419,14 @@ async def api_track(request: Request):
            str(d.get("ev", "visit"))[:20], str(d.get("page", ""))[:80],
            str(d.get("menu", ""))[:80], str(d.get("ref", ""))[:200],
            str(d.get("refhost", ""))[:80], str(d.get("device", ""))[:20],
-           str(d.get("browser", ""))[:40], int(d.get("dur", 0) or 0))
+           str(d.get("browser", ""))[:40], int(d.get("dur", 0) or 0),
+           str(d.get("nick", ""))[:60], str(d.get("fullname", ""))[:80])   # 👤 ชื่อเล่น · ชื่อจริง
     ok_local = True
     try:
         with _AN_LOCK:
             c = _an_conn()
-            c.execute("INSERT INTO ev(ts,day,sid,account,ev,page,menu,ref,refhost,device,browser,dur)"
-                      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", row)
+            c.execute("INSERT INTO ev(ts,day,sid,account,ev,page,menu,ref,refhost,device,browser,dur,nick,fullname)"
+                      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
             c.commit()
             c.close()
     except Exception:
@@ -8498,12 +8611,21 @@ def api_stats(request: Request, days: int = 30, fresh: int = 0):
             devs = [{"name": r[0] or "?", "n": r[1]} for r in q(
                 "SELECT device, COUNT(DISTINCT sid) FROM ev WHERE ev='visit' "
                 "GROUP BY device ORDER BY 2 DESC").fetchall()]
-            accs = [{"name": r[0], "sessions": r[1], "last": r[2], "sec": r[3] or 0} for r in q(
-                "SELECT account, COUNT(DISTINCT sid), MAX(ts), SUM(dur) FROM ev "
+            # 👤 ชื่อเล่น/ชื่อจริง: เอาค่าล่าสุดที่ไม่ว่างของแต่ละบัญชี (บางครั้งเข้ามาก่อนล็อกอิน)
+            accs = [{"name": r[0], "sessions": r[1], "last": r[2], "sec": r[3] or 0,
+                     "nick": r[4] or "", "fullname": r[5] or ""} for r in q(
+                "SELECT account, COUNT(DISTINCT sid), MAX(ts), SUM(dur),"
+                "       MAX(CASE WHEN IFNULL(nick,'')<>'' THEN nick END),"
+                "       MAX(CASE WHEN IFNULL(fullname,'')<>'' THEN fullname END) FROM ev "
                 "WHERE account<>'' GROUP BY account ORDER BY 2 DESC LIMIT 20").fetchall()]
+            _who = {a["name"]: a for a in accs}
             recent = [{"ts": r[0], "account": r[1], "ev": r[2], "menu": r[3],
-                       "ref": r[4], "device": r[5], "dur": r[6]} for r in q(
-                "SELECT ts,account,ev,menu,refhost,device,dur FROM ev "
+                       "ref": r[4], "device": r[5], "dur": r[6],
+                       # ถ้าแถวนี้ยังไม่มีชื่อ ให้ยืมชื่อจากบัญชีเดียวกันที่เคยบันทึกไว้
+                       "nick": (r[7] or (_who.get(r[1], {}) or {}).get("nick", "")),
+                       "fullname": (r[8] or (_who.get(r[1], {}) or {}).get("fullname", ""))}
+                      for r in q(
+                "SELECT ts,account,ev,menu,refhost,device,dur,IFNULL(nick,''),IFNULL(fullname,'') FROM ev "
                 "ORDER BY id DESC LIMIT 40").fetchall()]
             # 🛒 กรวยขาย: เข้าหน้าขาย -> เลื่อนดู -> กดทดลองใช้ (ตัวเลขที่พี่อยากเห็น)
             _land = q("SELECT COUNT(DISTINCT sid) FROM ev WHERE page='landing' AND ev='visit'").fetchone()[0]
