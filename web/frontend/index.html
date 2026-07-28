@@ -5748,6 +5748,7 @@ var TRIMW=1, TRIMDIR='out';
 })();
 // 🧹 เคลียร์ผลลัพธ์ (ตอนเปลี่ยนประเภทป้าย / กดปุ่มเคลียร์) — กันของเก่าค้าง
 window.clearDesignResult=function(){ try{
+  window._wRealAR=null;      /* 📐 ล้างสัดส่วนป้ายที่ล็อกไว้ ไม่ให้ค้างข้ามงาน */
   LS_ACTIVE=false; window._lsFaceSvg=''; window._lastCutDxf=''; window._lastCutSvg='';
   try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.remove('full-stage');}catch(_e){}
   var st=$('layerStage'); if(st){ st.style.display='none'; st.innerHTML=''; }
@@ -6353,6 +6354,12 @@ $('goLayer').onclick=function(){
           try{
             // 📐 ขนาดบนผนัง = 'ขนาดนอกจริงของตัวป้าย' (จาก backend) — ไม่ใช่ realW ที่เป็นค่าก่อนบวกคิ้ว
             var _rwmm=parseFloat(j.outer_w_mm)||parseFloat($('realW')&&$('realW').value)||0;
+            /* 📐 ล็อกสัดส่วนป้ายด้วย 'ขนาดนอกจริง' ที่หลังบ้านคำนวณมา (กว้าง×สูง)
+               ใช้ได้ทุกประเภทป้าย ไม่ใช่แค่กล่องไฟ — ความสูงบนผนังจะตรงกับที่กรอกเป๊ะ */
+            try{
+              var _rhmm=parseFloat(j.outer_h_mm)||0;
+              window._wRealAR=(_rwmm>0&&_rhmm>0)?(_rwmm/_rhmm):null;
+            }catch(_e){ window._wRealAR=null; }
             var _applySize=function(){
               var _wwcm=parseFloat($('wWall')&&$('wWall').value)||400;
               if(!(_rwmm>0&&_wwcm>0))return;
@@ -7354,7 +7361,13 @@ function wallParseRatio(v){ v=(''+v).trim(); if(v.indexOf('/')>-1){var a=v.split
 function wallSignReal(){
   var Wm=parseFloat($('wWall').value)||1, Hm=parseFloat($('hWall').value)||1;
   var r=wallParseRatio($('wRatio').value), mode=$('wMode').value;
+  /* 📐 สัดส่วนป้าย ต้องใช้ 'ขนาดนอกจริง' จากหน้าออกแบบเสมอ ถ้ามี
+     ห้ามใช้สัดส่วนของรูปภาพ เพราะภาพเผื่อขอบโปร่งไว้รอบ ๆ (สำหรับเงา/ฟุ้ง)
+     สัดส่วนภาพจึงไม่เท่าป้ายจริง -> ความสูงเพี้ยน (กำหนด 60 ซม. แต่ขึ้น 61.6 ซม.) */
   var ar=wallImg?(wallImg.width/wallImg.height):1, w, h;
+  try{
+    if(window._wRealAR && isFinite(window._wRealAR) && window._wRealAR>0) ar=window._wRealAR;
+  }catch(e){}
   if(mode==='width'){ w=r*Wm; h=w/ar; }
   else if(mode==='height'){ h=r*Hm; w=h*ar; }
   else { var A=r*Wm*Hm; h=Math.sqrt(A/ar); w=ar*h; }
@@ -7795,6 +7808,7 @@ function wallReset(){ if(!confirm('เคลียร์ทุกอย่าง
   if($('wImgClear'))$('wImgClear').style.display='none'; if($('wEditBg'))$('wEditBg').style.display='none';
   if($('wBgDrop'))$('wBgDrop').innerHTML='ลาก/คลิกใส่ภาพผนังจริง (แทนสีผนัง)'; if($('wBgClear'))$('wBgClear').style.display='none';
   if($('wFile'))$('wFile').value=''; if($('wBgFile'))$('wBgFile').value='';
+  try{ window._wRealAR=null; }catch(_e){}
   if($('wTxtInfo'))$('wTxtInfo').innerHTML='ขนาด – → 0 บาท';
   wallDraw();
 }
@@ -7878,6 +7892,9 @@ window.wallSignFile=wallSignFile;
   };
 })();
 function wallSetImg(f){
+  /* 📐 ผู้ใช้เลือกภาพเองที่หน้านี้ = ไม่ใช่แบบจากด้านบน -> ปลดสัดส่วนที่ล็อกไว้ */
+  try{ window._wRealAR=null; }catch(_e){}
+
   try{ _wallFile=f; }catch(_e){}
   // ไฟล์เวกเตอร์/PSD (.ai/.pdf/.eps/.ps/.svg/.psd) -> แตกเป็นชิ้น/เลเยอร์ให้เลือก แล้ววางเหมือน JPG
   if(/\.(ai|pdf|eps|ps|svg|psd|psb)$/i.test(f.name||'')){
