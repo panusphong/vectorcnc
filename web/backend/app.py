@@ -940,48 +940,48 @@ SIGN_TYPES = {
     "8": {"name": "กล่องไฟล้อมตามทรง 1 หน้า", "depth_cm": 5.0, "wrap": True, "wrap_bridge_cm": 4.5,
           "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                      {"name": "แผ่นพื้นตามทรง", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 5.0}]},
     "9": {"name": "กล่องไฟล้อมตามทรง 2 หน้า", "depth_cm": 10.0, "wrap": True, "wrap_bridge_cm": 4.5,
           "face_finish": "print", "face_material": "acrylic_P433",
           "layers": [{"name": "คิ้วล้อมทรง", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+                     {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
           "walls": [{"name": "ยกขอบตามทรง", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
     # 🆕 กล่องไฟทรงเรขาคณิต — หน้าเป็นรูปทรง กลม/สี่เหลี่ยม/วงรี (ไม่ล้อมทรงงาน) หน้าจบด้วยงานพิมพ์ UV
     #    box_shape: circle | rect | oval · box_pad_cm = ระยะเผื่อรอบงานถึงขอบกล่อง
     "10": {"name": "กล่องไฟทรงกลม 1 หน้า", "depth_cm": 5.0, "box_shape": "circle", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้วทรงกลม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ", "h": 5.0}]},
     "11": {"name": "กล่องไฟทรงกลม 2 หน้า", "depth_cm": 10.0, "box_shape": "circle", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้วทรงกลม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
            "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
     "12": {"name": "กล่องไฟสี่เหลี่ยม 1 หน้า", "depth_cm": 5.0, "box_shape": "rect", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ", "h": 5.0}]},
     "13": {"name": "กล่องไฟสี่เหลี่ยม 2 หน้า", "depth_cm": 10.0, "box_shape": "rect", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้วสี่เหลี่ยม", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
            "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
     "14": {"name": "กล่องไฟวงรี 1 หน้า", "depth_cm": 5.0, "box_shape": "oval", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้ววงรี", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)},
                       {"name": "แผ่นพื้น", "off": 1.0, "kind": "solid", "color": "#16a34a", "rgb": (22, 163, 74)}],
            "walls": [{"name": "ยกขอบ", "h": 5.0}]},
     "15": {"name": "กล่องไฟวงรี 2 หน้า", "depth_cm": 10.0, "box_shape": "oval", "box_pad_cm": 3.0,
            "face_finish": "print", "face_material": "acrylic_P433",
            "layers": [{"name": "คิ้ววงรี", "off": 0.0, "kind": "frame", "band": 8.0, "color": "#2563EB", "rgb": (37, 99, 235)},
-                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -0.3, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
+                      {"name": "หน้าอะคริลิคขาว P433 (พิมพ์)", "off": -2.5, "kind": "solid", "finish": "print", "color": "#e5e7eb", "rgb": (229, 231, 235)}],
            "walls": [{"name": "ยกขอบนอก", "h": 10.0}, {"name": "แผงกลางวางไฟ", "h": 0.0}]},
     # 🆕 อักษรยกขอบไฟออกหน้า + โครงแขวน — ตัวอักษรแยกชิ้น ยึดกับโครงแขวน (โชว์ภาพด้านหลังมีโครง)
     "16": {"name": "อักษรยกขอบไฟออกหน้า + โครงแขวน", "depth_cm": 5.0, "mount_frame": True,
@@ -4548,8 +4548,12 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None, design_href=""):
             parts.append('</g>')
             cursor += w + gap
             continue
-        parts.append('<g id="CUT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="%s" fill-opacity="0.14" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">'
-                     % (_dxf_layer(lyname), lyname, L["color"], L["color"], lw))
+        # ✂️ ชั้นเส้นตัด = 'เส้นเปล่า' ล้วน ๆ ห้ามใส่พื้น (fill)
+        #    ถ้าใส่ทั้งพื้นและเส้น ตอนแปลงลง .ai จะแตกเป็น 2 object ทับกัน
+        #    ช่างเปิดใน Illustrator แล้วเจอเส้นซ้อน แยกออกมาได้ 2-3 ก้อน ต้องมานั่งเดาว่าอันไหนใช้ได้
+        #    เส้นเปล่า = 1 ชิ้น 1 เส้นปิด เอาไปตัดได้เลย (คิ้วเป็นวงแหวน จึงมี 2 เส้น = นอก+ใน ถูกต้อง)
+        parts.append('<g id="CUT_%s" inkscape:groupmode="layer" inkscape:label="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linejoin="round">'
+                     % (_dxf_layer(lyname), lyname, L["color"], lw))
         for sp in L["subs"]:
             nsp = {"start": T(sp["start"]),
                    "segs": [("L", T(s[1])) if s[0] == "L" else ("C", T(s[1]), T(s[2]), T(s[3])) for s in sp["segs"]],
@@ -4939,6 +4943,20 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 pass
         # 🏷️ สติ๊กเกอร์: ชิ้นที่ผู้ใช้คลิกเลือก 'ไม่ตัด' (เช่น ตัวหนังสือไทยติดสติ๊กเกอร์ดำ) — แยกออกจากไฟล์ตัดทุกชั้น
         _sticker_geom = None; _stick_pieces = []; _stick_sel = set()
+        # 🗺️ เส้นดิบสำหรับ 'วาดแผนที่ชิ้น' — ต้องอยู่พิกัดเดียวกับที่แผนที่ใช้
+        #    กล่องไฟฉลุหน้า: logo ถูก 'ย่อ/ขยาย + ย้าย' เข้าไปวางในกล่องแล้ว (บรรทัด 4814/4856)
+        #    แต่ _FLAT/_RAW_SUBS ยังเป็นพิกัดของงานต้นฉบับก่อนจัดวาง
+        #    ถ้าเอามาวาดตรง ๆ เส้นจะไปอยู่คนละที่/คนละขนาดกับกรอบภาพ -> เห็นเป็น 'เส้นตัดหายไป'
+        #    จึงต้องแปลงด้วย transform ชุดเดียวกับที่ใช้ทำไฟล์ตัดจริง (บรรทัด 5152-5155)
+        _MAP_SUBS = None
+        try:
+            _rs9 = _RAW_SUBS.get("subs")
+            if _rs9 and _pl_b0 and _punch_logo is not None and not _punch_logo.is_empty:
+                _b9 = _punch_logo.bounds
+                _s9 = (_b9[2] - _b9[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
+                _MAP_SUBS = _subs_affine(_rs9, _s9, _b9[0] - _pl_b0[0] * _s9, _b9[1] - _pl_b0[1] * _s9)
+        except Exception:
+            _MAP_SUBS = None
         if _punch_logo is not None:
             try:
                 _pl2 = list(_punch_logo.geoms) if _punch_logo.geom_type == "MultiPolygon" else [_punch_logo]
@@ -5001,7 +5019,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _wgrp = [sorted({i for c in g for i in _mat_clust[c]}) for g in _cgrp]
                 # 🖼️ วาดจาก 'ภาพแบน' ที่ก๊อบเก็บไว้ตั้งแต่ต้น — เหมือนไฟล์เส้นตัดจากปุ่มเป๊ะ
                 _mat_map_svg = _sticker_map_svg(full, _mat_pieces, _mgsel, _wgrp,
-                                                raw_subs=(_FLAT.get("subs") or _RAW_SUBS.get("subs")))
+                                                raw_subs=(_MAP_SUBS or _FLAT.get("subs") or _RAW_SUBS.get("subs")))
         except Exception:
             _mat_map_svg = ""
         _mat_groups = []          # [{tag,name,rec,geom,idx}]
@@ -5131,8 +5149,43 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
           full = _bfull; rec = _brec
           if full is None or full.is_empty:
             continue
+          # 📐 ============ กล่องไฟแบบพิมพ์หน้า: วัดจาก 'ขอบนอกคิ้ว' ไม่ใช่ 'ช่องโชว์ในคิ้ว' ============
+          #    ช่างยึดขนาดนอกของคิ้วเป็นหลัก (กรอก 65x100 = ขอบนอกคิ้ว)
+          #      อะคริลิคหน้า = ขอบนอกคิ้ว − 0.25 ซม./ด้าน  -> 64.5 x 99.5
+          #      แผ่นพื้นหลัง = ขอบนอกคิ้ว + 0.10 ซม./ด้าน  -> 65.2 x 100.2
+          #    แต่ 'full' คือช่องโชว์ในคิ้ว (65 − คิ้ว 1 ซม. สองข้าง = 63x98)
+          #    ถ้าทดจาก full ตรง ๆ จะได้ 62.94x97.94 / 63.2x98.2 = เล็กกว่าของจริงทั้งคู่
+          #    -> ต้องบวก 'ความกว้างคิ้ว' กลับเข้าไปก่อน ให้กลับไปอยู่ที่ขอบนอกคิ้วเสียก่อน
+          #    ⚠️ ใช้เฉพาะกล่องไฟพิมพ์หน้า (face_finish=print) เท่านั้น
+          #       ประเภทตัวอักษร (1/16) ใช้ระบบเดิมที่ถูกอยู่แล้ว ห้ามแตะ
+          _TRIM_OUT_MM = 0.0
+          try:
+              if TRIM_OUT and rec.get("face_finish") == "print":
+                  for _Lf in rec.get("layers", []):
+                      if _Lf.get("kind") == "frame":
+                          _bandf = TRIMW if TRIMW > 0 else float(_Lf.get("band", 10.0))
+                          _TRIM_OUT_MM = max(_TRIM_OUT_MM, float(_Lf.get("off", 0.0)) + _bandf)
+          except Exception:
+              _TRIM_OUT_MM = 0.0
+          # 🖨️ บอกช่างพิมพ์ให้ชัด: อาร์ตต้องอยู่ในระยะโชว์ ไม่งั้นคิ้วทับแล้วตัวหนังสือหาย
+          try:
+              if _btag == "" and _TRIM_OUT_MM > 0.05:
+                  _fb7 = full.bounds
+                  _sw7 = _fb7[2] - _fb7[0]; _sh7 = _fb7[3] - _fb7[1]
+                  warns.append("🖨️ งานพิมพ์หน้ากล่อง — ระยะโชว์ (ที่ตามองเห็น) = %.1f × %.1f ซม. · "
+                               "แผ่นอะคริลิคที่พิมพ์จริง = %.1f × %.1f ซม. → "
+                               "จัดตัวหนังสือให้อยู่ใน 'ระยะโชว์' แล้วลากพื้นหลังเลยออกไปจนสุดขอบแผ่น "
+                               "(คิ้วทับข้างละ %.1f ซม. อาร์ตที่ล้ำเข้าไปจะหายใต้คิ้ว)"
+                               % (_sw7 / 10.0, _sh7 / 10.0,
+                                  (_sw7 + 2.0 * (_TRIM_OUT_MM - 2.5)) / 10.0,
+                                  (_sh7 + 2.0 * (_TRIM_OUT_MM - 2.5)) / 10.0,
+                                  _TRIM_OUT_MM / 10.0))
+          except Exception:
+              pass
           for L in ([] if _neon else rec["layers"]):
               off = float(L["off"]); kind = L.get("kind", "solid")
+              if kind != "frame" and _TRIM_OUT_MM > 0.05:
+                  off += _TRIM_OUT_MM                 # เลื่อนฐานอ้างอิงจาก 'ช่องโชว์' ไปที่ 'ขอบนอกคิ้ว'
               _use_raw_punch = None
               base = _mbuf(full, off)                 # ชั้นตามค่าเผื่อ (มุมฉาก)
               if base is None or base.is_empty:
@@ -5818,7 +5871,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "sticker_map_svg": (_sticker_map_svg(full, _stick_pieces, _stick_sel,
                                                      _sticker_groups(_stick_pieces, full.bounds[2] - full.bounds[0],
                                                                      full.bounds[3] - full.bounds[1]),
-                                                     raw_subs=(_FLAT.get("subs") or _RAW_SUBS.get("subs")))
+                                                     raw_subs=(_MAP_SUBS or _FLAT.get("subs") or _RAW_SUBS.get("subs")))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
                 # 🧱 แผนที่ชิ้น สำหรับ 'จ่ายวัสดุคนละแบบในป้ายเดียว' (แตะคำเดียว = ทั้งคำ) — ใช้ได้ทุกประเภทป้าย
