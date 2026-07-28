@@ -102,6 +102,24 @@ def _extract_subpaths_pdf(path, filetype=None):
             _drawings = page.get_drawings()
         except Exception:
             _drawings = []
+        # ✂️ ============ ตัดเส้นที่ 'ล้นออกนอกหน้ากระดาษ' ทิ้ง ============
+        #    ไฟล์รวมชิ้น (composed_vector.pdf) ฝังชิ้นเป็น XObject แล้วครอบด้วยกรอบ (clip)
+        #    ตาเห็นแค่ในกรอบ แต่ 'ข้อมูลเส้น' ของนอกกรอบยังอยู่ในไฟล์ครบ
+        #    ตัวอ่านเส้นไม่รู้จักกรอบครอบ -> ดึงเส้นนอกกรอบมาด้วย แล้วถูกสเกลขยายตามชิ้น
+        #    ผลคือได้วงโค้งใหญ่ ๆ พันกันยุ่งทับโลโก้ (วัดจริง: เส้นกว้าง 235 pt บนหน้ากระดาษ 150 pt)
+        #    ของที่อยู่ในหน้ากระดาษจริงไม่ถูกแตะเลย — ไฟล์ปกติจึงไม่มีอะไรเปลี่ยน
+        _PAD = max(2.0, 0.02 * max(W, H))               # เผื่อขอบ 2% กันงานที่ชิดขอบพอดี
+
+        def _inpage(sp):
+            try:
+                xs = [sp['start'][0]]; ys = [sp['start'][1]]
+                for s in sp.get('segs', []):
+                    for pt in s[1:]:
+                        xs.append(pt[0]); ys.append(pt[1])
+                return (min(xs) >= R.x0 - _PAD and min(ys) >= R.y0 - _PAD
+                        and max(xs) <= R.x1 + _PAD and max(ys) <= R.y1 + _PAD)
+            except Exception:
+                return True
         for di, dr in enumerate(_drawings):
             if not isinstance(dr, dict):
                 continue
@@ -114,6 +132,8 @@ def _extract_subpaths_pdf(path, filetype=None):
                     lp = _sp_last(sp)
                     sp['closed'] = abs(lp[0] - sp['start'][0]) < 1.0 and abs(lp[1] - sp['start'][1]) < 1.0
                     sp['draw'] = di                       # กลุ่มเส้นที่มาจาก fill เดียวกัน (นอก+ใน = กรอบ)
+                    if not _inpage(sp):
+                        return                            # ✂️ เส้นนอกหน้ากระดาษ (ของที่ถูกกรอบครอบซ่อนไว้) -> ไม่เอา
                     bucket.append(sp)
 
             for it in dr.get('items', []):
