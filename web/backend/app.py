@@ -3991,7 +3991,7 @@ def _led_color_card_svg(led_color, glow_mode="front"):
 
 
 def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", frame_top_cm=0.0, sticker_geom=None,
-                    bore_subs=None,
+                    bore_subs=None, art_adj=None,
                     side_color=None, metal_tex="", metal_tex_img="", metal_tex_scope="face"):
     """ภาพป้าย 'หน้าตรง' แบบ 3 มิติเบา ๆ (เงานุ่ม + คิ้ว/งานพิมพ์) พื้นโปร่ง — เอาไปวางบนผนังได้เลย
        frame_top_cm > 0 = วาด 'โครงเหล็กแขวน' (คานเพดาน + แขน 2 ข้าง สแตนเลส) เหนือป้าย (เฉพาะป้ายมีโครง)"""
@@ -4070,6 +4070,22 @@ def _front_sign_svg(full, rec, inner_bore=None, face_color=None, art_href="", fr
             bw = ab[2] - ab[0]; bh = ab[3] - ab[1]
             if rec.get("box_shape") in ("circle", "oval"):
                 bw *= 0.68; bh *= 0.68
+            # 📐 ต้องใช้ 'ขนาด/ตำแหน่ง logo' ชุดเดียวกับภาพ 3 มิติเป๊ะ ๆ
+            #    เดิมภาพหน้าตรงยืด artwork เต็มกรอบเสมอ -> พอส่งเข้าหน้าจำลองผนัง
+            #    ตัวอักษรเลยชิดขอบ ไม่ตรงกับแบบที่ออกแบบไว้ด้านบน
+            if art_adj:
+                try:
+                    _s = float(art_adj.get("s", 1.0)) or 1.0
+                    _tw = float(art_adj.get("w_mm", 0) or 0); _th = float(art_adj.get("h_mm", 0) or 0)
+                    _ar = float(art_adj.get("ar", 0) or 0)
+                    if (_tw > 1.0 or _th > 1.0) and _ar > 0 and bw > 0.1 and bh > 0.1:
+                        _fh = min(bh, bw / _ar)
+                        if _fh > 0.1:
+                            _s = max(0.02, min(20.0, (_th / _fh) if _th > 1.0 else (_tw / (_fh * _ar))))
+                    bw *= _s; bh *= _s
+                    cx += float(art_adj.get("dx", 0.0)); cy += float(art_adj.get("dy", 0.0))
+                except Exception:
+                    pass
             x0 = cx - bw / 2.0 - b[0] + pad; y0 = cy - bh / 2.0 - b[1] + pad
             parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
                          'preserveAspectRatio="xMidYMid meet" clip-path="url(#fArt)"/>'
@@ -5653,7 +5669,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             else:
                 # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
                 # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
-                svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore,
+                svg_face = _front_sign_svg(body3d, rec, inner_bore=_bore, art_adj=_art_adj,
                                            face_color=(face_color or None), art_href=_art, frame_top_cm=0.0,
                                            side_color=(side_color or None), metal_tex=str(metal_tex or ""),
                                            metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
