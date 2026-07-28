@@ -4419,19 +4419,48 @@ def _neon_led_info(neon_full, color="#00e5ff", neon_subs=None, watt_per_m=8.0, v
             "neon": True}
 
 
-def _svg_to_png_uri(svg_text, width_px=1500):
-    """แปลง SVG -> PNG data URI (ไว้ฝังลงไฟล์ .ai)
-       ฝังเป็นภาพเพราะเปิดได้แน่นอนทุกโปรแกรม และไม่มีปัญหา id ของ <defs> ชนกัน"""
+def _svg_inline_group(svg_text, x, y, w, h, prefix="d0"):
+    """🧩 ฝัง SVG อีกอันเข้าไปใน SVG หลัก แบบ 'เวกเตอร์แท้' (ไม่แปลงเป็นรูป)
+
+    เปิดใน Illustrator แล้วคลิกเลือกทีละชิ้นได้ · แก้สีได้ · ขยายกี่เท่าก็ไม่แตก
+    (ต่างจากการฝังเป็น <image> PNG ซึ่งเป็นรูปตายตัว แก้อะไรไม่ได้)
+
+    เรื่องที่ต้องระวัง: ทั้ง 2 ไฟล์อาจตั้งชื่อ id ซ้ำกัน (gradient/filter/clipPath)
+    ถ้าฝังดื้อ ๆ สีจะเพี้ยนเพราะไปอ้าง id ผิดตัว -> ต้องเติมคำนำหน้าให้ id ทุกตัวก่อน
+    """
+    import re as _re
     if not svg_text:
         return ""
-    try:
-        import cairosvg, base64 as _b64
-        png = cairosvg.svg2png(bytestring=str(svg_text).encode("utf-8"),
-                               output_width=int(max(400, min(3000, width_px))),
-                               background_color="white")
-        return "data:image/png;base64," + _b64.b64encode(png).decode()
-    except Exception:
+    s = str(svg_text)
+    m = _re.search(r'<svg[^>]*>', s)
+    if not m:
         return ""
+    head = m.group(0)
+    body = s[m.end():]
+    body = _re.sub(r'</svg>\s*$', '', body.strip())
+    # ขนาดพื้นที่วาดต้นทาง (viewBox) ไว้คำนวณอัตราย่อ/ขยาย
+    vb = _re.search(r'viewBox\s*=\s*"([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)"', head)
+    if vb:
+        vx, vy, vw, vh = (float(vb.group(i)) for i in (1, 2, 3, 4))
+    else:
+        vx = vy = 0.0
+        vw = float((_re.search(r'width\s*=\s*"([\d.]+)', head) or [0, "100"])[1])
+        vh = float((_re.search(r'height\s*=\s*"([\d.]+)', head) or [0, "100"])[1])
+    if vw <= 0 or vh <= 0:
+        return ""
+    # 🔑 เติมคำนำหน้าให้ id ทุกตัว + ทุกที่ที่อ้างถึง (url(#id) และ href="#id")
+    ids = set(_re.findall(r'\bid\s*=\s*"([^"]+)"', body))
+    for _i in ids:
+        _n = "%s_%s" % (prefix, _i)
+        body = body.replace('id="%s"' % _i, 'id="%s"' % _n)
+        body = body.replace('url(#%s)' % _i, 'url(#%s)' % _n)
+        body = body.replace('href="#%s"' % _i, 'href="#%s"' % _n)
+        body = body.replace('xlink:href="#%s"' % _i, 'xlink:href="#%s"' % _n)
+    sc = min(float(w) / vw, float(h) / vh)             # ย่อให้พอดีช่อง คงสัดส่วนเดิม
+    ox = float(x) + (float(w) - vw * sc) / 2.0
+    oy = float(y) + (float(h) - vh * sc) / 2.0
+    return ('<g transform="translate(%.3f %.3f) scale(%.6f) translate(%.3f %.3f)">%s</g>'
+            % (ox, oy, sc, -vx, -vy, body))
 
 
 def _layerset_ai_svg(out_layers, art_href="", art_bounds=None, design_href=""):
@@ -4460,13 +4489,13 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None, design_href=""):
     #    ปิดเลเยอร์นี้ใน Illustrator ก่อนส่งเข้าเครื่องตัดได้ (ไม่ปนกับชั้นตัด)
     if design_href:
         _dh = maxH; _dw = maxH * 0.78
-        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#7c3aed">DESIGN (assembled preview)</text>'
-                     % (cursor, topPad - fs * 0.6, fs * 0.9))
-        parts.append('<g id="DESIGN" inkscape:groupmode="layer" inkscape:label="DESIGN (assembled preview)">'
-                     '<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
-                     'preserveAspectRatio="xMidYMid meet"/></g>'
-                     % (design_href, design_href, cursor, topPad, _dw, _dh))
-        cursor += _dw + gap
+        _inner = _svg_inline_group(design_href, cursor, topPad, _dw, _dh, prefix="dsn")
+        if _inner:
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#7c3aed">DESIGN (assembled preview)</text>'
+                         % (cursor, topPad - fs * 0.6, fs * 0.9))
+            parts.append('<g id="DESIGN" inkscape:groupmode="layer" inkscape:label="DESIGN (assembled preview)">'
+                         + _inner + '</g>')
+            cursor += _dw + gap
     # 🖨️ เลเยอร์งานพิมพ์ (ภาพจริง) — วางเป็นพาเนลแรก
     if art_href and art_bounds is not None:
         aw = art_bounds[2] - art_bounds[0]; ah = art_bounds[3] - art_bounds[1]
@@ -5676,14 +5705,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                           "w_mm": round(_sb4[2] - _sb4[0], 1), "h_mm": round(_sb4[3] - _sb4[1], 1)})
             except Exception:
                 pass
-            # 🧊 แนบ 'แบบที่ออกแบบเสร็จแล้ว' (ภาพ 3 มิติพร้อมขา/ล้อ/แขน + เส้นจับระยะ) ลงไฟล์ .ai ด้วย
-            _design_uri = ""
-            try:
-                _design_uri = _svg_to_png_uri(svg3d, width_px=1500)
-            except Exception:
-                _design_uri = ""
+            # 🧊 แนบ 'แบบที่ออกแบบเสร็จแล้ว' (ป้ายประกอบเต็มตัว + ขา/ล้อ/แขน + เส้นจับระยะ)
+            #    ส่ง SVG ดิบเข้าไปเลย -> ฝังเป็นเวกเตอร์แท้ในไฟล์ .ai (ไม่ใช่รูปฝัง)
             ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai,
-                                      art_bounds=full.bounds, design_href=_design_uri)
+                                      art_bounds=full.bounds, design_href=(svg3d or ""))
             import cairosvg as _cs
             ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
         except Exception:
