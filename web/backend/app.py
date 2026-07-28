@@ -5010,6 +5010,21 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _b9 = _punch_logo.bounds
                 _s9 = (_b9[2] - _b9[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
                 _MAP_SUBS = _subs_affine(_rs9, _s9, _b9[0] - _pl_b0[0] * _s9, _b9[1] - _pl_b0[1] * _s9)
+                # 🎯 บีบให้พอดีกรอบ logo อีกรอบ (เหตุผลเดียวกับเส้นรูฉลุ — กันภาพในแผนที่บวมหลุดกรอบ)
+                _mx = []; _my = []
+                for _s6 in _MAP_SUBS:
+                    for _q6 in [_s6["start"]] + [_g6[-1] for _g6 in _s6["segs"]]:
+                        _mx.append(_q6[0]); _my.append(_q6[1])
+                if _mx and _my:
+                    _mw = max(_mx) - min(_mx); _mh = max(_my) - min(_my)
+                    _bw6 = _b9[2] - _b9[0]; _bh6 = _b9[3] - _b9[1]
+                    if _mw > 0.01 and _mh > 0.01:
+                        _s6f = min(_bw6 / _mw, _bh6 / _mh)
+                        if abs(_s6f - 1.0) > 0.002:
+                            _MAP_SUBS = _subs_affine(
+                                _MAP_SUBS, _s6f,
+                                _b9[0] + (_bw6 - _mw * _s6f) / 2.0 - min(_mx) * _s6f,
+                                _b9[1] + (_bh6 - _mh * _s6f) / 2.0 - min(_my) * _s6f)
         except Exception:
             _MAP_SUBS = None
         if _punch_logo is not None:
@@ -5261,6 +5276,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           _sx = (_b1[2] - _b1[0]) / max(1e-6, (_pl_b0[2] - _pl_b0[0]))
                           _tx = _b1[0] - _pl_b0[0] * _sx; _ty = _b1[1] - _pl_b0[1] * _sx
                           _rawL = _subs_affine(_rs, _sx, _tx, _ty)
+                          # 🎯 ============ บังคับให้เส้นรูฉลุ 'ทับรูป logo ที่จัดวางแล้ว' เป๊ะ ============
+                          #    สเกลข้างบนคำนวณจาก bbox 'ก่อนจัดวาง' (_pl_b0) เทียบ 'หลังจัดวาง' (_b1)
+                          #    ถ้าชุดเส้นดิบกับรูปคลาดกันแม้นิดเดียว รูฉลุจะใหญ่เกินแล้วหลุดออกนอกป้าย
+                          #    (เห็นชัดเฉพาะกล่องไฟฉลุหน้า เพราะประเภทอื่นไม่ได้เอาเส้นดิบมาวางบนกล่อง)
+                          #    -> วัด bbox ของเส้นจริง แล้วบีบให้พอดีกรอบ logo อีกรอบ ปิดโอกาสหลุด 100%
+                          try:
+                              _rx = []; _ry = []
+                              for _s5 in _rawL:
+                                  for _q5 in [_s5["start"]] + [_g5[-1] for _g5 in _s5["segs"]]:
+                                      _rx.append(_q5[0]); _ry.append(_q5[1])
+                              if _rx and _ry:
+                                  _rw = max(_rx) - min(_rx); _rh = max(_ry) - min(_ry)
+                                  _bw5 = _b1[2] - _b1[0]; _bh5 = _b1[3] - _b1[1]
+                                  if _rw > 0.01 and _rh > 0.01:
+                                      _s5f = min(_bw5 / _rw, _bh5 / _rh)
+                                      if abs(_s5f - 1.0) > 0.002:      # คลาดจริงเท่านั้นถึงจะแก้
+                                          _rawL = _subs_affine(
+                                              _rawL, _s5f,
+                                              _b1[0] + (_bw5 - _rw * _s5f) / 2.0 - min(_rx) * _s5f,
+                                              _b1[1] + (_bh5 - _rh * _s5f) / 2.0 - min(_ry) * _s5f)
+                                          warns.append("📐 ปรับรูฉลุให้พอดีกรอบป้าย (สเกลคลาด %.1f%%)"
+                                                       % ((_s5f - 1.0) * 100.0))
+                          except Exception:
+                              pass
                           # ✂️ ตัดฉลุบนแผ่นแบน = ส่ง 'เส้นดิบทุกเส้น' ออกเลย (เหมือนประเภทอักษรแบน 100%)
                           #    คัดออกเฉพาะชิ้นที่ผู้ใช้เลือกเป็น 'สติ๊กเกอร์' เท่านั้น
                           _keepR = _rawL
