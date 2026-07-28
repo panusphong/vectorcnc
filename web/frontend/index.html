@@ -6565,7 +6565,11 @@ $('dl3d').onclick=function(){
 
 // ---- api health ----
 fetch((API||'')+'/api/health').then(_apiJson).then(function(j){
-  $('apiStatus').textContent=j.ok?'🟢 พร้อม':'🔴 ไม่พร้อม';$('apiStatus').style.color=j.ok?'#10B981':'#EF4444';
+  // 🏷️ โชว์ 'รุ่นของโค้ดที่รันอยู่จริงบนเซิร์ฟเวอร์' ต่อท้ายเสมอ
+  //    ไม่งั้นเวลาแก้แล้วผลไม่เปลี่ยน เราแยกไม่ออกว่า 'แก้ไม่ได้ผล' หรือ 'ยังไม่ได้ deploy / ยังเป็น cache เก่า'
+  $('apiStatus').textContent=(j.ok?'🟢 พร้อม':'🔴 ไม่พร้อม')+(j.build?(' · รุ่น '+j.build):'');
+  if(j.build_note){ try{ $('apiStatus').title='รุ่น '+j.build+'\n'+j.build_note; }catch(_e){} }
+  $('apiStatus').style.color=j.ok?'#10B981':'#EF4444';
 }).catch(function(){$('apiStatus').textContent='🔴 ต่อ backend ไม่ได้';$('apiStatus').style.color='#EF4444';});
 
 // ---- upload ----
