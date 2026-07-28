@@ -7729,15 +7729,49 @@ def _crop_clean_strict(path, page_no, bbox, pad_pt=1.0):
                   fitz.Rect(pr.x0, r.y0, r.x0, r.y1), fitz.Rect(r.x1, r.y0, pr.x1, r.y1)]:
             if a.is_valid and not a.is_empty and a.width > 0.5 and a.height > 0.5:
                 page.add_redact_annot(a)
-        try:
-            # ⚠️ ต้องเป็น IF_COVERED (ลบเฉพาะชิ้นที่อยู่นอกกรอบทั้งชิ้น) — IF_TOUCHED จะ rewrite เส้นจนรูโบ๋/fill rule เสีย
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
-                                  graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED)
-        except Exception:
+        # 🧮 นับ 'เนื้อของชิ้นนี้' ไว้ก่อน (เส้นที่อยู่ในกรอบทั้งเส้น) เอาไว้ตรวจว่าลบแล้วชิ้นเสียหายไหม
+        def _own(pg):
+            n = 0
             try:
-                page.apply_redactions()                 # pymupdf เก่า: ลบ text/ภาพนอกกรอบ (เส้นถูกซ่อนด้วย cropbox)
+                for _g in pg.get_drawings():
+                    _r = _g["rect"]
+                    if r.x0 - 1 <= _r.x0 and _r.x1 <= r.x1 + 1 and r.y0 - 1 <= _r.y0 and _r.y1 <= r.y1 + 1:
+                        n += 1
             except Exception:
                 pass
+            return n
+        _n0 = _own(page)
+        # ✂️ ============ ลบของชิ้นอื่นที่ 'คร่อมขอบกรอบ' ออกด้วย ============
+        #    งานลูกค้าวางหลายชิ้นบนแผ่นเดียว (เคสจริง: 57 ชิ้น)
+        #    IF_COVERED ลบเฉพาะเส้นที่อยู่นอกกรอบ 'ทั้งเส้น' เท่านั้น
+        #    เส้นของชิ้นข้าง ๆ ที่พาดคร่อมขอบกรอบจึงถูกเก็บไว้ทั้งเส้น ติดมากับชิ้นนี้ด้วย
+        #    พอเอาไปวาง+ย่อขยายตามขนาดชิ้น ของที่ติดมาก็ถูกขยายตาม -> เห็นเป็นเส้นซ้อนทับโลโก้
+        #    IF_TOUCHED ลบทุกเส้นที่ 'แตะ' พื้นที่นอกกรอบ = ตัดของชิ้นอื่นออกได้จริง
+        #    เนื้อของชิ้นนี้อยู่ในกรอบทั้งหมดอยู่แล้ว (กรอบมาจากตัวชิ้นเอง + เผื่อขอบ 1 pt) จึงไม่ถูกแตะ
+        _done = False
+        for _mode in ("touched", "covered"):
+            try:
+                _snap = fitz.open("pdf", doc.tobytes())          # สำเนาไว้ถอยกลับถ้าพัง
+            except Exception:
+                _snap = None
+            try:
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                    graphics=(fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED if _mode == "touched"
+                              else fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED))
+            except Exception:
+                if _mode == "covered":
+                    try:
+                        page.apply_redactions()
+                    except Exception:
+                        pass
+                continue
+            # ✅ ตรวจว่าเนื้อของชิ้นนี้ยังอยู่ครบ — หายเกิน 20% ถือว่าลบแรงไป ถอยไปใช้ IF_COVERED
+            if _mode == "covered" or _n0 <= 0 or _own(page) >= _n0 * 0.80:
+                _done = True
+                break
+            if _snap is not None:
+                doc.close(); doc = _snap; page = doc[page_no]
         page.set_cropbox(r)
         buf = doc.tobytes(garbage=4, deflate=True, clean=True)
         return buf
