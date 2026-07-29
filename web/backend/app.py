@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-e",
-        "build_note": "ฐาน 2026-07-28-c เป๊ะ + กู้ตัวอักษรเล็กชั้นหดเข้า (ลดค่าหดอัตโนมัติเฉพาะตัวที่จะหาย)",
+            "build": "2026-07-29-h",
+        "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4348,7 +4348,7 @@ def _trace_skeleton_mask(sk, full):
     return subs
 
 
-def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
+def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
     b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
 
@@ -4367,6 +4367,8 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
         return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
 
     tube = max(5.0, S * 0.014); glow = tube * 2.4
+    if tube_mm:                                     # 💡 เส้นเดี่ยว: ท่อหนาเท่าของจริง (มม.) — เห็นชน/ล้นตั้งแต่ออกแบบ
+        tube = float(tube_mm); glow = tube * 2.2
     parts = ['<defs><filter id="ng" x="-45%%" y="-45%%" width="190%%" height="190%%"><feGaussianBlur stdDeviation="%.1f"/></filter>'
              '<filter id="sh2" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.30"/></filter></defs>'
              % (tube * 0.85, S * 0.02, S * 0.02)]
@@ -5604,9 +5606,18 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              % (_en_layer(L["name"]), junk))
         _neon_subs = None
         if _neon:                                   # 🌈 นีออน: เส้นไฟ (ตามลายเส้นภาพ) + แผ่นอะคริลิคใส (ล้อมทรง)
-            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลาง (skeleton)
+            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลางความหนาอักษรจริง (โมดูลแยก neon_single.py)
                 try:
-                    _neon_subs = _skeleton_subs(inp, full)
+                    try:                                # 💡 โมดูลแยก — พังเมื่อไหร่ถอยใช้วิธีเดิมทันที งานไม่ล้ม
+                        import neon_single as _NS
+                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0)
+                    except Exception:
+                        _neon_subs, _nrep = [], []
+                    if _neon_subs:
+                        for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
+                            warns.append(_w)
+                    else:                               # โมดูลไม่ให้ผล -> วิธีเดิมของ -e เป๊ะ
+                        _neon_subs = _skeleton_subs(inp, full)
                 except Exception:
                     _neon_subs = None
             _ns = _neon_subs if _neon_subs else _poly_to_subs(full, tol=0.05)
@@ -5726,7 +5737,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
-                svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
+                svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
+                                       tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
             else:
                 # ป้ายอักษร + โครงแขวน -> ใช้ 'โครงยึดตัวอักษร' (เฟรมหลังอักษร + แขนขึ้น) ไม่ใช่แขนกล่องไฟ
                 _m3d = "letterframe" if rec.get("mount_frame") else str(arm or "none")
@@ -5869,7 +5881,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg_face = ""
         try:
             if _neon:
-                svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
+                svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
+                                          tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
             else:
                 # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
                 # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
