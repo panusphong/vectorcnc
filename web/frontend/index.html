@@ -5273,6 +5273,7 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return;
     // 🎨 หลักการเดียวกับ 'จำลองผนัง' — ย้อมทับสิ่งที่วาดอยู่ โดยไม่ต้องรู้ว่าเดิมสีอะไร
     var items=[];
     img.querySelectorAll('path,polygon,rect,circle,ellipse').forEach(function(p){
+      try{ if(p.closest&&p.closest('#w3dArm'))return; }catch(_e){}   // 🦾 โครง/แขนเหล็ก (กลุ่ม w3dArm) สีอิสระ — ห้ามย้อมตามสีหน้าป้าย
       if(p.classList&&(p.classList.contains('w3d-side')||p.classList.contains('w3d-kim')))return;   // ข้ามส่วนที่จัดการแล้ว
       var f=(p.getAttribute('fill')||(p.style&&p.style.fill)||'').trim(); if(!f||f.toLowerCase()==='none')return;
       var L=lum(f); if(L==null)return; items.push({p:p,l:L});
@@ -5658,8 +5659,10 @@ var TRIMW=1, TRIMDIR='out';
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
     if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
-    // 🖨️ งานพิมพ์เปิดไว้ทุกประเภท — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว หรือพิมพ์สติ๊กเกอร์ไปติด
-    if($('facePrintRow')) $('facePrintRow').style.display=(v&&v!=='')?'block':'none';
+    // 🖨️ ตัดแผง 'งานพิมพ์บนผิวงาน' ออกจาก UI — ซ้ำซ้อนกับตอนสร้างชุดชั้นตัด+แตกชิ้น 3 มิติ
+    //    (ระบบฝังงานพิมพ์ artwork ขนาดจริง 1:1 + TrimLine ลงไฟล์ .ai เดียวกับงานโครงสร้างให้อยู่แล้ว
+    //     ผ่านค่าเริ่มต้น face_print=uv · คง select ซ่อนไว้ให้โค้ดส่วนอื่น/งานบันทึกเก่าอ่านค่าได้ตามเดิม)
+    if($('facePrintRow')) $('facePrintRow').style.display='none';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0; if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
