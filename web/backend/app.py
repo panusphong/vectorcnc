@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-h",
+            "build": "2026-07-29-k",
         "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
