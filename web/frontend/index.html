@@ -10360,10 +10360,31 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
 (function(){
   function fitViewBox(svg){
     try{
-      if(svg._fitDone) return; 
-      var bb=svg.getBBox(); if(!bb||bb.width<5||bb.height<5) return;
-      var pad=Math.max(bb.width,bb.height)*0.02;
-      svg.setAttribute('viewBox',(bb.x-pad)+' '+(bb.y-pad)+' '+(bb.width+2*pad)+' '+(bb.height+2*pad));
+      if(svg._fitDone) return;
+      var srect=svg.getBoundingClientRect();
+      if(srect.width<40||srect.height<40) return;
+      var sarea=srect.width*srect.height;
+      // 📐 วัดเฉพาะ 'เนื้องานจริง' — ข้ามฉากหลัง/พื้นเงาที่กินเกือบเต็มผืน
+      var un=null, els=svg.querySelectorAll('*');
+      for(var i=0;i<els.length;i++){
+        var el=els[i], tag=String(el.tagName||'').toLowerCase();
+        if('defs style filter clippath lineargradient radialgradient stop title desc symbol marker'.indexOf(tag)>=0) continue;
+        if(el.closest&&el.closest('defs')) continue;
+        if('g svg'.indexOf(tag)>=0) continue;                       // วัดเฉพาะชิ้นวาดจริง
+        var r=el.getBoundingClientRect();
+        if(!r||r.width<1||r.height<1) continue;
+        if(r.width*r.height>=sarea*0.80) continue;                  // ฉากหลัง/เงาเต็มผืน -> ข้าม
+        if(!un){ un={l:r.left,t:r.top,r:r.right,b:r.bottom}; }
+        else{ un.l=Math.min(un.l,r.left); un.t=Math.min(un.t,r.top);
+              un.r=Math.max(un.r,r.right); un.b=Math.max(un.b,r.bottom); }
+      }
+      if(!un||un.r-un.l<20||un.b-un.t<20) return;
+      var m=svg.getScreenCTM(); if(!m) return; m=m.inverse();
+      var p1=svg.createSVGPoint(); p1.x=un.l; p1.y=un.t; p1=p1.matrixTransform(m);
+      var p2=svg.createSVGPoint(); p2.x=un.r; p2.y=un.b; p2=p2.matrixTransform(m);
+      var w=p2.x-p1.x, h=p2.y-p1.y; if(w<5||h<5) return;
+      var pad=Math.max(w,h)*0.025;
+      svg.setAttribute('viewBox',(p1.x-pad)+' '+(p1.y-pad)+' '+(w+2*pad)+' '+(h+2*pad));
       svg.removeAttribute('height'); svg.setAttribute('width','100%');
       svg._fitDone=true;
     }catch(_e){}
