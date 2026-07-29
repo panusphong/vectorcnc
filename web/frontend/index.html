@@ -412,8 +412,8 @@ select.numin{cursor:pointer}
               <div style="width:74px"><label style="font-size:10px;color:#64748b">สูง(ซม.)</label><input class="numin" id="mfTextH" type="number" value="20" min="3" style="padding:6px;width:100%"></div>
               <input type="color" id="mfTextColor" value="#1f2937" title="สีตัวอักษร" style="width:36px;height:40px;border:none;background:none;padding:0;cursor:pointer">
             </div>
-            <button class="btn" id="mfTextGo" style="width:100%;margin-top:7px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700">🅰️ สร้างป้ายจากข้อความนี้</button>
-            <div class="hint" style="margin-top:3px">พิมพ์ข้อความ → สร้างเป็นตัวป้ายตามประเภทที่เลือก (ยกขอบ/ไม่ยกขอบ/ไฟออกหน้า-หลัง) · ไม่ต้องอัปโหลดภาพ</div>
+            <button class="btn" id="mfTextGo" style="display:none">🅰️ สร้างป้ายจากข้อความนี้</button>
+            <div class="hint" style="margin-top:3px">พิมพ์ข้อความ แล้วกดปุ่ม <b>🏭 สร้างไฟล์สั่งผลิต (.ai + ชุดชั้นตัด + 3 มิติ)</b> ทางขวาได้เลย — ปุ่มเดียวจบ · ไม่ต้องอัปโหลดภาพ</div>
           </div>
           <!-- 🔩 ปรับโครงเหล็กแขวน (type 16) -->
           <div id="frameAdjPanel" style="display:none;margin-top:8px;padding:10px;border:1px solid #fecdd3;border-radius:10px;background:#fff5f7">
@@ -5688,7 +5688,7 @@ var TRIMW=1, TRIMDIR='out';
     // 🅰️ ตัวอักษรทุกชนิด (ยกขอบ/ไม่ยกขอบ) = พิมพ์ text สร้างเป็นตัวป้ายได้เหมือนกันหมด — ไม่ใช่แค่ type16
     var _isLetter=(!_isBox && v!=='17' && v!=='0' && v!=='');
     if($('mfTextPanel'))$('mfTextPanel').style.display=_isLetter?'block':'none';
-    if($('mfTextGoWrap'))$('mfTextGoWrap').style.display=_isLetter?'block':'none';   // ปุ่ม 'สร้างป้ายจากข้อความ' (ย้ายไปล่างสุด) โชว์คู่กับแผงพิมพ์ข้อความ
+    if($('mfTextGoWrap'))$('mfTextGoWrap').style.display='none';   // 🏭 ปิดปุ่มซ้ายถาวร — ใช้ปุ่ม 'สร้างไฟล์สั่งผลิต' ทางขวาปุ่มเดียว
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';   // ปรับโครงแขวน = เฉพาะอักษร+โครง (type16)
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
@@ -5701,10 +5701,12 @@ var TRIMW=1, TRIMDIR='out';
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
   sel.addEventListener('change',function(){ window._bxFit=0; toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
-  if($('mfTextGo'))$('mfTextGo').onclick=function(){
+  // 🅰️ ตัวสร้างป้ายจากข้อความ (ฟังก์ชันกลาง) — ปุ่มขวา 'สร้างไฟล์สั่งผลิต' เรียกใช้เองอัตโนมัติ
+  window._mkTextSign=function(onDone){
     var txt=($('mfTextVal').value||'').trim(); if(!txt){alert('พิมพ์ข้อความก่อน');$('mfTextVal').focus();return;}
     var font=$('mfTextFont').value||'Prompt', hcm=parseFloat($('mfTextH').value)||20, col=$('mfTextColor').value||'#1f2937';
-    var btn=$('mfTextGo'); btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังสร้าง...';
+    window._mkTextDone=onDone;
+    var btn=$('mfTextGo')||{disabled:false,textContent:''}; btn.disabled=true; var old=btn.textContent; btn.textContent='⏳ กำลังสร้าง...';
     try{loadGFont(font);}catch(_e){}
     var render=function(){
       var px=Math.max(48,hcm*12);                 // ขนาดวาดเริ่มต้น (ไม่ต้องแม่น — เดี๋ยววัดจากพิกเซลจริง)
@@ -5737,12 +5739,15 @@ var TRIMW=1, TRIMDIR='out';
         if($('realHcm'))$('realHcm').value=hcm;                        // สูงจากข้อความ -> โชว์ในช่องสูง(ซม.)
         if($('bxH'))$('bxH').value=hcm;                         // ✅ บังคับความสูงตัวอักษรฐาน = ค่าที่กรอก (คิ้ว/acrylic อิงจากนี้)
         btn.disabled=false; btn.textContent=old;
-        try{ if($('goLayer'))$('goLayer').click(); }catch(_e){}
+        try{ if(typeof window._mkTextDone==='function'){var _cb=window._mkTextDone;window._mkTextDone=null;_cb();} }catch(_e){}
       },'image/png');
     };
     if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+font+'"').then(render).catch(render); }
     else setTimeout(render,150);
   };
+  if($('mfTextGo'))$('mfTextGo').onclick=function(){ window._mkTextSign(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} }); };
+  // 🏭 พิมพ์ข้อความเมื่อไหร่ ปุ่มขวาติดสว่างทันที (ปุ่มเดียวจบ)
+  if($('mfTextVal'))$('mfTextVal').addEventListener('input',function(){ try{ if(!fileObj&&$('go'))$('go').disabled=!this.value.trim(); }catch(_e){} });
 })();
 // 🖼️ ออกแบบหน้ากล่องไฟ (รวมข้อความ+โลโก้ในตัวเดียว) — ปรับขนาด/ตำแหน่งอักษร&โลโก้ + พรีวิวสด -> fileObj -> 3มิติ
 (function(){
@@ -6976,6 +6981,9 @@ function pick(f){
 
 // ---- vectorize ----
 $('go').onclick=function(){
+  // 🅰️ โหมดพิมพ์ข้อความ: ยังไม่มีไฟล์ แต่มีข้อความ -> สร้างตัวป้ายจากข้อความให้เอง แล้วทำต่อทันที (ปุ่มเดียวจบ)
+  if(!fileObj && $('mfTextVal') && ($('mfTextVal').value||'').trim()){
+    window._mkTextSign(function(){ try{ $('go').onclick(); }catch(_e){} }); return; }
   if(!fileObj)return;
   // 🔗 เส้นตัดต้องออก 'ตามแบบป้าย' เสมอ — เลือกประเภทป้ายไว้ = วิ่งเข้าชุดชั้นตัด + 3 มิติ (เอนจิ้นเส้นเดียวกัน)
   var _t9=($('mainSignType')&&$('mainSignType').value)||'';
@@ -9406,7 +9414,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         var wrap=document.createElement('div'); wrap.id='mfTextGoWrap'; wrap.style.marginTop='8px';
         var hint=btn.nextElementSibling; wrap.appendChild(btn);
         if(hint&&hint.className&&(''+hint.className).indexOf('hint')>=0)wrap.appendChild(hint);
-        var mp=H('mfTextPanel'); wrap.style.display=(mp&&mp.style.display!=='none')?'block':'none';
+        wrap.style.display='none';   // 🏭 ปิดปุ่มซ้ายถาวร — เหลือปุ่ม 'สร้างไฟล์สั่งผลิต' ทางขวาปุ่มเดียว
         extra.appendChild(wrap);
       })();
       if(stb&&stb.parentNode)stb.parentNode.insertBefore(extra, stb.nextSibling);
