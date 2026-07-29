@@ -401,9 +401,9 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
             med = ws[len(ws) // 2]; mn = ws[k]
             pbb = pg.bounds
             _bmin = min(pbb[2] - pbb[0], pbb[3] - pbb[1])
-            # 🧿 ก้อนทึบ = หนามากเทียบท่อ หรือ 'อักษรเล็กแต่อ้วน' (เนื้อหนา ≥ 42% ของขนาดตัว
-            #   และตัวใหญ่พอวางท่อตามโครงร่าง ≥ 2.5 เท่าท่อ — จุดจิ๋ว/ขีดสั้นยังเตือนแบบเดิม)
-            _solid = (med > max(25.0, tube_mm * 3.0)) or (med > _bmin * 0.42 and _bmin >= tube_mm * 2.5)
+            # 🧿 ก้อนทึบ = เทียบ 'สัดส่วน' ไม่ใช่มิลลิเมตรตายตัว (ป้ายใหญ่อักษรหนาต้องยังเป็นเส้นอักษร)
+            #   ทึบจริง = เนื้อหนา ≥ 70% ของขนาดตัว (จุด/แผ่นกลม) หรือชิ้นกราฟิกใหญ่เกือบเต็มความสูงงาน
+            _solid = (med > _bmin * 0.70) or (_bmin > 0.55 * min(W, H))
             if _solid:
                 for ring in [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]:
                     try:
@@ -419,7 +419,9 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                 #    -> เส้นเดียววิ่งไล่ครบทุกส่วนของตัวอักษร (a มีพุง, e มีห่วง) เนียนเท่าขอบ
                 #    ช่วงเส้นบางสองฝั่งจะทับกันเป็นเส้นเดียวใต้ท่อ 8 มม. พอดี
                 q25 = ws[max(0, int(len(ws) * 0.25))]
-                _rr = _inset_rings(pg, q25 * 0.5, tube_mm=tube_mm)
+                # 📏 ระยะขยับเข้า: ลึกพอให้สองฝั่งเหลือช่องแคบกว่าท่อ -> รวมเป็นเส้นเดียวใต้ท่อ 8 มม.
+                _t = max(q25 * 0.5, (med - tube_mm * 0.8) * 0.5)
+                _rr = _inset_rings(pg, _t, tube_mm=tube_mm)
                 if _rr:
                     for cc in _rr:
                         subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
