@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-b",
-        "build_note": "วัดจากเส้นจริง · ด่านตรวจเส้นดิบ · แคชกัน 502 · รู้จักแผ่นชุดชั้นตัดของตัวเอง (ดึงพาเนลรูปงาน กันภาพซ้อน)",
+            "build": "2026-07-29-d",
+        "build_note": "วัดจากเส้นจริง · ด่านตรวจเส้นดิบ · แคชกัน 502 · รู้จักแผ่นชั้นตัดตัวเอง · โครงเหล็กสีอิสระ (w3dArm)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -3932,7 +3932,12 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
     svg.append('<rect x="0" y="0" width="%.1f" height="%.1f" fill="url(#w3dSpot)"/>' % (Wt, Ht))
     svg.append('<ellipse cx="%.1f" cy="%.1f" rx="%.1f" ry="%.1f" fill="#0f172a" opacity="0.15" filter="url(#w3dShad)"/>' % (_shx, _shy, _shrx, _shry))
     svg.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" fill="#0f172a">%s</text>' % (padL, fs * 1.3, fs * 1.05, _esc(_en_type(rec["name"]))))
-    svg += arm_parts       # แขนอยู่หลังป้าย (วาดก่อน)
+    # 🦾 ห่อ 'โครง/แขนเหล็ก' ไว้ในกลุ่ม #w3dArm — สีโครงต้องอิสระ ไม่วิ่งตามสีหน้าอะคริลิค
+    #    (หน้าเว็บย้อมสีสดด้วยกติกา 'ส่วนที่เหลือ = หน้าป้าย' ถ้าไม่ห่อกลุ่ม โครงจะโดนทาสีหน้าทับ)
+    if arm_parts:
+        svg.append('<g id="w3dArm">')
+        svg += arm_parts   # แขนอยู่หลังป้าย (วาดก่อน)
+        svg.append('</g>')
     svg += parts; svg.append('</svg>')
     return "\n".join(svg)
 
