@@ -10353,5 +10353,89 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   if(document.readyState!=='loading') setTimeout(build,600); else document.addEventListener('DOMContentLoaded',function(){setTimeout(build,600);});
 })();
 </script>
+
+<!-- 📐 ภาพ 3 มิติมีมิติ: ซูมพอดีเนื้อหา + ตัวเลขระยะไม่ซ้อน + ลากย้ายตัวเลขได้ -->
+<style>#ls3dImg svg text{cursor:move}</style>
+<script>
+(function(){
+  function fitViewBox(svg){
+    try{
+      if(svg._fitDone) return; 
+      var bb=svg.getBBox(); if(!bb||bb.width<5||bb.height<5) return;
+      var pad=Math.max(bb.width,bb.height)*0.02;
+      svg.setAttribute('viewBox',(bb.x-pad)+' '+(bb.y-pad)+' '+(bb.width+2*pad)+' '+(bb.height+2*pad));
+      svg.removeAttribute('height'); svg.setAttribute('width','100%');
+      svg._fitDone=true;
+    }catch(_e){}
+  }
+  function localDelta(svg, el, dx, dy){
+    try{
+      var m=(el.parentNode.getScreenCTM&&el.parentNode.getScreenCTM())||svg.getScreenCTM();
+      m=m.inverse();
+      var p1=svg.createSVGPoint(); p1.x=0; p1.y=0; var q1=p1.matrixTransform(m);
+      var p2=svg.createSVGPoint(); p2.x=dx; p2.y=dy; var q2=p2.matrixTransform(m);
+      return [q2.x-q1.x, q2.y-q1.y];
+    }catch(_e){ return [dx, dy]; }
+  }
+  function nudge(el, svg, dx, dy){
+    var d=localDelta(svg, el, dx, dy);
+    var tx=(parseFloat(el.getAttribute('data-tdx'))||0)+d[0];
+    var ty=(parseFloat(el.getAttribute('data-tdy'))||0)+d[1];
+    el.setAttribute('data-tdx',tx); el.setAttribute('data-tdy',ty);
+    if(el.getAttribute('data-tbase')===null) el.setAttribute('data-tbase', el.getAttribute('transform')||'');
+    el.setAttribute('transform',(el.getAttribute('data-tbase')||'')+' translate('+tx+' '+ty+')');
+  }
+  function unstack(svg){
+    // 🧲 กันตัวเลขระยะทับกัน: ถ้ากรอบข้อความชนกัน เขยิบตัวหลังลง/ขึ้นเล็กน้อยอัตโนมัติ
+    try{
+      var ts=[].slice.call(svg.querySelectorAll('text'));
+      for(var pass=0; pass<2; pass++){
+        for(var i=0;i<ts.length;i++){
+          var a=ts[i].getBoundingClientRect(); if(a.width<2) continue;
+          for(var j=i+1;j<ts.length;j++){
+            var b=ts[j].getBoundingClientRect(); if(b.width<2) continue;
+            var ox=Math.min(a.right,b.right)-Math.max(a.left,b.left);
+            var oy=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
+            if(ox>2&&oy>2){
+              var down=(b.top>=a.top)?1:-1;
+              nudge(ts[j], svg, 0, down*(oy+3));
+              b=ts[j].getBoundingClientRect();
+            }
+          }
+        }
+      }
+    }catch(_e){}
+  }
+  function enableDrag(svg){
+    if(svg._dimDrag) return; svg._dimDrag=true;
+    svg.addEventListener('mousedown',function(e){
+      var t=e.target; while(t&&t!==svg&&String(t.tagName).toLowerCase()!=='text') t=t.parentNode;
+      if(!t||t===svg) return;
+      e.preventDefault(); e.stopPropagation();
+      var px=e.clientX, py=e.clientY;
+      function mv(ev){ nudge(t, svg, ev.clientX-px, ev.clientY-py); px=ev.clientX; py=ev.clientY; }
+      function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); }
+      document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+    });
+    svg.addEventListener('touchstart',function(e){
+      var t=e.target; while(t&&t!==svg&&String(t.tagName).toLowerCase()!=='text') t=t.parentNode;
+      if(!t||t===svg) return;
+      var tt=e.touches[0]; if(!tt) return; var px=tt.clientX, py=tt.clientY;
+      function mv(ev){ var q=ev.touches[0]; if(!q) return; nudge(t, svg, q.clientX-px, q.clientY-py); px=q.clientX; py=q.clientY; ev.preventDefault(); }
+      function up(){ document.removeEventListener('touchmove',mv); document.removeEventListener('touchend',up); }
+      document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up);
+    },{passive:true});
+  }
+  function setup(){
+    var img=document.getElementById('ls3dImg'); if(!img) return;
+    var svg=img.querySelector('svg'); if(!svg) return;
+    fitViewBox(svg); enableDrag(svg);
+    if(!svg._unstacked){ svg._unstacked=true; setTimeout(function(){ unstack(svg); }, 120); }
+  }
+  var mo=new MutationObserver(function(){ setTimeout(setup, 60); });
+  mo.observe(document.body,{childList:true,subtree:true});
+  setInterval(setup, 1500);      // กันเหนียวกรณีเบราว์เซอร์ไม่ยิง observer
+})();
+</script>
 </body>
 </html>
