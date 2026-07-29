@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-e",
-        "build_note": "ฐาน 2026-07-28-c เป๊ะ + กู้ตัวอักษรเล็กชั้นหดเข้า (ลดค่าหดอัตโนมัติเฉพาะตัวที่จะหาย)",
+            "build": "2026-07-29-f",
+        "build_note": "ฐาน 28-c + กู้ตัวอักษรเล็ก + แผ่นรองหลังนีออน 4 เหลี่ยมกำหนด กว้าง×สูง เองได้",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4348,6 +4348,28 @@ def _trace_skeleton_mask(sk, full):
     return subs
 
 
+
+def _neon_rect_plate(_acr_g, plate_w_cm=0.0, plate_h_cm=0.0):
+    """🔲 แผ่นอะคริลิครองหลังแบบ 4 เหลี่ยม
+       ค่าเริ่มต้น = ครอบ bbox ของทรงล้อม (พฤติกรรมเดิม 100%)
+       กำหนด กว้าง/สูง เป็น ซม. เองได้ทีละแกน (แกนที่เว้นว่าง = อัตโนมัติ) — แผ่นวางกึ่งกลางตัวงาน
+       กันพลาด: ไม่ให้เล็กกว่า 5 ซม. ต่อแกน"""
+    from shapely.geometry import box as _box
+    _ab = _acr_g.bounds
+    _pw = max(0.0, float(plate_w_cm or 0.0)) * 10.0
+    _ph = max(0.0, float(plate_h_cm or 0.0)) * 10.0
+    _cx = (_ab[0] + _ab[2]) / 2.0; _cy = (_ab[1] + _ab[3]) / 2.0
+    if _pw > 10.0:
+        _pw = max(50.0, _pw); _x0, _x1 = _cx - _pw / 2.0, _cx + _pw / 2.0
+    else:
+        _x0, _x1 = _ab[0], _ab[2]
+    if _ph > 10.0:
+        _ph = max(50.0, _ph); _y0, _y1 = _cy - _ph / 2.0, _cy + _ph / 2.0
+    else:
+        _y0, _y1 = _ab[1], _ab[3]
+    return _box(_x0, _y0, _x1, _y1)
+
+
 def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
     b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
@@ -4776,6 +4798,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
                     neon_line: str = Form("double"), neon_plate: str = Form("contour"),
                     neon_margin_cm: float = Form(5.0),
+                    neon_plate_w_cm: float = Form(0.0), neon_plate_h_cm: float = Form(0.0),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
@@ -4942,9 +4965,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 _acrylic = full.buffer(_nmg, join_style=1)
             if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):   # 🔲 ตัดเป็นแผ่น 4 เหลี่ยม (ครอบ bbox + เผื่อขอบ)
-                from shapely.geometry import box as _box
-                _ab = _acrylic.bounds
-                _acrylic = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+                # 📐 กำหนด กว้าง×สูง แผ่นเองได้ (ว่าง = อัตโนมัติครอบงาน+เผื่อขอบ แบบเดิมเป๊ะ)
+                _acrylic = _neon_rect_plate(_acrylic, neon_plate_w_cm, neon_plate_h_cm)
+                if (float(neon_plate_w_cm or 0) > 1.0) or (float(neon_plate_h_cm or 0) > 1.0):
+                    _abq = _acrylic.bounds
+                    warns.append("🔲 แผ่นอะคริลิครองหลัง กำหนดขนาดเอง = %.1f × %.1f ซม. (วางกึ่งกลางตัวงาน)"
+                                 % ((_abq[2] - _abq[0]) / 10.0, (_abq[3] - _abq[1]) / 10.0))
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -6332,6 +6358,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     face_color: str = Form(""), side_color: str = Form(""),
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
+                    neon_plate_w_cm: float = Form(0.0), neon_plate_h_cm: float = Form(0.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
@@ -6443,8 +6470,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 _acr = full.buffer(_nmg, join_style=1)
             if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):
-                from shapely.geometry import box as _box
-                _ab = _acr.bounds; _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+                _acr = _neon_rect_plate(_acr, neon_plate_w_cm, neon_plate_h_cm)   # 📐 ขนาดแผ่นตามที่ผู้ใช้กำหนด (ว่าง = อัตโนมัติ)
             if str(neon_line).lower() == "single":
                 try:
                     _nsub = _skeleton_subs(inp, full)
