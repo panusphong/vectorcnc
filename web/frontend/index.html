@@ -5731,6 +5731,7 @@ var TRIMW=1, TRIMDIR='out';
       c.toBlob(function(bl){
         if(!bl){btn.disabled=false;btn.textContent=old;alert('สร้างภาพข้อความไม่ได้');return;}
         fileObj=new File([bl],'text_sign.png',{type:'image/png'});
+        try{ if($('go'))$('go').disabled=false; }catch(_e){}   // 🏭 ปลดล็อกปุ่ม 'สร้างไฟล์สั่งผลิต (.ai)' — ป้ายจากข้อความใช้ได้เท่างานอัปโหลดไฟล์ทุกอย่าง
         if($('realW'))$('realW').value=Math.round(w*mmPerPx);   // กว้างรวม(มม.) ที่ทำให้สูงตรงเป๊ะ
         if($('realWcm'))$('realWcm').value=Math.round(w*mmPerPx/10);   // sync ช่อง ซม. ให้ตรง
         if($('realHcm'))$('realHcm').value=hcm;                        // สูงจากข้อความ -> โชว์ในช่องสูง(ซม.)
