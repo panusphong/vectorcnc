@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-k",
+            "build": "2026-07-29-l",
         "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -4442,6 +4442,42 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
     parts.append('<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#fee2e2" stroke="#e11d48" stroke-width="%.2f"/>'
                  '<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" fill="#334155">&#3619;&#3641;&#3626;&#3634;&#3618;&#3652;&#3615;&#3629;&#3629;&#3585; &#216;10</text>'
                  % (pad + W * 0.42, _ly - _fz * 0.32, rr * 1.3, mlw, pad + W * 0.42 + rr * 2.2, _ly, _fz))
+    # 📐 จับระยะ: แผ่นรองหลัง (แดง) + ตัวงานเส้นไฟ (เขียวหัวเป็ด) — ตัวเลขลากย้ายได้ที่หน้าเว็บ
+    _fz2 = max(10.0, S * 0.026); _dlw = max(0.8, S * 0.0016)
+    def _arr_h(x1, x2, y, col):
+        a = min(6.0, (x2 - x1) * 0.18)
+        return ('<path d="M %.1f %.1f L %.1f %.1f" stroke="%s" stroke-width="%.2f"/>'
+                '<path d="M %.1f %.1f l %.1f %.1f l 0 %.1f z M %.1f %.1f l %.1f %.1f l 0 %.1f z" fill="%s"/>'
+                % (x1, y, x2, y, col, _dlw, x1, y, a, -a * 0.45, a * 0.9, x2, y, -a, -a * 0.45, a * 0.9, col))
+    def _arr_v(x, y1, y2, col):
+        a = min(6.0, (y2 - y1) * 0.18)
+        return ('<path d="M %.1f %.1f L %.1f %.1f" stroke="%s" stroke-width="%.2f"/>'
+                '<path d="M %.1f %.1f l %.1f %.1f l %.1f 0 z M %.1f %.1f l %.1f %.1f l %.1f 0 z" fill="%s"/>'
+                % (x, y1, x, y2, col, _dlw, x, y1, -a * 0.45, a, a * 0.9, x, y2, -a * 0.45, -a, a * 0.9, col))
+    try:
+        nb = neon_full.bounds
+        # แผ่นรองหลัง: กว้าง (ใต้แผ่น) + สูง (ซ้าย)
+        _yW = pad + H + pad * 0.34
+        parts.append(_arr_h(pad, pad + W, _yW, '#dc2626'))
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle">%.1f &#3595;&#3617;.</text>'
+                     % (pad + W / 2, _yW - _fz2 * 0.45, _fz2, W / 10.0))
+        _xH = pad * 0.40
+        parts.append(_arr_v(_xH, pad, pad + H, '#dc2626'))
+        parts.append('<text font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle" transform="translate(%.1f %.1f) rotate(-90)">%.1f &#3595;&#3617;.</text>'
+                     % (_fz2, _xH - _fz2 * 0.45, pad + H / 2, H / 10.0))
+        # ตัวงานเส้นไฟ: กว้าง (เหนือ art) + สูง (ขวา)
+        ax1, ay1 = nb[0] - b[0] + pad, nb[1] - b[1] + pad
+        ax2, ay2 = nb[2] - b[0] + pad, nb[3] - b[1] + pad
+        _yA = max(pad * 0.5, ay1 - pad * 0.28)
+        parts.append(_arr_h(ax1, ax2, _yA, '#0d9488'))
+        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#0d9488" text-anchor="middle">%.1f &#3595;&#3617;.</text>'
+                     % ((ax1 + ax2) / 2, _yA - _fz2 * 0.40, _fz2, (nb[2] - nb[0]) / 10.0))
+        _xA = min(W + 2 * pad - pad * 0.35, ax2 + pad * 0.30)
+        parts.append(_arr_v(_xA, ay1, ay2, '#0d9488'))
+        parts.append('<text font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#0d9488" text-anchor="middle" transform="translate(%.1f %.1f) rotate(-90)">%.1f &#3595;&#3617;.</text>'
+                     % (_fz2, _xA + _fz2 * 0.85, (ay1 + ay2) / 2, (nb[3] - nb[1]) / 10.0))
+    except Exception:
+        pass
     Wt = W + 2 * pad; Ht = H + 2 * pad
     return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
             'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))

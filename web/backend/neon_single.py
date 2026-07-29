@@ -415,13 +415,9 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": True, "mode": "contour"})
             else:
-                q25 = ws[max(0, int(len(ws) * 0.25))]       # ความหนาช่วงบาง -> ขยับเข้าครึ่งหนึ่งของค่านี้
-                _rr = _inset_rings(pg, q25 * 0.5, tube_mm=tube_mm)
-                if _rr:
-                    for cc in _rr:
-                        subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
-                else:                                        # กันเหนียว: ใช้เส้นแกนเดิม
-                    subs.extend(piece_paths.get(i + 1, []))
+                # 💡 เส้นเดี่ยวแท้: แกนกลางเวกเตอร์ 'เส้นเดียว' วิ่งตามลายเส้นอักษรเป๊ะ
+                #    (ท่อ 8 มม. + แสงเรืองรอบเส้น แสดงที่ชั้นเรนเดอร์)
+                subs.extend(piece_paths.get(i + 1, []))
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": (med + 1e-6) >= need and (mn + 1e-6) >= tube_mm, "mode": "center"})
         if not subs:
