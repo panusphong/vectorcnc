@@ -10404,7 +10404,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     var ty=(parseFloat(el.getAttribute('data-tdy'))||0)+d[1];
     el.setAttribute('data-tdx',tx); el.setAttribute('data-tdy',ty);
     if(el.getAttribute('data-tbase')===null) el.setAttribute('data-tbase', el.getAttribute('transform')||'');
-    el.setAttribute('transform',(el.getAttribute('data-tbase')||'')+' translate('+tx+' '+ty+')');
+    el.setAttribute('transform','translate('+tx+' '+ty+') '+(el.getAttribute('data-tbase')||''));   // ย้ายก่อนหมุน -> ทิศตรงเมาส์เสมอ
   }
   function unstack(svg){
     // 🧲 กันตัวเลขระยะทับกัน: ถ้ากรอบข้อความชนกัน เขยิบตัวหลังลง/ขึ้นเล็กน้อยอัตโนมัติ
@@ -10447,10 +10447,26 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       document.addEventListener('touchmove',mv,{passive:false}); document.addEventListener('touchend',up);
     },{passive:true});
   }
+  function slimLabels(svg){
+    // 🔢 ป้ายระยะ: ตัดคำนำหน้า (แถว N / โลโก้ / ห่างขอบ / กว้าง / สูง) เหลือ 'ตัวเลข ซม.' ตรงจุดนั้น
+    try{
+      var ts=svg.querySelectorAll('text');
+      for(var i=0;i<ts.length;i++){
+        var t=ts[i]; if(t._slim) continue;
+        var txt=(t.textContent||'').trim();
+        if(txt.indexOf('ซม.')<0) continue;
+        var mnum=txt.match(/([0-9]+(?:\.[0-9]+)?)\s*ซม\.?$/);
+        if(!mnum) continue;
+        if(/^(แถว|โลโก้|ห่างขอบ|กว้าง|สูง)/.test(txt)){
+          t.textContent=mnum[1]+' ซม.'; t._slim=true;
+        }
+      }
+    }catch(_e){}
+  }
   function setup(){
     var img=document.getElementById('ls3dImg'); if(!img) return;
     var svg=img.querySelector('svg'); if(!svg) return;
-    fitViewBox(svg); enableDrag(svg);
+    fitViewBox(svg); enableDrag(svg); slimLabels(svg);
     if(!svg._unstacked){ svg._unstacked=true; setTimeout(function(){ unstack(svg); }, 120); }
   }
   var mo=new MutationObserver(function(){ setTimeout(setup, 60); });
