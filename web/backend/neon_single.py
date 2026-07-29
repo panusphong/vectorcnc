@@ -415,9 +415,16 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": True, "mode": "contour"})
             else:
-                # 💡 เส้นเดี่ยวแท้: แกนกลางเวกเตอร์ 'เส้นเดียว' วิ่งตามลายเส้นอักษรเป๊ะ
-                #    (ท่อ 8 มม. + แสงเรืองรอบเส้น แสดงที่ชั้นเรนเดอร์)
-                subs.extend(piece_paths.get(i + 1, []))
+                # 💡 เส้นเดี่ยวที่ 'ตรงตามตัวอักษรทุกตัว': เส้นขอบชุดเดียวกับเส้นคู่ ขยับเข้าครึ่งความหนา
+                #    -> เส้นเดียววิ่งไล่ครบทุกส่วนของตัวอักษร (a มีพุง, e มีห่วง) เนียนเท่าขอบ
+                #    ช่วงเส้นบางสองฝั่งจะทับกันเป็นเส้นเดียวใต้ท่อ 8 มม. พอดี
+                q25 = ws[max(0, int(len(ws) * 0.25))]
+                _rr = _inset_rings(pg, q25 * 0.5, tube_mm=tube_mm)
+                if _rr:
+                    for cc in _rr:
+                        subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
+                else:                                        # กันเหนียว: เส้นแกนกลาง
+                    subs.extend(piece_paths.get(i + 1, []))
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": (med + 1e-6) >= need and (mn + 1e-6) >= tube_mm, "mode": "center"})
         if not subs:
