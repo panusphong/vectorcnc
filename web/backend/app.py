@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-q",
+            "build": "2026-07-29-r",
         "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -2683,7 +2683,41 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
+# 🚀 อุ่นภาพพรีวิวงานล่วงหน้าแบบขนาน — ภาพพรีวิวไม่เกี่ยวกับเส้นตัดใด ๆ
+#    เริ่มคำนวณเบื้องหลังตั้งแต่รับไฟล์ ให้เวลาส่วนนี้ (หลายวินาที) ซ่อนใต้งานหลัก
+#    ผลลัพธ์ไบต์เดิมเป๊ะ: ฟังก์ชันเดิม อินพุตเดิม แค่เริ่มก่อน
+import concurrent.futures as _cfut
+import threading as _thr0
+_ART_POOL = _cfut.ThreadPoolExecutor(max_workers=2)
+_ART_FUT = {}
+_ART_LOCK = _thr0.Lock()
+
+
+def _art_prewarm(path, max_px=1400):
+    try:
+        with _ART_LOCK:
+            if (path, int(max_px)) in _ART_FUT:
+                return
+            _ART_FUT[(path, int(max_px))] = _ART_POOL.submit(_art_data_uri_impl, path, max_px)
+    except Exception:
+        pass
+
+
 def _art_data_uri(path, max_px=1400):
+    try:
+        with _ART_LOCK:
+            _fu = _ART_FUT.get((path, int(max_px)))
+        if _fu is not None:
+            try:
+                return _fu.result(timeout=120)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return _art_data_uri_impl(path, max_px)
+
+
+def _art_data_uri_impl(path, max_px=1400):
     """crop รูปงานให้เหลือเฉพาะตัวงาน (ตัดพื้นขาว/โปร่ง) -> data URI (PNG) ไว้แปะบนหน้า 3 มิติ"""
     # ⚡ งานหนัก (เรนเดอร์+ครอป+ย่อ+encode หลายวินาที) แต่ไฟล์เดิม+ความละเอียดเดิม = ผลเดิมเป๊ะ
     try:
@@ -4923,6 +4957,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         _rck = None
     del _body9
     try:
+        _art_prewarm(inp)                        # 🚀 เตรียมภาพพรีวิวขนานไปกับงานหลัก (ค่า max_px เดียวกับที่ใช้จริง)
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
         #    ปิดตายไว้ ห้ามเปิดจากภายนอก (ยังรับพารามิเตอร์ไว้กันหน้าเว็บเวอร์ชันเก่ายิงมาแล้วพัง)
