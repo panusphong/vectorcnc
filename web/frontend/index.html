@@ -5630,10 +5630,24 @@ var TRIMW=1, TRIMDIR='out';
     var list=(typeof NEON!=='undefined'&&NEON.length)?NEON:['#00e5ff','#ff4dcf','#7CFC00','#ffd21e','#ff3b3b','#2979ff','#b14dff','#ffffff'];
     list.forEach(function(col){ var bb=document.createElement('button'); bb.type='button'; bb.title=col;
       bb.style.cssText='width:26px;height:26px;border-radius:6px;border:2px solid transparent;background:'+col+';cursor:pointer;box-shadow:0 0 6px '+col;
-      bb.onclick=function(){ window.NEON_SEL=col; for(var i=0;i<box.children.length;i++)box.children[i].style.borderColor='transparent'; bb.style.borderColor='#0f172a';
-        // 💡 ภาพนีออนวาดที่ฝั่งเซิร์ฟเวอร์ -> เดิมกดสีแล้วเก็บค่าไว้เฉย ๆ ภาพเลยไม่เปลี่ยนจนกว่าจะกดสร้างใหม่เอง
-        //    ตอนนี้ถ้ามีงานอยู่แล้ว ให้ยิงสร้างใหม่ให้อัตโนมัติ = กดสีแล้วเห็นผลทันที
-        try{ if(window.LS_ACTIVE&&$('goLayer')) $('goLayer').onclick(); }catch(_e){} };
+      bb.onclick=function(){ var _old=(window.NEON_SEL||'#00e5ff'); window.NEON_SEL=col; for(var i=0;i<box.children.length;i++)box.children[i].style.borderColor='transparent'; bb.style.borderColor='#0f172a';
+        // 💡 เปลี่ยน 'สีไฟอย่างเดียว' -> ย้อมสดบนภาพเดิมทันที (เหมือนเปลี่ยนสีอะคริลิค)
+        //    ห้ามสร้างชุดชั้นตัดใหม่ทั้งชุด — เส้นตัดไม่เกี่ยวกับสีไฟ เสียเวลาหลายวินาทีฟรี ๆ
+        //    (ภาพนีออนจากเซิร์ฟเวอร์ใช้สีที่ stroke ของเส้นเรือง+เส้นไฟเท่านั้น -> สลับ attribute ตรง ๆ ได้)
+        //    สีจะถูกส่งเข้าไฟล์ตอนกด 'สร้างไฟล์สั่งผลิต' ครั้งถัดไปตามปกติ
+        var _painted=false;
+        try{
+          var _img=document.getElementById('ls3dImg'), _oldL=String(_old).toLowerCase();
+          if(_img){
+            _img.querySelectorAll('[stroke]').forEach(function(p){
+              if((p.getAttribute('stroke')||'').toLowerCase()===_oldL){ p.setAttribute('stroke',col); _painted=true; } });
+            _img.querySelectorAll('[fill]').forEach(function(p){
+              var _f=(p.getAttribute('fill')||'').toLowerCase();
+              if(_f===_oldL&&_f!=='none'){ p.setAttribute('fill',col); _painted=true; } });
+          }
+        }catch(_e){}
+        // ยังไม่มีภาพบนจอ (เพิ่งเข้าหน้า) -> ใช้พฤติกรรมเดิม: สร้างให้หนึ่งรอบ
+        if(!_painted){ try{ if(window.LS_ACTIVE&&$('goLayer')) $('goLayer').onclick(); }catch(_e){} } };
       box.appendChild(bb); });
     if(box.firstChild){ window.NEON_SEL=list[0]; box.firstChild.style.borderColor='#0f172a'; }
     var ln=document.querySelectorAll('.neonLn'); window.NEON_LINE=window.NEON_LINE||'double';
