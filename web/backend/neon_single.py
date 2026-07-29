@@ -63,6 +63,50 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                     if (dr2 or dc2) and (r + dr2, c + dc2) in fg:
                         o.append((r + dr2, c + dc2))
             return o
+        # ✂️ ตัดกิ่งแขนงปลายเส้น (spur pruning) — แกนกลางของปลายอักษรเหลี่ยม/หัวโค้ง
+        #    จะแตกเป็นง่ามสั้น ๆ ยาวประมาณครึ่งความกว้างเส้นอักษรเสมอ (ธรรมชาติของ medial axis)
+        #    เกณฑ์: กิ่งที่งอกจากทางแยก แล้วสั้นกว่า ~1.2 เท่าของความกว้างอักษรตรงจุดแยก = ง่าม -> ตัดทิ้ง
+        #    กิ่งจริงของตัวอักษร (เช่น แขนตัว F) ยาวกว่าความกว้างเส้นมาก -> ไม่โดนตัด
+        _tot_px = {}                                # จำนวนพิกเซลแกนกลางต่อชิ้น (กันตัดจนตัวอักษรหาย)
+        for (r0_, c0_) in fg:
+            _pid = int(labarr[r0_, c0_])
+            _tot_px[_pid] = _tot_px.get(_pid, 0) + 1
+        _rem_px = {}
+        for _pass in range(4):
+            degp = {p: len(nbrs(*p)) for p in fg}
+            leaves = [p for p in fg if degp.get(p) == 1]
+            removed = False
+            for lf in leaves:
+                if lf not in fg:
+                    continue
+                branch = [lf]; prev = None; cur = lf; blen = 0.0; hit = None
+                for _ in range(len(fg) + 5):
+                    nx = [q for q in nbrs(*cur) if q != prev]
+                    if not nx:
+                        break                       # เส้นเดี่ยวโดด (จุด/ขีดสั้นทั้งชิ้น) -> ไม่ตัด
+                    q = nx[0]
+                    if len(nbrs(*q)) >= 3:
+                        hit = q; break              # ถึงทางแยก
+                    blen += (1.4142 if (q[0]-cur[0] and q[1]-cur[1]) else 1.0)
+                    branch.append(q); prev, cur = cur, q
+                    if blen / pxmm > 40.0:
+                        break                       # ยาวเกินง่ามแน่ ๆ -> เลิกเดิน
+                if hit is None:
+                    continue
+                wj = 2.0 * float(dist[hit[0], hit[1]]) / pxmm     # ความกว้างอักษร ณ จุดแยก (มม.)
+                if (blen / pxmm) <= max(3.0, 1.2 * wj):
+                    # 🛡️ ห้ามตัดกิ่งเกิน 45% ของเส้นทั้งชิ้น -> อักษรเล็กไม่มีทางถูกตัดจนหายทั้งตัว
+                    _pid = int(labarr[lf[0], lf[1]])
+                    if _rem_px.get(_pid, 0) + len(branch) > 0.45 * _tot_px.get(_pid, 1):
+                        continue
+                    _rem_px[_pid] = _rem_px.get(_pid, 0) + len(branch)
+                    for p in branch:
+                        fg.discard(p)
+                    removed = True
+            if not removed:
+                break
+        if not fg:
+            return [], []
         deg = {p: len(nbrs(*p)) for p in fg}
         nodes = set(p for p in fg if deg[p] != 2)
         visited = set(); raw = []
@@ -137,7 +181,9 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
             _bmin = min(pbb[2] - pbb[0], pbb[3] - pbb[1])
             # 🧿 ชิ้น 'ก้อนทึบ' (ไม่ใช่เส้น stroke): แกนกลางจะแตกเป็นก้านแฉก ใช้ไม่ได้จริง
             #    -> เดินไฟตาม 'โครงร่าง' ของชิ้นแทน (แบบเดียวกับโหมดเส้นคู่ เฉพาะชิ้นนี้)
-            _solid = (med > max(25.0, tube_mm * 3.0)) or (med > _bmin * 0.35 and _bmin > 40.0)
+            # ก้อนทึบ = หนามากเมื่อเทียบท่อ หรือ 'อักษรเล็กแต่อ้วน' (เนื้อหนา ≥ 42% ของขนาดตัว
+            #   และตัวใหญ่พอวางท่อตามโครงร่างได้จริง ≥ 2.5 เท่าท่อ — จุดจิ๋ว/ขีดสั้นยังคงเตือนแบบเดิม)
+            _solid = (med > max(25.0, tube_mm * 3.0)) or (med > _bmin * 0.42 and _bmin >= tube_mm * 2.5)
             if _solid:
                 for ring in [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]:
                     try:
@@ -170,8 +216,10 @@ def warn_messages(report, tube_mm=8.0, clear_mm=1.0):
             out.append("🧿 ชิ้นก้อนทึบ (ไม่ใช่เส้นอักษร) %d ชิ้น → เดินไฟตามโครงร่างแทนแกนกลาง: %s"
                        % (len(ctr), " · ".join("ชิ้นที่ %d" % r["idx"] for r in ctr[:6])))
         out.append("💡 นีออนเส้นเดี่ยว: วางเส้นแกนกลาง %d ชิ้น · ท่อไฟ %.0f มม. "
-                   "(เกณฑ์เนื้ออักษรต้องกว้าง ≥ %.0f มม. = %.0f + เผื่อข้างละ %.0f)"
-                   % (len(report), tube_mm, need, tube_mm, clear_mm))
+                   "(เกณฑ์เนื้ออักษรต้องกว้าง ≥ %.0f มม. = %.0f + เผื่อข้างละ %.0f) "
+                   "· ร่องเซาะ CNC บนแผ่นรองหลังเดินตามเส้นนี้ ใช้ดอกกัด %.0f-%.0f มม. (ท่อ %.0f + เผื่อสอดท่อ)"
+                   % (len(report), tube_mm, need, tube_mm, clear_mm,
+                      tube_mm + 1.0, tube_mm + 2.0, tube_mm))
         if bad:
             lst = " · ".join("ชิ้นที่ %d กว้าง ~%.0f มม. (แคบสุด %.0f)"
                              % (r["idx"], r["med_mm"], r["min_mm"]) for r in bad[:8])
