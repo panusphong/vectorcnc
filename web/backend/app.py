@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-g",
-        "build_note": "ฐาน 28-c + กู้ตัวอักษรเล็ก + นีออนเส้นเดี่ยวแกนกลางจริง 8 มม. พร้อมเตือนตัวที่วางไม่ได้",
+            "build": "2026-07-29-e",
+        "build_note": "ฐาน 2026-07-28-c เป๊ะ + กู้ตัวอักษรเล็กชั้นหดเข้า (ลดค่าหดอัตโนมัติเฉพาะตัวที่จะหาย)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4348,148 +4348,7 @@ def _trace_skeleton_mask(sk, full):
     return subs
 
 
-def _centerline_neon(full, tube_mm=8.0, clear_mm=1.0):
-    """💡 นีออน 'เส้นเดี่ยว' = เส้นแกนกลางความหนาของตัวอักษรจริง (medial axis)
-       - คำนวณจาก 'รูปที่จัดวางแล้ว' (หน่วย มม.) ไม่ใช่ภาพต้นฉบับ -> เส้นอยู่กึ่งกลาง stroke เสมอ
-       - วัด 'ความกว้างเนื้ออักษร' ตลอดแนวเส้น (2 x ระยะถึงขอบ) ต่อชิ้น
-       - เกณฑ์วางท่อจริง: กว้าง >= tube + เผื่อข้างละ clear (8+1+1 = 10 มม.)
-       คืน (subs, report) · report = [{"idx","min_mm","med_mm","ok"}] เรียงซ้าย->ขวา
-       ล้มเหลวเมื่อไหร่ -> คืน ([], []) ให้ผู้เรียก fallback วิธีเดิม (ห้ามทำให้งานพัง)"""
-    try:
-        import numpy as np
-        from skimage.morphology import medial_axis
-        from shapely.geometry import LineString, Point as _CPt
-        from PIL import Image, ImageDraw
-        b = full.bounds
-        W = b[2] - b[0]; H = b[3] - b[1]
-        if W < 2.0 or H < 2.0:
-            return [], []
-        pxmm = min(3.0, max(1.2, 2600.0 / max(W, H)))       # ~0.33-0.83 มม./พิกเซล
-        w = int(W * pxmm) + 9; h = int(H * pxmm) + 9
-        img = Image.new("L", (w, h), 0)
-        lab = Image.new("I", (w, h), 0)
-        dr = ImageDraw.Draw(img); dl = ImageDraw.Draw(lab)
-        polys = list(full.geoms) if full.geom_type == "MultiPolygon" else [full]
-        polys = [p for p in polys if p.geom_type == "Polygon" and not p.is_empty]
-        polys.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))   # ซ้าย->ขวา คงที่
-
-        def T(pt):
-            return ((pt[0] - b[0]) * pxmm + 4.0, (pt[1] - b[1]) * pxmm + 4.0)
-        for i, pg in enumerate(polys):
-            dr.polygon([T(p) for p in pg.exterior.coords], fill=255)
-            dl.polygon([T(p) for p in pg.exterior.coords], fill=i + 1)
-            for hole in pg.interiors:
-                dr.polygon([T(p) for p in hole.coords], fill=0)
-                dl.polygon([T(p) for p in hole.coords], fill=0)
-        mask = np.array(img) > 127
-        if not mask.any():
-            return [], []
-        sk, dist = medial_axis(mask, return_distance=True)
-        labarr = np.array(lab)
-        if not sk.any():
-            return [], []
-        # ---- เดินตามเส้น skeleton (ใช้ตรรกะเดียวกับตัวเดิม แต่พิกัดแม่น มม. ตรง ๆ) ----
-        fg = set(map(tuple, np.argwhere(sk)))
-
-        def nbrs(r, c):
-            o = []
-            for dr2 in (-1, 0, 1):
-                for dc2 in (-1, 0, 1):
-                    if (dr2 or dc2) and (r + dr2, c + dc2) in fg:
-                        o.append((r + dr2, c + dc2))
-            return o
-        deg = {p: len(nbrs(*p)) for p in fg}
-        nodes = set(p for p in fg if deg[p] != 2)
-        visited = set(); raw = []
-        for st in (list(nodes) if nodes else [next(iter(fg))]):
-            for n in nbrs(*st):
-                if (st, n) in visited:
-                    continue
-                path = [st]; prev, cur = st, n; visited.add((st, n)); visited.add((n, st))
-                while True:
-                    path.append(cur)
-                    if cur in nodes and cur != st:
-                        break
-                    nx = [q for q in nbrs(*cur) if q != prev]
-                    if not nx:
-                        break
-                    prev, cur = cur, nx[0]; visited.add((prev, cur)); visited.add((cur, prev))
-                if len(path) >= 2:
-                    raw.append(path)
-        for st in fg:                                      # วงปิด (O, รูใน)
-            for n in nbrs(*st):
-                if (st, n) in visited:
-                    continue
-                path = [st]; prev, cur = st, n; visited.add((st, n)); visited.add((n, st)); guard = 0
-                while cur != st and guard < len(fg) + 5:
-                    guard += 1; path.append(cur)
-                    nx = [q for q in nbrs(*cur) if q != prev]
-                    if not nx:
-                        break
-                    prev, cur = cur, nx[0]; visited.add((prev, cur)); visited.add((cur, prev))
-                path.append(st)
-                if len(path) >= 4:
-                    raw.append(path)
-        if not raw:
-            return [], []
-
-        def mp(p):                                          # (row,col) พิกเซล -> มม. จริง
-            return (b[0] + (p[1] - 4.0) / pxmm, b[1] + (p[0] - 4.0) / pxmm)
-        spur = max(6.0, tube_mm * 0.75)                     # ตัดหนวดสั้นตามขนาดท่อจริง
-        piece_paths = {}                                    # idx ชิ้น -> [subs ของแกนกลาง]
-        pieces = {}                                         # idx ชิ้น -> รายการความกว้าง (มม.)
-        for path in raw:
-            wid = [2.0 * float(dist[r, c]) / pxmm for (r, c) in path]
-            pids = [int(labarr[r, c]) for (r, c) in path]
-            _pv = [p for p in pids if p > 0]
-            pid_main = max(set(_pv), key=_pv.count) if _pv else 0
-            for pid, wv in zip(pids, wid):
-                if pid > 0:
-                    pieces.setdefault(pid, []).append(wv)
-            pts = [mp(p) for p in path]
-            try:
-                ls = LineString(pts).simplify(0.3)
-                if ls.length < spur and len(path) < int(spur * pxmm) + 2:
-                    continue                                # หนวดสั้น: นับความกว้างแล้ว ไม่วาด
-                cc = list(ls.coords)
-            except Exception:
-                cc = pts
-            if len(cc) >= 2 and pid_main > 0:
-                piece_paths.setdefault(pid_main, []).append(
-                    {"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": False})
-        report = []; subs = []
-        need = tube_mm + 2.0 * clear_mm
-        for i, pg in enumerate(polys):
-            ws = sorted(pieces.get(i + 1, []))
-            if not ws:
-                continue
-            k = max(0, int(len(ws) * 0.10))                 # ตัดปลายแหลม 10% ล่าง (ปลาย stroke เรียวตามธรรมชาติ)
-            med = ws[len(ws) // 2]; mn = ws[k]
-            pbb = pg.bounds
-            _bmin = min(pbb[2] - pbb[0], pbb[3] - pbb[1])
-            # 🧿 ชิ้น 'ก้อนทึบ' (ไม่ใช่เส้น stroke): แกนกลางจะแตกเป็นก้านแฉก ใช้ไม่ได้จริง
-            #    -> เดินไฟตาม 'โครงร่าง' ของชิ้นแทน (แบบเดียวกับโหมดเส้นคู่ เฉพาะชิ้นนี้)
-            _solid = (med > max(25.0, tube_mm * 3.0)) or (med > _bmin * 0.35 and _bmin > 40.0)
-            if _solid:
-                for ring in [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]:
-                    try:
-                        rl = LineString(ring).simplify(0.3); cc = list(rl.coords)
-                    except Exception:
-                        cc = ring
-                    if len(cc) >= 3:
-                        subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
-                report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
-                               "ok": True, "mode": "contour"})
-            else:
-                subs.extend(piece_paths.get(i + 1, []))
-                report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
-                               "ok": (med + 1e-6) >= need and (mn + 1e-6) >= tube_mm, "mode": "center"})
-        return subs, report
-    except Exception:
-        return [], []
-
-
-def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None):
+def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
     b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
 
@@ -4508,8 +4367,6 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
         return list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
 
     tube = max(5.0, S * 0.014); glow = tube * 2.4
-    if tube_mm:                                     # 💡 เส้นเดี่ยว: ท่อหนาเท่าของจริง (มม.) — เห็นชน/ล้นตั้งแต่ออกแบบ
-        tube = float(tube_mm); glow = tube * 2.2
     parts = ['<defs><filter id="ng" x="-45%%" y="-45%%" width="190%%" height="190%%"><feGaussianBlur stdDeviation="%.1f"/></filter>'
              '<filter id="sh2" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="%.1f" stdDeviation="%.1f" flood-color="#0f172a" flood-opacity="0.30"/></filter></defs>'
              % (tube * 0.85, S * 0.02, S * 0.02)]
@@ -5747,28 +5604,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              % (_en_layer(L["name"]), junk))
         _neon_subs = None
         if _neon:                                   # 🌈 นีออน: เส้นไฟ (ตามลายเส้นภาพ) + แผ่นอะคริลิคใส (ล้อมทรง)
-            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลางความหนาอักษรจริง
+            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลาง (skeleton)
                 try:
-                    # 💡 แกนกลางจริงจาก 'รูปที่จัดวางแล้ว' + วัดความกว้างเนื้ออักษร เทียบท่อไฟ 8 มม.
-                    _neon_subs, _nrep = _centerline_neon(full, tube_mm=8.0, clear_mm=1.0)
-                    if not _neon_subs:
-                        _neon_subs = _skeleton_subs(inp, full); _nrep = []
-                    if _nrep:
-                        _nbad = [r for r in _nrep if not r["ok"]]
-                        _nctr = [r for r in _nrep if r.get("mode") == "contour"]
-                        if _nctr:
-                            warns.append("🧿 ชิ้นก้อนทึบ (ไม่ใช่เส้นอักษร) %d ชิ้น → เดินไฟตามโครงร่างแทนแกนกลาง: %s"
-                                         % (len(_nctr), " · ".join("ชิ้นที่ %d" % r["idx"] for r in _nctr[:6])))
-                        warns.append("💡 นีออนเส้นเดี่ยว: วางเส้นแกนกลาง %d ชิ้น · ท่อไฟ 8 มม. "
-                                     "(เกณฑ์เนื้ออักษรต้องกว้าง ≥ 10 มม. = 8 + เผื่อข้างละ 1)" % len(_nrep))
-                        if _nbad:
-                            _lst = " · ".join("ชิ้นที่ %d กว้าง ~%.0f มม. (แคบสุด %.0f)"
-                                              % (r["idx"], r["med_mm"], r["min_mm"]) for r in _nbad[:8])
-                            if len(_nbad) > 8:
-                                _lst += " · ..."
-                            warns.append("⚠️ ท่อไฟ 8 มม. วางจริงไม่ได้ %d ชิ้น — เส้นจะบวมชนกัน/ล้นขอบ: %s "
-                                         "→ แนะนำ ขยายป้ายให้ใหญ่ขึ้น หรือสลับชิ้นนั้นเป็น 'เส้นคู่ (ตามขอบ)' "
-                                         "(ระบบยังวาดเส้นให้ครบทุกชิ้นตามสั่ง)" % (len(_nbad), _lst))
+                    _neon_subs = _skeleton_subs(inp, full)
                 except Exception:
                     _neon_subs = None
             _ns = _neon_subs if _neon_subs else _poly_to_subs(full, tol=0.05)
@@ -5888,8 +5726,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
-                svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
-                                       tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
+                svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
                 # ป้ายอักษร + โครงแขวน -> ใช้ 'โครงยึดตัวอักษร' (เฟรมหลังอักษร + แขนขึ้น) ไม่ใช่แขนกล่องไฟ
                 _m3d = "letterframe" if rec.get("mount_frame") else str(arm or "none")
@@ -6032,8 +5869,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg_face = ""
         try:
             if _neon:
-                svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
-                                          tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
+                svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs)
             else:
                 # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
                 # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
