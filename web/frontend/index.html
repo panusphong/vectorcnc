@@ -6060,7 +6060,7 @@ $('goLayer').onclick=function(){
           '<a onclick="_setACOL(\'\')" style="font-size:10px;color:#0d9488;cursor:pointer;text-decoration:underline" title="กลับไปใช้พื้นผิว/สีตามกล่องไฟ">ตามกล่อง</a></label>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 8px"><span style="font-size:11px;color:#7c3aed;font-weight:700">อะคริลิคนีออน (แสงตามสี):</span><span id="acrSwD" style="display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center"><button type="button" class="chip on" id="acrOffD" style="font-size:10.5px">⚪ ปกติ</button></span></div>'+
-      '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:14px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
+      '<div id="ls3dWrap" style="position:relative;border:1px solid #e9d5ff;border-radius:12px;padding:6px;background:#faf9ff;text-align:center;margin-bottom:16px;overflow:hidden;transition:background .3s">'+
         '<div id="ls3dGlow" style="position:absolute;inset:0;pointer-events:none;transition:opacity .3s"></div>'+
         '<div id="ls3dImg" style="position:relative;max-width:100%;margin:0 auto;transition:filter .3s">'+disp3d+'</div></div>'+
       (j.sticker_map_svg?('<div style="font-size:13px;font-weight:700;color:#b91c1c;margin:2px 0 5px">🏷️ แยกชิ้นเป็นสติ๊กเกอร์ — คลิกชิ้นที่ "ไม่ต้องตัด" (เช่น ตัวหนังสือไทยติดสติ๊กเกอร์ดำแทน)</div>'+
@@ -9971,11 +9971,11 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   }
   function ensure(){
     var w=wrap(); if(!w)return null; if(w._noteReady)return w; w._noteReady=true;
-    var tb=document.createElement('div'); tb.style.cssText='position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:8';
+    var tb=document.createElement('div'); tb.style.cssText='display:flex;gap:6px;justify-content:flex-end;margin:0 0 8px';
     tb.innerHTML='<button type="button" id="ls3dTxtAdd" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#0ea5e9;color:#fff">🅰 ข้อความ</button>'
       +'<button type="button" id="ls3dNoteAdd" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#7c3aed;color:#fff">🗒️ เพิ่มโน้ต</button>'
       +'<button type="button" id="ls3dNoteSave" style="font-size:12px;font-weight:700;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;background:#0f172a;color:#fff">🖼️ บันทึกรูป+โน้ต</button>';
-    w.appendChild(tb);
+    if(w.parentNode){ w.parentNode.insertBefore(tb, w); } else { w.appendChild(tb); }
     var svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.setAttribute('id','ls3dNoteSvg'); svg.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:5;overflow:visible'; w.appendChild(svg);
     var nc=document.createElement('div'); nc.id='ls3dNoteBoxes'; nc.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:6'; w.appendChild(nc);
     function _resetBtns(){ var bn=$('ls3dNoteAdd'), bt=$('ls3dTxtAdd');
