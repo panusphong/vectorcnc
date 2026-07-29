@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-28-c",
-        "build_note": "รูป+เส้นใช้ชุดเดียวกัน · ขนาดวัดจากขอบนอกคิ้ว · เส้นตัดใน .ai เป็นเส้นเปล่า",
+            "build": "2026-07-29-b",
+        "build_note": "วัดจากเส้นจริง · ด่านตรวจเส้นดิบ · แคชกัน 502 · รู้จักแผ่นชุดชั้นตัดของตัวเอง (ดึงพาเนลรูปงาน กันภาพซ้อน)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1850,6 +1850,21 @@ def _vtrace_full_mm(img_path, real_width_mm):
 
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
+    # ⚡ ไฟล์เดิม + ขนาดเดิม + ค่าเนียนเดิม = รูปทรง/เส้นดิบ/สถานะเอนจิ้น เดิมเป๊ะ ->
+    #    จำครบชุดแล้วคืนทันที (ผู้ใช้สลับประเภทป้ายของไฟล์เดิมบ่อยมาก งานอ่านไฟล์ซ้ำหายทั้งก้อน)
+    #    ห้ามจำครึ่ง ๆ: ต้องคืน _RAW_SUBS และ _TRACE_ENG ให้เหมือนตอนคำนวณจริงทุกช่อง
+    import copy as _cpc
+    try:
+        _ckf = (_file_sha1(inp), round(float(real_width_mm), 3), round(float(real_height_mm), 3),
+                int(n_colors), float(_CUT_SMOOTH.get("mm", 0.0)))
+        _hitf = _LFM_CACHE["map"].get(_ckf)
+    except Exception:
+        _ckf = None; _hitf = None
+    if _hitf is not None:
+        _RAW_SUBS["subs"] = _cpc.deepcopy(_hitf["raw_subs"])
+        for _kk in ("mode", "rings_in", "rings_used", "rings_lost", "holes", "frame_dropped"):
+            _TRACE_ENG[_kk] = _cpc.deepcopy(_hitf["trace"].get(_kk))
+        return _hitf["full"]
     from shapely.ops import unary_union
     from shapely.affinity import scale as _scale
     from vectorcnc import trace_engine, vector_import
@@ -1898,15 +1913,6 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                     _TRACE_ENG["rings_in"] = len(_file_subs)
                     _TRACE_ENG["rings_used"] = len(_file_subs)
                     _TRACE_ENG["holes"] = 0
-                    # ⚡ ลดจุดในรูปลงเล็กน้อยก่อนส่งต่อ (0.05 มม. — ละเอียดกว่าเครื่องตัดหลายเท่า มองไม่เห็น)
-                    #    เส้นโค้งจริงเก็บไว้ที่ _RAW_SUBS แล้ว รูปนี้ใช้แค่คำนวณชั้นยกขอบ/คิ้ว/แผ่นพื้น
-                    #    ไม่ลด: รูปมีจุดมากกว่าเดิม 1.9 เท่า -> งานยกขอบคำนวณนานจนเซิร์ฟเวอร์ตอบไม่ทัน (502)
-                    try:
-                        _sm9 = _fu9.simplify(0.05, preserve_topology=True)
-                        if _sm9 is not None and not _sm9.is_empty:
-                            _fu9 = _sm9
-                    except Exception:
-                        pass
                     full = _fu9
             except Exception:
                 full = None
@@ -2097,6 +2103,15 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     ph = b[3] - b[1]
     if _rh > 1.0 and ph > 0.5 and abs(_rh - ph) > 0.15:
         full = _scale(full, xfact=1.0, yfact=_rh / ph, origin=(0, b[1]))
+    if _ckf is not None:
+        try:
+            _cache_put(_LFM_CACHE, _ckf, {
+                "full": full,                                   # shapely แก้ค่าในตัวไม่ได้ -> แชร์ได้
+                "raw_subs": _cpc.deepcopy(_RAW_SUBS.get("subs")),
+                "trace": {_kk: _cpc.deepcopy(_TRACE_ENG.get(_kk))
+                          for _kk in ("mode", "rings_in", "rings_used", "rings_lost", "holes", "frame_dropped")}})
+        except Exception:
+            pass
     return full
 
 
@@ -2609,11 +2624,23 @@ def _spec_sheet_svg(out_layers):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def _bbox(subs):
+        # 📏 วัดกรอบจาก 'จุดบนเส้นจริง' (sample บนโค้ง) — ห้ามวัดจากจุดควบคุม Bézier
+        #    จุดควบคุมกางออกนอกเส้นจริงได้ไกลมาก (ไฟล์ .ai ลูกค้า: เส้นสูงจริง 27.4 ซม.
+        #    แต่จุดควบคุมกางถึง 33.8 ซม.) -> ตัวเลข/เส้นจับขนาดโตเกินจริง ทั้งที่เส้นตัดถูก 100%
+        #    (เคสจริงที่เจอ: โชว์ 179.2 ซม. ทั้งที่งานกว้าง 120 ซม. — เส้นตัดไม่ผิด ตัววัดผิด)
         mnx = mny = 1e18; mxx = mxy = -1e18
         for sp in subs:
-            pts = [sp["start"]]
+            pts = [sp["start"]]; _c = sp["start"]
             for s in sp["segs"]:
-                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+                if s[0] == "L":
+                    pts.append(s[1]); _c = s[1]
+                else:
+                    _p1, _p2, _p3 = s[1], s[2], s[3]
+                    for _t in (0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875):
+                        _mt = 1.0 - _t
+                        pts.append((_mt**3 * _c[0] + 3*_mt*_mt*_t*_p1[0] + 3*_mt*_t*_t*_p2[0] + _t**3*_p3[0],
+                                    _mt**3 * _c[1] + 3*_mt*_mt*_t*_p1[1] + 3*_mt*_t*_t*_p2[1] + _t**3*_p3[1]))
+                    pts.append(_p3); _c = _p3
             for (x, y) in pts:
                 mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
         return mnx, mny, mxx, mxy
@@ -2668,8 +2695,81 @@ def _spec_sheet_svg(out_layers):
     return '\n'.join(svg)
 
 
+def _own_sheet_art(inp):
+    """🧩 ตรวจว่าไฟล์ที่อัปโหลดคือ 'ไฟล์ชุดชั้นตัด .ai ที่ระบบนี้สร้างเอง' หรือไม่
+       (แผ่นเดียวมีหลายพาเนล: DESIGN preview · ชั้นโครงสร้าง · แผ่นขอบข้าง — วางเรียงกัน)
+       ถ้าเผลอเอากลับเข้ามาเป็น 'รูปงาน' ระบบจะมองทั้งแผ่นเป็นงานเดียว
+       -> เส้นตัดมีงานซ้อนกันหลายชุด (ภาพซ้อน) ทั้งที่ไฟล์พาเนลดูเรียบร้อย
+       วิธีแก้: ดึงเฉพาะ 'พาเนลรูปงานจริง' (พาเนลชั้นแรกที่ไม่ใช่ DESIGN) มาใช้แทนทั้งแผ่น
+       - ลบข้อความป้ายกำกับ/ภาพพรีวิว/เส้นพาเนลอื่นด้วย redaction (เนื้องานจริงไม่ถูกแตะ)
+       - ตั้ง CropBox เหลือเฉพาะช่วงพาเนลเป้าหมาย (ตัวอ่านเส้น + ตัวเรนเดอร์เคารพกรอบนี้)
+       คืน (path ไฟล์ใหม่, ข้อความแจ้งผู้ใช้) หรือ (None, None) ถ้าเป็นไฟล์ปกติ"""
+    try:
+        from vectorcnc import vector_import as _vi0
+        if not _vi0.is_vector_file(inp):
+            return None, None
+        import fitz as _fz0
+        _d0 = _fz0.open(inp)
+        _p0 = _d0[0]
+        _W0, _H0 = float(_p0.rect.width), float(_p0.rect.height)
+        _spans = []
+        for _b0 in _p0.get_text("dict").get("blocks", []):
+            for _l0 in _b0.get("lines", []):
+                for _s0 in _l0.get("spans", []):
+                    _spans.append((str(_s0.get("text", "")), _fz0.Rect(_s0["bbox"])))
+        _txt_all = " ".join(t for t, _ in _spans)
+        # 🔏 ลายเซ็นของแผ่นชั้นตัดจากระบบนี้ — ไฟล์ลูกค้าปกติไม่มีข้อความพวกนี้แน่นอน
+        if ("DESIGN (assembled preview)" not in _txt_all
+                and "Side Return Plates (fold)" not in _txt_all):
+            _d0.close(); return None, None
+        # ป้ายหัวพาเนล = ข้อความแถวบนสุดของแผ่น เรียงซ้าย->ขวา
+        _tops = sorted([(t, r) for t, r in _spans
+                        if r.y0 < _H0 * 0.10 and len(t.strip()) > 2], key=lambda z: z[1].x0)
+        if len(_tops) < 2:
+            _d0.close(); return None, None
+        _ti = next((i for i, (t, _) in enumerate(_tops) if "DESIGN" not in t), None)
+        if _ti is None:
+            _d0.close(); return None, None
+        _kx0 = max(0.0, _tops[_ti][1].x0 - 30.0)
+        _kx1 = (_tops[_ti + 1][1].x0 - 30.0) if _ti + 1 < len(_tops) else _W0
+        if _kx1 - _kx0 < 20.0:
+            _d0.close(); return None, None
+        # ลบของนอกพาเนลเป้าหมาย + ป้ายข้อความ/ภาพพรีวิวทั้งหมด (เนื้องานจริงอยู่ในพาเนล ไม่โดน)
+        _areas = [_fz0.Rect(0, 0, max(1.0, _kx0), _H0), _fz0.Rect(min(_W0 - 1.0, _kx1), 0, _W0, _H0)]
+        _areas += [r + (-2, -2, 2, 2) for _, r in _spans]
+        for _a0 in _areas:
+            _p0.add_redact_annot(_a0)
+        try:
+            _p0.apply_redactions(images=_fz0.PDF_REDACT_IMAGE_REMOVE,
+                                 graphics=_fz0.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED)
+        except TypeError:
+            _p0.apply_redactions(images=_fz0.PDF_REDACT_IMAGE_REMOVE)   # pymupdf เก่า: ไม่มี graphics
+        # กรอบหน้ากระดาษ = พาเนลเป้าหมายเท่านั้น (เศษที่ redaction เก็บไม่หมด จะตกนอกกรอบและถูกทิ้ง)
+        try:
+            _p0.set_cropbox(_fz0.Rect(_kx0, 0, _kx1, _H0))
+        except Exception:
+            pass
+        _out0 = inp + ".artpanel.pdf"
+        _d0.save(_out0)
+        _d0.close()
+        _msg = ("🧩 ไฟล์ที่อัปโหลดคือ 'ไฟล์ชุดชั้นตัดที่ระบบสร้างเอง' (มี %d พาเนลในแผ่นเดียว) — "
+                "ระบบดึงเฉพาะพาเนลรูปงานจริง '%s' มาใช้ ไม่ให้พาเนลอื่นซ้อนเข้ามาในเส้นตัด "
+                "· เพื่อเส้นคมที่สุด แนะนำใช้ไฟล์งานต้นฉบับ" % (len(_tops), _tops[_ti][0].strip()[:40]))
+        return _out0, _msg
+    except Exception:
+        return None, None
+
+
 def _art_data_uri(path, max_px=1400):
     """crop รูปงานให้เหลือเฉพาะตัวงาน (ตัดพื้นขาว/โปร่ง) -> data URI (PNG) ไว้แปะบนหน้า 3 มิติ"""
+    # ⚡ งานหนัก (เรนเดอร์+ครอป+ย่อ+encode หลายวินาที) แต่ไฟล์เดิม+ความละเอียดเดิม = ผลเดิมเป๊ะ
+    try:
+        _ck9 = (_file_sha1(path), int(max_px))
+        _hit9 = _ARTURI_CACHE["map"].get(_ck9)
+        if _hit9 is not None:
+            return _hit9
+    except Exception:
+        _ck9 = None
     from PIL import Image
     import io as _io, base64 as _b64, numpy as _np
     # 🖼️ ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.svg) เปิดด้วย PIL ตรง ๆ ไม่ได้ -> เดิมจะ error เงียบ ๆ
@@ -2697,7 +2797,10 @@ def _art_data_uri(path, max_px=1400):
         sc = max_px / float(max(im.size))
         im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))), Image.LANCZOS)
     buf = _io.BytesIO(); im.save(buf, "PNG")
-    return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+    _uri9 = "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+    if _ck9 is not None:
+        _cache_put(_ARTURI_CACHE, _ck9, _uri9)
+    return _uri9
 
 
 # 🪙 พื้นผิวสแตนเลส (gradient เมทัลลิก): (สีอ่อน, สีกลาง, สีเข้ม, แฮร์ไลน์?)
@@ -2717,6 +2820,37 @@ _CUT_SMOOTH = {"mm": 0.0}   # 🧈 รีดคลื่นเส้นตัด
 # 🏆 เส้นโค้ง Bézier 'ดิบ' จากเอนจิ้น (หน่วย มม. · พิกัดเดียวกับ polygon ที่ trace ได้)
 #    ใช้ส่งเข้าไฟล์ตัดโดยตรงเหมือนปุ่ม 'แปลงเป็นเส้นตัด' — ไม่ผ่านการแตกจุด+ฟิตใหม่ (ซึ่งทำให้เส้นเละ)
 _RAW_SUBS = {"subs": None}
+
+
+# ⚡ ============ แคชกันงานซ้ำ (แก้ 502 — ไม่ลดจุดในรูปแม้แต่จุดเดียว) ============
+#    หลักการ: อินพุตเดิมทุกไบต์ + ค่าตั้งเดิมทุกตัว -> ผลลัพธ์เดิมเป๊ะ จึงจำไว้ตอบซ้ำได้ทันที
+#    (เบราว์เซอร์ยิงซ้ำหลัง 502 / ผู้ใช้สลับประเภทป้ายของไฟล์เดิม = งานซ้ำทั้งนั้น)
+#    เก็บจำกัดจำนวน (FIFO) กันแรมบาน · แคชอยู่ต่อ worker (คำขอใน worker เดียวกันวิ่งทีละคำขอ)
+_LAYERSET_CACHE = {"keys": [], "map": {}, "cap": 4}    # ผลลัพธ์ทั้งคำขอ /api/layer-set
+_LFM_CACHE = {"keys": [], "map": {}, "cap": 4}         # รูปทรง + เส้นดิบ + สถานะเอนจิ้น ต่อไฟล์
+_ARTURI_CACHE = {"keys": [], "map": {}, "cap": 6}      # ภาพงาน (data URI) ต่อไฟล์×ความละเอียด
+
+
+def _cache_put(C, key, val):
+    try:
+        if key in C["map"]:
+            return
+        C["map"][key] = val; C["keys"].append(key)
+        while len(C["keys"]) > int(C.get("cap", 4)):
+            _old = C["keys"].pop(0); C["map"].pop(_old, None)
+    except Exception:
+        pass
+
+
+def _file_sha1(path):
+    import hashlib as _hl
+    h = _hl.sha1()
+    with open(path, "rb") as _f:
+        for _ch in iter(lambda: _f.read(1 << 20), b""):
+            h.update(_ch)
+    return h.hexdigest()
+
+
 
 
 def _dedup_subs(subs, tol=0.08):
@@ -3812,11 +3946,23 @@ def _exploded_svg(out_layers, rec, perimeter_cm):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     def _bbox(subs):
+        # 📏 วัดกรอบจาก 'จุดบนเส้นจริง' (sample บนโค้ง) — ห้ามวัดจากจุดควบคุม Bézier
+        #    จุดควบคุมกางออกนอกเส้นจริงได้ไกลมาก (ไฟล์ .ai ลูกค้า: เส้นสูงจริง 27.4 ซม.
+        #    แต่จุดควบคุมกางถึง 33.8 ซม.) -> ตัวเลข/เส้นจับขนาดโตเกินจริง ทั้งที่เส้นตัดถูก 100%
+        #    (เคสจริงที่เจอ: โชว์ 179.2 ซม. ทั้งที่งานกว้าง 120 ซม. — เส้นตัดไม่ผิด ตัววัดผิด)
         mnx = mny = 1e18; mxx = mxy = -1e18
         for sp in subs:
-            pts = [sp["start"]]
+            pts = [sp["start"]]; _c = sp["start"]
             for s in sp["segs"]:
-                pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
+                if s[0] == "L":
+                    pts.append(s[1]); _c = s[1]
+                else:
+                    _p1, _p2, _p3 = s[1], s[2], s[3]
+                    for _t in (0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875):
+                        _mt = 1.0 - _t
+                        pts.append((_mt**3 * _c[0] + 3*_mt*_mt*_t*_p1[0] + 3*_mt*_t*_t*_p2[0] + _t**3*_p3[0],
+                                    _mt**3 * _c[1] + 3*_mt*_mt*_t*_p1[1] + 3*_mt*_t*_t*_p2[1] + _t**3*_p3[1]))
+                    pts.append(_p3); _c = _p3
             for (x, y) in pts:
                 mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
         return mnx, mny, mxx, mxy
@@ -3890,6 +4036,8 @@ def _layerset_cut_svg(out_layers, wall_strips):
     from vectorcnc import nesting
 
     def _bbox(subs):
+        # 🔒 ไฟล์ส่งออก: คงตัววัด/เลย์เอาต์แบบเดิม 100% (ห้ามให้ตำแหน่งชิ้นในไฟล์ขยับ)
+        #    ตัววัดจากเส้นจริงใช้เฉพาะหน้าจอแสดงผล (สเปคชีต/ภาพ exploded)
         mnx = mny = 1e18; mxx = mxy = -1e18
         for sp in subs:
             pts = [sp["start"]]
@@ -4566,6 +4714,8 @@ def _layerset_ai_svg(out_layers, art_href="", art_bounds=None, design_href=""):
     from vectorcnc import nesting
 
     def _bbox(subs):
+        # 🔒 ไฟล์ส่งออก: คงตัววัด/เลย์เอาต์แบบเดิม 100% (ห้ามให้ตำแหน่งชิ้นในไฟล์ขยับ)
+        #    ตัววัดจากเส้นจริงใช้เฉพาะหน้าจอแสดงผล (สเปคชีต/ภาพ exploded)
         mnx = mny = 1e18; mxx = mxy = -1e18
         for sp in subs:
             pts = [sp["start"]]
@@ -4804,9 +4954,39 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "in.png")
+    _body9 = await file.read()
     with open(inp, "wb") as f:
-        f.write(await file.read())
+        f.write(_body9)
+    # ⚡ คำขอซ้ำเป๊ะ (ไฟล์เดิมทุกไบต์ + ค่าตั้งเดิมทุกช่อง) -> ตอบจากแคชทันที
+    #    นี่คือเกราะกันเคส 502: เบราว์เซอร์/ผู้ใช้กดซ้ำ งานหนักไม่ถูกคำนวณใหม่อีกรอบ
     try:
+        import hashlib as _hl9
+        _rck = (_hl9.sha1(_body9).hexdigest(), str(sign_type), float(real_width_mm), float(real_height_mm),
+                float(return_depth_cm), float(trim_width_cm), str(trim_dir), str(face_color), str(side_color),
+                int(n_colors), str(arm), float(arm_len_cm), str(arm_side), str(arm_adjust), float(arm_travel_cm),
+                str(neon_color), str(neon_line), str(neon_plate), float(neon_margin_cm),
+                int(frame_bars), float(frame_level_cm), float(frame_gap_cm), float(frame_x_cm),
+                float(frame_standoff_cm), float(wire_offset_cm), float(led_pitch_cm), float(arm_edge_cm),
+                float(arm_gap_cm), float(leg_h_cm), float(leg_span_cm), float(caster_mm), str(caster_lock),
+                float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
+                str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
+                float(cut_smooth_mm), str(face_print), str(material_groups),
+                float(logo_w_cm), float(logo_h_cm), str(safe_mode))
+        _rhit = _LAYERSET_CACHE["map"].get(_rck)
+        if _rhit is not None:
+            return _rhit
+    except Exception:
+        _rck = None
+    del _body9
+    try:
+        # 🧩 กันภาพซ้อน: ถ้าไฟล์ที่ส่งมาคือ 'แผ่นชุดชั้นตัดของระบบเอง' ให้ดึงเฉพาะพาเนลรูปงานจริง
+        _own_msg = None
+        try:
+            _own_inp, _own_msg = _own_sheet_art(inp)
+            if _own_inp:
+                inp = _own_inp
+        except Exception:
+            _own_msg = None
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
         #    ปิดตายไว้ ห้ามเปิดจากภายนอก (ยังรับพารามิเตอร์ไว้กันหน้าเว็บเวอร์ชันเก่ายิงมาแล้วพัง)
@@ -4898,6 +5078,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         warns = list(_prewarn)                           # 📐 คำเตือนที่เกิดตอนขึ้นรูปกล่อง (ก่อนมีตัวแปร warns)
+        if _own_msg:
+            warns.append(_own_msg)                       # 🧩 บอกผู้ใช้ว่าดึงพาเนลรูปงานจากแผ่นชุดชั้นตัด
         _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
         # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน · ⏱️ เริ่มจับงบเวลาของงานนี้
         import time as _tm0
@@ -5477,6 +5659,37 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           if abs(_s2y - _s2) / max(1e-6, _s2) < 0.02:      # สเกลเท่ากันทั้ง 2 แกน (ไม่บิดสัดส่วน)
                               _use_raw_punch = _subs_affine(_rs2, _s2, _bn[0] - _raw_b0[0] * _s2,
                                                             _bn[1] - _raw_b0[1] * _s2)
+                              # 📏 ด่านตรวจขนาด (แบบเดียวกับที่แก้กล่องไฟฉลุหน้าสำเร็จ):
+                              #    เส้นดิบต้อง 'ทับกรอบรูปที่จัดวางแล้ว' พอดีเท่านั้นจึงใช้ได้
+                              #    ไฟล์ .ai บางไฟล์มีเส้นของวัตถุซ่อน/นอกงานปนใน 'เส้นดิบ' -> กรอบเส้นดิบ
+                              #    ใหญ่กว่ารูปจริง แล้วชั้นหน้าอักษรเลยโตเกิน (เจอจริง: กรอก 120 ได้ 179.2)
+                              #    วัดจากจุดบนเส้นจริง (รวมจุดบนโค้ง ไม่ใช่แค่จุดหัวท้าย) เทียบกรอบรูปที่จัดวาง
+                              if _use_raw_punch:
+                                  _qx = []; _qy = []
+                                  for _sp8 in _use_raw_punch:
+                                      _c8 = _sp8["start"]; _qx.append(_c8[0]); _qy.append(_c8[1])
+                                      for _s8 in _sp8["segs"]:
+                                          if _s8[0] == "L":
+                                              _c8 = _s8[1]; _qx.append(_c8[0]); _qy.append(_c8[1])
+                                          else:
+                                              _p18, _p28, _p38 = _s8[1], _s8[2], _s8[3]
+                                              for _t8 in (0.25, 0.5, 0.75):
+                                                  _m8 = 1.0 - _t8
+                                                  _qx.append(_m8**3 * _c8[0] + 3*_m8*_m8*_t8*_p18[0] + 3*_m8*_t8*_t8*_p28[0] + _t8**3*_p38[0])
+                                                  _qy.append(_m8**3 * _c8[1] + 3*_m8*_m8*_t8*_p18[1] + 3*_m8*_t8*_t8*_p28[1] + _t8**3*_p38[1])
+                                              _c8 = _p38; _qx.append(_c8[0]); _qy.append(_c8[1])
+                                  _tol8 = max(3.0, 0.02 * max(_bn[2] - _bn[0], _bn[3] - _bn[1]))
+                                  if (not _qx) or (abs(min(_qx) - _bn[0]) > _tol8 or abs(max(_qx) - _bn[2]) > _tol8
+                                                   or abs(min(_qy) - _bn[1]) > _tol8 or abs(max(_qy) - _bn[3]) > _tol8):
+                                      # เส้นดิบขนาด/ตำแหน่งไม่ตรงรูปที่จัดวาง -> ห้ามใช้
+                                      # ตกไปทางปกติ (_cut_subs_offset ชั้น off=0 = _poly_to_subs จากรูปที่จัดวางตรง ๆ)
+                                      warns.append("📏 ชั้น '%s': เส้นดิบจากไฟล์กรอบไม่ตรงรูปที่จัดวาง (%.1f×%.1f ≠ %.1f×%.1f ซม.) "
+                                                   "→ ทำเส้นตัดจากรูปที่จัดวางแล้วโดยตรงแทน (ขนาดตรงที่กรอก 100%%)"
+                                                   % (L["name"],
+                                                      (max(_qx) - min(_qx)) / 10.0 if _qx else 0.0,
+                                                      (max(_qy) - min(_qy)) / 10.0 if _qy else 0.0,
+                                                      (_bn[2] - _bn[0]) / 10.0, (_bn[3] - _bn[1]) / 10.0))
+                                      _use_raw_punch = None
                               if _use_raw_punch:
                                   warns.append("✂️ ชั้น '%s' ใช้เส้นโค้งดิบจากเอนจิ้น (คมเท่าปุ่มแปลงเป็นเส้นตัด) %d เส้น"
                                                % (L["name"], len(_use_raw_punch)))
@@ -5734,51 +5947,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 mount_plate = {}
 
-        # DXF: แยกแต่ละชั้น 'วางห่างกัน' แนวนอน (ไม่ทับซ้อน) + คนละ layer/สี + ป้ายชื่อชั้น
-        import ezdxf
-
-        def _bbox_subs(subs):
-            mnx = mny = 1e18; mxx = mxy = -1e18
-            for sp in subs:
-                pts = [sp["start"]]
-                for s in sp["segs"]:
-                    pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
-                for (x, y) in pts:
-                    mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
-            return mnx, mny, mxx, mxy
-
-        doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM; msp = doc.modelspace()
-        if 'LABEL' not in doc.layers:
-            doc.layers.add('LABEL')
-        metas = [(L, _bbox_subs(L["subs"])) for L in out_layers]
-        Smax = max([1.0] + [max(b[2] - b[0], b[3] - b[1]) for _, b in metas])
-        gap = Smax * 0.16
-        gmaxy = max(b[3] for _, b in metas)      # baseline ร่วม (flip Y = CAD Y ขึ้น)
-        th = max(6.0, Smax * 0.03)
-        cursor = 0.0
-        for L, b in metas:
-            w = b[2] - b[0]; h = b[3] - b[1]
-            xshift = cursor - b[0]
-
-            def _tf(p, _xs=xshift, _my=gmaxy):
-                return (p[0] + _xs, _my - p[1])
-            lyname = _dxf_layer('CUT_' + _en_layer(L["name"]))
-            if lyname not in doc.layers:
-                lay = doc.layers.add(lyname)
-                try: lay.rgb = L["rgb"]
-                except Exception: pass
-            for sp in L["subs"]:
-                try:
-                    nesting._add_contour_dxf(msp, sp, lyname, tf=_tf)
-                except Exception:
-                    pass
-            off = L["off"]; oc = "full" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
-            try:
-                t = msp.add_text("%s (%s)" % (_en_layer(L["name"]), oc), dxfattribs={'layer': 'LABEL', 'height': th})
-                t.set_placement((cursor, gmaxy - b[1] + th * 0.6))
-            except Exception:
-                pass
-            cursor += w + gap
+        # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
+        # ⚡ เดิมยังนั่ง 'สร้างเอกสาร DXF เต็มใบ' (วนเพิ่มทุกเส้นเข้า ezdxf) แล้วโยนทิ้งเพราะไม่ส่งออก
+        #    งานละเอียด (เส้นเป็นหมื่น) เสียเวลาฟรีหลายวินาที = หนึ่งในต้นเหตุ 502
+        #    -> ตัดการสร้างทิ้งทั้งก้อน เหลือเฉพาะ 'รายการชิ้นยกขอบ' ที่หน้าเว็บใช้จริง (ค่าเดิมเป๊ะ)
         # ชิ้นตัด 'ยกขอบ' (ผนังตั้งฉากแผ่นหลัง) = แถบแบน ยาว=เส้นรอบรูป × สูง=ความสูงผนัง (ตัดแล้วพับ/ดัด)
         wall_pieces = []
         peri_mm = float(full.length)
@@ -5787,21 +5959,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if hh <= 0 or not nm.startswith("ยกขอบ"):
                 continue
             Lmm = peri_mm
-            ly = 'WALL_' + _en_wall(nm).replace(" ", "_")
-            if ly not in doc.layers:
-                lay = doc.layers.add(ly)
-                try: lay.rgb = (245, 158, 11)
-                except Exception: pass
-            msp.add_lwpolyline([(cursor, 0), (cursor + Lmm, 0), (cursor + Lmm, hh), (cursor, hh)],
-                               close=True, dxfattribs={'layer': ly})
-            try:
-                t = msp.add_text("%s (fold) L %.0f x H %.0f mm" % (_en_wall(nm), Lmm, hh), dxfattribs={'layer': 'LABEL', 'height': th})
-                t.set_placement((cursor, hh + th * 0.6))
-            except Exception:
-                pass
             wall_pieces.append({"name": nm, "name_en": _en_wall(nm), "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
-            cursor += Lmm + gap
-        # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
         dxf_b64 = ""
         # 📄 SVG ชุดชั้นตัด (หน่วย มม. · ตำแหน่งจริงซ้อนกัน · แยก <g> ต่อชั้น เปิดใน LightBurn/Illustrator ได้)
         svg_cut = ""
@@ -5978,7 +6136,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except Exception:
             led_info = {}
 
-        return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
+        _resp9 = {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
                             "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"],
@@ -6019,6 +6177,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "print_base64": print_b64, "print_info": print_info,     # 🖨️ ไฟล์งานพิมพ์ UV / สติ๊กเกอร์
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
+        if _rck is not None:
+            _cache_put(_LAYERSET_CACHE, _rck, _resp9)   # ⚡ จำผลไว้ตอบคำขอซ้ำทันที
+        return _resp9
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 
@@ -6316,6 +6477,14 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
     with open(inp, "wb") as f:
         f.write(await file.read())
     try:
+        # 🧩 กันภาพซ้อน: ถ้าไฟล์ที่ส่งมาคือ 'แผ่นชุดชั้นตัดของระบบเอง' ให้ดึงเฉพาะพาเนลรูปงานจริง
+        _own_msg = None
+        try:
+            _own_inp, _own_msg = _own_sheet_art(inp)
+            if _own_inp:
+                inp = _own_inp
+        except Exception:
+            _own_msg = None
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
         #    ปิดตายไว้ ห้ามเปิดจากภายนอก (ยังรับพารามิเตอร์ไว้กันหน้าเว็บเวอร์ชันเก่ายิงมาแล้วพัง)
