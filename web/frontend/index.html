@@ -462,14 +462,6 @@ select.numin{cursor:pointer}
               <input class="numin" id="neonMargin" type="number" value="5" min="1" max="20" step="0.5" style="width:70px;padding:5px" title="ระยะแผ่นอะคริลิคออกจากตัวงาน (ซม.)">
               <span style="font-size:11px;color:#64748b">ซม.</span>
             </div>
-            <!-- 📐 ขนาดแผ่น 4 เหลี่ยม กำหนดเอง (ว่าง = อัตโนมัติครอบงาน+เผื่อขอบ) -->
-            <div id="neonPlSize" style="display:none;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
-              <span style="font-size:11px;color:#64748b">ขนาดแผ่น</span>
-              <input class="numin" id="neonPlW" type="number" min="5" step="0.5" placeholder="อัตโนมัติ" style="width:76px;padding:5px" title="กว้างแผ่นอะคริลิค (ซม.) — เว้นว่าง = อัตโนมัติ">
-              <span style="font-size:11px;color:#64748b">×</span>
-              <input class="numin" id="neonPlH" type="number" min="5" step="0.5" placeholder="อัตโนมัติ" style="width:76px;padding:5px" title="สูงแผ่นอะคริลิค (ซม.) — เว้นว่าง = อัตโนมัติ">
-              <span style="font-size:11px;color:#64748b">ซม. · ว่าง = อัตโนมัติ · แผ่นวางกึ่งกลางตัวงาน</span>
-            </div>
             <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm (ตามทรง/4เหลี่ยม) เผื่อขอบปรับได้ · เจาะรูยึด 4 จุด (อยู่ในแผ่นเสมอ) + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
           </div>
           <!-- 💡 กล่องไฟอะคริลิค ไฟออกรอบ (type 18) -->
@@ -5661,9 +5653,7 @@ var TRIMW=1, TRIMDIR='out';
     var ln=document.querySelectorAll('.neonLn'); window.NEON_LINE=window.NEON_LINE||'double';
     for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); }; }
     var pl=document.querySelectorAll('.neonPl'); window.NEON_PLATE=window.NEON_PLATE||'contour';
-    var _plSz=function(){ var d=$('neonPlSize'); if(d)d.style.display=(window.NEON_PLATE==='rect')?'flex':'none'; };
-    for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); _plSz(); }; }
-    _plSz(); }
+    for(var k=0;k<pl.length;k++){ pl[k].onclick=function(){ window.NEON_PLATE=this.getAttribute('data-pl'); for(var m=0;m<pl.length;m++)pl[m].classList.remove('on'); this.classList.add('on'); }; } }
   // 🖨️ คำอธิบายวิธีพิมพ์ (เปลี่ยนตามที่เลือก)
   window._fpHint=function(){ var s=$('facePrint'), h=$('facePrintHint'); if(!s||!h)return;
     h.innerHTML={
@@ -5929,7 +5919,7 @@ $('goLayer').onclick=function(){
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');window._mtxAppend(fd);fd.append('arm_color',ACOL||'');
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
-  fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');fd.append('neon_plate_w_cm',($('neonPlW')&&$('neonPlW').value)||'0');fd.append('neon_plate_h_cm',($('neonPlH')&&$('neonPlH').value)||'0');
+  fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
   fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -6178,7 +6168,7 @@ $('goLayer').onclick=function(){
       fd.append('print_spec',($('pmPrint')&&$('pmPrint').value)||'');
       fd.append('delivery_date',($('pmDelivery')&&$('pmDelivery').value)||'');
       fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
-      fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');fd.append('neon_plate_w_cm',($('neonPlW')&&$('neonPlW').value)||'0');fd.append('neon_plate_h_cm',($('neonPlH')&&$('neonPlH').value)||'0');
+      fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
       try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
       _apiFetch((API||'')+'/api/job-sheet',fd).then(_apiJson).then(function(j){
         btn.disabled=false;btn.textContent=old;
