@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-28-c",
-        "build_note": "รูป+เส้นใช้ชุดเดียวกัน · ขนาดวัดจากขอบนอกคิ้ว · เส้นตัดใน .ai เป็นเส้นเปล่า",
+            "build": "2026-07-29-e",
+        "build_note": "ฐาน 2026-07-28-c เป๊ะ + กู้ตัวอักษรเล็กชั้นหดเข้า (ลดค่าหดอัตโนมัติเฉพาะตัวที่จะหาย)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -5429,16 +5429,53 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           from vectorcnc import mount_frame as _MFL
                           _lts = _MFL.split_letters(full)
                           _acc = []
+                          # 🔤 ============ กู้ตัวอักษรเล็กในชั้น 'หดเข้า' (เช่น อะคริลิค -0.25 ซม.) ============
+                          #    หลักการช่างจริง: แผ่นหลัง/คิ้ว ตัดตัวอักษรตัวนี้ได้ -> อะคริลิคก็ต้องตัดได้
+                          #    ตัวเล็ก (เช่น 'Dessert Cafe' สูง 2-3 ซม.) โดนหดเต็มค่าแล้ว 'หายทั้งตัว' หรือแตกเป็นเศษ
+                          #    เดิม: ข้ามตัวนั้นไปเงียบ ๆ -> ชั้นอะคริลิคของตัวเล็กหายจากไฟล์ตัด
+                          #    ใหม่: ลดค่าหด 'เฉพาะตัวที่จะหาย' ทีละครึ่ง จนตัวนั้นรอด (สุดทางคือเท่าตัวจริง 100%)
+                          #    ⚠️ ตัวที่หดได้ตามปกติ เดินโค้ดเส้นเดิมทุกบรรทัด -> ไฟล์ตัดเดิมไม่ขยับแม้แต่ไบต์เดียว
+                          def _ok9(_gp, _bp):
+                              if _gp is None or _gp.is_empty:
+                                  return False
+                              try:
+                                  if _gp.area < _bp.area * 0.10:      # เหลือแต่เศษกระจาย = ไม่รอด
+                                      return False
+                                  if _gp.buffer(-0.4, join_style=2).is_empty:   # บางกว่า 0.8 มม. ทั้งชิ้น = ตัดไม่ได้จริง
+                                      return False
+                              except Exception:
+                                  pass
+                              return True
+                          _rescued = 0; _resmin = off
                           for _lt in _lts:
                               _gg = _mbuf(_lt, off)
+                              _offL = off
+                              if not _ok9(_gg, _lt):
+                                  _try9 = off
+                                  while abs(_try9) > 0.62:            # ลดครึ่งไปเรื่อย ๆ (ต่ำสุด ~0.6 มม.)
+                                      _try9 = _try9 * 0.5
+                                      _g29 = _mbuf(_lt, _try9)
+                                      if _ok9(_g29, _lt):
+                                          _gg = _g29; _offL = _try9
+                                          break
+                                  else:
+                                      _gg = _lt; _offL = 0.0          # เล็กจริง -> ใช้เท่าตัวจริง (เหมือนแผ่นหลัง)
+                                  _rescued += 1
+                                  if abs(_offL) < abs(_resmin):
+                                      _resmin = _offL
                               if _gg is None or _gg.is_empty:
                                   continue
                               _shp = None                 # 🥇 คมกริบแบบเดียวกับปุ่มแปลงเส้นตัด
                               try:
-                                  _shp = _sharp_offset(_lt, off, _gg)
+                                  _shp = _sharp_offset(_lt, _offL, _gg)
                               except Exception:
                                   _shp = None
                               _acc += _shp if _shp else _cut_subs_offset(_gg, float(real_width_mm))
+                          if _rescued:
+                              warns.append("🔤 กู้ตัวอักษรเล็กในชั้น '%s' %d ตัว: ตัวที่หดเต็มค่า %.2f ซม. แล้วจะหาย "
+                                           "ระบบลดค่าหดให้อัตโนมัติเฉพาะตัวนั้น (ต่ำสุดเหลือ %.2f ซม.) — "
+                                           "แผ่นหลัง/คิ้วตัดตัวนี้ได้ อะคริลิคจึงตัดได้ด้วย ไม่หายอีกแล้ว"
+                                           % (L["name"], _rescued, off / 10.0, _resmin / 10.0))
                           if _acc:
                               _use_raw_punch = _acc
                       except Exception:
