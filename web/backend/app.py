@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-n",
+            "build": "2026-07-29-q",
         "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1850,6 +1850,21 @@ def _vtrace_full_mm(img_path, real_width_mm):
 
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
+    # ⚡ ไฟล์เดิม + ขนาดเดิม + ค่าเนียนเดิม = รูปทรง/เส้นดิบ/สถานะเอนจิ้น เดิมเป๊ะ ->
+    #    จำครบชุดแล้วคืนทันที (ผู้ใช้สลับประเภทป้ายของไฟล์เดิมบ่อยมาก งานอ่านไฟล์ซ้ำหายทั้งก้อน)
+    #    ห้ามจำครึ่ง ๆ: ต้องคืน _RAW_SUBS และ _TRACE_ENG ให้เหมือนตอนคำนวณจริงทุกช่อง
+    import copy as _cpc
+    try:
+        _ckf = (_file_sha1(inp), round(float(real_width_mm), 3), round(float(real_height_mm), 3),
+                int(n_colors), float(_CUT_SMOOTH.get("mm", 0.0)))
+        _hitf = _LFM_CACHE["map"].get(_ckf)
+    except Exception:
+        _ckf = None; _hitf = None
+    if _hitf is not None:
+        _RAW_SUBS["subs"] = _cpc.deepcopy(_hitf["raw_subs"])
+        for _kk in ("mode", "rings_in", "rings_used", "rings_lost", "holes", "frame_dropped"):
+            _TRACE_ENG[_kk] = _cpc.deepcopy(_hitf["trace"].get(_kk))
+        return _hitf["full"]
     from shapely.ops import unary_union
     from shapely.affinity import scale as _scale
     from vectorcnc import trace_engine, vector_import
@@ -2088,6 +2103,15 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     ph = b[3] - b[1]
     if _rh > 1.0 and ph > 0.5 and abs(_rh - ph) > 0.15:
         full = _scale(full, xfact=1.0, yfact=_rh / ph, origin=(0, b[1]))
+    if _ckf is not None:
+        try:
+            _cache_put(_LFM_CACHE, _ckf, {
+                "full": full,                                   # shapely แก้ค่าในตัวไม่ได้ -> แชร์ได้
+                "raw_subs": _cpc.deepcopy(_RAW_SUBS.get("subs")),
+                "trace": {_kk: _cpc.deepcopy(_TRACE_ENG.get(_kk))
+                          for _kk in ("mode", "rings_in", "rings_used", "rings_lost", "holes", "frame_dropped")}})
+        except Exception:
+            pass
     return full
 
 
@@ -2661,6 +2685,14 @@ def _spec_sheet_svg(out_layers):
 
 def _art_data_uri(path, max_px=1400):
     """crop รูปงานให้เหลือเฉพาะตัวงาน (ตัดพื้นขาว/โปร่ง) -> data URI (PNG) ไว้แปะบนหน้า 3 มิติ"""
+    # ⚡ งานหนัก (เรนเดอร์+ครอป+ย่อ+encode หลายวินาที) แต่ไฟล์เดิม+ความละเอียดเดิม = ผลเดิมเป๊ะ
+    try:
+        _ck9 = (_file_sha1(path), int(max_px))
+        _hit9 = _ARTURI_CACHE["map"].get(_ck9)
+        if _hit9 is not None:
+            return _hit9
+    except Exception:
+        _ck9 = None
     from PIL import Image
     import io as _io, base64 as _b64, numpy as _np
     # 🖼️ ไฟล์เวกเตอร์ (.ai/.pdf/.eps/.svg) เปิดด้วย PIL ตรง ๆ ไม่ได้ -> เดิมจะ error เงียบ ๆ
@@ -2688,7 +2720,10 @@ def _art_data_uri(path, max_px=1400):
         sc = max_px / float(max(im.size))
         im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))), Image.LANCZOS)
     buf = _io.BytesIO(); im.save(buf, "PNG")
-    return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+    _uri9 = "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+    if _ck9 is not None:
+        _cache_put(_ARTURI_CACHE, _ck9, _uri9)
+    return _uri9
 
 
 # 🪙 พื้นผิวสแตนเลส (gradient เมทัลลิก): (สีอ่อน, สีกลาง, สีเข้ม, แฮร์ไลน์?)
@@ -2708,6 +2743,36 @@ _CUT_SMOOTH = {"mm": 0.0}   # 🧈 รีดคลื่นเส้นตัด
 # 🏆 เส้นโค้ง Bézier 'ดิบ' จากเอนจิ้น (หน่วย มม. · พิกัดเดียวกับ polygon ที่ trace ได้)
 #    ใช้ส่งเข้าไฟล์ตัดโดยตรงเหมือนปุ่ม 'แปลงเป็นเส้นตัด' — ไม่ผ่านการแตกจุด+ฟิตใหม่ (ซึ่งทำให้เส้นเละ)
 _RAW_SUBS = {"subs": None}
+
+
+# ⚡ ============ แคชกันงานซ้ำ (แก้ 502 — ไม่ลดจุดในรูปแม้แต่จุดเดียว) ============
+#    หลักการ: อินพุตเดิมทุกไบต์ + ค่าตั้งเดิมทุกตัว -> ผลลัพธ์เดิมเป๊ะ จึงจำไว้ตอบซ้ำได้ทันที
+#    (เบราว์เซอร์ยิงซ้ำหลัง 502 / ผู้ใช้สลับประเภทป้ายของไฟล์เดิม = งานซ้ำทั้งนั้น)
+#    เก็บจำกัดจำนวน (FIFO) กันแรมบาน · แคชอยู่ต่อ worker (คำขอใน worker เดียวกันวิ่งทีละคำขอ)
+_LAYERSET_CACHE = {"keys": [], "map": {}, "cap": 4}    # ผลลัพธ์ทั้งคำขอ /api/layer-set
+_LFM_CACHE = {"keys": [], "map": {}, "cap": 4}         # รูปทรง + เส้นดิบ + สถานะเอนจิ้น ต่อไฟล์
+_ARTURI_CACHE = {"keys": [], "map": {}, "cap": 6}      # ภาพงาน (data URI) ต่อไฟล์×ความละเอียด
+
+
+def _cache_put(C, key, val):
+    try:
+        if key in C["map"]:
+            return
+        C["map"][key] = val; C["keys"].append(key)
+        while len(C["keys"]) > int(C.get("cap", 4)):
+            _old = C["keys"].pop(0); C["map"].pop(_old, None)
+    except Exception:
+        pass
+
+
+def _file_sha1(path):
+    import hashlib as _hl
+    h = _hl.sha1()
+    with open(path, "rb") as _f:
+        for _ch in iter(lambda: _f.read(1 << 20), b""):
+            h.update(_ch)
+    return h.hexdigest()
+
 
 
 def _dedup_subs(subs, tol=0.08):
@@ -4833,8 +4898,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
     tmp = tempfile.mkdtemp()
     inp = os.path.join(tmp, file.filename or "in.png")
+    _body9 = await file.read()
     with open(inp, "wb") as f:
-        f.write(await file.read())
+        f.write(_body9)
+    # ⚡ คำขอซ้ำเป๊ะ (ไฟล์เดิมทุกไบต์ + ค่าตั้งเดิมทุกช่อง) -> ตอบจากแคชทันที
+    #    นี่คือเกราะกันเคส 502: เบราว์เซอร์/ผู้ใช้กดซ้ำ งานหนักไม่ถูกคำนวณใหม่อีกรอบ
+    try:
+        import hashlib as _hl9
+        _rck = (_hl9.sha1(_body9).hexdigest(), str(sign_type), float(real_width_mm), float(real_height_mm),
+                float(return_depth_cm), float(trim_width_cm), str(trim_dir), str(face_color), str(side_color),
+                int(n_colors), str(arm), float(arm_len_cm), str(arm_side), str(arm_adjust), float(arm_travel_cm),
+                str(neon_color), str(neon_line), str(neon_plate), float(neon_margin_cm),
+                int(frame_bars), float(frame_level_cm), float(frame_gap_cm), float(frame_x_cm),
+                float(frame_standoff_cm), float(wire_offset_cm), float(led_pitch_cm), float(arm_edge_cm),
+                float(arm_gap_cm), float(leg_h_cm), float(leg_span_cm), float(caster_mm), str(caster_lock),
+                float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
+                str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
+                float(cut_smooth_mm), str(face_print), str(material_groups),
+                float(logo_w_cm), float(logo_h_cm), str(safe_mode))
+        _rhit = _LAYERSET_CACHE["map"].get(_rck)
+        if _rhit is not None:
+            return _rhit
+    except Exception:
+        _rck = None
+    del _body9
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
         # 🔒 เลิกใช้ 'โหมดปลอดภัย' แล้ว — เส้นทางปกติผ่านด่านตรวจคุณภาพเส้นตัดอยู่แล้ว
@@ -5810,51 +5897,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 mount_plate = {}
 
-        # DXF: แยกแต่ละชั้น 'วางห่างกัน' แนวนอน (ไม่ทับซ้อน) + คนละ layer/สี + ป้ายชื่อชั้น
-        import ezdxf
-
-        def _bbox_subs(subs):
-            mnx = mny = 1e18; mxx = mxy = -1e18
-            for sp in subs:
-                pts = [sp["start"]]
-                for s in sp["segs"]:
-                    pts.append(s[1]) if s[0] == "L" else pts.extend([s[1], s[2], s[3]])
-                for (x, y) in pts:
-                    mnx = min(mnx, x); mny = min(mny, y); mxx = max(mxx, x); mxy = max(mxy, y)
-            return mnx, mny, mxx, mxy
-
-        doc = ezdxf.new('R2010'); doc.units = ezdxf.units.MM; msp = doc.modelspace()
-        if 'LABEL' not in doc.layers:
-            doc.layers.add('LABEL')
-        metas = [(L, _bbox_subs(L["subs"])) for L in out_layers]
-        Smax = max([1.0] + [max(b[2] - b[0], b[3] - b[1]) for _, b in metas])
-        gap = Smax * 0.16
-        gmaxy = max(b[3] for _, b in metas)      # baseline ร่วม (flip Y = CAD Y ขึ้น)
-        th = max(6.0, Smax * 0.03)
-        cursor = 0.0
-        for L, b in metas:
-            w = b[2] - b[0]; h = b[3] - b[1]
-            xshift = cursor - b[0]
-
-            def _tf(p, _xs=xshift, _my=gmaxy):
-                return (p[0] + _xs, _my - p[1])
-            lyname = _dxf_layer('CUT_' + _en_layer(L["name"]))
-            if lyname not in doc.layers:
-                lay = doc.layers.add(lyname)
-                try: lay.rgb = L["rgb"]
-                except Exception: pass
-            for sp in L["subs"]:
-                try:
-                    nesting._add_contour_dxf(msp, sp, lyname, tf=_tf)
-                except Exception:
-                    pass
-            off = L["off"]; oc = "full" if abs(off) < 1e-6 else ("%+.2f cm" % (off / 10.0))
-            try:
-                t = msp.add_text("%s (%s)" % (_en_layer(L["name"]), oc), dxfattribs={'layer': 'LABEL', 'height': th})
-                t.set_placement((cursor, gmaxy - b[1] + th * 0.6))
-            except Exception:
-                pass
-            cursor += w + gap
+        # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
+        # ⚡ เดิมยังนั่ง 'สร้างเอกสาร DXF เต็มใบ' (วนเพิ่มทุกเส้นเข้า ezdxf) แล้วโยนทิ้งเพราะไม่ส่งออก
+        #    งานละเอียด (เส้นเป็นหมื่น) เสียเวลาฟรีหลายวินาที = หนึ่งในต้นเหตุ 502
+        #    -> ตัดการสร้างทิ้งทั้งก้อน เหลือเฉพาะ 'รายการชิ้นยกขอบ' ที่หน้าเว็บใช้จริง (ค่าเดิมเป๊ะ)
         # ชิ้นตัด 'ยกขอบ' (ผนังตั้งฉากแผ่นหลัง) = แถบแบน ยาว=เส้นรอบรูป × สูง=ความสูงผนัง (ตัดแล้วพับ/ดัด)
         wall_pieces = []
         peri_mm = float(full.length)
@@ -5863,21 +5909,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if hh <= 0 or not nm.startswith("ยกขอบ"):
                 continue
             Lmm = peri_mm
-            ly = 'WALL_' + _en_wall(nm).replace(" ", "_")
-            if ly not in doc.layers:
-                lay = doc.layers.add(ly)
-                try: lay.rgb = (245, 158, 11)
-                except Exception: pass
-            msp.add_lwpolyline([(cursor, 0), (cursor + Lmm, 0), (cursor + Lmm, hh), (cursor, hh)],
-                               close=True, dxfattribs={'layer': ly})
-            try:
-                t = msp.add_text("%s (fold) L %.0f x H %.0f mm" % (_en_wall(nm), Lmm, hh), dxfattribs={'layer': 'LABEL', 'height': th})
-                t.set_placement((cursor, hh + th * 0.6))
-            except Exception:
-                pass
             wall_pieces.append({"name": nm, "name_en": _en_wall(nm), "length_cm": round(Lmm / 10.0, 1), "height_cm": round(hh / 10.0, 1)})
-            cursor += Lmm + gap
-        # 📦 ส่งออกเฉพาะ .ai (ชุดชั้นตัด แยกเลเยอร์) — เลิกสร้าง DXF/SVG แล้ว (เร็วขึ้น + ไฟล์เบา)
         dxf_b64 = ""
         # 📄 SVG ชุดชั้นตัด (หน่วย มม. · ตำแหน่งจริงซ้อนกัน · แยก <g> ต่อชั้น เปิดใน LightBurn/Illustrator ได้)
         svg_cut = ""
@@ -6055,7 +6087,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except Exception:
             led_info = {}
 
-        return {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
+        _resp9 = {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
                             "kind": L.get("kind", "solid"), "color": L["color"], "w_mm": L["w_mm"], "h_mm": L["h_mm"],
@@ -6096,6 +6128,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "print_base64": print_b64, "print_info": print_info,     # 🖨️ ไฟล์งานพิมพ์ UV / สติ๊กเกอร์
                 "mount": str(arm or "none"), "arm_len_cm": float(arm_len_cm),
                 "mount_plate": mount_plate}
+        if _rck is not None:
+            _cache_put(_LAYERSET_CACHE, _rck, _resp9)   # ⚡ จำผลไว้ตอบคำขอซ้ำทันที
+        return _resp9
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
 

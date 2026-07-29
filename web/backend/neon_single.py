@@ -403,7 +403,7 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
             _bmin = min(pbb[2] - pbb[0], pbb[3] - pbb[1])
             # 🧿 ก้อนทึบ = เทียบ 'สัดส่วน' ไม่ใช่มิลลิเมตรตายตัว (ป้ายใหญ่อักษรหนาต้องยังเป็นเส้นอักษร)
             #   ทึบจริง = เนื้อหนา ≥ 70% ของขนาดตัว (จุด/แผ่นกลม) หรือชิ้นกราฟิกใหญ่เกือบเต็มความสูงงาน
-            _solid = (med > _bmin * 0.70) or (_bmin > 0.55 * min(W, H))
+            _solid = (len(pg.interiors) == 0) and ((med > _bmin * 0.70) or (_bmin > 0.55 * min(W, H)))
             if _solid:
                 for ring in [list(pg.exterior.coords)] + [list(h.coords) for h in pg.interiors]:
                     try:
@@ -415,18 +415,10 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": True, "mode": "contour"})
             else:
-                # 💡 เส้นเดี่ยวที่ 'ตรงตามตัวอักษรทุกตัว': เส้นขอบชุดเดียวกับเส้นคู่ ขยับเข้าครึ่งความหนา
-                #    -> เส้นเดียววิ่งไล่ครบทุกส่วนของตัวอักษร (a มีพุง, e มีห่วง) เนียนเท่าขอบ
-                #    ช่วงเส้นบางสองฝั่งจะทับกันเป็นเส้นเดียวใต้ท่อ 8 มม. พอดี
-                q25 = ws[max(0, int(len(ws) * 0.25))]
-                # 📏 ระยะขยับเข้า: ลึกพอให้สองฝั่งเหลือช่องแคบกว่าท่อ -> รวมเป็นเส้นเดียวใต้ท่อ 8 มม.
-                _t = max(q25 * 0.5, (med - tube_mm * 0.8) * 0.5)
-                _rr = _inset_rings(pg, _t, tube_mm=tube_mm)
-                if _rr:
-                    for cc in _rr:
-                        subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
-                else:                                        # กันเหนียว: เส้นแกนกลาง
-                    subs.extend(piece_paths.get(i + 1, []))
+                # 💡 กติกาสุดท้าย (พี่สั่ง 2026-07-29): 'ลากเส้นเดียว 8 มม. จริง ๆ เท่านั้น' ทุกชิ้น
+                #    = เส้นกึ่งกลางลายเส้น เส้นเดียว (หลักเดียวกับการสร้างเส้นตัด — สูตรเดียว ไม่ซับซ้อน)
+                #    อักษรลายเส้นมีช่องใน -> ลูปเดียวตามรูปอักษร · เส้นทึบ -> แกนกลางเส้นเดียว
+                subs.extend(piece_paths.get(i + 1, []))
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": (med + 1e-6) >= need and (mn + 1e-6) >= tube_mm, "mode": "center"})
         if not subs:
