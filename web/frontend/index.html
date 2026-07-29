@@ -5247,9 +5247,11 @@ window.restoreDesignJob=function(d,job){
 };
 // 🌡️ สีแสงตามอุณหภูมิสี (Kelvin) — เทียบสีหลอด LED จริง (blackbody โดยประมาณ)
 function _kelvinHex(k){ var m={'2700':'#ff9e3d','3000':'#ffb45e','4000':'#ffd9a0','5000':'#fff3dc','6500':'#dfeaff','8000':'#b9d4ff','11000':'#93bbff'}; return m[String(k)]||''; }
-function _glowColor(t){ if(GLOW.acr) return GLOW.acr;
+function _glowColor(t){
+  // 💡 กติกาใหม่ (2026-07-29): สีแสง = ตามลิสต์ K เท่านั้น ไม่ผูกกับสีอะคริลิค
+  //    ยังไม่เลือก K -> ถือเป็นแสงขาวมาตรฐาน 6500K
   if(GLOW.kelvin){ var kh=_kelvinHex(GLOW.kelvin); if(kh)return kh; }
-  return t==='cool'?'#7fb2ff':(t==='white'?'#ffffff':'#ff9d3c');}
+  return _kelvinHex('6500')||'#eef4ff';}
 window._setGLK=function(v){ GLOW.kelvin=v||'';
   var gt=document.querySelectorAll('.glowT');
   for(var j=0;j<gt.length;j++)gt[j].classList.toggle('on', !GLOW.kelvin && gt[j].getAttribute('data-t')===GLOW.temp);
@@ -5259,14 +5261,19 @@ window._setGLK=function(v){ GLOW.kelvin=v||'';
   // 🔗 ซิงก์สเปคไฟในใบสั่งผลิตอัตโนมัติ (ถ้ามีตัวเลือกตรงกัน)
   try{ var lm={'2700':'Warm White 2700K','3000':'Warm White 3000K','4000':'Cool White 4000K','6500':'Daylight 6500K','8000':'Cool Daylight 8000K','11000':'Super Cool White 11000K'};
     var pl=$('pmLedColor'); if(pl&&v&&lm[v]){ for(var q=0;q<pl.options.length;q++)if(pl.options[q].value===lm[v]){pl.value=lm[v];break;} } }catch(_e){}
-  // 💡 ย้อม 'ตัวโลโก้เรืองแสง' (หน้าอะคริลิค) เป็นสีอุณหภูมินั้นจริง -> เห็นสีไฟชัดในตัวป้าย ไม่ใช่แค่แสงฟุ้งรอบ
-  if(v){ var kh=_kelvinHex(v); if(kh){ FCOL=kh; GLOW.acr=null;
-    if($('faceColor'))$('faceColor').value=kh;
-    var od=$('acrOffD'); if(od)od.classList.add('on');
-    try{ recolor3d(); }catch(_e){} } }
+  // 💡 กติกาใหม่: K คือ 'สีของแสง' อย่างเดียว — ห้ามไปเปลี่ยนสีหน้าอะคริลิคที่ผู้ใช้เลือก
   applyGlow(); };
 function _hexA(c,a){var h=c.replace('#','');return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';}
-function recolor3d(){var img=$('ls3dImg');if(!img)return;
+function _mixLight(acr, light){
+  // 🔆 ไฟออกหน้า: สีที่เห็น = แสงสี K ส่องผ่าน/สะท้อนเนื้ออะคริลิค (คูณสีแล้วเร่งสว่างแบบเปิดไฟจริง)
+  try{
+    var A=_hex2rgb(acr), L=_hex2rgb(light), o=[0,0,0];
+    for(var i=0;i<3;i++){ o[i]=Math.round(255*Math.pow((A[i]/255)*(L[i]/255), 0.55)); }
+    return '#'+o.map(function(x){x=Math.max(0,Math.min(255,x));var h=x.toString(16);return h.length<2?'0'+h:h;}).join('');
+  }catch(_e){ return acr; }
+}
+function _faceShow(){ return window._fcolMix || FCOL; }   // สีหน้าที่กำลังแสดงจริง
+function recolor3d(){var img=$('ls3dImg');if(!img)return; var FCOL=_faceShow();
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
   function setFill(p,col){ try{ var cf=(p.getAttribute('fill')||''); if(cf.indexOf('url(#mtx')===0)return; p.setAttribute('fill',col); if(p.style){ p.style.fill=col; } }catch(e){} }   // ⚠️ style ทับ attribute ได้ -> ตั้งทั้งคู่ · 🪙 ห้ามทับพื้นผิวโลหะ (gradient)
   function paint(sel, cands, newCol){
@@ -5322,7 +5329,7 @@ function _recolor3dRaster(){
     var g=c.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,c.width,c.height);
     g.drawImage(im,0,0,c.width,c.height);
     try{
-      var d=g.getImageData(0,0,c.width,c.height), a=d.data, F=_hex2rgb(FCOL), S=_hex2rgb(SCOL);
+      var d=g.getImageData(0,0,c.width,c.height), a=d.data, F=_hex2rgb(_faceShow()), S=_hex2rgb(SCOL);
       for(var i=0;i<a.length;i+=4){
         if(a[i+3]<8)continue;
         var r=a[i],gg=a[i+1],b=a[i+2];
@@ -5575,6 +5582,9 @@ try{ if($('mainArm')) $('mainArm').addEventListener('change',_syncArmUI); _syncA
 function applyGlow(){
   var wrap=$('ls3dWrap'),g=$('ls3dGlow'),img=$('ls3dImg');if(!wrap||!g||!img)return;
   var c=_glowColor(GLOW.temp);
+  // 🎨 หน้าอะคริลิค: ปิด/ออกหลัง/ออกรอบ = สีที่เลือกคงเดิม · ออกหน้า = สีอะคริลิคผสมสีแสง K
+  var _wantMix=(GLOW.mode==='front')?_mixLight(FCOL,c):null;
+  if((window._fcolMix||null)!==_wantMix){ window._fcolMix=_wantMix; try{ recolor3d(); }catch(_e){} }
   /* 💡 กติกาเดียว: แสงเรืองออกจาก "ตัวป้าย" เท่านั้น
      - ห้ามใช้ไล่สีเต็มกรอบสี่เหลี่ยมเป็นแสง เพราะมันคือแสงของ 'พื้นหลัง' ไม่ใช่ของป้าย
      - ใส่ drop-shadow ที่ <g id="w3dBody"> -> ฮาโลวิ่งตามรูปตัวอักษรจริงทุกเส้น
@@ -5583,18 +5593,16 @@ function applyGlow(){
   var body=_glowBody(), tgt=body||img.querySelector('svg')||img;
   if(body){ img.style.filter='none'; }                 // ถ้ามีกลุ่มตัวป้ายแล้ว ไม่ต้องใส่ที่ทั้งภาพ
   function set(f){ try{ tgt.style.filter=f; }catch(_e){ img.style.filter=f; } }
-  if(GLOW.mode==='off'){ wrap.style.background='#faf9ff'; set('none'); img.style.filter='none'; }
+  wrap.style.background='#faf9ff';                     // 🧼 พื้นหลังสว่างเสมอ (พี่สั่ง: ไม่เอาพื้นดำหลังภาพ)
+  if(GLOW.mode==='off'){ set('none'); img.style.filter='none'; }
   else if(GLOW.mode==='front'){        // ไฟออกหน้า = หน้าป้ายสว่างเข้าหาเรา ฟุ้งใกล้ตัว
-    wrap.style.background='#15151c';
     set('drop-shadow(0 0 2px '+_hexA(c,0.95)+') drop-shadow(0 0 7px '+_hexA(c,0.8)+')'
        +' drop-shadow(0 0 18px '+_hexA(c,0.45)+') brightness(1.14) saturate(1.10)'); }
   else if(GLOW.mode==='around'){       // 💫 ไฟออกรอบ = เรืองทุกด้านรอบตัวป้าย ฟุ้งกว้างสุด
-    wrap.style.background='#120f08';
     set('drop-shadow(0 0 3px '+_hexA(c,1)+') drop-shadow(0 0 11px '+_hexA(c,0.85)+')'
        +' drop-shadow(0 0 26px '+_hexA(c,0.55)+') drop-shadow(0 0 52px '+_hexA(c,0.32)+')'
        +' brightness(1.10) saturate(1.08)'); }
   else{                                 // ไฟออกหลัง = ฮาโลนุ่มด้านหลัง ตัวป้ายยังทึบ พื้นหลังมืด
-    wrap.style.background='#080d18';
     set('drop-shadow(0 0 6px '+_hexA(c,0.9)+') drop-shadow(0 0 18px '+_hexA(c,0.7)+')'
        +' drop-shadow(0 0 40px '+_hexA(c,0.45)+') drop-shadow(0 0 72px '+_hexA(c,0.22)+')'); }
 }
@@ -6016,8 +6024,6 @@ $('goLayer').onclick=function(){
         '<span style="font-size:13px;font-weight:700;color:#7c3aed">🧊 3D Structure (dimensioned)</span>'+
         '<span style="font-size:11px;color:#64748b">ไฟ:</span><div id="glowMode" style="display:inline-flex;gap:3px">'+
           '<button type="button" class="chip glowM on" data-g="off">ปิด</button><button type="button" class="chip glowM" data-g="front">ออกหน้า</button><button type="button" class="chip glowM" data-g="back">ออกหลัง</button><button type="button" class="chip glowM" data-g="around">💫 ออกรอบ</button></div>'+
-        '<span style="font-size:11px;color:#64748b;margin-left:6px">แสง:</span><div id="glowTemp" style="display:inline-flex;gap:3px">'+
-          '<button type="button" class="chip glowT on" data-t="warm">วอร์ม</button><button type="button" class="chip glowT" data-t="white">ขาว</button><button type="button" class="chip glowT" data-t="cool">คูล</button></div>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#0f766e;font-weight:700" title="รีดคลื่นพิกเซลจากภาพต้นฉบับ — ยิ่งมากยิ่งเนียน (มุมคมยังคงอยู่)">🧈 เนียนเส้นตัด'+
           '<select id="cutSmooth" onchange="window.CUTSM=this.value;try{$(\'goLayer\').click();}catch(_e){}" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #5eead4;border-radius:6px">'+
             ['0','0.4','0.8','1.2','1.6'].map(function(v){var lb={'0':'ปิด (เหมือนปุ่มเป๊ะ)','0.4':'เบา 0.4 มม.','0.8':'ปกติ 0.8 มม.','1.2':'มาก 1.2 มม.','1.6':'สูงสุด 1.6 มม.'}[v];
