@@ -31,6 +31,9 @@ ENV PORT=8000
 #    ตั้งเท่าจำนวน CPU ของแพ็กเกจ (Render Pro Plus = 4 CPU / 8 GB)
 #    แรมที่ใช้จริง ~250 MB ต่อ worker -> 4 workers ≈ 1 GB จาก 8 GB (เหลือเฟือ)
 #    เปลี่ยนค่าได้จาก Environment ของ Render โดยไม่ต้อง build ใหม่: WEB_CONCURRENCY
-ENV WEB_CONCURRENCY=4
+# ⚠️ ตั้งตามแรมของแพ็กเกจจริง: งานเวกเตอร์หนักกินแรม ~1.3GB/คำขอ (วัดจริง 2026-07-29)
+#    free/starter (512MB) -> 1 worker ก็ยังไม่พอสำหรับงานใหญ่ (ต้องอัปเกรดแผน)
+#    Standard 2GB -> 1 · Pro 4GB -> 2 · Pro Plus 8GB -> 4 (ปรับที่ Environment ของ Render ได้ ไม่ต้อง build ใหม่)
+ENV WEB_CONCURRENCY=1
 # โฮสต์ (Render/Railway/Fly) จะ inject $PORT ให้เอง
 CMD uvicorn app:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY} --timeout-keep-alive 65
