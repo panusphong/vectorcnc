@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-q",
-        "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
+            "build": "2026-07-30-u",
+        "build_note": "ฐาน -t (แก้กล่องฉลุหน้า) + แยกปุ่ม: ออกแบบ 3 มิติ / สร้างไฟล์ตัด .ai (make_ai) — ค่าเริ่มต้นสร้างครบเหมือนเดิม",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4891,6 +4891,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
+                    make_ai: str = Form("1"),
                     material_groups: str = Form(""),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
                     safe_mode: str = Form("0")):
@@ -4915,7 +4916,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
-                float(logo_w_cm), float(logo_h_cm), str(safe_mode))
+                float(logo_w_cm), float(logo_h_cm), str(safe_mode), str(make_ai))
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
         if _rhit is not None:
             return _rhit
@@ -5421,7 +5422,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                           #    _punch_logo คือรูปที่ถูกย่อ/จัดวางลงกล่องเรียบร้อยแล้ว (พิกัดเดียวกับกล่อง)
                           #    แปลงรูปนี้เป็นเส้นตัดเลย = ไม่มีทางเหลื่อม/ล้น/เละ เหมือนกล่องไฟปกติ
                           #    (เดิมเอาเส้นดิบมาคูณสเกลใหม่จาก bbox ก่อน/หลังจัดวาง -> คลาดเมื่อไหร่ก็เละเมื่อนั้น)
-                          _rawL = _poly_to_subs(_punch_logo, tol=0.04)
+                          # 🥇 ใช้ 'เส้นโค้งดิบจากเอนจิ้น' ชุดเดียวกับที่ป้ายแบน/กล่องไฟปกติใช้
+                          #    (ของเดิมเอา 'รูปทรงที่คำนวณใหม่' มาแปลงกลับเป็นเส้น -> เส้นโค้งกลายเป็นคอร์ดตรง
+                          #     มุมแหลมเกิดเงี่ยง เห็นชัดที่แผงคอ/ปากแกะ = อาการ 'ฉลุหน้ารวน')
+                          #    _MAP_SUBS = เส้นดิบที่ถูกย่อ/จัดวางลงกล่องด้วย transform ชุดเดียวกันแล้ว
+                          _rawL = None
+                          try:
+                              if _MAP_SUBS:
+                                  _cx = []; _cy = []
+                                  for _s7 in _MAP_SUBS:
+                                      for _q7 in [_s7["start"]] + [_g7[-1] for _g7 in _s7["segs"]]:
+                                          _cx.append(_q7[0]); _cy.append(_q7[1])
+                                  if _cx and _cy:
+                                      _b7 = _punch_logo.bounds
+                                      _lw7 = max(1e-6, _b7[2] - _b7[0]); _lh7 = max(1e-6, _b7[3] - _b7[1])
+                                      _in7 = (min(_cx) >= _b7[0] - 1.0 and min(_cy) >= _b7[1] - 1.0
+                                              and max(_cx) <= _b7[2] + 1.0 and max(_cy) <= _b7[3] + 1.0)
+                                      _fill7 = (((max(_cx) - min(_cx)) / _lw7) >= 0.97
+                                                and ((max(_cy) - min(_cy)) / _lh7) >= 0.97)
+                                      if _in7 and _fill7:
+                                          _rawL = _MAP_SUBS          # ✅ ลงกรอบพอดี -> ใช้เส้นดิบได้
+                          except Exception:
+                              _rawL = None
+                          if not _rawL:
+                              _rawL = _poly_to_subs(_punch_logo, tol=0.04)   # ⏪ ของเดิมเป๊ะ (กันงานพัง)
                           # ✂️ ตัดฉลุบนแผ่นแบน = ส่ง 'เส้นดิบทุกเส้น' ออกเลย (เหมือนประเภทอักษรแบน 100%)
                           #    คัดออกเฉพาะชิ้นที่ผู้ใช้เลือกเป็น 'สติ๊กเกอร์' เท่านั้น
                           _keepR = _rawL
@@ -5978,8 +6002,13 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 svg_back = ""
         # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
+        # 🎨 โหมดออกแบบ (make_ai=0) = ปุ่ม 'ออกแบบ 3 มิติ' : ข้ามแค่ 'การประกอบไฟล์' เท่านั้น
+        #    เส้นตัด/ชั้นตัด/ภาพ 3 มิติ คำนวณครบเหมือนเดิมทุกไบต์ -> ภาพ 3 มิติพังไม่ได้
+        #    พอสรุปแบบแล้ว กดปุ่ม 'สร้างไฟล์ตัดสั่งผลิต (.ai)' จะได้ไฟล์เดิมเป๊ะทุกไบต์
         ai_b64 = ""
         try:
+            if str(make_ai) == "0":
+                raise RuntimeError("design-only")
             # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
             _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
             # 🖨️ เลเยอร์ 'งานพิมพ์/สติ๊กเกอร์' — ชิ้นที่ไม่ตัด (พิมพ์+ไดคัทสติ๊กเกอร์) แยกออกมาในไฟล์เดียวกัน
@@ -6019,6 +6048,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         print_b64 = ""; print_info = {}
         _pmode = str(face_print or "uv").lower()
         try:
+            if str(make_ai) == "0":
+                raise RuntimeError("design-only")
             _face_is_print = (rec.get("face_finish") == "print")
             _has_sticker = (_sticker_geom is not None and not _sticker_geom.is_empty)
             # 🖨️ เปิดไฟล์งานพิมพ์ให้ 'ทุกประเภทป้าย' — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว/ติดสติ๊กเกอร์
