@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-30-u",
-        "build_note": "ฐาน -t (แก้กล่องฉลุหน้า) + แยกปุ่ม: ออกแบบ 3 มิติ / สร้างไฟล์ตัด .ai (make_ai) — ค่าเริ่มต้นสร้างครบเหมือนเดิม",
+            "build": "2026-07-30-v",
+        "build_note": "ฐาน -u + ปุ่มสร้างไฟล์ตัด .ai ดึงค่าที่คำนวณไว้มาประกอบทันที (ไม่ปั้นภาพ 3 มิติใหม่) — ค่าเริ่มต้นสร้างครบเหมือนเดิม",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4868,6 +4868,103 @@ def _mount_plate_files(plate_cm=10.0, arm="side1"):
     return {"dxf_base64": dxf, "svg": "".join(p), "count": n, "plate_cm": float(plate_cm)}
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🏭 ประกอบ "ไฟล์สั่งผลิต" (.ai + ไฟล์งานพิมพ์) จากค่าที่คำนวณไว้แล้ว
+#    ใช้ร่วมกัน 2 ทาง แล้วได้ไฟล์เหมือนกันเป๊ะทุกไบต์:
+#      (1) กดปุ่มแสดงแบบ 3 มิติ พร้อมสร้างไฟล์ในคำขอเดียว (ค่าเริ่มต้นเดิมของระบบ)
+#      (2) กดปุ่ม 'สร้างไฟล์ตัดสั่งผลิต (.ai)' ทีหลัง -> ดึงค่าที่เก็บไว้มาประกอบทันที
+#         ไม่คำนวณเส้นตัดใหม่ ไม่ปั้นภาพ 3 มิติใหม่ (พี่สั่งไว้ 2026-07-30)
+#    ⚠️ เนื้อโค้ดข้างในยกมาจากของเดิมทั้งดุ้น ห้ามแก้ — ไฟล์สั่งผลิตต้องไม่เปลี่ยนแม้แต่ไบต์เดียว
+# ══════════════════════════════════════════════════════════════════════════════
+_PRODCACHE = {"map": {}, "order": [], "cap": 3}      # 🧺 ค่าที่คำนวณไว้รอกดสร้างไฟล์ (เก็บ 3 งานล่าสุด)
+
+
+def _prod_files(B):
+    inp = B["inp"]; rec = B["rec"]; sign_type = B["sign_type"]
+    real_width_mm = B["real_width_mm"]; face_print = B["face_print"]
+    out_layers = B["out_layers"]; full = B["full"]; svg3d = B["svg3d"]
+    _sticker_geom = B["sticker_geom"]; _punch_raw_subs = B["punch_raw_subs"]
+    _RAW_SUBS = {"subs": B["raw_subs"]}
+    warns = []
+    # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
+    ai_b64 = ""
+    try:
+        # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
+        _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
+        # 🖨️ เลเยอร์ 'งานพิมพ์/สติ๊กเกอร์' — ชิ้นที่ไม่ตัด (พิมพ์+ไดคัทสติ๊กเกอร์) แยกออกมาในไฟล์เดียวกัน
+        _ai_extra = []
+        try:
+            if _sticker_geom is not None and not _sticker_geom.is_empty:
+                # 🖨️ งานพิมพ์: ใช้รูปทรงจริง (รวมรูในตัวอักษร) -> ตัวหนังสือทึบดำ อ่านออก ไม่เละ
+                _ss = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
+                if _punch_raw_subs:                       # ใช้เส้นดิบถ้ามี (คมกว่า)
+                    from shapely.prepared import prep as _pp4
+                    from shapely.geometry import Point as _Pt4
+                    _pk4 = _pp4(_sticker_geom.buffer(1.0)); _rs4 = []
+                    for _sp4 in (_RAW_SUBS.get("subs") or []):
+                        _an4 = [_sp4["start"]] + [s[-1] for s in _sp4["segs"]]
+                        _st4 = max(1, len(_an4) // 8)
+                        if any(_pk4.intersects(_Pt4(p[0], p[1])) for p in _an4[::_st4]):
+                            _rs4.append(_sp4)
+                    if _rs4:
+                        _ss = _rs4
+                if _ss:
+                    _sb4 = _sticker_geom.bounds
+                    _ai_extra.append({"name": "งานพิมพ์ / สติ๊กเกอร์ (ไม่ตัดโลหะ)", "off": 0.0, "kind": "print",
+                                      "color": "#e11d48", "rgb": (225, 29, 72), "subs": _ss,
+                                      "w_mm": round(_sb4[2] - _sb4[0], 1), "h_mm": round(_sb4[3] - _sb4[1], 1)})
+        except Exception:
+            pass
+        # 🧊 แนบ 'แบบที่ออกแบบเสร็จแล้ว' (ป้ายประกอบเต็มตัว + ขา/ล้อ/แขน + เส้นจับระยะ)
+        #    ส่ง SVG ดิบเข้าไปเลย -> ฝังเป็นเวกเตอร์แท้ในไฟล์ .ai (ไม่ใช่รูปฝัง)
+        ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai,
+                                  art_bounds=full.bounds, design_href=(svg3d or ""))
+        import cairosvg as _cs
+        ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
+    except Exception:
+        ai_b64 = ""
+    # 🖨️ ============ ไฟล์งานพิมพ์หน้ากล่องไฟ (แยกไฟล์ · ขนาดจริง 1:1) ============
+    #     เลือกได้ตั้งแต่ตอนออกแบบว่า 'พิมพ์ UV' หรือ 'พิมพ์สติ๊กเกอร์ + ไดคัท'
+    print_b64 = ""; print_info = {}
+    _pmode = str(face_print or "uv").lower()
+    try:
+        _face_is_print = (rec.get("face_finish") == "print")
+        _has_sticker = (_sticker_geom is not None and not _sticker_geom.is_empty)
+        # 🖨️ เปิดไฟล์งานพิมพ์ให้ 'ทุกประเภทป้าย' — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว/ติดสติ๊กเกอร์
+        if _pmode not in ("none", "off") and full is not None and not full.is_empty:
+            _M = _PRINT_MODES.get(_pmode, _PRINT_MODES["uv"])
+            if _has_sticker and not _face_is_print:
+                # เลือกเฉพาะบางชิ้นเป็นสติ๊กเกอร์ -> พิมพ์เฉพาะชิ้นนั้น (ทึบดำ พร้อมไดคัท)
+                _pb = _sticker_geom.bounds
+                _phref = ""
+                _pcut = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
+                _pmat = "สติ๊กเกอร์พิมพ์ + ไดคัทตามรูป (เฉพาะชิ้นที่เลือก)"
+            else:
+                # พิมพ์เต็มหน้างาน -> ใช้รูปงานจริงความละเอียดสูง + เส้นตัด/ไดคัทตามทรงงาน
+                _pb = full.bounds
+                _phref = _art_data_uri(inp, max_px=3200)
+                _pcut = _cut_subs_offset(full, float(real_width_mm), clean=False)
+                _pmat = str(rec.get("face_material", "")) or _PRINT_MAT.get(str(sign_type), "ตามสเปควัสดุหน้างาน")
+                if _pmode == "sticker":
+                    _pmat = "สติ๊กเกอร์พิมพ์ + ลามิเนตกันแดด (ติดทับผิว %s)" % _pmat
+            _psvg = _print_file_svg(_phref, _pb, mode=_pmode,
+                                    title="VectorCNC · %s" % str(rec.get("name", "")),
+                                    material=_pmat, extra_subs=_pcut)
+            import cairosvg as _cs2
+            print_b64 = base64.b64encode(_cs2.svg2pdf(bytestring=_psvg.encode("utf-8"))).decode()
+            print_info = {"mode": _pmode, "label_th": _M["th"], "label_en": _M["en"],
+                          "bleed_mm": _M["bleed"], "cut_layer": _M["cutname"],
+                          "w_cm": round((_pb[2] - _pb[0]) / 10.0, 1),
+                          "h_cm": round((_pb[3] - _pb[1]) / 10.0, 1),
+                          "material": _pmat, "note": _M["note"]}
+            warns.append("🖨️ ไฟล์งานพิมพ์: %s · ขนาดจริง %.1f × %.1f ซม. · เผื่อตก %.0f มม. · เลเยอร์ %s"
+                         % (_M["th"], print_info["w_cm"], print_info["h_cm"], _M["bleed"], _M["cutname"]))
+    except Exception as _e5:
+        print_b64 = ""; print_info = {"error": str(_e5)}
+    return ai_b64, print_b64, print_info, warns
+
+
 @app.post("/api/layer-set")
 async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
@@ -4891,7 +4988,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
-                    make_ai: str = Form("1"),
+                    make_ai: str = Form("1"), only_ai: str = Form("0"),
                     material_groups: str = Form(""),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
                     safe_mode: str = Form("0")):
@@ -4916,12 +5013,23 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
-                float(logo_w_cm), float(logo_h_cm), str(safe_mode), str(make_ai))
+                float(logo_w_cm), float(logo_h_cm), str(safe_mode), str(make_ai), str(only_ai))
+        _pk = _rck[:-2]                       # 🧺 กุญแจ 'ชุดค่าที่คำนวณไว้' (ไม่รวม 2 ช่องโหมดท้ายสุด)
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
         if _rhit is not None:
             return _rhit
+        # 🏭 ปุ่ม 'สร้างไฟล์ตัดสั่งผลิต (.ai)' -> ดึงค่าที่เก็บไว้มาประกอบไฟล์ทันที
+        #    ไม่คำนวณเส้นตัดใหม่ ไม่ปั้นภาพ 3 มิติใหม่ · ถ้าไม่มีค่าเก็บไว้ (รีสตาร์ท/ค่าตั้งเปลี่ยน)
+        #    จะตกไปทางปกติที่คำนวณครบเหมือนเดิม -> ไม่มีทางสร้างไฟล์ไม่ได้
+        if str(only_ai) == "1":
+            _bnd = _PRODCACHE["map"].get(_pk)
+            if _bnd is not None:
+                _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))
+                _ai9, _pr9, _pi9, _w9 = _prod_files(_bnd)
+                return JSONResponse({"ok": True, "from_cache": True, "ai_base64": _ai9,
+                                     "print_base64": _pr9, "print_info": _pi9, "warns": _w9})
     except Exception:
-        _rck = None
+        _rck = None; _pk = None
     del _body9
     try:
         _CUT_SMOOTH["mm"] = max(0.0, min(2.0, float(cut_smooth_mm or 0.0)))   # 🧈 ความเนียนเส้นตัด (ผู้ใช้ตั้ง)
@@ -6001,88 +6109,22 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                   "wires": _mf.get("wires", 0), "bars": _mf.get("bars", 0)}
             except Exception:
                 svg_back = ""
-        # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
-        # 🎨 โหมดออกแบบ (make_ai=0) = ปุ่ม 'ออกแบบ 3 มิติ' : ข้ามแค่ 'การประกอบไฟล์' เท่านั้น
-        #    เส้นตัด/ชั้นตัด/ภาพ 3 มิติ คำนวณครบเหมือนเดิมทุกไบต์ -> ภาพ 3 มิติพังไม่ได้
-        #    พอสรุปแบบแล้ว กดปุ่ม 'สร้างไฟล์ตัดสั่งผลิต (.ai)' จะได้ไฟล์เดิมเป๊ะทุกไบต์
-        ai_b64 = ""
-        try:
-            if str(make_ai) == "0":
-                raise RuntimeError("design-only")
-            # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
-            _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
-            # 🖨️ เลเยอร์ 'งานพิมพ์/สติ๊กเกอร์' — ชิ้นที่ไม่ตัด (พิมพ์+ไดคัทสติ๊กเกอร์) แยกออกมาในไฟล์เดียวกัน
-            _ai_extra = []
+        # 🏭 ค่าที่ต้องใช้ประกอบไฟล์สั่งผลิต — เก็บเป็นชุดเดียว (ใช้ทั้งตอนสร้างเลย และตอนกดสร้างทีหลัง)
+        _BND = {"inp": inp, "rec": rec, "sign_type": sign_type, "real_width_mm": real_width_mm,
+                "face_print": face_print, "out_layers": out_layers, "full": full, "svg3d": svg3d,
+                "sticker_geom": _sticker_geom, "punch_raw_subs": _punch_raw_subs,
+                "raw_subs": _RAW_SUBS.get("subs")}
+        ai_b64 = ""; print_b64 = ""; print_info = {}
+        if str(make_ai) == "0":
+            # 🎨 โหมดแสดงแบบ: ยังไม่ประกอบไฟล์ — เก็บค่าไว้รอปุ่ม 'สร้างไฟล์ตัดสั่งผลิต (.ai)'
             try:
-                if _sticker_geom is not None and not _sticker_geom.is_empty:
-                    # 🖨️ งานพิมพ์: ใช้รูปทรงจริง (รวมรูในตัวอักษร) -> ตัวหนังสือทึบดำ อ่านออก ไม่เละ
-                    _ss = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
-                    if _punch_raw_subs:                       # ใช้เส้นดิบถ้ามี (คมกว่า)
-                        from shapely.prepared import prep as _pp4
-                        from shapely.geometry import Point as _Pt4
-                        _pk4 = _pp4(_sticker_geom.buffer(1.0)); _rs4 = []
-                        for _sp4 in (_RAW_SUBS.get("subs") or []):
-                            _an4 = [_sp4["start"]] + [s[-1] for s in _sp4["segs"]]
-                            _st4 = max(1, len(_an4) // 8)
-                            if any(_pk4.intersects(_Pt4(p[0], p[1])) for p in _an4[::_st4]):
-                                _rs4.append(_sp4)
-                        if _rs4:
-                            _ss = _rs4
-                    if _ss:
-                        _sb4 = _sticker_geom.bounds
-                        _ai_extra.append({"name": "งานพิมพ์ / สติ๊กเกอร์ (ไม่ตัดโลหะ)", "off": 0.0, "kind": "print",
-                                          "color": "#e11d48", "rgb": (225, 29, 72), "subs": _ss,
-                                          "w_mm": round(_sb4[2] - _sb4[0], 1), "h_mm": round(_sb4[3] - _sb4[1], 1)})
+                if _pk is not None:
+                    _cache_put(_PRODCACHE, _pk, _BND)
             except Exception:
                 pass
-            # 🧊 แนบ 'แบบที่ออกแบบเสร็จแล้ว' (ป้ายประกอบเต็มตัว + ขา/ล้อ/แขน + เส้นจับระยะ)
-            #    ส่ง SVG ดิบเข้าไปเลย -> ฝังเป็นเวกเตอร์แท้ในไฟล์ .ai (ไม่ใช่รูปฝัง)
-            ai_svg = _layerset_ai_svg(out_layers + _ai_extra, art_href=_art_ai,
-                                      art_bounds=full.bounds, design_href=(svg3d or ""))
-            import cairosvg as _cs
-            ai_b64 = base64.b64encode(_cs.svg2pdf(bytestring=ai_svg.encode("utf-8"))).decode()
-        except Exception:
-            ai_b64 = ""
-        # 🖨️ ============ ไฟล์งานพิมพ์หน้ากล่องไฟ (แยกไฟล์ · ขนาดจริง 1:1) ============
-        #     เลือกได้ตั้งแต่ตอนออกแบบว่า 'พิมพ์ UV' หรือ 'พิมพ์สติ๊กเกอร์ + ไดคัท'
-        print_b64 = ""; print_info = {}
-        _pmode = str(face_print or "uv").lower()
-        try:
-            if str(make_ai) == "0":
-                raise RuntimeError("design-only")
-            _face_is_print = (rec.get("face_finish") == "print")
-            _has_sticker = (_sticker_geom is not None and not _sticker_geom.is_empty)
-            # 🖨️ เปิดไฟล์งานพิมพ์ให้ 'ทุกประเภทป้าย' — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว/ติดสติ๊กเกอร์
-            if _pmode not in ("none", "off") and full is not None and not full.is_empty:
-                _M = _PRINT_MODES.get(_pmode, _PRINT_MODES["uv"])
-                if _has_sticker and not _face_is_print:
-                    # เลือกเฉพาะบางชิ้นเป็นสติ๊กเกอร์ -> พิมพ์เฉพาะชิ้นนั้น (ทึบดำ พร้อมไดคัท)
-                    _pb = _sticker_geom.bounds
-                    _phref = ""
-                    _pcut = _cut_subs_offset(_sticker_geom, float(real_width_mm), clean=False)
-                    _pmat = "สติ๊กเกอร์พิมพ์ + ไดคัทตามรูป (เฉพาะชิ้นที่เลือก)"
-                else:
-                    # พิมพ์เต็มหน้างาน -> ใช้รูปงานจริงความละเอียดสูง + เส้นตัด/ไดคัทตามทรงงาน
-                    _pb = full.bounds
-                    _phref = _art_data_uri(inp, max_px=3200)
-                    _pcut = _cut_subs_offset(full, float(real_width_mm), clean=False)
-                    _pmat = str(rec.get("face_material", "")) or _PRINT_MAT.get(str(sign_type), "ตามสเปควัสดุหน้างาน")
-                    if _pmode == "sticker":
-                        _pmat = "สติ๊กเกอร์พิมพ์ + ลามิเนตกันแดด (ติดทับผิว %s)" % _pmat
-                _psvg = _print_file_svg(_phref, _pb, mode=_pmode,
-                                        title="VectorCNC · %s" % str(rec.get("name", "")),
-                                        material=_pmat, extra_subs=_pcut)
-                import cairosvg as _cs2
-                print_b64 = base64.b64encode(_cs2.svg2pdf(bytestring=_psvg.encode("utf-8"))).decode()
-                print_info = {"mode": _pmode, "label_th": _M["th"], "label_en": _M["en"],
-                              "bleed_mm": _M["bleed"], "cut_layer": _M["cutname"],
-                              "w_cm": round((_pb[2] - _pb[0]) / 10.0, 1),
-                              "h_cm": round((_pb[3] - _pb[1]) / 10.0, 1),
-                              "material": _pmat, "note": _M["note"]}
-                warns.append("🖨️ ไฟล์งานพิมพ์: %s · ขนาดจริง %.1f × %.1f ซม. · เผื่อตก %.0f มม. · เลเยอร์ %s"
-                             % (_M["th"], print_info["w_cm"], print_info["h_cm"], _M["bleed"], _M["cutname"]))
-        except Exception as _e5:
-            print_b64 = ""; print_info = {"error": str(_e5)}
+        else:
+            ai_b64, print_b64, print_info, _wprod = _prod_files(_BND)
+            warns.extend(_wprod)
         # ⚡ LED layout (โชว์รายละเอียดไฟในผลลัพธ์กลางจอ) — 🌈 นีออน: เดินไฟตามเส้นนีออน
         # 🔌 เฉพาะ 'งานมีไฟ' เท่านั้น — งานแบน/ยกขอบ (ไม่มีไฟ) ข้ามการเดินไฟ LED
         #    งานมีไฟ = นีออน / edge-lit / back-lit / ชื่อประเภทมีคำว่า 'ไฟ' (ไฟออกหน้า·กล่องไฟ ฯลฯ)
