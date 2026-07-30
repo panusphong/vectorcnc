@@ -5920,6 +5920,11 @@ $('goLayer').onclick=function(){
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
   fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
+  // 🎨/🏭 โหมดออกแบบ (เร็ว) vs สรุปแบบสร้างไฟล์ตัด .ai
+  //    ⚠️ ห้ามล้างธง _FINALAI ตรงนี้ — ลูปชดเชยความกว้าง (คิ้ว) จะกดปุ่มนี้ซ้ำเอง
+  //    ถ้าล้างก่อน รอบชดเชยจะกลายเป็นโหมดออกแบบ แล้วไฟล์ .ai + ดาวน์โหลดอัตโนมัติหายทั้งคู่
+  //    ธงจะถูกล้างตอน 'เรนเดอร์ผลที่มีไฟล์ .ai แล้วจริง ๆ' หรือเจอ error เท่านั้น
+  fd.append('make_ai', window._FINALAI ? '1' : '0');
   fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');   // 🖨️ UV / สติ๊กเกอร์
   try{ fd.append('material_groups',JSON.stringify(window._matGroups||[])); }catch(_e){}   // 🧱 ป้ายเดียว หลายวัสดุ
   fd.append('logo_w_cm',($('laWcm')&&$('laWcm').value)||'0');   // 📏 ขนาดจริงของ logo บนหน้ากล่อง
@@ -5957,7 +5962,7 @@ $('goLayer').onclick=function(){
   fd.append('caster_lock',($('casterLock')&&$('casterLock').checked)?'1':'0');
   if($('fArmLen')&&$('fArmLen').value){fd.set('arm_len_cm',$('fArmLen').value);}
   _apiFetch((API||'')+'/api/layer-set',fd).then(_apiJson).then(function(j){
-    if(j.error){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
+    if(j.error){window._FINALAI=0;st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
     try{
       // ⚠️ ใช้ 'กว้าง (ซม.)' ช่องหลักเป็นความจริงเดียว — กล่องไฟ backend สเกลตรงเป๊ะอยู่แล้ว จึงไม่ต้องชดเชยซ้ำ
@@ -5992,6 +5997,8 @@ $('goLayer').onclick=function(){
       if($('laWcm')&&!$('laWcm').value)$('laWcm').placeholder=j.logo_w_cm;
       if($('laHcm')&&!$('laHcm').value)$('laHcm').placeholder=j.logo_h_cm;
     } }catch(_e){}
+    // 🏭 Final สำเร็จ (ไฟล์ .ai มาแล้วจริง + ผ่านลูปชดเชยความกว้างแล้ว) -> ค่อยล้างธง + นัดดาวน์โหลดอัตโนมัติ
+    if(window._FINALAI&&j.ai_base64){ window._autoDL=true; window._FINALAI=0; }
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
     try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.add('full-stage');}catch(_e){}
     try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
@@ -6011,6 +6018,7 @@ $('goLayer').onclick=function(){
         (j.svg_cut?'<button id="lsDlSvg" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">⬇ โหลด SVG (มม. · แยกเลเยอร์)</button>':'<button id="lsDlSvg" style="display:none">SVG</button>')+
         '<button id="lsDlMain" style="display:none">DXF</button>'+          /* พี่ไม่ใช้ — เหลือ .ai อย่างเดียว */
         (j.ai_base64?'<button id="lsDlAi" style="display:none">.ai</button>':'')+   /* .ai โหลดอัตโนมัติจากปุ่มสร้างไฟล์สั่งผลิตแล้ว */
+        (!j.ai_base64?'<button id="lsMakeAi" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:800;cursor:pointer">🏭 สรุปแบบแล้ว → สร้างไฟล์ตัด (.ai)</button>':'<span style="font-size:12px;color:#16a34a;font-weight:700">✅ ไฟล์ตัด .ai พร้อมแล้ว (ดาวน์โหลดอัตโนมัติ)</span>')+
         ''+   /* 🙈 ซ่อนปุ่ม 'โหลดไฟล์ .ai (ชุดชั้นตัด แยกเลเยอร์)' — ใช้ไฟล์รวม .ai จากปุ่มสร้างไฟล์สั่งผลิตพอ */
         ''+   /* 🙈 ซ่อนปุ่ม 'โหลดไฟล์งานพิมพ์' — รวมอยู่ในไฟล์ .ai ชุดเดียวแล้ว */
         (j.sticker_map_svg?'<button id="lsGoStick" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">🏷️ เลือกชิ้นไม่ตัด (สติ๊กเกอร์)</button>':'')+
@@ -6420,6 +6428,12 @@ $('goLayer').onclick=function(){
       setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400);
       return 1; };
     if($('lsDlAll'))$('lsDlAll').onclick=function(){ window._dlAllProd(false); };
+    // 🏭 สรุปแบบแล้ว -> สร้างไฟล์ตัด .ai เต็มชุด (ใช้ค่าตั้งเดิมทุกช่องของรอบออกแบบล่าสุด)
+    if($('lsMakeAi'))$('lsMakeAi').onclick=function(){
+      var b=this; b.disabled=true; b.textContent='⏳ กำลังสร้างไฟล์ตัด .ai...';
+      window._FINALAI=1;
+      try{ $('goLayer').onclick(); }catch(_e){ b.disabled=false; b.textContent='🏭 สรุปแบบแล้ว → สร้างไฟล์ตัด (.ai)'; }
+    };
     // 🖨️ ไฟล์งานพิมพ์ (UV / สติ๊กเกอร์) — แยกไฟล์ ขนาดจริง 1:1 พร้อมเลเยอร์ CutContour
     window._dlPrintFile=function(silent){
       if(!j.print_base64){ if(!silent)alert('ยังไม่มีไฟล์งานพิมพ์ — เลือกวิธีพิมพ์ (UV / สติ๊กเกอร์) ที่แผงซ้าย แล้วกด "สร้างไฟล์สั่งผลิต" ใหม่ค่ะ'); return 0; }
@@ -6993,7 +7007,7 @@ $('go').onclick=function(){
   if(!fileObj)return;
   // 🔗 เส้นตัดต้องออก 'ตามแบบป้าย' เสมอ — เลือกประเภทป้ายไว้ = วิ่งเข้าชุดชั้นตัด + 3 มิติ (เอนจิ้นเส้นเดียวกัน)
   var _t9=($('mainSignType')&&$('mainSignType').value)||'';
-  if(_t9){ window._autoDL=true; try{ $('goLayer').click(); }catch(_e){} return; }   // 🏭 สร้าง + โหลดไฟล์ผลิตให้เลย
+  if(_t9){ window._autoDL=false; try{ $('goLayer').click(); }catch(_e){} return; }   // 🎨 รอบแรก = ออกแบบ (เร็ว) · ไฟล์ .ai กดสร้างตอนสรุปแบบ
   if(!confirm('ยังไม่ได้เลือก "ประเภทป้าย" — จะได้เส้นตัดแบนตามรูปเท่านั้น (ไม่มีชั้นตัด/ยกขอบ/3 มิติ)\n\nกด OK เพื่อทำต่อ · Cancel เพื่อไปเลือกประเภทป้ายก่อน')){
     if($('mainSignType'))$('mainSignType').focus(); return; }
   $('after').innerHTML='<div style="text-align:center"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังแปลง...</div></div>';
