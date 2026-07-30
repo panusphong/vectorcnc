@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-29-q",
-        "build_note": "ฐาน -e เป๊ะ + นีออนเส้นเดี่ยวแกนกลาง แยกเป็นโมดูลใหม่ neon_single.py (ไม่แตะโค้ดเส้นตัดเดิม)",
+            "build": "2026-07-29-s",
+        "build_note": "ฐาน -q + แยกโหมดออกแบบ (เร็ว) / สร้างไฟล์ตัด .ai ตอน Final",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -4891,6 +4891,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
+                    make_ai: str = Form("1"),
                     material_groups: str = Form(""),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
                     safe_mode: str = Form("0")):
@@ -4915,7 +4916,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
-                float(logo_w_cm), float(logo_h_cm), str(safe_mode))
+                float(logo_w_cm), float(logo_h_cm), str(safe_mode), str(make_ai))
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
         if _rhit is not None:
             return _rhit
@@ -5978,8 +5979,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             except Exception:
                 svg_back = ""
         # 🅰️ .ai — แยกเลเยอร์โครงสร้างชัด + เลเยอร์งานพิมพ์ (Illustrator เปิดเลือกแยกได้)
+        # 🎨 โหมดออกแบบ (make_ai=0): ยังไม่สร้างไฟล์ .ai/ไฟล์พิมพ์ — ประหยัดเวลาหลายวินาทีต่อคลิก
+        #    สรุปแบบแล้วค่อยกดปุ่ม 'สร้างไฟล์ตัด (.ai)' ระบบจะสร้างเต็มชุดตามเดิมทุกไบต์
         ai_b64 = ""
         try:
+            if str(make_ai) == "0":
+                raise RuntimeError("design-only")
             # ภาพพิมพ์ในไฟล์ผลิต .ai = ความละเอียดสูง (พิมพ์จริงได้) เฉพาะป้ายหน้าพิมพ์
             _art_ai = (_art_data_uri(inp, max_px=2600) if rec.get("face_finish") == "print" else "")
             # 🖨️ เลเยอร์ 'งานพิมพ์/สติ๊กเกอร์' — ชิ้นที่ไม่ตัด (พิมพ์+ไดคัทสติ๊กเกอร์) แยกออกมาในไฟล์เดียวกัน
@@ -6019,6 +6024,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         print_b64 = ""; print_info = {}
         _pmode = str(face_print or "uv").lower()
         try:
+            if str(make_ai) == "0":
+                raise RuntimeError("โหมดออกแบบ — ยังไม่สร้างไฟล์")
             _face_is_print = (rec.get("face_finish") == "print")
             _has_sticker = (_sticker_geom is not None and not _sticker_geom.is_empty)
             # 🖨️ เปิดไฟล์งานพิมพ์ให้ 'ทุกประเภทป้าย' — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว/ติดสติ๊กเกอร์
