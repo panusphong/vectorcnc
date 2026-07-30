@@ -18,18 +18,13 @@
 """
 
 
-def _smooth_path(pts, closed=False, win_mm=0.0):
-    # 🚫 ไม่ดัดเส้นแล้ว (พี่สั่ง: เดินตามเส้นของแบบ 100%) — คืนจุดเดิม ลดแค่จุดซ้ำ
-    try:
-        from shapely.geometry import LineString
-        if len(pts) < 3:
-            return pts
-        return list(LineString(pts).simplify(0.02).coords)
-    except Exception:
-        return pts
+def _smooth_path(pts, closed=False, win_mm=2.5):
+    # 🪄 เกลี่ยเส้นกลางให้นิ่งเหมือนเส้นคู่ (หน้าต่าง 2.5 มม. รีดคลื่นสั่นจากหัวอักษร/ความหนาแกว่ง)
+    #    ปลายเส้นตรึงที่เดิม -> จุดต่อยังชนสนิท · รูปทรงรวมไม่เพี้ยน (เลื่อนจากแกนจริง < 1 มม.)
+    return _smooth_path_win(pts, closed=closed, win_mm=win_mm)
 
 
-def _smooth_path_off(pts, closed=False, win_mm=0.5):
+def _smooth_path_win(pts, closed=False, win_mm=2.5):
     """🪄 เกลี่ยเส้นเบา ๆ (ลบรอยต่อจุดตัวอย่าง) — หน้าต่างเล็กมาก เส้นไม่เพี้ยนจากกึ่งกลาง
        ปลายเส้นตรึงไว้ที่เดิม (จุดต่อทางแยกยังชนกันสนิท)"""
     try:
@@ -349,7 +344,7 @@ def _inset_rings(pg, half_w, tube_mm=8.0):
         return []
 
 
-def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
+def _to_curves(pts, closed=False, tol=0.25, corner_deg=55.0):
     """🪄 แปลงแนวจุดถี่ ๆ -> 'เส้นโค้งเบซิเยร์จริง' รูปแบบเดียวกับเส้นตัด (เนียนกริบเท่ากัน)
        - เลือกจุดสำคัญด้วย simplify (คงรูปตามแบบ คลาดไม่เกิน tol มม.)
        - มุมหักคม (> corner_deg) คงความคมไว้ ไม่ปัดให้มน
@@ -465,6 +460,157 @@ def _polys_from_subs(subs, tol=0.05):
         return None
 
 
+def _solid_blob(p, tube_mm=8.0):
+    """ก้อนทึบ (ไม่ใช่เส้นอักษร) — ความกว้างในสุดใหญ่เทียบกับตัวชิ้น -> เดินตามโครงร่างแทนแกนกลาง"""
+    try:
+        if len(p.interiors) > 0:
+            return False
+        b = p.bounds
+        bm = min(b[2] - b[0], b[3] - b[1])
+        if bm < tube_mm * 2.2:
+            return False
+        lo, hi = 0.0, bm
+        for _ in range(12):                    # รัศมีในสุด (วงกลมใหญ่สุดที่ยัดลงชิ้นได้)
+            mid = (lo + hi) / 2.0
+            g = p.buffer(-mid)
+            if g is not None and not g.is_empty:
+                lo = mid
+            else:
+                hi = mid
+        _bb = (b[2] - b[0]) * (b[3] - b[1])
+        _fill = (p.area / _bb) if _bb > 1 else 0.0
+        # ก้อนทึบ = กว้างในสุดเกิน 45% ของด้านสั้น หรือ เนื้อเต็มกรอบมาก (เกิน 42%) และหนากว่าท่อ 2.5 เท่า
+        return ((2.0 * lo) > 0.45 * bm) or (_fill > 0.42 and (2.0 * lo) > tube_mm * 2.5)
+    except Exception:
+        return False
+
+
+def _autotrace_centerline(polys, tube_mm=8.0):
+    """🖊️ Centerline Trace แบบเดียวกับเครื่องมือกราฟิก:
+       วาดชิ้นงานเป็นภาพ -> skeletonize (แกน 1px) -> autotrace centerline (ฟิตเบซิเยร์ลื่น)
+       คืน subs พิกัด มม. เดิมเป๊ะ · ล้มเหลว -> None (ผู้เรียกถอยไปวิธีเดิม)"""
+    try:
+        import numpy as np
+        from PIL import Image, ImageDraw
+        from skimage.morphology import skeletonize
+        from scipy.ndimage import binary_dilation
+        from autotrace import Bitmap, Color
+        xs = []; ys = []
+        for p in polys:
+            b = p.bounds; xs += [b[0], b[2]]; ys += [b[1], b[3]]
+        x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+        W = x1 - x0; H = y1 - y0
+        if W < 2 or H < 2:
+            return None
+        ppm = min(2.5, 4200.0 / max(W, 1.0), 4200.0 / max(H, 1.0))   # px ต่อ มม.
+        if ppm < 0.5:
+            ppm = 0.5
+        pad = 6
+        iw = int(W * ppm) + pad * 2; ih = int(H * ppm) + pad * 2
+        img = Image.new("L", (iw, ih), 255)
+        dr = ImageDraw.Draw(img)
+        def _px(pt):
+            return ((pt[0] - x0) * ppm + pad, (pt[1] - y0) * ppm + pad)
+        for p in polys:
+            dr.polygon([_px(q) for q in p.exterior.coords], fill=0)
+            for irg in p.interiors:
+                dr.polygon([_px(q) for q in irg.coords], fill=255)
+        mask = np.asarray(img) < 128
+        if not mask.any():
+            return None
+        sk = skeletonize(mask)
+        # ✂️ ตัดกิ่งแตกปลาย: เดินจากปลายกิ่งเข้าหาทางแยก ถ้าสั้นกว่า 1.5×ความกว้างท้องถิ่น -> ลบทิ้ง
+        try:
+            from scipy.ndimage import distance_transform_edt, convolve
+            D = distance_transform_edt(mask)
+            K = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
+            for _ in range(6):                          # วนซ้ำ (กิ่งซ้อนกิ่ง)
+                nb = convolve(sk.astype(np.uint8), K, mode="constant")
+                ends = np.argwhere(sk & (nb == 1))
+                if len(ends) == 0:
+                    break
+                removed_any = False
+                for (ey, ex) in ends:
+                    chain = [(ey, ex)]
+                    py, px = -1, -1; cy, cx = ey, ex
+                    for _step in range(int(tube_mm * ppm * 3) + 10):
+                        cand = [(cy + dy, cx + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                                if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
+                                and sk[cy + dy, cx + dx] and (cy + dy, cx + dx) != (py, px)]
+                        if len(cand) != 1:
+                            break                        # ถึงทางแยก/ตัน
+                        py, px = cy, cx; cy, cx = cand[0]
+                        nb2 = convolve(sk.astype(np.uint8)[max(0,cy-1):cy+2, max(0,cx-1):cx+2],
+                                       K[:cy+2-max(0,cy-1), :cx+2-max(0,cx-1)], mode="constant") if False else None
+                        chain.append((cy, cx))
+                        deg = sum(1 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                                  if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
+                                  and sk[cy + dy, cx + dx])
+                        if deg >= 3:
+                            break                        # (cy,cx) = ทางแยก
+                    deg = sum(1 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                              if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
+                              and sk[cy + dy, cx + dx])
+                    if deg >= 3 and len(chain) <= max(4, 1.5 * 2.0 * D[cy, cx]):
+                        for (qy, qx) in chain[:-1]:      # ลบกิ่ง (คงจุดทางแยกไว้)
+                            sk[qy, qx] = False
+                        removed_any = True
+                if not removed_any:
+                    break
+        except Exception:
+            pass
+        sk = binary_dilation(sk)
+        rgb = np.stack([np.where(sk, 0, 255).astype(np.uint8)] * 3, -1)
+        vec = Bitmap(rgb).trace(centerline=True, background_color=Color(255, 255, 255))
+        subs = []
+        for path in vec.paths:
+            start = None; segs = []; anch = []
+            for sp in path.splines:
+                P = [((q.x - pad) / ppm + x0, ((ih - 1 - q.y) - pad) / ppm + y0) for q in sp.points]
+                if not P:
+                    continue
+                if start is None:
+                    start = P[0]; anch.append(P[0])
+                if getattr(sp, "degree", 1) == 3 and len(P) >= 4:
+                    segs.append(("C", P[1], P[2], P[3])); anch.append(P[3])
+                else:
+                    segs.append(("L", P[-1])); anch.append(P[-1])
+            if start is None or not segs:
+                continue
+            L = sum(((anch[i+1][0]-anch[i][0])**2 + (anch[i+1][1]-anch[i][1])**2) ** 0.5
+                    for i in range(len(anch)-1))
+            closed = not bool(getattr(path, "open", False))
+            if L < max(5.0, tube_mm * 0.7) and not closed:
+                continue                                   # เศษสั้นกว่า ~ครึ่งท่อ -> ทิ้ง
+            subs.append({"start": start, "segs": segs, "closed": closed})
+        return subs if subs else None
+    except Exception:
+        return None
+
+
+def _quick_report(polys, tube_mm=8.0, clear_mm=1.0):
+    """ประเมินความกว้างชิ้นแบบเร็ว (สำหรับข้อความเตือน) — หาความหนาต่ำสุดด้วยการกัดเข้า"""
+    rep = []
+    need = tube_mm + 2.0 * clear_mm
+    for i, p in enumerate(polys):
+        w = 0.0
+        try:
+            lo, hi = 0.0, tube_mm * 2.0
+            for _ in range(12):
+                mid = (lo + hi) / 2.0
+                g = p.buffer(-mid)
+                if g is not None and not g.is_empty:
+                    lo = mid
+                else:
+                    hi = mid
+            w = 2.0 * lo
+        except Exception:
+            w = 0.0
+        rep.append({"idx": i + 1, "min_mm": round(w, 1), "med_mm": round(w, 1),
+                    "ok": (w + 1e-6) >= need, "mode": "center"})
+    return rep
+
+
 def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
     """คืน (subs, report)
        subs   = เส้นแกนกลางรูปแบบเดียวกับระบบ ({"start","segs","closed"} หน่วย มม.)
@@ -493,7 +639,25 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
         if not polys:
             return [], []
 
-        chains, pieces = _vor_centerline(polys)             # 🧮 แนวอ้างอิงจากขอบเวกเตอร์จริง
+        # 🖊️ ทางหลัก (v6): Centerline Trace แบบเครื่องมือกราฟิก — ก้อนทึบเดินโครงร่าง · เส้นอักษรรีดแกนแล้วฟิตโค้ง
+        try:
+            _blob = [p for p in polys if _solid_blob(p, tube_mm)]
+            _strk = [p for p in polys if p not in _blob]
+            _subs_at = _autotrace_centerline(_strk, tube_mm) if _strk else []
+            if _subs_at or _blob:
+                _out = list(_subs_at or [])
+                for _p in _blob:                          # ก้อนทึบ: เส้นเดียวตามโครงร่าง (เหมือนเดิม)
+                    try:
+                        _cc = list(_p.exterior.simplify(0.12).coords)
+                        if len(_cc) >= 4:
+                            _out.append(dict(zip(("start", "segs"), _to_curves(_cc, closed=True)), closed=True))
+                    except Exception:
+                        pass
+                if _out:
+                    return _out, _quick_report(polys, tube_mm, clear_mm)
+        except Exception:
+            pass
+        chains, pieces = _vor_centerline(polys)             # 🧮 ทางถอย: วิธีเดิม (Voronoi)
         if not chains:
             return [], []
         # ดัชนีจุดขอบเวกเตอร์ต่อชิ้น (ไว้ยึดขอบข้างเดียวตามวิธีเส้นคู่)
