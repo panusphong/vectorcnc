@@ -560,11 +560,41 @@ def _autotrace_centerline(polys, tube_mm=8.0):
                         removed_any = True
                 if not removed_any:
                     break
+            # 🖊️ ยืดปลายเส้นให้สุดหัวอักษร (แกนกลางหดจากปลายจริงราวครึ่งความหนาเสมอ
+            #    เหมือนปากกาต้องลากให้สุดหัว-หางตัวอักษร ไม่ใช่หยุดกลางทาง)
+            nb = convolve(sk.astype(np.uint8), K, mode="constant")
+            ends = np.argwhere(sk & (nb == 1))
+            for (ey, ex) in ends:
+                chain = [(ey, ex)]; py, px = -1, -1; cy, cx = ey, ex
+                for _step in range(10):                  # เดินย้อนเข้าเส้น หา 'ทิศของปลาย'
+                    cand = [(cy + dy, cx + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                            if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
+                            and sk[cy + dy, cx + dx] and (cy + dy, cx + dx) != (py, px)]
+                    if len(cand) != 1:
+                        break
+                    py, px = cy, cx; cy, cx = cand[0]; chain.append((cy, cx))
+                if len(chain) < 3:
+                    continue
+                vy = float(ey - chain[-1][0]); vx = float(ex - chain[-1][1])
+                nrm = (vy * vy + vx * vx) ** 0.5
+                if nrm < 1e-6:
+                    continue
+                vy /= nrm; vx /= nrm
+                fy, fx = float(ey), float(ex)
+                for _step in range(int(D[ey, ex] * 1.2) + 2):
+                    fy += vy; fx += vx
+                    qy, qx = int(round(fy)), int(round(fx))
+                    if not (0 <= qy < sk.shape[0] and 0 <= qx < sk.shape[1]):
+                        break
+                    if (not mask[qy, qx]) or D[qy, qx] < 1.6:
+                        break                            # ชิดขอบอักษรแล้ว -> พอ (กันทะลุ)
+                    sk[qy, qx] = True
         except Exception:
             pass
         sk = binary_dilation(sk)
         rgb = np.stack([np.where(sk, 0, 255).astype(np.uint8)] * 3, -1)
-        vec = Bitmap(rgb).trace(centerline=True, background_color=Color(255, 255, 255))
+        vec = Bitmap(rgb).trace(centerline=True, background_color=Color(255, 255, 255),
+                                error_threshold=4.0, filter_iterations=8)   # ฟิตโค้งลื่นขึ้น ลดเส้นย้วย
         subs = []
         for path in vec.paths:
             start = None; segs = []; anch = []
@@ -585,7 +615,80 @@ def _autotrace_centerline(polys, tube_mm=8.0):
             closed = not bool(getattr(path, "open", False))
             if L < max(5.0, tube_mm * 0.7) and not closed:
                 continue                                   # เศษสั้นกว่า ~ครึ่งท่อ -> ทิ้ง
-            subs.append({"start": start, "segs": segs, "closed": closed})
+            subs.append({"start": start, "segs": segs, "closed": closed, "_anch": anch})
+        # 🧷 กติกาปากกา: ทุกชิ้นของแบบต้องมีเส้นเสมอ — ชิ้นไหน trace ไม่ติด ถอยเป็นแกน Voronoi เฉพาะชิ้นนั้น
+        try:
+            from shapely.prepared import prep as _prep
+            _pp = [(_prep(p.buffer(0.8)), i) for i, p in enumerate(polys)]
+            covered = set()
+            for s_ in subs:
+                from shapely.geometry import Point as _Pt
+                for pt in ([s_["start"]] + s_["_anch"][1::2])[:8]:
+                    hit = False
+                    for pr, i in _pp:
+                        if i not in covered and pr.contains(_Pt(pt)):
+                            covered.add(i); hit = True
+                    if hit and len(covered) == len(polys):
+                        break
+            miss = [p for i, p in enumerate(polys) if i not in covered]
+            if miss:
+                chains, _pc = _vor_centerline(miss)
+                for c in chains:
+                    cc = _smooth_path(c["pts"], closed=c["loop"], win_mm=1.2)
+                    if len(cc) >= (3 if c["loop"] else 2):
+                        subs.append(dict(zip(("start", "segs"), _to_curves(cc, closed=c["loop"])),
+                                         closed=c["loop"]))
+        except Exception:
+            pass
+        for s_ in subs:
+            s_.pop("_anch", None)
+        # 🖊️ ลากปลายให้สุดหัวอักษร (พิกัดจริง มม.): ปลายเปิดทุกด้านต้องวิ่งชนหัว/หางตัวอักษร
+        #    เหมือนงานดัดท่อจริง — ท่อวิ่งสุดปลายเส้น ไม่หยุดกลางทาง
+        try:
+            from shapely.geometry import Point as _Pt
+            _lim = 1.0                                   # หยุดเมื่อชิดขอบ ~1 มม.
+            for s_ in subs:
+                if s_.get("closed") or not s_["segs"]:
+                    continue
+                for _side in (0, 1):
+                    if _side == 0:
+                        _p0 = s_["start"]
+                        _g = s_["segs"][0]
+                        _ref = _g[1] if _g[0] == "L" else _g[1]      # c1/จุดถัดไป
+                    else:
+                        _g = s_["segs"][-1]
+                        _p0 = _g[-1]
+                        _ref = _g[2] if _g[0] == "C" else (s_["start"] if len(s_["segs"]) == 1
+                                                           else s_["segs"][-2][-1])
+                    _vx = _p0[0] - _ref[0]; _vy = _p0[1] - _ref[1]
+                    _n = (_vx * _vx + _vy * _vy) ** 0.5
+                    if _n < 1e-6:
+                        continue
+                    _vx /= _n; _vy /= _n
+                    _pc = None
+                    for _q in polys:                     # ชิ้นที่ปลายนี้อยู่ข้างใน
+                        if _q.buffer(0.6).contains(_Pt(_p0)):
+                            _pc = _q; break
+                    if _pc is None:
+                        continue
+                    _best = None; _t = 0.0
+                    while _t < tube_mm * 4.0:            # เดินทีละ 0.6 มม. จนชิดขอบ/หลุดชิ้น
+                        _t += 0.6
+                        _qp = (_p0[0] + _vx * _t, _p0[1] + _vy * _t)
+                        if not _pc.contains(_Pt(_qp)):
+                            break
+                        if _pc.boundary.distance(_Pt(_qp)) < _lim:
+                            _best = _qp; break
+                        _best = _qp
+                    if _best is None or ((_best[0]-_p0[0])**2 + (_best[1]-_p0[1])**2) < 0.36:
+                        continue
+                    if _side == 0:
+                        s_["segs"].insert(0, ("L", s_["start"]))
+                        s_["start"] = _best
+                    else:
+                        s_["segs"].append(("L", _best))
+        except Exception:
+            pass
         return subs if subs else None
     except Exception:
         return None
