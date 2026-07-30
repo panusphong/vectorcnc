@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-30-v",
-        "build_note": "ฐาน -u + ปุ่มสร้างไฟล์ตัด .ai ดึงค่าที่คำนวณไว้มาประกอบทันที (ไม่ปั้นภาพ 3 มิติใหม่) — ค่าเริ่มต้นสร้างครบเหมือนเดิม",
+            "build": "2026-07-30-w",
+        "build_note": "เท่ากับ -v ทุกบรรทัด (เปลี่ยนแค่เลขรุ่น) + หน้าเว็บ: ปุ่มสร้างไฟล์ตัดโชว์สถานะ/ปุ่มโหลดครบทุกกรณี",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู

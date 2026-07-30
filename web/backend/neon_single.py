@@ -18,7 +18,7 @@
 """
 
 
-def _smooth_path(pts, closed=False, win_mm=1.2):
+def _smooth_path(pts, closed=False, win_mm=0.5):
     """🪄 เกลี่ยเส้นเบา ๆ (ลบรอยต่อจุดตัวอย่าง) — หน้าต่างเล็กมาก เส้นไม่เพี้ยนจากกึ่งกลาง
        ปลายเส้นตรึงไว้ที่เดิม (จุดต่อทางแยกยังชนกันสนิท)"""
     try:
@@ -32,7 +32,7 @@ def _smooth_path(pts, closed=False, win_mm=1.2):
         if L < 2.0:
             return pts
         s = np.concatenate([[0.0], np.cumsum(seg)])
-        res = 0.4
+        res = 0.15
         n = max(8, int(L / res) + 1)
         si = np.linspace(0.0, L, n)
         x = np.interp(si, s, P[:, 0]); y = np.interp(si, s, P[:, 1])
@@ -47,7 +47,7 @@ def _smooth_path(pts, closed=False, win_mm=1.2):
             xs[0], ys[0] = x[0], y[0]; xs[-1], ys[-1] = x[-1], y[-1]
         out = list(zip(xs.tolist(), ys.tolist()))
         try:
-            out = list(LineString(out).simplify(0.06).coords)
+            out = list(LineString(out).simplify(0.02).coords)
         except Exception:
             pass
         return out
@@ -55,7 +55,7 @@ def _smooth_path(pts, closed=False, win_mm=1.2):
         return pts
 
 
-def _vor_centerline(polys, step=0.4):
+def _vor_centerline(polys, step=0.15):
     """🧮 แกนกลางจากขอบเวกเตอร์ตรง ๆ (Voronoi) — ไม่มีพิกเซล ไม่มีรอยหยัก
        คืน (chains, pieces_w)
        chains   = [{"pts": [(x,y)...], "w": [ความกว้าง มม. ...], "piece": iชิ้น(0-based), "loop": bool}]
@@ -154,7 +154,7 @@ def _vor_centerline(polys, step=0.4):
             if hit is None:
                 continue
             wj = 2.0 * rad.get(hit, 3.0)
-            if blen <= max(3.0, 1.2 * wj):
+            if blen <= max(4.0, 1.8 * wj):
                 pc = vpiece.get(lf, -1)
                 if rem_v.get(pc, 0) + len(chain) > 0.45 * tot_v.get(pc, 1):
                     continue
