@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-30-y",
-        "build_note": "ฐาน -w + นีออนเส้นเดี่ยว: เส้นโค้งเบซิเยร์จริงแบบเดียวกับเส้นตัด (เนียนกริบ) + ป้อนเส้นดิบชุดเดียวกับเส้นตัด",
+            "build": "2026-07-31-b",
+        "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -5861,20 +5861,94 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              % (_en_layer(L["name"]), junk))
         _neon_subs = None
         if _neon:                                   # 🌈 นีออน: เส้นไฟ (ตามลายเส้นภาพ) + แผ่นอะคริลิคใส (ล้อมทรง)
-            if str(neon_line).lower() == "single":  # เส้นเดี่ยว = แกนกลางความหนาอักษรจริง (โมดูลแยก neon_single.py)
+            if str(neon_line).lower() == "single":
+                # 💡 กติกาสุดท้าย (พี่สั่ง 2026-07-30): "เส้นตัดสร้างแบบไหน ก็สร้างแบบนั้น
+                #    แค่ใส่เส้นนีออน 8 มม. เข้าไปแทน" -> ใช้ 'เส้นตัดชุดเดียวกันเป๊ะ' เป็นแนวเดินไฟ
+                #    ไม่คำนวณแกนกลางใหม่ · ไม่สร้างรูปทรงใหม่ -> ตำแหน่ง/สเกล/ความเนียน = เท่าเส้นตัด 100%
                 try:
-                    try:                                # 💡 โมดูลแยก — พังเมื่อไหร่ถอยใช้วิธีเดิมทันที งานไม่ล้ม
+                    import copy as _cpn
+                    _neon_subs = None
+                    # 🥇 ทางหลัก: แกนกลางกลางเนื้ออักษร (โมดูลแยก neon_single.py — รับรูปที่จัดวางแล้ว
+                    #    ตำแหน่ง/สเกลตรงเสมอ) · เส้นออกเป็นเบซิเยร์จริงแบบเดียวกับเส้นตัด (เนียนกริบ)
+                    try:
                         import neon_single as _NS
-                        # 🎯 ส่ง 'เส้นโค้งดิบ' ชุดเดียวกับที่ทำเส้นตัดเข้าไปด้วย -> เส้นนีออนเดินตามแบบ 100%
-                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0,
-                                                           raw_subs=(_RAW_SUBS.get("subs") or None))
+                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0)
+                        if _neon_subs:
+                            for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
+                                warns.append(_w)
                     except Exception:
-                        _neon_subs, _nrep = [], []
-                    if _neon_subs:
-                        for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
-                            warns.append(_w)
-                    else:                               # โมดูลไม่ให้ผล -> วิธีเดิมของ -e เป๊ะ
-                        _neon_subs = _skeleton_subs(inp, full)
+                        _neon_subs = None
+                    _from_module = bool(_neon_subs)
+                    _rs_n = None if _from_module else _RAW_SUBS.get("subs")
+                    if _rs_n:
+                        # ⚠️ เส้นดิบอยู่ 'พิกัดงานต้นฉบับ' -> ต้องย้ายมาลงกรอบที่จัดวางแล้วก่อน
+                        #    (วิธีเดียวกับที่แก้กล่องไฟฉลุหน้า: สเกลเท่ากันสองแกน + จัดกึ่งกลาง + ตรวจกรอบ)
+                        _nx = []; _ny = []
+                        for _sp in _rs_n:
+                            for _q in [_sp["start"]] + [(_g[1] if _g[0] == "L" else _g[3]) for _g in _sp["segs"]]:
+                                _nx.append(_q[0]); _ny.append(_q[1])
+                        if _nx and _ny:
+                            _rw = max(_nx) - min(_nx); _rh = max(_ny) - min(_ny)
+                            _fb = full.bounds
+                            _fw = _fb[2] - _fb[0]; _fh = _fb[3] - _fb[1]
+                            if _rw > 0.01 and _rh > 0.01 and _fw > 0.01 and _fh > 0.01:
+                                _sc = min(_fw / _rw, _fh / _rh)
+                                _cand = _subs_affine(_cpn.deepcopy(_rs_n), _sc,
+                                                     _fb[0] + (_fw - _rw * _sc) / 2.0 - min(_nx) * _sc,
+                                                     _fb[1] + (_fh - _rh * _sc) / 2.0 - min(_ny) * _sc)
+                                _cx = []; _cy = []
+                                for _sp in _cand:
+                                    for _q in [_sp["start"]] + [(_g[1] if _g[0] == "L" else _g[3]) for _g in _sp["segs"]]:
+                                        _cx.append(_q[0]); _cy.append(_q[1])
+                                if (_cx and min(_cx) >= _fb[0] - 1.0 and max(_cx) <= _fb[2] + 1.0
+                                        and min(_cy) >= _fb[1] - 1.0 and max(_cy) <= _fb[3] + 1.0):
+                                    _neon_subs = _cand          # ✅ ลงกรอบพอดี = เส้นเดียวกับเส้นตัดเป๊ะ
+                    if _neon_subs and not _from_module:
+                        # ✂️ ตัด 'ช่องในตัวอักษร' ออก เหลือเส้นรอบนอกชิ้นละเส้น (แบบตัว a ที่พี่อนุมัติ)
+                        try:
+                            from shapely.geometry import Polygon as _Pg3
+                            _rows = []
+                            for _sp in _neon_subs:
+                                _pp = [_sp["start"]] + [(_g[1] if _g[0] == "L" else _g[3]) for _g in _sp["segs"]]
+                                _gp = None
+                                try:
+                                    _gp = _Pg3(_pp)
+                                    if not _gp.is_valid:
+                                        _gp = _gp.buffer(0)
+                                    if _gp is not None and (_gp.is_empty or _gp.area <= 0.2):
+                                        _gp = None
+                                except Exception:
+                                    _gp = None
+                                _rows.append((_sp, _gp, (_gp.representative_point() if _gp is not None else None)))
+                            _keep = []; _cut = 0
+                            for _i, (_sp, _gp, _rp) in enumerate(_rows):
+                                if _gp is None:
+                                    _keep.append(_sp); continue
+                                _depth = 0
+                                for _j, (_s2, _g2, _r2) in enumerate(_rows):
+                                    if _i == _j or _g2 is None:
+                                        continue
+                                    if _g2.area > _gp.area * 1.0001:
+                                        try:
+                                            if _g2.contains(_rp):
+                                                _depth += 1
+                                        except Exception:
+                                            pass
+                                if _depth % 2:                 # ชั้นคี่ = ช่องใน -> ตัด
+                                    _cut += 1
+                                else:                          # ชั้นคู่ = ขอบนอกของชิ้น -> เก็บ
+                                    _keep.append(_sp)
+                            if _keep and _cut:
+                                _neon_subs = _keep
+                                warns.append("✂️ ตัดช่องในตัวอักษรออก %d เส้น — เหลือเส้นรอบนอกชิ้นละเส้นเดียว "
+                                             "(ชิ้นที่อยู่ในช่อง เช่น ตัวโลโก้ในตรา ไม่ถูกตัด)" % _cut)
+                        except Exception:
+                            pass
+                        warns.append("💡 นีออนเส้นเดี่ยว: เดินไฟตาม 'เส้นตัดชุดเดียวกัน' ครบ %d เส้น "
+                                     "· ท่อไฟ 8 มม. · ร่องเซาะ CNC บนแผ่นรองหลังเดินตามเส้นนี้ (ดอกกัด 9-10 มม.)"
+                                     % len(_neon_subs))
+                    elif not _neon_subs:
+                        _neon_subs = _poly_to_subs(full, tol=0.05)   # ถอย: ใช้รูปงานที่จัดวางแล้ว (ตำแหน่งถูกแน่)
                 except Exception:
                     _neon_subs = None
             _ns = _neon_subs if _neon_subs else _poly_to_subs(full, tol=0.05)
