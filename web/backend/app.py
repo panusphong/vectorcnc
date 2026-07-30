@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-30-w",
-        "build_note": "เท่ากับ -v ทุกบรรทัด (เปลี่ยนแค่เลขรุ่น) + หน้าเว็บ: ปุ่มสร้างไฟล์ตัดโชว์สถานะ/ปุ่มโหลดครบทุกกรณี",
+            "build": "2026-07-30-y",
+        "build_note": "ฐาน -w + นีออนเส้นเดี่ยว: เส้นโค้งเบซิเยร์จริงแบบเดียวกับเส้นตัด (เนียนกริบ) + ป้อนเส้นดิบชุดเดียวกับเส้นตัด",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -5865,7 +5865,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 try:
                     try:                                # 💡 โมดูลแยก — พังเมื่อไหร่ถอยใช้วิธีเดิมทันที งานไม่ล้ม
                         import neon_single as _NS
-                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0)
+                        # 🎯 ส่ง 'เส้นโค้งดิบ' ชุดเดียวกับที่ทำเส้นตัดเข้าไปด้วย -> เส้นนีออนเดินตามแบบ 100%
+                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0,
+                                                           raw_subs=(_RAW_SUBS.get("subs") or None))
                     except Exception:
                         _neon_subs, _nrep = [], []
                     if _neon_subs:

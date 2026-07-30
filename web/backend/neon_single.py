@@ -18,7 +18,18 @@
 """
 
 
-def _smooth_path(pts, closed=False, win_mm=0.5):
+def _smooth_path(pts, closed=False, win_mm=0.0):
+    # 🚫 ไม่ดัดเส้นแล้ว (พี่สั่ง: เดินตามเส้นของแบบ 100%) — คืนจุดเดิม ลดแค่จุดซ้ำ
+    try:
+        from shapely.geometry import LineString
+        if len(pts) < 3:
+            return pts
+        return list(LineString(pts).simplify(0.02).coords)
+    except Exception:
+        return pts
+
+
+def _smooth_path_off(pts, closed=False, win_mm=0.5):
     """🪄 เกลี่ยเส้นเบา ๆ (ลบรอยต่อจุดตัวอย่าง) — หน้าต่างเล็กมาก เส้นไม่เพี้ยนจากกึ่งกลาง
        ปลายเส้นตรึงไว้ที่เดิม (จุดต่อทางแยกยังชนกันสนิท)"""
     try:
@@ -338,13 +349,140 @@ def _inset_rings(pg, half_w, tube_mm=8.0):
         return []
 
 
-def centerline(full, tube_mm=8.0, clear_mm=1.0):
+def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
+    """🪄 แปลงแนวจุดถี่ ๆ -> 'เส้นโค้งเบซิเยร์จริง' รูปแบบเดียวกับเส้นตัด (เนียนกริบเท่ากัน)
+       - เลือกจุดสำคัญด้วย simplify (คงรูปตามแบบ คลาดไม่เกิน tol มม.)
+       - มุมหักคม (> corner_deg) คงความคมไว้ ไม่ปัดให้มน
+       - ช่วงที่เหลือร้อยด้วย Catmull-Rom -> cubic bezier (โค้งลื่นต่อเนื่อง)
+       คืน (start, segs) รูปแบบ ("C", c1, c2, end) / ("L", p)"""
+    import math
+    try:
+        from shapely.geometry import LineString
+        P = [tuple(p) for p in pts]
+        if closed and len(P) > 2 and (abs(P[0][0]-P[-1][0]) > 1e-9 or abs(P[0][1]-P[-1][1]) > 1e-9):
+            P = P + [P[0]]
+        if len(P) < 3:
+            return P[0], [("L", q) for q in P[1:]]
+        try:                                            # เลือกจุดสำคัญ
+            K = list(LineString(P).simplify(float(tol)).coords)
+        except Exception:
+            K = P
+        if len(K) < 3:
+            return K[0], [("L", q) for q in K[1:]]
+        if closed and len(K) > 3 and (abs(K[0][0]-K[-1][0]) < 1e-9 and abs(K[0][1]-K[-1][1]) < 1e-9):
+            K = K[:-1]
+            n = len(K); wrap = True
+        else:
+            n = len(K); wrap = False
+        def at(i):
+            if wrap:
+                return K[i % n]
+            return K[min(max(i, 0), n - 1)]
+        def ang(i):                                     # มุมหักที่จุด i (องศา)
+            a, b, c = at(i - 1), at(i), at(i + 1)
+            v1 = (b[0] - a[0], b[1] - a[1]); v2 = (c[0] - b[0], c[1] - b[1])
+            l1 = math.hypot(*v1); l2 = math.hypot(*v2)
+            if l1 < 1e-9 or l2 < 1e-9:
+                return 0.0
+            d = max(-1.0, min(1.0, (v1[0]*v2[0] + v1[1]*v2[1]) / (l1*l2)))
+            return math.degrees(math.acos(d))
+        sharp = set()
+        rng = range(n) if wrap else range(1, n - 1)
+        for i in rng:
+            if ang(i) > float(corner_deg):
+                sharp.add(i % n)
+        segs = []
+        last = n if wrap else n - 1
+        for i in range(last):
+            p1 = at(i); p2 = at(i + 1)
+            # ปลายที่เป็นมุมคม -> ไม่ยืดแขนโค้งข้ามมุม (คมตามแบบ)
+            p0 = p1 if ((i % n) in sharp or (not wrap and i == 0)) else at(i - 1)
+            p3 = p2 if (((i + 1) % n) in sharp or (not wrap and i + 1 == n - 1)) else at(i + 2)
+            c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
+            c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
+            segs.append(("C", c1, c2, p2))
+        return K[0], segs
+    except Exception:
+        return pts[0], [("L", q) for q in pts[1:]]
+
+
+def _polys_from_subs(subs, tol=0.05):
+    """🎯 สร้างรูปทรงจาก 'เส้นโค้งดิบ' ชุดเดียวกับที่ใช้ทำเส้นตัด — แตกโค้งละเอียด tol มม.
+       แบบว่ามาอย่างไร เส้นก็เดินอย่างนั้น ไม่ผ่านรูปที่ถูกแปลง/เกลี่ยมาก่อน"""
+    try:
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+        rings = []
+        for sp in (subs or []):
+            pts = [tuple(sp["start"])]
+            for g in sp.get("segs", []):
+                if g and g[0] != "L" and len(g) >= 4:   # ("C", c1, c2, end) = โค้งเบซิเยร์จริง
+                    p0 = pts[-1]; c1, c2, p3 = g[1], g[2], g[3]
+                    d = (abs(c1[0]-p0[0]) + abs(c1[1]-p0[1]) + abs(c2[0]-c1[0]) + abs(c2[1]-c1[1])
+                         + abs(p3[0]-c2[0]) + abs(p3[1]-c2[1]))
+                    n = max(2, min(120, int(d / max(0.01, tol)) + 1))
+                    for i in range(1, n + 1):
+                        t = i / n; m = 1.0 - t
+                        x = (m**3)*p0[0] + 3*(m*m)*t*c1[0] + 3*m*(t*t)*c2[0] + (t**3)*p3[0]
+                        y = (m**3)*p0[1] + 3*(m*m)*t*c1[1] + 3*m*(t*t)*c2[1] + (t**3)*p3[1]
+                        pts.append((x, y))
+                else:                                  # เส้นตรง
+                    pts.append(tuple(g[-1]))
+        # ปิดวง -> แยกเนื้อ/รู ด้วยการซ้อนกัน (เหมือนที่เส้นตัดทำ)
+            if len(pts) >= 4:
+                rings.append(pts)
+        polys = []
+        for r in rings:
+            try:
+                p = Polygon(r)
+                if not p.is_valid:
+                    p = p.buffer(0)
+                if p is not None and not p.is_empty and p.area > 0.5:
+                    polys.append(p)
+            except Exception:
+                pass
+        if not polys:
+            return None
+        polys.sort(key=lambda p: -p.area)
+        solid = []; hole = []
+        for i, p in enumerate(polys):
+            depth = 0
+            try:
+                rp = p.representative_point()
+                for j, q in enumerate(polys):
+                    if j != i and q.area > p.area and q.contains(rp):
+                        depth += 1
+            except Exception:
+                depth = 0
+            (hole if (depth % 2) else solid).append(p)
+        g = unary_union(solid)
+        if hole:
+            g = g.difference(unary_union(hole))
+        if g is None or g.is_empty:
+            return None
+        return g
+    except Exception:
+        return None
+
+
+def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
     """คืน (subs, report)
        subs   = เส้นแกนกลางรูปแบบเดียวกับระบบ ({"start","segs","closed"} หน่วย มม.)
        report = [{"idx","min_mm","med_mm","ok","mode"}] เรียงชิ้นซ้าย->ขวา
        ล้มเหลวเมื่อไหร่ -> ([], []) ให้ผู้เรียก fallback วิธีเดิม (งานห้ามพัง)"""
     try:
         from shapely.geometry import LineString
+        # 🎯 ถ้ามี 'เส้นโค้งดิบ' ของแบบ (ชุดเดียวกับเส้นตัด) -> ใช้รูปทรงจากเส้นนั้นเลย
+        if raw_subs:
+            _g0 = _polys_from_subs(raw_subs, tol=0.05)
+            if _g0 is not None and not _g0.is_empty:
+                try:                              # ต้องอยู่กรอบเดียวกับของเดิม (กันคลาด/หลุดกรอบ)
+                    _b1 = full.bounds; _b2 = _g0.bounds
+                    if (abs(_b1[0]-_b2[0]) < 1.0 and abs(_b1[1]-_b2[1]) < 1.0
+                            and abs(_b1[2]-_b2[2]) < 1.0 and abs(_b1[3]-_b2[3]) < 1.0):
+                        full = _g0
+                except Exception:
+                    pass
         b = full.bounds
         W = b[2] - b[0]; H = b[3] - b[1]
         if W < 2.0 or H < 2.0:
@@ -386,10 +524,10 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
             cc = _smooth_path(_pts, closed=c["loop"], win_mm=1.2)
             if c["loop"] and len(cc) >= 3:
                 piece_paths.setdefault(pid, []).append(
-                    {"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
+                    dict(zip(("start","segs"), _to_curves(cc, closed=True)), closed=True))
             elif (not c["loop"]) and len(cc) >= 2:
                 piece_paths.setdefault(pid, []).append(
-                    {"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": False})
+                    dict(zip(("start","segs"), _to_curves(cc, closed=False)), closed=False))
 
         report = []; subs = []
         need = tube_mm + 2.0 * clear_mm
@@ -411,7 +549,7 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0):
                     except Exception:
                         cc = ring
                     if len(cc) >= 3:
-                        subs.append({"start": cc[0], "segs": [("L", q) for q in cc[1:]], "closed": True})
+                        subs.append(dict(zip(("start","segs"), _to_curves(cc, closed=True)), closed=True))
                 report.append({"idx": i + 1, "min_mm": round(mn, 1), "med_mm": round(med, 1),
                                "ok": True, "mode": "contour"})
             else:
