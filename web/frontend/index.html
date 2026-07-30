@@ -5890,14 +5890,48 @@ window.clearDesignAll=function(){ try{
 if($('mainClear'))$('mainClear').onclick=function(){ if(confirm('เคลียร์งานปัจจุบันทั้งหมด?'))window.clearDesignAll(); };
 // 🏭 จังหวะที่ 2: สร้างไฟล์ตัดสั่งผลิต (.ai) ด้วยค่าตั้งเดิมทุกช่องของรอบออกแบบล่าสุด
 //    เสร็จแล้ว 'โชว์ปุ่มโหลด' ให้กดเอง (ไม่โหลดอัตโนมัติ — พี่สั่งไว้ 2026-07-30)
+// 🏭 ตัวช่วยกลาง — โชว์สถานะ/ปุ่มโหลด ใต้ปุ่มส้ม (ใช้ทั้งทางที่ดึงค่าที่เก็บไว้ และทางที่คำนวณใหม่)
+window._prodMsg=function(txt,color){
+  var p=$('goProd'); if(!p)return;
+  var m=$('prodMsg');
+  if(!m){ m=document.createElement('div'); m.id='prodMsg'; m.style.cssText='font-size:11.5px;font-weight:700;margin-top:4px;line-height:1.4';
+    p.parentNode.insertBefore(m, p.nextSibling); }
+  m.style.color=color||'#b45309'; m.innerHTML=txt||'';
+};
+window._prodDlSetup=function(b64){
+  var p=$('goProd'); if(!p||!b64)return;
+  window._prodAi=b64;
+  window._dlAllProd=function(silent){
+    if(!window._prodAi){ if(!silent)alert('ยังไม่มีไฟล์ .ai — กดปุ่ม "🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)" ก่อนค่ะ'); return 0; }
+    var bi=atob(window._prodAi),ua=new Uint8Array(bi.length);
+    for(var i=0;i<bi.length;i++)ua[i]=bi.charCodeAt(i);
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([ua],{type:'application/postscript'}));
+    a.download=(lastName||'sign')+'_'+(($('mainSignType')&&$('mainSignType').value)||'x')+'.ai';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400);
+    return 1; };
+  var w=$('prodDlWrap');
+  if(!w){ w=document.createElement('div'); w.id='prodDlWrap'; w.style.marginTop='6px';
+    var m=$('prodMsg'); p.parentNode.insertBefore(w, (m?m.nextSibling:p.nextSibling)); }
+  w.innerHTML='<button class="btn" id="prodDl" style="width:100%;background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;font-weight:800">⬇ โหลดไฟล์ตัด .ai (พร้อมแล้ว)</button>';
+  $('prodDl').onclick=function(){ window._dlAllProd(false); };
+  window._prodMsg('✅ ไฟล์ตัดพร้อมแล้ว — กดปุ่มเขียวเพื่อโหลด','#16a34a');
+  p.disabled=false; p.textContent='🏭 สร้างไฟล์ตัดใหม่อีกครั้ง (.ai)';
+};
 if($('goProd'))$('goProd').onclick=function(){
   if(!fileObj){alert('อัปโหลดภาพ/ไฟล์ก่อน หรือใช้ "พิมพ์ข้อความ" สำหรับอักษร+โครงแขวน');return;}
   var t=($('mainSignType')&&$('mainSignType').value)||'';
   if(!t){alert('เลือก "ประเภทป้าย" ก่อน (เมนูด้านซ้าย) แล้วกด "ออกแบบ 3 มิติ" ดูแบบก่อนสร้างไฟล์ตัดค่ะ');return;}
   var b=this; if(!window._prodBtnTxt)window._prodBtnTxt=b.textContent;
   b.disabled=true; b.textContent='⏳ กำลังสร้างไฟล์ตัด .ai...';
+  try{ var _w0=$('prodDlWrap'); if(_w0)_w0.innerHTML=''; }catch(_e){}
+  // 🕒 ยังไม่ได้กดปุ่มแสดงแบบ -> ไม่มีค่าที่เก็บไว้ ต้องคำนวณทั้งชุด (ช้ากว่า) — ต้องบอกพี่ให้รู้
+  window._prodMsg(window.LS_ACTIVE ? '⏳ กำลังประกอบไฟล์ตัดจากแบบที่แสดงอยู่...'
+    : '⏳ ยังไม่ได้กด "แสดงแบบป้าย 3 มิติ" — รอบนี้ต้องคำนวณทั้งชุด อาจใช้เวลา 30–60 วินาที', '#b45309');
   window._PRODAI=1; window._autoDL=false;
-  try{ $('goLayer').onclick(); }catch(_e){ window._PRODAI=0; b.disabled=false; b.textContent=window._prodBtnTxt; }
+  try{ $('goLayer').onclick(); }catch(_e){ window._PRODAI=0; b.disabled=false; b.textContent=window._prodBtnTxt;
+    window._prodMsg('⚠️ สร้างไฟล์ไม่สำเร็จ ลองกดอีกครั้งค่ะ','#dc2626'); }
 };
 $('goLayer').onclick=function(){
   /* 🔗 ปุ่มเดียวจบ: ถ้ามีการออกแบบหน้ากล่องค้างอยู่ ให้ประกอบหน้ากล่องใหม่ก่อนเสมอ
@@ -5919,7 +5953,7 @@ $('goLayer').onclick=function(){
   var st=$('layerStage');if(!st)return;
   // 🏭 กดปุ่ม 'สร้างไฟล์ตัดสั่งผลิต' -> ห้ามล้างจอ! แบบ 3 มิติที่ดูอยู่ต้องคาอยู่เหมือนเดิม
   //    (ความคืบหน้าไปโชว์ที่ตัวปุ่มแทน) · โหมดแสดงแบบยังทำงานเหมือนเดิมทุกอย่าง
-  if(!window._PRODAI){
+  if(!(window._PRODAI && window.LS_ACTIVE)){
     if($('emptyStage'))$('emptyStage').style.display='none';
     if($('cmp'))$('cmp').style.display='none';
     st.style.display='block';
@@ -5983,31 +6017,15 @@ $('goLayer').onclick=function(){
     if(j.from_cache){
       window._PRODAI=0;
       var _pb=$('goProd');
-      if(j.ai_base64){
-        window._prodAi=j.ai_base64; window._prodPrint=j.print_base64||''; window._prodInfo=j.print_info||{};
-        window._dlAllProd=function(silent){
-          if(!window._prodAi){ if(!silent)alert('ยังไม่มีไฟล์ .ai — กดปุ่ม "🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)" ที่แผงขวาก่อนค่ะ'); return 0; }
-          var bi=atob(window._prodAi),ua=new Uint8Array(bi.length);
-          for(var i=0;i<bi.length;i++)ua[i]=bi.charCodeAt(i);
-          var a=document.createElement('a');
-          a.href=URL.createObjectURL(new Blob([ua],{type:'application/postscript'}));
-          a.download=(lastName||'sign')+'_'+(($('mainSignType')&&$('mainSignType').value)||'x')+'.ai';
-          document.body.appendChild(a); a.click();
-          setTimeout(function(){ try{document.body.removeChild(a);}catch(_e){} },400);
-          return 1; };
-        if(_pb){ _pb.disabled=false; _pb.textContent='🏭 สร้างไฟล์ตัดใหม่อีกครั้ง (.ai)'; }
-        var _dw=$('prodDlWrap');
-        if(!_dw&&_pb){ _dw=document.createElement('div'); _dw.id='prodDlWrap'; _dw.style.marginTop='6px';
-          _pb.parentNode.insertBefore(_dw, _pb.nextSibling); }
-        if(_dw){ _dw.innerHTML='<button class="btn" id="prodDl" style="width:100%;background:linear-gradient(135deg,#16a34a,#0d9488);color:#fff;border:none;font-weight:800">⬇ โหลดไฟล์ตัด .ai (พร้อมแล้ว)</button>';
-          $('prodDl').onclick=function(){ window._dlAllProd(false); }; }
-      }else{
+      window._prodPrint=j.print_base64||''; window._prodInfo=j.print_info||{};
+      if(j.ai_base64){ window._prodDlSetup(j.ai_base64); }
+      else{
         if(_pb){ _pb.disabled=false; _pb.textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)'; }
-        alert('สร้างไฟล์ไม่สำเร็จ — กด "🧊 แสดงแบบป้าย 3 มิติ แยกชั้นตัด" อีกครั้งแล้วลองใหม่ค่ะ');
+        window._prodMsg('⚠️ สร้างไฟล์ไม่สำเร็จ — กด "แสดงแบบป้าย 3 มิติ" อีกครั้งแล้วลองใหม่ค่ะ','#dc2626');
       }
       return;
     }
-    if(j.error){ window._PRODAI=0; try{ if($('goProd')){$('goProd').disabled=false;$('goProd').textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)';} }catch(_e){}
+    if(j.error){ window._PRODAI=0; try{ if($('goProd')){$('goProd').disabled=false;$('goProd').textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)';} window._prodMsg('⚠️ '+String(j.error).slice(0,90),'#dc2626'); }catch(_e){}
       st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
     try{
@@ -6044,7 +6062,12 @@ $('goLayer').onclick=function(){
       if($('laHcm')&&!$('laHcm').value)$('laHcm').placeholder=j.logo_h_cm;
     } }catch(_e){}
     // 🏭 ไฟล์ตัดมาแล้วจริง -> จบจังหวะที่ 2 (คืนปุ่ม · ไม่โหลดอัตโนมัติ รอพี่กดปุ่มโหลด)
-    if(window._PRODAI && j.ai_base64){ window._PRODAI=0; }
+    //    เส้นทางนี้ = คำนวณใหม่ทั้งชุด (ยังไม่มีค่าเก็บไว้) -> ต้องโชว์ปุ่มโหลดที่เดิมเหมือนกัน
+    if(window._PRODAI){
+      window._PRODAI=0;
+      if(j.ai_base64){ try{ window._prodDlSetup(j.ai_base64); }catch(_e){} }
+      else{ try{ window._prodMsg('⚠️ ยังไม่ได้ไฟล์ตัด — ลองกดอีกครั้งค่ะ','#dc2626'); }catch(_e){} }
+    }
     try{ if($('goProd')){ $('goProd').disabled=false;
       $('goProd').textContent=(j.ai_base64?'🏭 สร้างไฟล์ตัดใหม่อีกครั้ง (.ai)':(window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)')); } }catch(_e){}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
