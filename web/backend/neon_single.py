@@ -486,7 +486,94 @@ def _solid_blob(p, tube_mm=8.0):
         return False
 
 
-def _straighten(subs, tol=0.6, min_len=9.0, ax_tol=0.022, ax_min=14.0):
+def _mid_snap(subs, polys, tube_mm=8.0, step=1.2, iters=2):
+    """🧲 ดูดเส้นเข้า 'กึ่งกลางร่องอักษร' เป๊ะ ๆ เทียบกับขอบแบบจริงทั้งสองข้าง
+       (แกนจากภาพจะกลางโดยประมาณ -> จุดนี้บังคับกลางจริงทุกจุด เส้นเลยไหลตามแบบ 100%)
+       ปลายเส้นคงที่ (ไม่ดูด) · จบแล้วฟิตกลับเป็นเบซิเยร์เนียนเหมือนเดิม"""
+    import math
+    try:
+        from shapely.geometry import LineString, Point
+        W = tube_mm * 4.0
+        for s in subs:
+            try:
+                # หา 'ชิ้น' ของเส้นนี้ (ชิ้นที่ครอบจุดมากสุด)
+                P0 = [s["start"]]
+                for g in s["segs"]:
+                    if g[0] == "L":
+                        P0.append(g[1])
+                    else:
+                        p0 = P0[-1]; c1, c2, p3 = g[1], g[2], g[3]
+                        for t in (0.25, 0.5, 0.75, 1.0):
+                            mt = 1 - t
+                            P0.append((mt**3*p0[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t**3*p3[0],
+                                       mt**3*p0[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t**3*p3[1]))
+                _pc = None; _bestn = 0
+                for _q in polys:
+                    n = sum(1 for pp in P0[::max(1, len(P0)//10)] if _q.buffer(0.5).contains(Point(pp)))
+                    if n > _bestn:
+                        _bestn = n; _pc = _q
+                if _pc is None:
+                    continue
+                bnd = _pc.boundary
+                _per = _pc.exterior.length + sum(r.length for r in _pc.interiors)
+                _wm = 2.0 * _pc.area / max(_per, 0.001)          # ความหนาปกติของเส้นชิ้นนี้
+                if _wm < tube_mm * 1.8:
+                    continue                                     # เส้นบาง: แกนจากภาพกลางเป๊ะอยู่แล้ว อย่าไปยุ่ง
+                # ทำเป็นเส้นถี่คงระยะ ~step มม.
+                ls = LineString(P0)
+                L = ls.length
+                if L < step * 3:
+                    continue
+                k = max(4, int(L / step))
+                P = [(q.x, q.y) for q in (ls.interpolate(i * L / k) for i in range(k + 1))]
+                closed = bool(s.get("closed"))
+                _gap = int(6.0 / max(step, 0.1)) + 1        # ระยะกันปลาย ~6 มม. (ปลายห้ามขยับ กันเกิดตะขอ)
+                for _ in range(iters):
+                    Q = list(P)
+                    rng = range(len(P)) if closed else range(_gap, len(P) - _gap)
+                    for i in rng:
+                        a = P[i - 1] if i > 0 else (P[-2] if closed else P[0])
+                        b = P[i + 1] if i < len(P) - 1 else (P[1] if closed else P[-1])
+                        tx = b[0] - a[0]; ty = b[1] - a[1]
+                        tn = math.hypot(tx, ty)
+                        if tn < 1e-9:
+                            continue
+                        nx = -ty / tn; ny = tx / tn
+                        ray = LineString([(P[i][0] - nx * W, P[i][1] - ny * W),
+                                          (P[i][0] + nx * W, P[i][1] + ny * W)])
+                        try:
+                            X = bnd.intersection(ray)
+                        except Exception:
+                            continue
+                        hp = []; hm = []
+                        pts = ([X] if X.geom_type == "Point" else list(getattr(X, "geoms", [])))
+                        for h in pts:
+                            if h.geom_type != "Point":
+                                continue
+                            d = (h.x - P[i][0]) * nx + (h.y - P[i][1]) * ny
+                            (hp if d >= 0 else hm).append((abs(d), h))
+                        if hp and hm:
+                            d1, h1 = min(hp); d2, h2 = min(hm)
+                            if (d1 + d2) > _wm * 1.7:            # โซนทางแยก/หัวโป่ง -> อย่าดูด (กันเส้นสะดุ้ง)
+                                continue
+                            mx = (h1.x + h2.x) / 2.0; my = (h1.y + h2.y) / 2.0
+                            if math.hypot(mx - P[i][0], my - P[i][1]) <= tube_mm * 0.9:
+                                Q[i] = (P[i][0] + (mx - P[i][0]) * 0.6,     # ขยับนุ่ม ๆ 60% กันเส้นสะดุ้ง
+                                        P[i][1] + (my - P[i][1]) * 0.6)
+                    P = Q
+                # ฟิตกลับเป็นเบซิเยร์ (โค้งจริง เนียนเหมือนเส้นตัด)
+                st2, sg2 = _to_curves(_smooth_path_win(P, closed=closed, win_mm=3.0),
+                                      closed=closed, tol=0.22, corner_deg=78.0)
+                if sg2:
+                    s["start"] = st2; s["segs"] = sg2
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return subs
+
+
+def _straighten(subs, tol=1.2, min_len=9.0, ax_tol=0.03, ax_min=10.0):
     """📏 เส้นตรงต้องตรงเป๊ะ: ช่วงไหนของเส้นที่แนบคอร์ดตรง (คลาด ≤ tol มม.) -> ยุบเป็นเส้นตรงเดียว
        และเส้นตรงยาวที่เกือบดิ่ง/เกือบระดับ (≤ ~1.3°) -> ดัดให้ดิ่ง/ระดับสนิท (แบบที่กราฟิกจัดเส้น)"""
     import math
@@ -508,13 +595,15 @@ def _straighten(subs, tol=0.6, min_len=9.0, ax_tol=0.022, ax_min=14.0):
                     L = math.hypot(x1 - x0, y1 - y0)
                     if L < 1e-6:
                         break
+                    # 📐 เกณฑ์ 'ตรงจริง' แปรผันตามความยาว: ก้านยาวแอ่นน้อยต้องถูกจัดตรง · โค้งอ่อนช่วงสั้นไม่โดนเหมา
+                    _te = min(tol, max(0.3, 0.009 * L))
                     ok = True
                     for k in range(i, j):
                         pts = [A[k + 1]]
                         if segs[k][0] == "C":
                             pts += [segs[k][1], segs[k][2]]     # จุดคุมโค้งต้องแนบด้วย (กันโค้งป่อง)
                         for (px, py) in pts:
-                            if abs((x1 - x0) * (y0 - py) - (x0 - px) * (y1 - y0)) / L > tol:
+                            if abs((x1 - x0) * (y0 - py) - (x0 - px) * (y1 - y0)) / L > _te:
                                 ok = False; break
                         if not ok:
                             break
@@ -750,7 +839,7 @@ def _autotrace_centerline(polys, tube_mm=8.0):
                         s_["segs"].append(("L", _best))
         except Exception:
             pass
-        _straighten(subs)                                # 📏 เส้นตรงต้องตรงเป๊ะ + ดิ่ง/ระดับสนิท
+        _straighten(subs)                                # 📏 เส้นตรงต้องตรงเป๊ะ + ดิ่ง/ระดับสนิท (โค้งอ่อนไม่ถูกเหมา)
         return subs if subs else None
     except Exception:
         return None
