@@ -786,17 +786,9 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
        ล้มเหลวเมื่อไหร่ -> ([], []) ให้ผู้เรียก fallback วิธีเดิม (งานห้ามพัง)"""
     try:
         from shapely.geometry import LineString
-        # 🎯 ถ้ามี 'เส้นโค้งดิบ' ของแบบ (ชุดเดียวกับเส้นตัด) -> ใช้รูปทรงจากเส้นนั้นเลย
-        if raw_subs:
-            _g0 = _polys_from_subs(raw_subs, tol=0.05)
-            if _g0 is not None and not _g0.is_empty:
-                try:                              # ต้องอยู่กรอบเดียวกับของเดิม (กันคลาด/หลุดกรอบ)
-                    _b1 = full.bounds; _b2 = _g0.bounds
-                    if (abs(_b1[0]-_b2[0]) < 1.0 and abs(_b1[1]-_b2[1]) < 1.0
-                            and abs(_b1[2]-_b2[2]) < 1.0 and abs(_b1[3]-_b2[3]) < 1.0):
-                        full = _g0
-                except Exception:
-                    pass
+        # 🎯 เส้นโค้งดิบของแบบ (ถ้ามี) ใช้เป็น 'แหล่งลายเส้นของชิ้นภาพวาด' เท่านั้น
+        #    ห้ามเอามาแทนรูปทรง full เด็ดขาด — full ตัวเดิมตำแหน่ง/สเกลตรงกับเส้นตัดเสมอ
+        #    (เส้นดิบบางแบบเป็นเส้นเปิด ประกอบรูปปิดไม่ได้ จะทำชิ้นงานหายทั้งก้อน)
         b = full.bounds
         W = b[2] - b[0]; H = b[3] - b[1]
         if W < 2.0 or H < 2.0:
@@ -833,7 +825,7 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
                             _bd = _p.boundary
                             for _rs, _pts in _rawmatch:
                                 _smp = _pts[::max(1, len(_pts) // 6)] or _pts
-                                if all(_bd.distance(_Pt2(q)) < 0.35 for q in _smp):
+                                if all(_bd.distance(_Pt2(q)) < 0.8 for q in _smp):
                                     _out.append({"start": tuple(_rs["start"]),
                                                  "segs": [tuple(g) for g in _rs["segs"]],
                                                  "closed": bool(_rs.get("closed", True))})

@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-31-b",
+            "build": "2026-07-31-c",
         "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -5872,7 +5872,33 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     #    ตำแหน่ง/สเกลตรงเสมอ) · เส้นออกเป็นเบซิเยร์จริงแบบเดียวกับเส้นตัด (เนียนกริบ)
                     try:
                         import neon_single as _NS
-                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0)
+                        _rsm0 = None
+                        try:                                    # 🎯 ส่ง 'เส้นโค้งดิบของแบบ' (จัดลงกรอบแล้ว) ให้โมดูล
+                            _rs_p = _RAW_SUBS.get("subs")       #    โลโก้/ภาพวาด จะได้วิ่งตามเส้นแบบเป๊ะ (ชุดเดียวกับเส้นตัด)
+                            if _rs_p:
+                                _nx = []; _ny = []
+                                for _sp in _rs_p:
+                                    for _q in [_sp["start"]] + [(_g[1] if _g[0] == "L" else _g[3]) for _g in _sp["segs"]]:
+                                        _nx.append(_q[0]); _ny.append(_q[1])
+                                if _nx and _ny:
+                                    _rw = max(_nx) - min(_nx); _rh = max(_ny) - min(_ny)
+                                    _fb = full.bounds
+                                    _fw = _fb[2] - _fb[0]; _fh = _fb[3] - _fb[1]
+                                    if _rw > 0.01 and _rh > 0.01 and _fw > 0.01 and _fh > 0.01:
+                                        _sc0 = min(_fw / _rw, _fh / _rh)
+                                        _c0 = _subs_affine(_cpn.deepcopy(_rs_p), _sc0,
+                                                           _fb[0] + (_fw - _rw * _sc0) / 2.0 - min(_nx) * _sc0,
+                                                           _fb[1] + (_fh - _rh * _sc0) / 2.0 - min(_ny) * _sc0)
+                                        _cx = []; _cy = []
+                                        for _sp in _c0:
+                                            for _q in [_sp["start"]] + [(_g[1] if _g[0] == "L" else _g[3]) for _g in _sp["segs"]]:
+                                                _cx.append(_q[0]); _cy.append(_q[1])
+                                        if (_cx and min(_cx) >= _fb[0] - 1.0 and max(_cx) <= _fb[2] + 1.0
+                                                and min(_cy) >= _fb[1] - 1.0 and max(_cy) <= _fb[3] + 1.0):
+                                            _rsm0 = _c0         # ✅ ลงกรอบพอดี (การ์ดเดียวกับที่ใช้แก้กล่องฉลุหน้า)
+                        except Exception:
+                            _rsm0 = None
+                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=_rsm0)
                         if _neon_subs:
                             for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
                                 warns.append(_w)
