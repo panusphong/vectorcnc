@@ -461,10 +461,11 @@ def _polys_from_subs(subs, tol=0.05):
 
 
 def _solid_blob(p, tube_mm=8.0):
-    """ก้อนทึบ (ไม่ใช่เส้นอักษร) — ความกว้างในสุดใหญ่เทียบกับตัวชิ้น -> เดินตามโครงร่างแทนแกนกลาง"""
+    """🎨 'ภาพวาด' (เช่น หัวแกะในโลโก้) ต่างจาก 'เส้นอักษร' ตรงความหนา *แปรผันมาก*
+       อักษร = หนาคงที่ทั้งเส้น (หนาสุด/หนาเฉลี่ย ≤ ~1.8 วัดจากงานจริง)
+       ภาพวาด = หนาสุดโตกว่าหนาเฉลี่ยมาก (≥ ~1.9) -> ให้เส้นวิ่งตามลายเส้นของภาพ (ตามขอบ)
+       ส่วนอักษรลากแกนกลางแบบปากกาเสมอ ไม่ว่าหนาแค่ไหน"""
     try:
-        if len(p.interiors) > 0:
-            return False
         b = p.bounds
         bm = min(b[2] - b[0], b[3] - b[1])
         if bm < tube_mm * 2.2:
@@ -477,15 +478,75 @@ def _solid_blob(p, tube_mm=8.0):
                 lo = mid
             else:
                 hi = mid
-        _bb = (b[2] - b[0]) * (b[3] - b[1])
-        _fill = (p.area / _bb) if _bb > 1 else 0.0
-        # 🖊️ หลักปากกา: อักษร/เส้น = ลากแกนกลางเสมอ ไม่ว่าหนาแค่ไหน (อัตราส่วน ไม่ใช่ค่าตายตัว)
-        #    ก้อนทึบจริง = อัดแน่นแบบวงกลม/จุด: ความยาวเทียบความหนา (L/w) เกือบ 1 และเนื้อเต็ม
-        _w = 2.0 * lo
-        _L = p.area / max(_w, 0.001)
-        return (_w > tube_mm * 2.0) and ((_L / max(_w, 0.001)) < 1.05) and (_fill > 0.5)
+        _wmax = 2.0 * lo
+        _per = p.exterior.length + sum(r.length for r in p.interiors)
+        _wmean = 2.0 * p.area / max(_per, 0.001)
+        return (_wmax > tube_mm * 2.5) and ((_wmax / max(_wmean, 0.001)) > 1.85)
     except Exception:
         return False
+
+
+def _straighten(subs, tol=0.6, min_len=9.0, ax_tol=0.022, ax_min=14.0):
+    """📏 เส้นตรงต้องตรงเป๊ะ: ช่วงไหนของเส้นที่แนบคอร์ดตรง (คลาด ≤ tol มม.) -> ยุบเป็นเส้นตรงเดียว
+       และเส้นตรงยาวที่เกือบดิ่ง/เกือบระดับ (≤ ~1.3°) -> ดัดให้ดิ่ง/ระดับสนิท (แบบที่กราฟิกจัดเส้น)"""
+    import math
+    for s in subs:
+        try:
+            segs = s["segs"]
+            if not segs:
+                continue
+            A = [tuple(s["start"])] + [tuple(g[1] if g[0] == "L" else g[3]) for g in segs]
+            out = []
+            i = 0
+            n = len(segs)
+            while i < n:
+                best = i
+                j = i
+                while j < n:                       # ขยายช่วง i..j ให้ไกลสุดที่ยังแนบคอร์ด
+                    j += 1
+                    x0, y0 = A[i]; x1, y1 = A[j]
+                    L = math.hypot(x1 - x0, y1 - y0)
+                    if L < 1e-6:
+                        break
+                    ok = True
+                    for k in range(i, j):
+                        pts = [A[k + 1]]
+                        if segs[k][0] == "C":
+                            pts += [segs[k][1], segs[k][2]]     # จุดคุมโค้งต้องแนบด้วย (กันโค้งป่อง)
+                        for (px, py) in pts:
+                            if abs((x1 - x0) * (y0 - py) - (x0 - px) * (y1 - y0)) / L > tol:
+                                ok = False; break
+                        if not ok:
+                            break
+                    if not ok:
+                        break
+                    best = j
+                x0, y0 = A[i]; x1, y1 = A[best]
+                L = math.hypot(x1 - x0, y1 - y0)
+                if best > i and L >= min_len:
+                    out.append(("L", A[best])); i = best
+                else:
+                    out.append(segs[i]); i += 1
+            # ดัดแกน: เส้นตรงยาวที่เกือบดิ่ง/ระดับ -> ดิ่ง/ระดับสนิท
+            A2 = [tuple(s["start"])]
+            for g in out:
+                A2.append(tuple(g[1] if g[0] == "L" else g[3]))
+            for k, g in enumerate(out):
+                if g[0] != "L":
+                    continue
+                x0, y0 = A2[k]; x1, y1 = A2[k + 1]
+                dx = x1 - x0; dy = y1 - y0
+                L = math.hypot(dx, dy)
+                if L < ax_min:
+                    continue
+                if abs(dx) <= ax_tol * L:
+                    out[k] = ("L", (x0, y1)); A2[k + 1] = (x0, y1)
+                elif abs(dy) <= ax_tol * L:
+                    out[k] = ("L", (x1, y0)); A2[k + 1] = (x1, y0)
+            s["segs"] = out
+        except Exception:
+            pass
+    return subs
 
 
 def _autotrace_centerline(polys, tube_mm=8.0):
@@ -505,7 +566,7 @@ def _autotrace_centerline(polys, tube_mm=8.0):
         W = x1 - x0; H = y1 - y0
         if W < 2 or H < 2:
             return None
-        ppm = min(2.5, 4200.0 / max(W, 1.0), 4200.0 / max(H, 1.0))   # px ต่อ มม.
+        ppm = min(4.0, 6000.0 / max(W, 1.0), 6000.0 / max(H, 1.0))   # px ต่อ มม. (ละเอียดขึ้น -> เส้นนิ่งขึ้น)
         if ppm < 0.5:
             ppm = 0.5
         pad = 6
@@ -594,7 +655,7 @@ def _autotrace_centerline(polys, tube_mm=8.0):
         sk = binary_dilation(sk)
         rgb = np.stack([np.where(sk, 0, 255).astype(np.uint8)] * 3, -1)
         vec = Bitmap(rgb).trace(centerline=True, background_color=Color(255, 255, 255),
-                                error_threshold=4.0, filter_iterations=8)   # ฟิตโค้งลื่นขึ้น ลดเส้นย้วย
+                                error_threshold=2.0, filter_iterations=6)   # ฟิตแนบเส้นจริง (คม) — ความตรงจัดการที่ _straighten
         subs = []
         for path in vec.paths:
             start = None; segs = []; anch = []
@@ -689,6 +750,7 @@ def _autotrace_centerline(polys, tube_mm=8.0):
                         s_["segs"].append(("L", _best))
         except Exception:
             pass
+        _straighten(subs)                                # 📏 เส้นตรงต้องตรงเป๊ะ + ดิ่ง/ระดับสนิท
         return subs if subs else None
     except Exception:
         return None
@@ -752,13 +814,40 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
             _subs_at = _autotrace_centerline(_strk, tube_mm) if _strk else []
             if _subs_at or _blob:
                 _out = list(_subs_at or [])
-                for _p in _blob:                          # ก้อนทึบ: เส้นเดียวตามโครงร่าง (เหมือนเดิม)
+                # 🎨 ภาพวาด (เช่น หัวแกะ): ใช้ 'โค้ดเส้นคู่' — เส้นวิ่งตามเส้นโค้งดิบของแบบตรง ๆ
+                #    (subpath ชุดเดียวกับที่โหมดเส้นคู่/เส้นตัดใช้ -> เนียนกริบเท่ากันเป๊ะ)
+                _rawmatch = []
+                if raw_subs and _blob:
                     try:
-                        _cc = list(_p.exterior.simplify(0.12).coords)
-                        if len(_cc) >= 4:
-                            _out.append(dict(zip(("start", "segs"), _to_curves(_cc, closed=True)), closed=True))
+                        from shapely.geometry import Point as _Pt2
+                        for _rs in raw_subs:
+                            _pts = [tuple(_rs["start"])] + [tuple(g[1] if g[0] == "L" else g[3])
+                                                            for g in _rs["segs"]]
+                            _rawmatch.append((_rs, _pts))
                     except Exception:
-                        pass
+                        _rawmatch = []
+                for _p in _blob:
+                    _got = False
+                    if _rawmatch:
+                        try:                              # subpath ไหนวางอยู่บนขอบชิ้นนี้ -> เป็นลายเส้นของชิ้นนี้
+                            _bd = _p.boundary
+                            for _rs, _pts in _rawmatch:
+                                _smp = _pts[::max(1, len(_pts) // 6)] or _pts
+                                if all(_bd.distance(_Pt2(q)) < 0.35 for q in _smp):
+                                    _out.append({"start": tuple(_rs["start"]),
+                                                 "segs": [tuple(g) for g in _rs["segs"]],
+                                                 "closed": bool(_rs.get("closed", True))})
+                                    _got = True
+                        except Exception:
+                            _got = False
+                    if not _got:                          # ไม่มีเส้นดิบ (เช่น งานสแกน) -> ตามขอบรูปทรง
+                        try:
+                            for _ring in [_p.exterior] + list(_p.interiors):
+                                _cc = list(_ring.simplify(0.12).coords)
+                                if len(_cc) >= 4:
+                                    _out.append(dict(zip(("start", "segs"), _to_curves(_cc, closed=True)), closed=True))
+                        except Exception:
+                            pass
                 if _out:
                     return _out, _quick_report(polys, tube_mm, clear_mm)
         except Exception:
