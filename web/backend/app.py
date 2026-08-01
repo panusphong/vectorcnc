@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-31-b",
+            "build": "2026-08-01-a",
         "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1803,8 +1803,13 @@ def _vtrace_full_mm(img_path, real_width_mm):
                 #    (2) อยู่ลึกเข้าไป ไม่แนบขอบตัวอักษร
                 #    (3) ไม่ใช่แถบบางแบน ๆ — เศษจากการ trace ขอบจะบางมาก (สูงไม่กี่ มม.)
                 #    ถ้าผิดข้อใดข้อหนึ่ง = เนื้องาน ไม่ใช่ช่อง -> ห้ามเจาะทะลุ (ตัวอักษรจะแหว่ง)
+                #    🆕 ข้อยกเว้นของข้อ (2): 'ช่องใหญ่' (≥5% ของเนื้อชิ้นแม่) = ช่องจริงในแบบเสมอ
+                #       งานลายเส้นบาง (โลโก้ outline) เส้นหนาไม่กี่ มม. ช่องข้างในจึงอยู่ชิดขอบนอก
+                #       โดยธรรมชาติ -> เดิมโดนข้อ (2) ตัดทิ้ง ช่องในหมวกเชฟ/ตัวการ์ตูนเลยหายเกลี้ยง
+                #       ส่วนเศษจากการ trace ยังโดนข้อ (3) บางไป และ (4) เล็กไป ดักไว้ครบเหมือนเดิม
+                _bigHole = Ps[_i].area >= Ps[_best].area * 0.05
                 if (not _preps[_best].contains(Ps[_i])
-                        or Ps[_best].exterior.distance(Ps[_i]) < _tolH
+                        or ((not _bigHole) and Ps[_best].exterior.distance(Ps[_i]) < _tolH)
                         or min(_hh, _hw) < _PH * 0.05
                         or Ps[_i].area < Ps[_best].area * 0.004):
                     _best = -1
