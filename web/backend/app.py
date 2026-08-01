@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-01-a",
+            "build": "2026-08-01-b",
         "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -1131,7 +1131,13 @@ def _smooth_cut(geom, r_mm=0.45):
             if L < r * 8:                               # ชิ้นเล็กมาก -> ไม่รีด (กันรูปหาย)
                 return list(ring)
             n = max(24, int(L / step))
-            pts = _np.array([ls.interpolate(i * L / n).coords[0] for i in range(n)])
+            # ⚡ สุ่มจุดตามความยาวเส้นด้วย numpy ทีเดียว (สูตรเดียวกับ interpolate เป๊ะ
+            #    แต่เร็วกว่าหลายร้อยเท่า — เดิมเรียก GEOS ทีละจุด หลักหมื่นครั้งต่อวง)
+            _Pr = _np.asarray(ls.coords, float)
+            _sg = _np.sqrt(((_Pr[1:] - _Pr[:-1]) ** 2).sum(1))
+            _cs = _np.concatenate([[0.0], _np.cumsum(_sg)])
+            _d = _np.arange(n) * (L / n)
+            pts = _np.c_[_np.interp(_d, _cs, _Pr[:, 0]), _np.interp(_d, _cs, _Pr[:, 1])]
             ext = _np.vstack([pts[-half:], pts, pts[:half]])   # วนปิด -> ไม่มีรอยต่อ
             sx = _np.convolve(ext[:, 0], w, 'valid'); sy = _np.convolve(ext[:, 1], w, 'valid')
             return list(zip(sx, sy))
@@ -1804,9 +1810,6 @@ def _vtrace_full_mm(img_path, real_width_mm):
                 #    (3) ไม่ใช่แถบบางแบน ๆ — เศษจากการ trace ขอบจะบางมาก (สูงไม่กี่ มม.)
                 #    ถ้าผิดข้อใดข้อหนึ่ง = เนื้องาน ไม่ใช่ช่อง -> ห้ามเจาะทะลุ (ตัวอักษรจะแหว่ง)
                 #    🆕 ข้อยกเว้นของข้อ (2): 'ช่องใหญ่' (≥5% ของเนื้อชิ้นแม่) = ช่องจริงในแบบเสมอ
-                #       งานลายเส้นบาง (โลโก้ outline) เส้นหนาไม่กี่ มม. ช่องข้างในจึงอยู่ชิดขอบนอก
-                #       โดยธรรมชาติ -> เดิมโดนข้อ (2) ตัดทิ้ง ช่องในหมวกเชฟ/ตัวการ์ตูนเลยหายเกลี้ยง
-                #       ส่วนเศษจากการ trace ยังโดนข้อ (3) บางไป และ (4) เล็กไป ดักไว้ครบเหมือนเดิม
                 _bigHole = Ps[_i].area >= Ps[_best].area * 0.05
                 if (not _preps[_best].contains(Ps[_i])
                         or ((not _bigHole) and Ps[_best].exterior.distance(Ps[_i]) < _tolH)
@@ -2168,6 +2171,7 @@ def _poly_to_subs(geom, tol=0.04):
     if geom is None or geom.is_empty:
         return subs
     polys = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
+    _todo = []
     for pg in polys:
         if pg.geom_type != "Polygon" or pg.is_empty:
             continue
@@ -2179,12 +2183,28 @@ def _poly_to_subs(geom, tol=0.04):
             _xs = [p[0] for p in ring]; _ys = [p[1] for p in ring]
             if (max(_xs) - min(_xs)) < 2.0 and (max(_ys) - min(_ys)) < 2.0:   # ก้อนจิ๋วทุกด้าน (เส้นเรียวยาวจริงยังผ่าน)
                 continue
-            try:
-                sp = bezier_vec._fit_ring_to_sub(ring, tol=float(tol))
-            except Exception:
-                sp = None
-            if sp:
-                subs.append(sp)
+            _todo.append(ring)
+
+    def _fit1(ring):
+        try:
+            return bezier_vec._fit_ring_to_sub(ring, tol=float(tol))
+        except Exception:
+            return None
+    # ⚡ ฟิตหลายวงพร้อมกัน (งานอิสระต่อกัน · ผลลัพธ์เรียงลำดับเดิมเป๊ะ)
+    if len(_todo) >= 3:
+        try:
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            import os as _os
+            _w = max(2, min(8, (_os.cpu_count() or 2)))
+            with _TPE(max_workers=_w) as _ex:
+                _res = list(_ex.map(_fit1, _todo))
+        except Exception:
+            _res = [_fit1(r) for r in _todo]
+    else:
+        _res = [_fit1(r) for r in _todo]
+    for sp in _res:
+        if sp:
+            subs.append(sp)
     return subs
 
 
@@ -2602,23 +2622,54 @@ def _cut_subs_offset(geom, ref_w_mm=600.0, clean=True):
             return _poly_to_subs(geom, tol=0.04)
     # 🩹 ชั้นที่ขยาย/หด: แก้ห่วง/หนาม/วงเศษ (ของที่ 'เกิดใหม่' จากการ offset เท่านั้น) แล้วฟิตโค้ง
     geom = _fix_offset_geom(geom, W)
-    base = _poly_to_subs(geom, tol=0.04)      # เส้นแบบเดิม (ไว้เทียบ/ถอยกลับ)
+    # ⚡ 'เส้นแบบเดิม' (base) ใช้แค่ 2 อย่าง: ไว้ถอยกลับ กับไว้เทียบ 'จำนวนวง'
+    #    เดิมฟิตโค้งทิ้งไว้ล่วงหน้าเสมอ ทั้งที่เกือบทุกครั้งไม่ได้ใช้ (เสียเวลาฟรีเป็นสิบวินาที)
+    #    ✅ ทำเป็น 'ฟิตตอนต้องใช้จริง' + นับจำนวนวงแบบถูก ๆ (ตัวกรองชุดเดียวกับ _poly_to_subs เป๊ะ)
+    #    หมายเหตุความปลอดภัย: _cg คือ 'ขอบบน' ของ len(base) เสมอ (วงที่ฟิตพลาดจะทำให้ base น้อยกว่า)
+    #    ดังนั้น len(subs) >= _cg*0.9  =>  len(subs) >= len(base)*0.9 แน่นอน — ผ่านด่านนี้จึงไม่ต้องฟิต base
+    #    ถ้าไม่ผ่านค่อยฟิต base แล้วเช็คด้วยเงื่อนไขเดิมเป๊ะ ๆ → ผลลัพธ์เหมือนเดิมทุกกรณี
+    _bc = {}
+
+    def _base():
+        if "v" not in _bc:
+            _bc["v"] = _poly_to_subs(geom, tol=0.04)
+        return _bc["v"]
+
+    def _ring_cap(_g):
+        try:
+            c = 0
+            for _p in (_g.geoms if _g.geom_type == "MultiPolygon" else [_g]):
+                if _p.geom_type != "Polygon" or _p.is_empty:
+                    continue
+                for _ring in ([list(_p.exterior.coords)] + [list(_h.coords) for _h in _p.interiors]):
+                    if len(_ring) < 4:
+                        continue
+                    _xs = [q[0] for q in _ring]; _ys = [q[1] for q in _ring]
+                    if (max(_xs) - min(_xs)) < 2.0 and (max(_ys) - min(_ys)) < 2.0:
+                        continue
+                    c += 1
+            return c
+        except Exception:
+            return None
     try:
         g2 = _smooth_cut(geom, r)
         if g2 is None or g2.is_empty:
-            return base
+            return _base()
         # 🛡️ ตรวจว่า 'ไม่เพี้ยน/ไม่หาย': พื้นที่ต้องใกล้เดิม และจำนวนชิ้นต้องเท่าเดิม
         _n1 = len(geom.geoms) if geom.geom_type == "MultiPolygon" else 1
         _n2 = len(g2.geoms) if g2.geom_type == "MultiPolygon" else 1
         if _n2 < _n1 or abs(g2.area - geom.area) > max(20.0, geom.area * 0.02):
-            return base
+            return _base()
         subs = _poly_to_subs(g2, tol=tol)
         # 🛡️ ชั้นที่ตัดตามรูปตรง ๆ (clean=False) ห้ามวงหายแม้แต่วงเดียว · ชั้น offset ยอมได้ ≤10%
-        if not subs or len(subs) < (len(base) if not clean else len(base) * 0.9):
-            return base
+        _cg = _ring_cap(geom)
+        if subs and _cg is not None and len(subs) >= (_cg if not clean else _cg * 0.9):
+            return subs                        # ผ่านด้วยขอบบน -> ไม่ต้องฟิต base เลย
+        if not subs or len(subs) < (len(_base()) if not clean else len(_base()) * 0.9):
+            return _base()
         return subs
     except Exception:
-        return base
+        return _base()
 
 
 def _spec_sheet_svg(out_layers):
