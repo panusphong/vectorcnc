@@ -18,19 +18,18 @@
 """
 
 
-# 🎛️ สวิตช์โหมดเส้นเดี่ยว
-#    False = เดินเส้นด้านนอกตามตัวอักษร/โลโก้ 100% (ใช้เส้นตัดชุดเดิมของ app · เร็วทันที)  ← โหมดที่พี่สั่ง
-#    True  = คำนวณแกนกลางกลางเนื้ออักษร (โค้ดด้านล่างทั้งหมด · ช้ากว่า)
-_ENABLE_AXIS = False
+def _smooth_path(pts, closed=False, win_mm=0.0):
+    # 🚫 ไม่ดัดเส้นแล้ว (พี่สั่ง: เดินตามเส้นของแบบ 100%) — คืนจุดเดิม ลดแค่จุดซ้ำ
+    try:
+        from shapely.geometry import LineString
+        if len(pts) < 3:
+            return pts
+        return list(LineString(pts).simplify(0.02).coords)
+    except Exception:
+        return pts
 
 
-def _smooth_path(pts, closed=False, win_mm=2.5):
-    # 🪄 เกลี่ยเส้นกลางให้นิ่งเหมือนเส้นคู่ (หน้าต่าง 2.5 มม. รีดคลื่นสั่นจากหัวอักษร/ความหนาแกว่ง)
-    #    ปลายเส้นตรึงที่เดิม -> จุดต่อยังชนสนิท · รูปทรงรวมไม่เพี้ยน (เลื่อนจากแกนจริง < 1 มม.)
-    return _smooth_path_win(pts, closed=closed, win_mm=win_mm)
-
-
-def _smooth_path_win(pts, closed=False, win_mm=2.5):
+def _smooth_path_off(pts, closed=False, win_mm=0.5):
     """🪄 เกลี่ยเส้นเบา ๆ (ลบรอยต่อจุดตัวอย่าง) — หน้าต่างเล็กมาก เส้นไม่เพี้ยนจากกึ่งกลาง
        ปลายเส้นตรึงไว้ที่เดิม (จุดต่อทางแยกยังชนกันสนิท)"""
     try:
@@ -350,7 +349,7 @@ def _inset_rings(pg, half_w, tube_mm=8.0):
         return []
 
 
-def _to_curves(pts, closed=False, tol=0.25, corner_deg=55.0):
+def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
     """🪄 แปลงแนวจุดถี่ ๆ -> 'เส้นโค้งเบซิเยร์จริง' รูปแบบเดียวกับเส้นตัด (เนียนกริบเท่ากัน)
        - เลือกจุดสำคัญด้วย simplify (คงรูปตามแบบ คลาดไม่เกิน tol มม.)
        - มุมหักคม (> corner_deg) คงความคมไว้ ไม่ปัดให้มน
@@ -466,430 +465,24 @@ def _polys_from_subs(subs, tol=0.05):
         return None
 
 
-def _solid_blob(p, tube_mm=8.0):
-    """🎨 'ภาพวาด' (เช่น หัวแกะในโลโก้) ต่างจาก 'เส้นอักษร' ตรงความหนา *แปรผันมาก*
-       อักษร = หนาคงที่ทั้งเส้น (หนาสุด/หนาเฉลี่ย ≤ ~1.8 วัดจากงานจริง)
-       ภาพวาด = หนาสุดโตกว่าหนาเฉลี่ยมาก (≥ ~1.9) -> ให้เส้นวิ่งตามลายเส้นของภาพ (ตามขอบ)
-       ส่วนอักษรลากแกนกลางแบบปากกาเสมอ ไม่ว่าหนาแค่ไหน"""
-    try:
-        b = p.bounds
-        bm = min(b[2] - b[0], b[3] - b[1])
-        if bm < tube_mm * 2.2:
-            return False
-        lo, hi = 0.0, bm
-        for _ in range(12):                    # รัศมีในสุด (วงกลมใหญ่สุดที่ยัดลงชิ้นได้)
-            mid = (lo + hi) / 2.0
-            g = p.buffer(-mid)
-            if g is not None and not g.is_empty:
-                lo = mid
-            else:
-                hi = mid
-        _wmax = 2.0 * lo
-        _per = p.exterior.length + sum(r.length for r in p.interiors)
-        _wmean = 2.0 * p.area / max(_per, 0.001)
-        return (_wmax > tube_mm * 2.5) and ((_wmax / max(_wmean, 0.001)) > 1.85)
-    except Exception:
-        return False
-
-
-def _mid_snap(subs, polys, tube_mm=8.0, step=1.2, iters=2):
-    """🧲 ดูดเส้นเข้า 'กึ่งกลางร่องอักษร' เป๊ะ ๆ เทียบกับขอบแบบจริงทั้งสองข้าง
-       (แกนจากภาพจะกลางโดยประมาณ -> จุดนี้บังคับกลางจริงทุกจุด เส้นเลยไหลตามแบบ 100%)
-       ปลายเส้นคงที่ (ไม่ดูด) · จบแล้วฟิตกลับเป็นเบซิเยร์เนียนเหมือนเดิม"""
-    import math
-    try:
-        from shapely.geometry import LineString, Point
-        W = tube_mm * 4.0
-        for s in subs:
-            try:
-                # หา 'ชิ้น' ของเส้นนี้ (ชิ้นที่ครอบจุดมากสุด)
-                P0 = [s["start"]]
-                for g in s["segs"]:
-                    if g[0] == "L":
-                        P0.append(g[1])
-                    else:
-                        p0 = P0[-1]; c1, c2, p3 = g[1], g[2], g[3]
-                        for t in (0.25, 0.5, 0.75, 1.0):
-                            mt = 1 - t
-                            P0.append((mt**3*p0[0] + 3*mt*mt*t*c1[0] + 3*mt*t*t*c2[0] + t**3*p3[0],
-                                       mt**3*p0[1] + 3*mt*mt*t*c1[1] + 3*mt*t*t*c2[1] + t**3*p3[1]))
-                _pc = None; _bestn = 0
-                for _q in polys:
-                    n = sum(1 for pp in P0[::max(1, len(P0)//10)] if _q.buffer(0.5).contains(Point(pp)))
-                    if n > _bestn:
-                        _bestn = n; _pc = _q
-                if _pc is None:
-                    continue
-                bnd = _pc.boundary
-                _per = _pc.exterior.length + sum(r.length for r in _pc.interiors)
-                _wm = 2.0 * _pc.area / max(_per, 0.001)          # ความหนาปกติของเส้นชิ้นนี้
-                if _wm < tube_mm * 1.8:
-                    continue                                     # เส้นบาง: แกนจากภาพกลางเป๊ะอยู่แล้ว อย่าไปยุ่ง
-                # ทำเป็นเส้นถี่คงระยะ ~step มม.
-                ls = LineString(P0)
-                L = ls.length
-                if L < step * 3:
-                    continue
-                k = max(4, int(L / step))
-                P = [(q.x, q.y) for q in (ls.interpolate(i * L / k) for i in range(k + 1))]
-                closed = bool(s.get("closed"))
-                _gap = int(6.0 / max(step, 0.1)) + 1        # ระยะกันปลาย ~6 มม. (ปลายห้ามขยับ กันเกิดตะขอ)
-                for _ in range(iters):
-                    Q = list(P)
-                    rng = range(len(P)) if closed else range(_gap, len(P) - _gap)
-                    for i in rng:
-                        a = P[i - 1] if i > 0 else (P[-2] if closed else P[0])
-                        b = P[i + 1] if i < len(P) - 1 else (P[1] if closed else P[-1])
-                        tx = b[0] - a[0]; ty = b[1] - a[1]
-                        tn = math.hypot(tx, ty)
-                        if tn < 1e-9:
-                            continue
-                        nx = -ty / tn; ny = tx / tn
-                        ray = LineString([(P[i][0] - nx * W, P[i][1] - ny * W),
-                                          (P[i][0] + nx * W, P[i][1] + ny * W)])
-                        try:
-                            X = bnd.intersection(ray)
-                        except Exception:
-                            continue
-                        hp = []; hm = []
-                        pts = ([X] if X.geom_type == "Point" else list(getattr(X, "geoms", [])))
-                        for h in pts:
-                            if h.geom_type != "Point":
-                                continue
-                            d = (h.x - P[i][0]) * nx + (h.y - P[i][1]) * ny
-                            (hp if d >= 0 else hm).append((abs(d), h))
-                        if hp and hm:
-                            d1, h1 = min(hp); d2, h2 = min(hm)
-                            if (d1 + d2) > _wm * 1.7:            # โซนทางแยก/หัวโป่ง -> อย่าดูด (กันเส้นสะดุ้ง)
-                                continue
-                            mx = (h1.x + h2.x) / 2.0; my = (h1.y + h2.y) / 2.0
-                            if math.hypot(mx - P[i][0], my - P[i][1]) <= tube_mm * 0.9:
-                                Q[i] = (P[i][0] + (mx - P[i][0]) * 0.6,     # ขยับนุ่ม ๆ 60% กันเส้นสะดุ้ง
-                                        P[i][1] + (my - P[i][1]) * 0.6)
-                    P = Q
-                # ฟิตกลับเป็นเบซิเยร์ (โค้งจริง เนียนเหมือนเส้นตัด)
-                st2, sg2 = _to_curves(_smooth_path_win(P, closed=closed, win_mm=3.0),
-                                      closed=closed, tol=0.22, corner_deg=78.0)
-                if sg2:
-                    s["start"] = st2; s["segs"] = sg2
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return subs
-
-
-def _straighten(subs, tol=1.2, min_len=9.0, ax_tol=0.03, ax_min=10.0):
-    """📏 เส้นตรงต้องตรงเป๊ะ: ช่วงไหนของเส้นที่แนบคอร์ดตรง (คลาด ≤ tol มม.) -> ยุบเป็นเส้นตรงเดียว
-       และเส้นตรงยาวที่เกือบดิ่ง/เกือบระดับ (≤ ~1.3°) -> ดัดให้ดิ่ง/ระดับสนิท (แบบที่กราฟิกจัดเส้น)"""
-    import math
-    for s in subs:
-        try:
-            segs = s["segs"]
-            if not segs:
-                continue
-            A = [tuple(s["start"])] + [tuple(g[1] if g[0] == "L" else g[3]) for g in segs]
-            out = []
-            i = 0
-            n = len(segs)
-            while i < n:
-                best = i
-                j = i
-                while j < n:                       # ขยายช่วง i..j ให้ไกลสุดที่ยังแนบคอร์ด
-                    j += 1
-                    x0, y0 = A[i]; x1, y1 = A[j]
-                    L = math.hypot(x1 - x0, y1 - y0)
-                    if L < 1e-6:
-                        break
-                    # 📐 เกณฑ์ 'ตรงจริง' แปรผันตามความยาว: ก้านยาวแอ่นน้อยต้องถูกจัดตรง · โค้งอ่อนช่วงสั้นไม่โดนเหมา
-                    _te = min(tol, max(0.3, 0.009 * L))
-                    ok = True
-                    for k in range(i, j):
-                        pts = [A[k + 1]]
-                        if segs[k][0] == "C":
-                            pts += [segs[k][1], segs[k][2]]     # จุดคุมโค้งต้องแนบด้วย (กันโค้งป่อง)
-                        for (px, py) in pts:
-                            if abs((x1 - x0) * (y0 - py) - (x0 - px) * (y1 - y0)) / L > _te:
-                                ok = False; break
-                        if not ok:
-                            break
-                    if not ok:
-                        break
-                    best = j
-                x0, y0 = A[i]; x1, y1 = A[best]
-                L = math.hypot(x1 - x0, y1 - y0)
-                if best > i and L >= min_len:
-                    out.append(("L", A[best])); i = best
-                else:
-                    out.append(segs[i]); i += 1
-            # ดัดแกน: เส้นตรงยาวที่เกือบดิ่ง/ระดับ -> ดิ่ง/ระดับสนิท
-            A2 = [tuple(s["start"])]
-            for g in out:
-                A2.append(tuple(g[1] if g[0] == "L" else g[3]))
-            for k, g in enumerate(out):
-                if g[0] != "L":
-                    continue
-                x0, y0 = A2[k]; x1, y1 = A2[k + 1]
-                dx = x1 - x0; dy = y1 - y0
-                L = math.hypot(dx, dy)
-                if L < ax_min:
-                    continue
-                if abs(dx) <= ax_tol * L:
-                    out[k] = ("L", (x0, y1)); A2[k + 1] = (x0, y1)
-                elif abs(dy) <= ax_tol * L:
-                    out[k] = ("L", (x1, y0)); A2[k + 1] = (x1, y0)
-            s["segs"] = out
-        except Exception:
-            pass
-    return subs
-
-
-def _autotrace_centerline(polys, tube_mm=8.0):
-    """🖊️ Centerline Trace แบบเดียวกับเครื่องมือกราฟิก:
-       วาดชิ้นงานเป็นภาพ -> skeletonize (แกน 1px) -> autotrace centerline (ฟิตเบซิเยร์ลื่น)
-       คืน subs พิกัด มม. เดิมเป๊ะ · ล้มเหลว -> None (ผู้เรียกถอยไปวิธีเดิม)"""
-    try:
-        import numpy as np
-        from PIL import Image, ImageDraw
-        from skimage.morphology import skeletonize
-        from scipy.ndimage import binary_dilation
-        from autotrace import Bitmap, Color
-        xs = []; ys = []
-        for p in polys:
-            b = p.bounds; xs += [b[0], b[2]]; ys += [b[1], b[3]]
-        x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
-        W = x1 - x0; H = y1 - y0
-        if W < 2 or H < 2:
-            return None
-        ppm = min(4.0, 6000.0 / max(W, 1.0), 6000.0 / max(H, 1.0))   # px ต่อ มม. (ละเอียดขึ้น -> เส้นนิ่งขึ้น)
-        if ppm < 0.5:
-            ppm = 0.5
-        pad = 6
-        iw = int(W * ppm) + pad * 2; ih = int(H * ppm) + pad * 2
-        img = Image.new("L", (iw, ih), 255)
-        dr = ImageDraw.Draw(img)
-        def _px(pt):
-            return ((pt[0] - x0) * ppm + pad, (pt[1] - y0) * ppm + pad)
-        for p in polys:
-            dr.polygon([_px(q) for q in p.exterior.coords], fill=0)
-            for irg in p.interiors:
-                dr.polygon([_px(q) for q in irg.coords], fill=255)
-        mask = np.asarray(img) < 128
-        if not mask.any():
-            return None
-        sk = skeletonize(mask)
-        # ✂️ ตัดกิ่งแตกปลาย: เดินจากปลายกิ่งเข้าหาทางแยก ถ้าสั้นกว่า 1.5×ความกว้างท้องถิ่น -> ลบทิ้ง
-        try:
-            from scipy.ndimage import distance_transform_edt, convolve
-            D = distance_transform_edt(mask)
-            K = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
-            for _ in range(6):                          # วนซ้ำ (กิ่งซ้อนกิ่ง)
-                nb = convolve(sk.astype(np.uint8), K, mode="constant")
-                ends = np.argwhere(sk & (nb == 1))
-                if len(ends) == 0:
-                    break
-                removed_any = False
-                for (ey, ex) in ends:
-                    chain = [(ey, ex)]
-                    py, px = -1, -1; cy, cx = ey, ex
-                    for _step in range(int(tube_mm * ppm * 3) + 10):
-                        cand = [(cy + dy, cx + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                                if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
-                                and sk[cy + dy, cx + dx] and (cy + dy, cx + dx) != (py, px)]
-                        if len(cand) != 1:
-                            break                        # ถึงทางแยก/ตัน
-                        py, px = cy, cx; cy, cx = cand[0]
-                        nb2 = convolve(sk.astype(np.uint8)[max(0,cy-1):cy+2, max(0,cx-1):cx+2],
-                                       K[:cy+2-max(0,cy-1), :cx+2-max(0,cx-1)], mode="constant") if False else None
-                        chain.append((cy, cx))
-                        deg = sum(1 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                                  if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
-                                  and sk[cy + dy, cx + dx])
-                        if deg >= 3:
-                            break                        # (cy,cx) = ทางแยก
-                    deg = sum(1 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                              if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
-                              and sk[cy + dy, cx + dx])
-                    if deg >= 3 and len(chain) <= max(4, 1.5 * 2.0 * D[cy, cx]):
-                        for (qy, qx) in chain[:-1]:      # ลบกิ่ง (คงจุดทางแยกไว้)
-                            sk[qy, qx] = False
-                        removed_any = True
-                if not removed_any:
-                    break
-            # 🖊️ ยืดปลายเส้นให้สุดหัวอักษร (แกนกลางหดจากปลายจริงราวครึ่งความหนาเสมอ
-            #    เหมือนปากกาต้องลากให้สุดหัว-หางตัวอักษร ไม่ใช่หยุดกลางทาง)
-            nb = convolve(sk.astype(np.uint8), K, mode="constant")
-            ends = np.argwhere(sk & (nb == 1))
-            for (ey, ex) in ends:
-                chain = [(ey, ex)]; py, px = -1, -1; cy, cx = ey, ex
-                for _step in range(10):                  # เดินย้อนเข้าเส้น หา 'ทิศของปลาย'
-                    cand = [(cy + dy, cx + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                            if (dy or dx) and 0 <= cy + dy < sk.shape[0] and 0 <= cx + dx < sk.shape[1]
-                            and sk[cy + dy, cx + dx] and (cy + dy, cx + dx) != (py, px)]
-                    if len(cand) != 1:
-                        break
-                    py, px = cy, cx; cy, cx = cand[0]; chain.append((cy, cx))
-                if len(chain) < 3:
-                    continue
-                vy = float(ey - chain[-1][0]); vx = float(ex - chain[-1][1])
-                nrm = (vy * vy + vx * vx) ** 0.5
-                if nrm < 1e-6:
-                    continue
-                vy /= nrm; vx /= nrm
-                fy, fx = float(ey), float(ex)
-                for _step in range(int(D[ey, ex] * 1.2) + 2):
-                    fy += vy; fx += vx
-                    qy, qx = int(round(fy)), int(round(fx))
-                    if not (0 <= qy < sk.shape[0] and 0 <= qx < sk.shape[1]):
-                        break
-                    if (not mask[qy, qx]) or D[qy, qx] < 1.6:
-                        break                            # ชิดขอบอักษรแล้ว -> พอ (กันทะลุ)
-                    sk[qy, qx] = True
-        except Exception:
-            pass
-        sk = binary_dilation(sk)
-        rgb = np.stack([np.where(sk, 0, 255).astype(np.uint8)] * 3, -1)
-        vec = Bitmap(rgb).trace(centerline=True, background_color=Color(255, 255, 255),
-                                error_threshold=2.0, filter_iterations=6)   # ฟิตแนบเส้นจริง (คม) — ความตรงจัดการที่ _straighten
-        subs = []
-        for path in vec.paths:
-            start = None; segs = []; anch = []
-            for sp in path.splines:
-                P = [((q.x - pad) / ppm + x0, ((ih - 1 - q.y) - pad) / ppm + y0) for q in sp.points]
-                if not P:
-                    continue
-                if start is None:
-                    start = P[0]; anch.append(P[0])
-                if getattr(sp, "degree", 1) == 3 and len(P) >= 4:
-                    segs.append(("C", P[1], P[2], P[3])); anch.append(P[3])
-                else:
-                    segs.append(("L", P[-1])); anch.append(P[-1])
-            if start is None or not segs:
-                continue
-            L = sum(((anch[i+1][0]-anch[i][0])**2 + (anch[i+1][1]-anch[i][1])**2) ** 0.5
-                    for i in range(len(anch)-1))
-            closed = not bool(getattr(path, "open", False))
-            if L < max(5.0, tube_mm * 0.7) and not closed:
-                continue                                   # เศษสั้นกว่า ~ครึ่งท่อ -> ทิ้ง
-            subs.append({"start": start, "segs": segs, "closed": closed, "_anch": anch})
-        # 🧷 กติกาปากกา: ทุกชิ้นของแบบต้องมีเส้นเสมอ — ชิ้นไหน trace ไม่ติด ถอยเป็นแกน Voronoi เฉพาะชิ้นนั้น
-        try:
-            from shapely.prepared import prep as _prep
-            _pp = [(_prep(p.buffer(0.8)), i) for i, p in enumerate(polys)]
-            covered = set()
-            for s_ in subs:
-                from shapely.geometry import Point as _Pt
-                for pt in ([s_["start"]] + s_["_anch"][1::2])[:8]:
-                    hit = False
-                    for pr, i in _pp:
-                        if i not in covered and pr.contains(_Pt(pt)):
-                            covered.add(i); hit = True
-                    if hit and len(covered) == len(polys):
-                        break
-            miss = [p for i, p in enumerate(polys) if i not in covered]
-            if miss:
-                chains, _pc = _vor_centerline(miss)
-                for c in chains:
-                    cc = _smooth_path(c["pts"], closed=c["loop"], win_mm=1.2)
-                    if len(cc) >= (3 if c["loop"] else 2):
-                        subs.append(dict(zip(("start", "segs"), _to_curves(cc, closed=c["loop"])),
-                                         closed=c["loop"]))
-        except Exception:
-            pass
-        for s_ in subs:
-            s_.pop("_anch", None)
-        # 🖊️ ลากปลายให้สุดหัวอักษร (พิกัดจริง มม.): ปลายเปิดทุกด้านต้องวิ่งชนหัว/หางตัวอักษร
-        #    เหมือนงานดัดท่อจริง — ท่อวิ่งสุดปลายเส้น ไม่หยุดกลางทาง
-        try:
-            from shapely.geometry import Point as _Pt
-            _lim = 1.0                                   # หยุดเมื่อชิดขอบ ~1 มม.
-            for s_ in subs:
-                if s_.get("closed") or not s_["segs"]:
-                    continue
-                for _side in (0, 1):
-                    if _side == 0:
-                        _p0 = s_["start"]
-                        _g = s_["segs"][0]
-                        _ref = _g[1] if _g[0] == "L" else _g[1]      # c1/จุดถัดไป
-                    else:
-                        _g = s_["segs"][-1]
-                        _p0 = _g[-1]
-                        _ref = _g[2] if _g[0] == "C" else (s_["start"] if len(s_["segs"]) == 1
-                                                           else s_["segs"][-2][-1])
-                    _vx = _p0[0] - _ref[0]; _vy = _p0[1] - _ref[1]
-                    _n = (_vx * _vx + _vy * _vy) ** 0.5
-                    if _n < 1e-6:
-                        continue
-                    _vx /= _n; _vy /= _n
-                    _pc = None
-                    for _q in polys:                     # ชิ้นที่ปลายนี้อยู่ข้างใน
-                        if _q.buffer(0.6).contains(_Pt(_p0)):
-                            _pc = _q; break
-                    if _pc is None:
-                        continue
-                    _best = None; _t = 0.0
-                    while _t < tube_mm * 4.0:            # เดินทีละ 0.6 มม. จนชิดขอบ/หลุดชิ้น
-                        _t += 0.6
-                        _qp = (_p0[0] + _vx * _t, _p0[1] + _vy * _t)
-                        if not _pc.contains(_Pt(_qp)):
-                            break
-                        if _pc.boundary.distance(_Pt(_qp)) < _lim:
-                            _best = _qp; break
-                        _best = _qp
-                    if _best is None or ((_best[0]-_p0[0])**2 + (_best[1]-_p0[1])**2) < 0.36:
-                        continue
-                    if _side == 0:
-                        s_["segs"].insert(0, ("L", s_["start"]))
-                        s_["start"] = _best
-                    else:
-                        s_["segs"].append(("L", _best))
-        except Exception:
-            pass
-        _straighten(subs)                                # 📏 เส้นตรงต้องตรงเป๊ะ + ดิ่ง/ระดับสนิท (โค้งอ่อนไม่ถูกเหมา)
-        return subs if subs else None
-    except Exception:
-        return None
-
-
-def _quick_report(polys, tube_mm=8.0, clear_mm=1.0):
-    """ประเมินความกว้างชิ้นแบบเร็ว (สำหรับข้อความเตือน) — หาความหนาต่ำสุดด้วยการกัดเข้า"""
-    rep = []
-    need = tube_mm + 2.0 * clear_mm
-    for i, p in enumerate(polys):
-        w = 0.0
-        try:
-            lo, hi = 0.0, tube_mm * 2.0
-            for _ in range(12):
-                mid = (lo + hi) / 2.0
-                g = p.buffer(-mid)
-                if g is not None and not g.is_empty:
-                    lo = mid
-                else:
-                    hi = mid
-            w = 2.0 * lo
-        except Exception:
-            w = 0.0
-        rep.append({"idx": i + 1, "min_mm": round(w, 1), "med_mm": round(w, 1),
-                    "ok": (w + 1e-6) >= need, "mode": "center"})
-    return rep
-
-
 def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
     """คืน (subs, report)
        subs   = เส้นแกนกลางรูปแบบเดียวกับระบบ ({"start","segs","closed"} หน่วย มม.)
        report = [{"idx","min_mm","med_mm","ok","mode"}] เรียงชิ้นซ้าย->ขวา
        ล้มเหลวเมื่อไหร่ -> ([], []) ให้ผู้เรียก fallback วิธีเดิม (งานห้ามพัง)"""
-    # 🖊️ กติกาพี่ (2026-07-31): นีออนเส้นเดี่ยว = "เดินเส้นด้านนอกตามตัวอักษร/โลโก้ 100%"
-    #    -> คืนว่าง เพื่อให้ app ใช้ 'เส้นตัดชุดเดิมของตัวเอง' (ขอบนอกชิ้นละเส้น) เป็นแนวเดินไฟ
-    #    ได้ทั้ง ตรงตามแบบ 100% + เร็วทันที (ไม่รีดภาพ/ไม่ฟิตโค้งใหม่ -> ไม่ 502)
-    #    โค้ดแกนกลางด้านล่างคงไว้ทั้งหมด ไม่ได้ลบ (เปิดใช้ใหม่ได้ทันทีถ้าพี่สั่ง)
-    if not _ENABLE_AXIS:
-        return [], []
     try:
         from shapely.geometry import LineString
-        # 🎯 เส้นโค้งดิบของแบบ (ถ้ามี) ใช้เป็น 'แหล่งลายเส้นของชิ้นภาพวาด' เท่านั้น
-        #    ห้ามเอามาแทนรูปทรง full เด็ดขาด — full ตัวเดิมตำแหน่ง/สเกลตรงกับเส้นตัดเสมอ
-        #    (เส้นดิบบางแบบเป็นเส้นเปิด ประกอบรูปปิดไม่ได้ จะทำชิ้นงานหายทั้งก้อน)
+        # 🎯 ถ้ามี 'เส้นโค้งดิบ' ของแบบ (ชุดเดียวกับเส้นตัด) -> ใช้รูปทรงจากเส้นนั้นเลย
+        if raw_subs:
+            _g0 = _polys_from_subs(raw_subs, tol=0.05)
+            if _g0 is not None and not _g0.is_empty:
+                try:                              # ต้องอยู่กรอบเดียวกับของเดิม (กันคลาด/หลุดกรอบ)
+                    _b1 = full.bounds; _b2 = _g0.bounds
+                    if (abs(_b1[0]-_b2[0]) < 1.0 and abs(_b1[1]-_b2[1]) < 1.0
+                            and abs(_b1[2]-_b2[2]) < 1.0 and abs(_b1[3]-_b2[3]) < 1.0):
+                        full = _g0
+                except Exception:
+                    pass
         b = full.bounds
         W = b[2] - b[0]; H = b[3] - b[1]
         if W < 2.0 or H < 2.0:
@@ -900,52 +493,7 @@ def centerline(full, tube_mm=8.0, clear_mm=1.0, raw_subs=None):
         if not polys:
             return [], []
 
-        # 🖊️ ทางหลัก (v6): Centerline Trace แบบเครื่องมือกราฟิก — ก้อนทึบเดินโครงร่าง · เส้นอักษรรีดแกนแล้วฟิตโค้ง
-        try:
-            _blob = [p for p in polys if _solid_blob(p, tube_mm)]
-            _strk = [p for p in polys if p not in _blob]
-            _subs_at = _autotrace_centerline(_strk, tube_mm) if _strk else []
-            if _subs_at or _blob:
-                _out = list(_subs_at or [])
-                # 🎨 ภาพวาด (เช่น หัวแกะ): ใช้ 'โค้ดเส้นคู่' — เส้นวิ่งตามเส้นโค้งดิบของแบบตรง ๆ
-                #    (subpath ชุดเดียวกับที่โหมดเส้นคู่/เส้นตัดใช้ -> เนียนกริบเท่ากันเป๊ะ)
-                _rawmatch = []
-                if raw_subs and _blob:
-                    try:
-                        from shapely.geometry import Point as _Pt2
-                        for _rs in raw_subs:
-                            _pts = [tuple(_rs["start"])] + [tuple(g[1] if g[0] == "L" else g[3])
-                                                            for g in _rs["segs"]]
-                            _rawmatch.append((_rs, _pts))
-                    except Exception:
-                        _rawmatch = []
-                for _p in _blob:
-                    _got = False
-                    if _rawmatch:
-                        try:                              # subpath ไหนวางอยู่บนขอบชิ้นนี้ -> เป็นลายเส้นของชิ้นนี้
-                            _bd = _p.boundary
-                            for _rs, _pts in _rawmatch:
-                                _smp = _pts[::max(1, len(_pts) // 6)] or _pts
-                                if all(_bd.distance(_Pt2(q)) < 0.8 for q in _smp):
-                                    _out.append({"start": tuple(_rs["start"]),
-                                                 "segs": [tuple(g) for g in _rs["segs"]],
-                                                 "closed": bool(_rs.get("closed", True))})
-                                    _got = True
-                        except Exception:
-                            _got = False
-                    if not _got:                          # ไม่มีเส้นดิบ (เช่น งานสแกน) -> ตามขอบรูปทรง
-                        try:
-                            for _ring in [_p.exterior] + list(_p.interiors):
-                                _cc = list(_ring.simplify(0.12).coords)
-                                if len(_cc) >= 4:
-                                    _out.append(dict(zip(("start", "segs"), _to_curves(_cc, closed=True)), closed=True))
-                        except Exception:
-                            pass
-                if _out:
-                    return _out, _quick_report(polys, tube_mm, clear_mm)
-        except Exception:
-            pass
-        chains, pieces = _vor_centerline(polys)             # 🧮 ทางถอย: วิธีเดิม (Voronoi)
+        chains, pieces = _vor_centerline(polys)             # 🧮 แนวอ้างอิงจากขอบเวกเตอร์จริง
         if not chains:
             return [], []
         # ดัชนีจุดขอบเวกเตอร์ต่อชิ้น (ไว้ยึดขอบข้างเดียวตามวิธีเส้นคู่)

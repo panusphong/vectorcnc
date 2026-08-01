@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-07-31-d",
+            "build": "2026-07-31-b",
         "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -4415,16 +4415,7 @@ def _trace_skeleton_mask(sk, full):
 
 def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
-    # 🖼️ กรอบภาพ = ครอบ 'ทั้งตัวงานและแผ่นรอง' ด้วยสเกลเดียวกัน แล้ววางกลางกรอบ
-    #    (เดิมคิดจากแผ่นอย่างเดียว — งานที่ล้นออกนอกแผ่นเลยโดนตัดขาด ยิ่งป้ายใหญ่ยิ่งขาด)
-    b = acrylic.bounds
-    try:
-        if neon_full is not None and not neon_full.is_empty:
-            _bn = neon_full.bounds
-            b = (min(b[0], _bn[0]), min(b[1], _bn[1]), max(b[2], _bn[2]), max(b[3], _bn[3]))
-    except Exception:
-        pass
-    W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
+    b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
 
     def d(poly):
         s = ""
@@ -4530,18 +4521,15 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
                 % (x, y1, x, y2, col, _dlw, x, y1, -a * 0.45, a, a * 0.9, x, y2, -a * 0.45, -a, a * 0.9, col))
     try:
         nb = neon_full.bounds
-        _cb = acrylic.bounds                       # 📏 เส้นบอกขนาดแผ่น = ขนาดแผ่นจริงเสมอ (ไม่ใช่ขนาดกรอบภาพ)
-        _cx1, _cy1 = _cb[0] - b[0] + pad, _cb[1] - b[1] + pad
-        _cx2, _cy2 = _cb[2] - b[0] + pad, _cb[3] - b[1] + pad
         # แผ่นรองหลัง: กว้าง (ใต้แผ่น) + สูง (ซ้าย)
         _yW = pad + H + pad * 0.34
-        parts.append(_arr_h(_cx1, _cx2, _yW, '#dc2626'))
+        parts.append(_arr_h(pad, pad + W, _yW, '#dc2626'))
         parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle">%.1f &#3595;&#3617;.</text>'
-                     % ((_cx1 + _cx2) / 2, _yW - _fz2 * 0.45, _fz2, (_cb[2] - _cb[0]) / 10.0))
+                     % (pad + W / 2, _yW - _fz2 * 0.45, _fz2, W / 10.0))
         _xH = pad * 0.40
-        parts.append(_arr_v(_xH, _cy1, _cy2, '#dc2626'))
+        parts.append(_arr_v(_xH, pad, pad + H, '#dc2626'))
         parts.append('<text font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle" transform="translate(%.1f %.1f) rotate(-90)">%.1f &#3595;&#3617;.</text>'
-                     % (_fz2, _xH - _fz2 * 0.45, (_cy1 + _cy2) / 2, (_cb[3] - _cb[1]) / 10.0))
+                     % (_fz2, _xH - _fz2 * 0.45, pad + H / 2, H / 10.0))
         # ตัวงานเส้นไฟ: กว้าง (เหนือ art) + สูง (ขวา)
         ax1, ay1 = nb[0] - b[0] + pad, nb[1] - b[1] + pad
         ax2, ay2 = nb[2] - b[0] + pad, nb[3] - b[1] + pad
