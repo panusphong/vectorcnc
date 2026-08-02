@@ -5421,7 +5421,12 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return; var FCOL=_faceShow();
       }
     }
   }
-  // 🎨 ถ้าย้อมผ่าน DOM ไม่ได้ -> ใช้วิธีเดียวกับ 'จำลองผนัง' เป๊ะ: แปลงเป็นภาพแล้วย้อมทับพิกเซล
+  // ✅ ป้ายที่ 'หน้า' ถูกตีเป็นคิ้ว (อักษรยกขอบแบบมีคิ้ว · กล่องฉลุ) จะไม่มี .w3d-face เลยสักชิ้น
+  //    แต่ .w3d-side/.w3d-kim ย้อมสำเร็จไปแล้ว = ย้อมผ่าน DOM สำเร็จจริง
+  //    เดิมนับ nFace=0 แล้วตกไปเรียกตัวย้อมแบบแรสเตอร์ทุกครั้งที่เปลี่ยนสี
+  //    -> หน่วง (วนพิกเซลทั้งใบ) + ย้อมทับกล่องข้อมูลจนพื้นหลังเปลี่ยนสี
+  if(!nFace && (sideEls.length||kimEls.length)) nFace=sideEls.length+kimEls.length;
+  // 🎨 ถ้าย้อมผ่าน DOM ไม่ได้จริง ๆ -> ใช้วิธีเดียวกับ 'จำลองผนัง': แปลงเป็นภาพแล้วย้อมทับพิกเซล
   if(!nFace){ try{ _recolor3dRaster(); }catch(e){} }
   try{ _spotBoxSync({'w3d-face':_faceShow(), 'w3d-side':(($('sideColor')||{}).value||''), 'w3d-kim':(($('faceColor')||{}).value||'')}); }catch(e){}   // 🎨 อัปเดตกล่องสเปคสีให้ตรงกัน
 }
@@ -5430,7 +5435,25 @@ function _hex2rgb(h){ h=String(h||'#ffffff').replace('#',''); if(h.length===3)h=
   return [parseInt(h.substr(0,2),16)||0, parseInt(h.substr(2,2),16)||0, parseInt(h.substr(4,2),16)||0]; }
 function _recolor3dRaster(){
   var host=$('ls3dImg'); if(!host)return false;
-  if(!host._origSvg){ var s0=host.querySelector('svg'); if(!s0)return false; host._origSvg=s0.outerHTML; }
+  var s0=host.querySelector('svg');
+  if(!host._origSvg){ if(!s0)return false; host._origSvg=s0.outerHTML; }
+  // 📦 ย้อมเฉพาะกรอบ 'ตัวป้าย' (#w3dBody) — ห้ามแตะกล่องข้อมูล/เส้นบอกขนาด/กล่องสเปคสี
+  //    เดิมวนพิกเซลทั้งใบ -> พื้นหลังกล่องข้อมูลเปลี่ยนสีตามไปด้วย และเสียเวลาฟรีทั้งภาพ
+  //    เก็บกรอบไว้ใน host เพราะรอบถัดไป svg ถูกแทนที่ด้วย canvas แล้ว (หาไม่เจออีก)
+  if(s0){
+    try{
+      var _bd=(s0.getElementById?s0.getElementById('w3dBody'):s0.querySelector('#w3dBody'));
+      var _vb=s0.viewBox&&s0.viewBox.baseVal;
+      if(_bd&&_vb&&_vb.width>0&&_vb.height>0){
+        var _bb=_bd.getBBox();
+        if(_bb&&_bb.width>0&&_bb.height>0){
+          host._bodyBox={x:(_bb.x-_vb.x)/_vb.width, y:(_bb.y-_vb.y)/_vb.height,
+                         w:_bb.width/_vb.width, h:_bb.height/_vb.height};
+        }
+      }
+    }catch(e){}
+  }
+  var box=host._bodyBox||null;
   var im=new Image();
   im.onload=function(){
     var W=Math.max(320, host.clientWidth||700), ar=(im.height&&im.width)?(im.height/im.width):0.4;
@@ -5438,7 +5461,14 @@ function _recolor3dRaster(){
     var g=c.getContext('2d'); g.fillStyle='#ffffff'; g.fillRect(0,0,c.width,c.height);
     g.drawImage(im,0,0,c.width,c.height);
     try{
-      var d=g.getImageData(0,0,c.width,c.height), a=d.data, F=_hex2rgb(_faceShow()), S=_hex2rgb(SCOL);
+      var x0=0,y0=0,x1=c.width,y1=c.height;
+      if(box){
+        x0=Math.max(0,Math.floor(box.x*c.width));  y0=Math.max(0,Math.floor(box.y*c.height));
+        x1=Math.min(c.width, Math.ceil((box.x+box.w)*c.width));
+        y1=Math.min(c.height,Math.ceil((box.y+box.h)*c.height));
+        if(x1-x0<8||y1-y0<8){ x0=0;y0=0;x1=c.width;y1=c.height; }   // กรอบเพี้ยน -> ถอยไปทั้งใบ
+      }
+      var d=g.getImageData(x0,y0,x1-x0,y1-y0), a=d.data, F=_hex2rgb(_faceShow()), S=_hex2rgb(SCOL);
       for(var i=0;i<a.length;i+=4){
         if(a[i+3]<8)continue;
         var r=a[i],gg=a[i+1],b=a[i+2];
@@ -5447,7 +5477,7 @@ function _recolor3dRaster(){
         if(L>=196){ var k=0.74+0.26*(L/255); a[i]=F[0]*k; a[i+1]=F[1]*k; a[i+2]=F[2]*k; }        // สว่าง = หน้าอะคริลิค
         else if(L>=95){ var k2=0.74+0.26*(L/255); a[i]=S[0]*k2; a[i+1]=S[1]*k2; a[i+2]=S[2]*k2; } // กลาง = ขอบ/ผนังข้าง
       }
-      g.putImageData(d,0,0);
+      g.putImageData(d,x0,y0);
     }catch(e){ return; }
     c.style.cssText='width:100%;height:auto;display:block';
     host.innerHTML=''; host.appendChild(c);
@@ -5455,8 +5485,7 @@ function _recolor3dRaster(){
   im.onerror=function(){};
   im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(host._origSvg);
   return true;
-  img.querySelectorAll('.w3d-kim').forEach(function(p){p.setAttribute('fill',SCOL);});   // คิ้ว
-  window._lsGenFace=FCOL; window._lsGenSide=SCOL;   // อัปเดตอ้างอิงสำหรับการเปลี่ยนสีครั้งถัดไป
+  /* 🗑️ (ลบโค้ดตายหลัง return แล้ว — อ้าง img/FCOL ที่ไม่มีในสโคปนี้ ถ้าถูกเรียกจริงจะพังทันที) */
 }
 /* 🔆 หา 'กลุ่มตัวป้าย' ในภาพ 3 มิติ — แสงต้องออกจากกลุ่มนี้ตัวเดียวเท่านั้น
    backend ครอบไว้ให้แล้วเป็น <g id="w3dBody"> (ไม่รวมเส้นบอกมิติ/ตัวเลข/โน้ต)
@@ -6133,6 +6162,12 @@ $('goLayer').onclick=function(){
     //    (แบบ 3 มิติบนจอคือตัวเดิมอยู่แล้ว ไม่ต้องเรนเดอร์ซ้ำให้กระพริบ/เสียเวลา)
     if(j.from_cache){
       window._PRODAI=0;
+      // 🛑 จบ 'ลูปชดเชยความกว้าง' + คืนจอที่ถูกสปินเนอร์ทับไว้
+      //    บั๊กเดิม: รอบชดเชยวางสปินเนอร์ "ปรับขนาดให้ตรงกับที่กำหนด..." ทับจอ แล้วรอบถัดไป
+      //    ดันมาจบที่ทางนี้ (เซิร์ฟเวอร์ตอบจากแคช) ซึ่งไม่เคยวาดจอใหม่เลย
+      //    -> ไฟล์ตัดเสร็จแล้ว ปุ่มเขียวขึ้นแล้ว แต่จอกลางหมุนค้างตลอดไป
+      window._bxFit=0; window._bxTried=null;
+      try{ if(window._bxStageBak){ st.innerHTML=window._bxStageBak; window._bxStageBak=''; } }catch(_e){}
       var _pb=$('goProd');
       window._prodPrint=j.print_base64||''; window._prodInfo=j.print_info||{};
       if(j.ai_base64){ window._prodDlSetup(j.ai_base64); }
@@ -6142,7 +6177,8 @@ $('goLayer').onclick=function(){
       }
       return;
     }
-    if(j.error){ window._PRODAI=0; try{ if($('goProd')){$('goProd').disabled=false;$('goProd').textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)';} window._prodMsg('⚠️ '+String(j.error).slice(0,90),'#dc2626'); }catch(_e){}
+    if(j.error){ window._PRODAI=0; window._bxFit=0; window._bxTried=null; window._bxStageBak='';
+      try{ if($('goProd')){$('goProd').disabled=false;$('goProd').textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)';} window._prodMsg('⚠️ '+String(j.error).slice(0,90),'#dc2626'); }catch(_e){}
       st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">'+j.error+'</div>';return;}
     // 📏 ขนาดกล่องต้องตรงเป๊ะ — วัดขนาดนอกจริงที่ได้ แล้วชดเชย 'ค่าเผื่อคิ้ว' ให้ตรงกับที่กรอก (สั่งผลิตจริง)
     try{
@@ -6159,14 +6195,26 @@ $('goLayer').onclick=function(){
         var _next=Math.round(_cur+(_target-_outer));
         // 🛡️ กันหลุด: ค่าที่ชดเชยต้องอยู่ในช่วงสมเหตุสมผล (40%–250% ของค่าเดิม) ไม่งั้นข้ามการชดเชย
         var _sane=(_outer>0 && _cur>0 && _next>=_cur*0.4 && _next<=_cur*2.5 && _next>=20);
+        // 🔁 กันแกว่งกลับไปค่าเดิม — เดิมชดเชยแกว่ง W1 → W2 → W1 แล้วรอบที่ย้อนกลับมา
+        //    เซิร์ฟเวอร์ตอบจากแคชทันที (from_cache) ซึ่งไม่วาดจอใหม่ = จอหมุนค้าง + เสียเวลาคำนวณฟรี
+        if(!(window._bxFit>0) || !window._bxTried) window._bxTried=[_cur];
+        if(_sane && window._bxTried.indexOf(_next)>=0) _sane=false;
         if(_sane && Math.abs(_outer-_target)>1 && window._bxFit<3){
-          window._bxFit++;
+          window._bxFit++; window._bxTried.push(_next);
           $('realW').value=_next;                              // ชดเชยแบบตรงตัว (คิ้วเป็นค่าคงที่)
-          st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">ปรับขนาดให้ตรงกับที่กำหนด...</div></div>';
+          // 🏭 โหมด 'สร้างไฟล์ตัดสั่งผลิต' = ห้ามล้างจอ (กฎเดียวกับตอนเริ่มที่ปุ่ม goLayer)
+          //    รายงานความคืบหน้าที่แผงขวาแทน · โหมดออกแบบเท่านั้นที่วางสปินเนอร์ทับจอได้
+          //    และต้องเก็บของเดิมไว้คืน เผื่อรอบถัดไปจบที่ทางที่ไม่ได้วาดจอ
+          if(window._PRODAI && window.LS_ACTIVE){
+            try{ window._prodMsg('⏳ ปรับขนาดให้ตรงกับที่กำหนด... (รอบที่ '+window._bxFit+')','#b45309'); }catch(_e){}
+          }else{
+            window._bxStageBak=st.innerHTML;
+            st.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px;margin-top:8px">ปรับขนาดให้ตรงกับที่กำหนด...</div></div>';
+          }
           setTimeout(function(){ try{ $('goLayer').click(); }catch(_e){} },30);
           return;
         }
-        window._bxFit=0;
+        window._bxFit=0; window._bxTried=null; window._bxStageBak='';
         if(_outer>0 && Math.abs(_outer-_target)>Math.max(3,_target*0.02)){
           try{ (j.warns=j.warns||[]).unshift('⚠️ ขนาดกว้างที่ได้จริง '+(_outer/10).toFixed(1)+' ซม. (กำหนดไว้ '+_tw+' ซม.) — ตรวจค่า "คิ้ว/ค่าเผื่อ" อีกครั้ง'); }catch(_e){}
         }
@@ -6721,7 +6769,13 @@ $('goLayer').onclick=function(){
     wireGlow();
     try{ if(window._initLs3dNotes)_initLs3dNotes(); }catch(_e){}
     try{ if(window._wirePresent)_wirePresent(); }catch(_e){}
-  }).catch(function(e){st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
+  }).catch(function(e){
+    // 🛟 ต่อไม่ติด/ขาดกลางคัน: ต้องล้างสถานะทุกตัว ไม่งั้นรอบหน้าจะค้างต่อจากของเก่า
+    window._PRODAI=0; window._bxFit=0; window._bxTried=null; window._bxStageBak='';
+    try{ if($('goProd')){ $('goProd').disabled=false;
+      $('goProd').textContent=window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)'; }
+      window._prodMsg('⚠️ ต่อ backend ไม่ได้ — ลองกดอีกครั้งค่ะ','#dc2626'); }catch(_e){}
+    st.innerHTML='<div style="color:#EF4444;padding:20px;font-size:13px">ต่อ backend ไม่ได้ '+e+'</div>';});
 };
 
 // ==================== ดราฟท์ภาพ -> .ai (ให้กราฟิคทำต่อ) ====================
