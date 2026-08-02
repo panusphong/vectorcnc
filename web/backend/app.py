@@ -3252,15 +3252,13 @@ def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, ex
                 _d.append("%s %.1f" % (lb, wsum[k]))
         if _d:
             c1.append("   (" + " · ".join(_d) + " กก.)")
+        # 📋 กติกาของกล่องนี้: 'ต้องอ่านได้ครบทุกตัวอักษร' — ห้ามตัดทิ้งด้วย …
+        #    ชื่อยาวให้ตัดขึ้นบรรทัดใหม่เอา (ฟังก์ชัน _wrap9 ข้างล่าง) แล้วกล่องจะสูงขึ้นตาม
         _ps = sorted((wsum.get("parts") or []), key=lambda q: -float(q.get("kg") or 0))
-        for _q in _ps[:8]:
+        for _q in _ps:
             _nm = str(_q.get("name", ""))
-            _nm = (_nm[:26] + "…") if len(_nm) > 27 else _nm
             _th = (" %.1f มม." % float(_q.get("thick_mm") or 0)) if float(_q.get("thick_mm") or 0) > 0 else ""
-            c1.append("   • %-27s %s%s = %.2f กก." % (_nm, _q.get("mat", ""), _th, float(_q.get("kg") or 0)))
-        if len(_ps) > 8:
-            c1.append("   • (อีก %d ชั้น รวม %.2f กก.)"
-                      % (len(_ps) - 8, sum(float(q.get("kg") or 0) for q in _ps[8:])))
+            c1.append("   • %s  %s%s = %.2f กก." % (_nm, _q.get("mat", ""), _th, float(_q.get("kg") or 0)))
 
         # ── คอลัมน์ 2: โครงสร้างเหล็ก ────────────────────────────────────
         c2 = []
@@ -3281,30 +3279,52 @@ def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, ex
         if boq_items:
             c3.append("🧾 BOQ ของสิ้นเปลืองติดตั้ง (%d รายการ)" % len(boq_items))
             for _q in boq_items:
-                c3.append("   □ %-30s %6s %s"
-                          % (str(_q.get("name", ""))[:30], _q.get("qty"), _q.get("unit", "")))
+                c3.append("   □ %s  %s %s"
+                          % (str(_q.get("name", "")), _q.get("qty"), _q.get("unit", "")))
 
         cols = [c for c in (c1, c2, c3) if c]
-        nrow = max(len(c) for c in cols) if cols else 0
         gap = fs * 1.6
-        bh = nrow * fs * 1.30 + pad * 2.0
         bx, by, bw = vx, vy + vh + gap, vw
-        p = ['<g id="wpanel">',
-             '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#ffffff"/>'
-             % (vx, vy + vh, vw, gap + bh),
-             '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#f8fafc" '
-             'stroke="#cbd5e1" stroke-width="%.2f"/>'
-             % (bx + pad * 0.4, by, bw - pad * 0.8, bh, fs * 0.5, max(0.5, fs * 0.09))]
+        p = ['<g id="wpanel">', "", ""]        # 2 ช่องแรกเว้นไว้ใส่พื้นหลัง หลังรู้ความสูงจริง
         colw = (bw - pad * 2.4) / max(1, len(cols))
-        # ✂️ ตัดข้อความให้พอดีความกว้างคอลัมน์ ไม่งั้นบรรทัดยาวจะล้นไปทับคอลัมน์ข้าง ๆ
+        # 📋 บรรทัดยาวเกินคอลัมน์ -> 'ตัดขึ้นบรรทัดใหม่' ไม่ใช่ตัดทิ้ง
+        #    (เดิมตัดด้วย … ทำให้ชื่อวัสดุ/รายการ BOQ อ่านไม่ครบ ต้องไปเปิดใบสั่งผลิตดูอีกที)
         _maxch = max(24, int(colw / (fs * 0.55)))
+
+        def _wrap9(_r, _mx):
+            if len(_r) <= _mx:
+                return [_r]
+            _lead = len(_r) - len(_r.lstrip(" "))
+            _ind = " " * (_lead + 5)                       # บรรทัดต่อเยื้องเข้า อ่านง่ายว่าเป็นรายการเดียวกัน
+            _out = []; _cur = ""
+            for _w in _r.split(" "):
+                _cand = (_cur + " " + _w) if _cur else _w
+                if len(_cand) > _mx and _cur:
+                    _out.append(_cur); _cur = _ind + _w
+                else:
+                    _cur = _cand
+            if _cur:
+                _out.append(_cur)
+            _fin = []
+            for _L in _out:                                # คำเดียวยาวเกินคอลัมน์ -> หั่นตรง ๆ
+                while len(_L) > _mx:
+                    _fin.append(_L[:_mx]); _L = _ind + _L[_mx:]
+                _fin.append(_L)
+            return _fin
+
+        cols = [[(_w, _i == 0) for _i, _r in enumerate(_c) for _w in _wrap9(_r, _maxch)]
+                for _c in cols]
+        nrow = max(len(_c) for _c in cols) if cols else 0
+        bh = nrow * fs * 1.30 + pad * 2.0
+        p[1] = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#ffffff"/>'
+                % (vx, vy + vh, vw, gap + bh))
+        p[2] = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#f8fafc" '
+                'stroke="#cbd5e1" stroke-width="%.2f"/>'
+                % (bx + pad * 0.4, by, bw - pad * 0.8, bh, fs * 0.5, max(0.5, fs * 0.09)))
         for ci, col in enumerate(cols):
             cx = bx + pad * 1.4 + ci * colw
             ty = by + pad * 1.1 + fs * 0.95
-            for i, r in enumerate(col):
-                if len(r) > _maxch:
-                    r = r[:_maxch - 1] + "…"
-                head = (i == 0)
+            for i, (r, head) in enumerate(col):
                 col_c = "#0f172a" if head else ("#b45309" if r.strip().startswith("⚠️") else "#334155")
                 wt = "800" if head else ("700" if r.strip().startswith(("🔩", "✅", "⚠️", "🔧", "📐", "🦾")) else "500")
                 sz = fs * 1.1 if head else fs * 0.92
@@ -6189,14 +6209,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _neon_subs = None
                     # 🥇 ทางหลัก: แกนกลางกลางเนื้ออักษร (โมดูลแยก neon_single.py — รับรูปที่จัดวางแล้ว
                     #    ตำแหน่ง/สเกลตรงเสมอ) · เส้นออกเป็นเบซิเยร์จริงแบบเดียวกับเส้นตัด (เนียนกริบ)
+                    _nrep = []
                     try:
-                        import neon_single as _NS
-                        _neon_subs, _nrep = _NS.centerline(full, tube_mm=8.0, clear_mm=1.0)
-                        if _neon_subs:
-                            for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
-                                warns.append(_w)
+                        # 🥇 แกนกลางจริง (skeleton) — เส้นไฟต้องวิ่ง 'กลางเนื้อลายเส้น'
+                        #    ⚠️ ของเดิมยึดขอบข้างเดียวแล้วขยับเข้าครึ่งความหนา ซึ่งใช้ได้กับตัวอักษรอ้วน
+                        #       แต่กับงานลายเส้นบาง (โลโก้เส้น outline) จะได้ 'เส้นคู่ขนาบ' ทั้งสองฝั่ง
+                        #       เช่นขีดใต้คำ 'bar' ที่ควรได้เส้นเดียว กลับออกมา 2 เส้น = ไม่ได้แนวเส้น
+                        #    ตัวใหม่หาแกนกลางจากภาพ (skeletonize) แล้วตัดหนวดซ้ำหลายรอบ -> ได้เส้นเดียวจริง
+                        from vectorcnc import neon_route as _NR
+                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                     except Exception:
                         _neon_subs = None
+                    if not _neon_subs:                      # ถอย: โมดูลเดิม (ยังดีกับตัวอักษรเนื้อหนา)
+                        try:
+                            import neon_single as _NS1
+                            _neon_subs, _nrep = _NS1.centerline(full, tube_mm=8.0, clear_mm=1.0)
+                        except Exception:
+                            _neon_subs = None
+                    if _neon_subs:
+                        try:
+                            import neon_single as _NS
+                            for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
+                                warns.append(_w)
+                        except Exception:
+                            pass
                     _from_module = bool(_neon_subs)
                     _rs_n = None if _from_module else _RAW_SUBS.get("subs")
                     if _rs_n:
@@ -7244,10 +7280,17 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 from shapely.geometry import box as _box
                 _ab = _acr.bounds; _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
             if str(neon_line).lower() == "single":
+                # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:
-                    _nsub = _skeleton_subs(inp, full)
+                    from vectorcnc import neon_route as _NR2
+                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                 except Exception:
                     _nsub = None
+                if not _nsub:
+                    try:
+                        _nsub = _skeleton_subs(inp, full)
+                    except Exception:
+                        _nsub = None
             try:
                 persp = _neon_sign_svg(full, _acr, color=str(neon_color or "#00e5ff"), neon_subs=_nsub)
             except Exception:
