@@ -18,10 +18,20 @@ from shapely.ops import unary_union
 
 
 # ─────────────────────────── 1. รูปทรง -> ภาพ ───────────────────────────
-def geom_to_mask(geom, px_per_mm=4.0, pad_px=8):
+def geom_to_mask(geom, px_per_mm=4.0, pad_px=8, max_px=6000.0):
+    """วาดรูปทรงลงภาพขาวดำ
+
+    ⚠️ ความละเอียดคือทุกอย่างของงานนี้ — แกนกลางที่ได้ละเอียดได้ไม่เกินพิกเซลที่ป้อนเข้า
+       ป้ายยาว 4 ม. ถ้าเพดานอยู่ที่ 4000 px จะเหลือ 1 px = 1 มม. -> เส้นหยาบทันที
+       ดัน 6000 px ได้รายละเอียด 0.67 มม. โดยเวลาเพิ่มไม่ถึงเท่าตัว (skeletonize เร็ว)
+    """
     b = geom.bounds
     w = b[2] - b[0]; h = b[3] - b[1]
-    ppm = min(float(px_per_mm), 4000.0 / max(w, h))
+    _long = max(w, h, 1e-6)
+    # 🔍 คุมให้ด้านยาวอยู่ในช่วง 3000-6000 px เสมอ ไม่ว่าป้ายจะเล็กหรือใหญ่
+    #    (เดิมป้ายเล็กได้แค่ 4 px/มม. = ด้านยาว 2300 px -> รายละเอียดน้อยกว่าป้ายใหญ่เสียอีก)
+    ppm = max(float(px_per_mm), 3000.0 / _long)
+    ppm = min(ppm, float(max_px) / _long)
     W = int(round(w * ppm)) + pad_px * 2
     H = int(round(h * ppm)) + pad_px * 2
     m = np.zeros((H, W), np.uint8)
@@ -181,19 +191,56 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
 
 
 # ─────────────────────────── 4. เกลาเส้น + คุมรัศมีโค้ง ───────────────────────────
-def chain_to_line(chain, ppm, org, simp_mm=0.6, smooth_mm=1.2):
+def chain_to_line(chain, ppm, org, simp_mm=0.25, smooth_mm=1.2, spline=True):
+    """โซ่พิกเซล -> เส้นโค้งเนียน (มม.)
+
+    ⚠️ แกนกลางที่ได้จากภาพเป็น 'บันไดพิกเซล' — ถ้าเอาไปฟิตเบซิเยร์ตรง ๆ
+       เส้นจะกระเพื่อมเป็นคลื่นเล็ก ๆ ตลอดแนว (เห็นชัดมากตอนซูมและตอนเป็นนีออนจริง)
+       เฉลี่ยเคลื่อนที่อย่างเดียวช่วยได้ระดับหนึ่ง แต่จะ 'กินมุม' และยังเหลือคลื่น
+    ✅ วิธีที่ได้ผลจริง: ฟิตสไปลน์แบบกำลังสองน้อยสุด โดยตั้งค่าความคลาดที่ยอมได้
+       = ครึ่งพิกเซล -> คลื่นจากพิกเซลถูกดูดหายไปหมด แต่รูปทรงจริงไม่ขยับ
+    """
     a = np.asarray(chain, dtype=float)[:, ::-1]        # (y,x) -> (x,y)
     a[:, 0] = a[:, 0] / ppm + org[0]
     a[:, 1] = a[:, 1] / ppm + org[1]
     if len(a) < 3:
         return None
-    # เกลาแบบเฉลี่ยเคลื่อนที่ (ลบขั้นบันไดของพิกเซล)
-    k = max(3, int(round(smooth_mm * ppm)) | 1)
-    pad = np.vstack([np.repeat(a[:1], k, 0), a, np.repeat(a[-1:], k, 0)])
-    ker = np.ones(k) / k
-    sm = np.column_stack([np.convolve(pad[:, 0], ker, "same"),
-                          np.convolve(pad[:, 1], ker, "same")])[k:-k]
-    sm[0] = a[0]; sm[-1] = a[-1]
+    closed = bool(len(a) > 4 and np.hypot(*(a[0] - a[-1])) < 1.5 / ppm)
+    # ทิ้งจุดซ้ำ/ชิดกันเกินไป (splprep ไม่ชอบ)
+    keep = [0]
+    for i in range(1, len(a)):
+        if np.hypot(*(a[i] - a[keep[-1]])) > 0.35 / ppm:
+            keep.append(i)
+    a = a[keep]
+    if len(a) < 4:
+        return LineString(a) if len(a) >= 2 else None
+    sm = None
+    if spline:
+        try:
+            from scipy.interpolate import splprep, splev
+            px = 1.0 / ppm
+            # ยอมให้เส้นคลาดจากจุดเดิมได้ ~ครึ่งพิกเซล (รวมทุกจุด) = พอดีที่จะกลืนบันไดพิกเซล
+            s = len(a) * (px * 0.55) ** 2
+            per = 1 if closed else 0
+            pts = a[:-1] if (closed and len(a) > 4) else a
+            tck, u = splprep([pts[:, 0], pts[:, 1]], s=s, k=3, per=per)
+            n = max(24, int(LineString(a).length / max(0.35, px)))
+            uu = np.linspace(0, 1, min(n, 4000))
+            x, y = splev(uu, tck)
+            sm = np.column_stack([x, y])
+            if closed:
+                sm[-1] = sm[0]
+            else:                                  # ปลายเส้นต้องอยู่ที่เดิม (จุดจบของลายเส้น)
+                sm[0] = a[0]; sm[-1] = a[-1]
+        except Exception:
+            sm = None
+    if sm is None:                                  # ถอย: เฉลี่ยเคลื่อนที่แบบเดิม
+        k = max(3, int(round(smooth_mm * ppm)) | 1)
+        pad = np.vstack([np.repeat(a[:1], k, 0), a, np.repeat(a[-1:], k, 0)])
+        ker = np.ones(k) / k
+        sm = np.column_stack([np.convolve(pad[:, 0], ker, "same"),
+                              np.convolve(pad[:, 1], ker, "same")])[k:-k]
+        sm[0] = a[0]; sm[-1] = a[-1]
     ls = LineString(sm).simplify(simp_mm)
     return ls if ls.length > 1.0 else None
 
