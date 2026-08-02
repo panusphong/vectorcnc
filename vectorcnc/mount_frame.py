@@ -217,7 +217,9 @@ def plan_frame(full, letters, total_kg=20.0, arm_edge_cm=20.0, max_tube_mm=50.8,
             fits = bool(chk["ok"])
         r["n_sup"] = n_sup
         tb = tube["b"]
-        if band > tb * 2.4 + 20.0:                 # ช่วงกว้างพอ -> คานคู่ จับได้มั่นคงกว่า
+        # 📏 คานคู่ใช้เฉพาะ 'ตัวใหญ่พอ' — ตัวอักษรเล็กใช้คานเดี่ยวก็พอ
+        #    (ตัวสูง < 6 ซม. ถ้ายัดคานคู่ จะเห็นเหล็ก 2 เส้นอัดกันจนดูรก และไม่ได้ช่วยอะไร)
+        if band > tb * 2.4 + 20.0 and r["h_min"] >= 60.0:
             ins = tb * 0.75 + band * 0.10
             bars = [ct + ins, cb - ins]
         elif band > tb * 1.2:                      # ช่วงแคบ -> คานเดี่ยวกลางช่วง
@@ -270,6 +272,27 @@ def plan_frame(full, letters, total_kg=20.0, arm_edge_cm=20.0, max_tube_mm=50.8,
     tube_main, chk_main, fits_main = SW.pick_tube(_span_main, max(0.5, float(total_kg)), min_b_mm=_rowb)
     y_top = min((min(pr["bars"]) for pr in plan_rows), default=b[1])
     y_bot = max((max(pr["bars"]) for pr in plan_rows), default=b[3])
+    # 📏 แถวตัวอักษรเล็ก (ตัวหลักเตี้ยกว่า 6 ซม.) ต้องเหลือคานเดียวเสมอ
+    #    ถ้าด่านเก็บตกไปเติมคานให้ตัวที่ยังลอย จะกลายเป็น 2 เส้นอัดกันจนดูรกและไม่จำเป็น
+    #    ✅ แทนที่จะเพิ่มคาน ให้ 'เลื่อนคานเดียว' ไปที่ระดับที่พาดโดนตัวอักษรได้มากที่สุดแทน
+    for pr in plan_rows:
+        if pr["h_min"] >= 60.0 or len(pr["bars"]) <= 1:
+            continue
+        _cand = list(pr["bars"]) + [(letters[i].bounds[1] + letters[i].bounds[3]) / 2.0
+                                    for i in pr["idx"]]
+
+        def _hit(by):
+            return sum(1 for i in pr["idx"]
+                       if letters[i].bounds[1] - 1.0 <= by <= letters[i].bounds[3] + 1.0)
+        pr["bars"] = [max(_cand, key=_hit)]
+    # 🔒 ปิดหัวท้ายซ้าย-ขวาของทุกแถวที่มีคานคู่ = ได้ 'เฟรมปิด' จริง แข็งแรงและดูเรียบร้อย
+    #    (เดิมปล่อยปลายเปิด เห็นเป็นคาน 2 เส้นลอย ๆ ไม่ใช่เฟรม)
+    for pr in plan_rows:
+        pr["caps"] = []
+        if len(pr["bars"]) >= 2:
+            _t = pr["tube"]["b"]
+            pr["caps"] = [(pr["x0"] + _t / 2.0, min(pr["bars"]), max(pr["bars"])),
+                          (pr["x1"] - _t / 2.0, min(pr["bars"]), max(pr["bars"]))]
     # 🔗 แถวที่ไม่โดนเสาหลักพาดผ่าน ต้องมี 'ตัวโยง' ขึ้นไปเกาะแถวบน ไม่งั้นคานแถวนั้นลอย
     for k, pr in enumerate(plan_rows):
         pr["links"] = []
@@ -283,10 +306,22 @@ def plan_frame(full, letters, total_kg=20.0, arm_edge_cm=20.0, max_tube_mm=50.8,
         pr["links"] = [(x, _up, min(pr["bars"])) for x in _cand]
     # ความยาวเหล็กรวม = คานทุกเส้น + เสาตั้ง + ตัวโยงระหว่างแถว + แขน (แขนบวกตอน build)
     len_mm = sum((pr["x1"] - pr["x0"]) * len(pr["bars"]) for pr in plan_rows)
-    len_mm += len(ax_all) * max(0.0, y_bot - y_top)
+    # 📐 เสาตั้งแต่ละต้น ต้องจบที่ 'คานล่างสุดที่ต้นนั้นเกาะจริง' ไม่ใช่ลากยาวถึงแถวล่างสุดของทั้งป้าย
+    #    (ไม่งั้นต้นที่อยู่นอกช่วงแถวล่าง จะมีขาโผล่ห้อยลงมาในที่ว่าง — เจอจริงที่มุมซ้ายล่าง)
+    col_span = []
+    for _x in ax_all:
+        _bot = None
+        for pr in plan_rows:
+            if pr["x0"] - 1.0 <= _x <= pr["x1"] + 1.0:
+                _b2 = max(pr["bars"])
+                _bot = _b2 if _bot is None else max(_bot, _b2)
+        col_span.append((_x, y_top, _bot if _bot is not None else y_top))
+    len_mm += sum(abs(c[2] - c[1]) for c in col_span)
     len_mm += sum(abs(l[2] - l[1]) for pr in plan_rows for l in pr.get("links", []))
+    len_mm += sum(abs(c[2] - c[1]) for pr in plan_rows for c in pr.get("caps", []))
     n_bars = sum(len(pr["bars"]) for pr in plan_rows)
     return {"rows": plan_rows, "arm_x": ax_all, "y_top": y_top, "y_bot": y_bot,
+            "col_span": col_span,
             "tube": tube_main, "len_mm": len_mm, "bars": n_bars, "rows_n": len(plan_rows),
             "span_mm": max((pr["span_mm"] for pr in plan_rows), default=W),
             "max_b_mm": max((pr["tube"]["b"] for pr in plan_rows), default=25.4),
@@ -395,14 +430,23 @@ def back_view_svg(full, letters, plan, holes, frame_x_mm=0.0, standoff_cm=5.0,
     _ax = [X(v) for v in plan.get("arm_x", [])]
     _ytop = Yv(plan.get("y_top", b[1])); _ybot = Yv(plan.get("y_bot", b[3]))
     _mb = float(plan.get("tube", {}).get("b", 25.4)) * sc
-    for _x in _ax:                                   # เสาตั้งเชื่อมทุกแถว (วาดก่อน ให้คานทับด้านบน)
+    # 🏗️ เสาตั้ง — จบที่ 'คานล่างสุดที่ต้นนั้นเกาะจริง' (ไม่ลากเลยไปห้อยในที่ว่าง)
+    for (_xm, _y1m, _y2m) in (plan.get("col_span") or [(v, plan.get("y_top", b[1]), plan.get("y_bot", b[3]))
+                                                       for v in plan.get("arm_x", [])]):
+        _xp = X(_xm); _t1 = Yv(_y1m); _t2 = Yv(_y2m)
         p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#a3aab6" stroke="%s" stroke-width="1"/>'
-                 % (_x - _mb / 2, _ytop - _mb / 2, _mb, (_ybot - _ytop) + _mb, _GD))
+                 % (_xp - _mb / 2, min(_t1, _t2) - _mb / 2, _mb, abs(_t2 - _t1) + _mb, _GD))
     for r in plan.get("rows", []):                   # 🔗 ตัวโยงแถวล่างขึ้นไปเกาะแถวบน (วาดก่อนคาน)
         for (lx, y_up, y_dn) in r.get("links", []):
             _lw = float(r["tube"]["b"]) * sc
             p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="#a3aab6" stroke="%s" stroke-width="1"/>'
                      % (X(lx) - _lw / 2, Yv(y_up), _lw, max(2.0, Yv(y_dn) - Yv(y_up)), _GD))
+    for r in plan.get("rows", []):                   # 🔒 ปิดหัวท้ายซ้าย-ขวา = เฟรมปิด (วาดก่อนคาน)
+        hh0 = float(r["tube"]["b"]) * sc
+        for (cxm, cy1, cy2) in r.get("caps", []):
+            _t1 = Yv(cy1); _t2 = Yv(cy2)
+            p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" fill="%s" stroke="%s" stroke-width="1"/>'
+                     % (X(cxm) - hh0 / 2, min(_t1, _t2) - hh0 / 2, hh0, abs(_t2 - _t1) + hh0, _GY, _GD))
     for r in plan.get("rows", []):                   # คานของแต่ละแถว (ความหนาตามขนาดเหล็กจริงของแถวนั้น)
         hh = float(r["tube"]["b"]) * sc
         x0 = min(X(r["x0"]), X(r["x1"])); x1 = max(X(r["x0"]), X(r["x1"]))
