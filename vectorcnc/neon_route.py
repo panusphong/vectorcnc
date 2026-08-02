@@ -30,7 +30,7 @@ def geom_to_mask(geom, px_per_mm=4.0, pad_px=8, max_px=6000.0):
     _long = max(w, h, 1e-6)
     # 🔍 คุมให้ด้านยาวอยู่ในช่วง 3000-6000 px เสมอ ไม่ว่าป้ายจะเล็กหรือใหญ่
     #    (เดิมป้ายเล็กได้แค่ 4 px/มม. = ด้านยาว 2300 px -> รายละเอียดน้อยกว่าป้ายใหญ่เสียอีก)
-    ppm = max(float(px_per_mm), 3000.0 / _long)
+    ppm = max(float(px_per_mm), min(3000.0, float(max_px)) / _long)
     ppm = min(ppm, float(max_px) / _long)
     W = int(round(w * ppm)) + pad_px * 2
     H = int(round(h * ppm)) + pad_px * 2
@@ -267,6 +267,72 @@ def min_radius(line, step=2.0):
     return float(np.percentile(r, 1))
 
 
+def snap_to_outline(line, geom, tree=None, pts=None, max_shift_mm=None):
+    """🎯 ดึงเส้นให้ไปอยู่ 'กลางเนื้อ' พอดี โดยอ้างจาก **ขอบเส้นเวกเตอร์จริง** ไม่ใช่พิกเซล
+
+    ไอเดีย: แกนกลางจากภาพให้ 'ทาง' ที่ถูก แต่ตำแหน่งกระเพื่อมตามบันไดพิกเซล
+            ส่วนขอบตัวอักษรเป็นเส้นโค้งเวกเตอร์ที่เนียนอยู่แล้ว 100%
+    วิธี:   ทุกจุดบนเส้น หา 'ขอบสองฝั่งที่ตรงข้ามกัน' แล้วย้ายจุดไปไว้กึ่งกลางของสองฝั่งนั้น
+            -> จุดกึ่งกลางของเส้นโค้งเนียนสองเส้น ย่อมเนียนตามไปด้วย
+            -> ได้ทั้งความเนียนของเวกเตอร์ และความถูกต้องของแกนกลาง
+    """
+    try:
+        from scipy.spatial import cKDTree
+    except Exception:
+        return line
+    a = np.asarray(line.coords, dtype=float)
+    if len(a) < 3 or tree is None or pts is None:
+        return line
+    d = np.diff(a, axis=0)
+    t = np.vstack([d[:1], (d[:-1] + d[1:]) * 0.5, d[-1:]])
+    n = np.linalg.norm(t, axis=1, keepdims=True)
+    t = t / np.where(n > 1e-9, n, 1.0)
+    nrm = np.column_stack([-t[:, 1], t[:, 0]])            # เวกเตอร์ตั้งฉากกับแนวเส้น
+    k = min(16, len(pts))
+    dist, idx = tree.query(a, k=k)
+    out = a.copy()
+    lim = float(max_shift_mm) if max_shift_mm else 1e9
+    for i in range(len(a)):
+        ii = idx[i] if k > 1 else [idx[i]]
+        v = pts[ii] - a[i]
+        s = v @ nrm[i]                                     # ระยะตามแนวตั้งฉาก (บวก/ลบ = คนละฝั่ง)
+        dd = dist[i] if k > 1 else [dist[i]]
+        pos = [j for j in range(len(ii)) if s[j] > 1e-6]
+        neg = [j for j in range(len(ii)) if s[j] < -1e-6]
+        if not pos or not neg:
+            continue
+        jp = min(pos, key=lambda j: dd[j])
+        jn = min(neg, key=lambda j: dd[j])
+        mid = (pts[ii[jp]] + pts[ii[jn]]) * 0.5
+        if np.hypot(*(mid - a[i])) <= lim:
+            out[i] = mid
+    # เกลาเบา ๆ กันจุดกระตุกตรงที่หาคู่ขอบไม่เจอ
+    if len(out) >= 5:
+        sm = out.copy()
+        sm[1:-1] = 0.5 * out[1:-1] + 0.25 * out[:-2] + 0.25 * out[2:]
+        sm[0] = out[0]; sm[-1] = out[-1]
+        out = sm
+    return LineString(out)
+
+
+def outline_points(geom, step_mm=0.35):
+    """สุ่มจุดบน 'ขอบเวกเตอร์' ให้ถี่ — ใช้เป็นตัวอ้างอิงตอนดึงเส้นเข้ากลาง"""
+    out = []
+    for g in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+        if g.geom_type != "Polygon":
+            continue
+        for ring in [g.exterior] + list(g.interiors):
+            c = np.asarray(ring.coords, dtype=float)
+            if len(c) < 2:
+                continue
+            seg = np.linalg.norm(np.diff(c, axis=0), axis=1)
+            for i, L in enumerate(seg):
+                m = max(1, int(np.ceil(L / step_mm)))
+                for j in range(m):
+                    out.append(c[i] + (c[i + 1] - c[i]) * (j / m))
+    return np.asarray(out) if out else None
+
+
 def _local_radius(a, step_idx=1):
     """รัศมีโค้งที่จุดละจุด (มม.) จากสามจุดติดกัน"""
     n = len(a)
@@ -322,7 +388,8 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
 
 
 # ─────────────────────────── 5. ตัวหลัก ───────────────────────────
-def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.5):
+def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.5,
+               snap=True):
     """คืน dict: paths (LineString มม.), tube_mm, length_m, watt, plate (Polygon)"""
     mask, ppm, org = geom_to_mask(geom, px_per_mm)
     sw = stroke_width_mm(mask, ppm)
@@ -331,11 +398,24 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
     chains, nodes = trace_chains(sk)
     items = prune_and_join(chains, nodes, ppm, spur_mm=max(sw, 2.0) * spur_ratio)
     r_min = tube * bend_ratio
+    # 🎯 ตัวอ้างอิง 'ขอบเวกเตอร์' — เตรียมครั้งเดียว ใช้ดึงทุกเส้นเข้ากลาง
+    _tree = _opts = None
+    if snap:
+        try:
+            from scipy.spatial import cKDTree
+            _opts = outline_points(geom, step_mm=max(0.2, 0.5 / max(ppm, 1e-6) * 2))
+            if _opts is not None and len(_opts) > 8:
+                _tree = cKDTree(_opts)
+        except Exception:
+            _tree = _opts = None
     lines = []
     for c in items:
         ls = chain_to_line(c, ppm, org)
         if ls is None or ls.length < max(8.0, tube * 1.5):
             continue
+        if _tree is not None:
+            ls = snap_to_outline(ls, geom, _tree, _opts, max_shift_mm=max(sw, 2.0))
+            ls = ls.simplify(0.15)
         lines.append(relax_tight_bends(ls, r_min))
     total = sum(l.length for l in lines) / 1000.0
     plate = unary_union([l.buffer(tube * 2.0, cap_style=1, join_style=1) for l in lines])
@@ -387,7 +467,9 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
                  if p.geom_type == "Polygon" and not p.is_empty]
         parts.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
         for i, pg in enumerate(parts):
-            m2, ppm2, _o2 = geom_to_mask(pg, px_per_mm)
+            # ⏱️ รายงานนี้ต้องการแค่ 'ความหนาโดยประมาณ' -> วาดภาพเล็ก ๆ พอ
+            #    (เดิมวาดชิ้นละ 3000-6000 px ทำให้ป้ายที่มีหลายชิ้นช้าเป็นวินาที ๆ โดยไม่จำเป็น)
+            m2, ppm2, _o2 = geom_to_mask(pg, px_per_mm, max_px=900.0)
             w2 = stroke_width_mm(m2, ppm2)
             report.append({"idx": i + 1, "min_mm": round(w2, 1), "med_mm": round(w2, 1),
                            "ok": bool(w2 >= need), "mode": "center"})
