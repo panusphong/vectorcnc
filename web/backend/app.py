@@ -3117,6 +3117,112 @@ def _armdim_v(out, spans, x, fs, lw, aw, col="#dc2626"):
                    % (x, _m + fs * 0.2, fs * 0.68, col, _rot, _nm, _val))
 
 
+def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, extra_lines=None):
+    """⚖️ แปะ 'ป้ายน้ำหนัก + ขนาดเหล็กที่รับน้ำหนักได้ปลอดภัย' ลงบนภาพ 3 มิติ (ใช้ได้ทุกประเภทป้าย)
+
+    ทำเป็น 'วางทับทีหลัง' ไม่ยุ่งกับตัววาดภาพ 3 มิติเลยแม้แต่บรรทัดเดียว
+    -> ไม่มีความเสี่ยงกับภาพ/เส้นตัดเดิม และไม่มีต้นทุนเวลาเพิ่ม (เป็นแค่การต่อสตริง)
+    """
+    try:
+        import re as _re9
+        if not svg or "</svg>" not in svg:
+            return svg
+        _m = _re9.search(r'viewBox="([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)"', svg)
+        if not _m:
+            return svg
+        vx, vy, vw, vh = (float(_m.group(i)) for i in (1, 2, 3, 4))
+        fs = max(9.0, vw * 0.0165)                       # ขนาดตัวอักษรตามขนาดภาพ
+        pad = fs * 0.85
+        rows = ["⚖️ น้ำหนักป้ายโดยประมาณ  %.1f กก." % float(wsum.get("total_kg") or 0.0)]
+        _d = []
+        if float(wsum.get("sheet_kg") or 0) > 0:
+            _d.append("แผ่นวัสดุ %.1f" % wsum["sheet_kg"])
+        if float(wsum.get("led_kg") or 0) > 0:
+            _d.append("ไฟ+หม้อแปลง %.1f" % wsum["led_kg"])
+        if float(wsum.get("frame_kg") or 0) > 0:
+            _d.append("โครงเหล็ก %.1f" % wsum["frame_kg"])
+        if _d:
+            rows.append("   (" + " · ".join(_d) + " กก.)")
+        # 📋 แยกทีละชั้น — ช่างจะได้เห็นว่าน้ำหนักไปกองอยู่ที่ชั้นไหน (เรียงหนักไปเบา)
+        _ps = sorted((wsum.get("parts") or []), key=lambda q: -float(q.get("kg") or 0))
+        for _q in _ps[:7]:
+            _nm = str(_q.get("name", ""))
+            if len(_nm) > 34:
+                _nm = _nm[:33] + "…"
+            _th = (" %.1f มม." % float(_q.get("thick_mm") or 0)) if float(_q.get("thick_mm") or 0) > 0 else ""
+            _ar = (" · %.2f ตร.ม." % float(_q.get("area_m2") or 0)) if float(_q.get("area_m2") or 0) > 0 else ""
+            rows.append("   • %-34s %s%s%s = %.2f กก."
+                        % (_nm, _q.get("mat", ""), _th, _ar, float(_q.get("kg") or 0)))
+        if len(_ps) > 7:
+            rows.append("   • (อีก %d ชั้น รวม %.2f กก.)"
+                        % (len(_ps) - 7, sum(float(q.get("kg") or 0) for q in _ps[7:])))
+        if tube:
+            rows.append("🔩 เหล็กกล่อง %s หนา %.1f มม. · ช่วงพาด %.0f ซม."
+                        % (tube.get("label", ""), float(tube.get("t") or 0), float(span_mm) / 10.0))
+            if chk:
+                rows.append("   หน่วยแรง %.0f MPa (ไม่เกิน %.0f) · แอ่นตัว %.1f มม. (ไม่เกิน %.1f)"
+                            % (chk.get("sigma", 0), 140.0, chk.get("defl", 0), chk.get("defl_lim", 0)))
+            rows.append("   ✅ รับน้ำหนักได้ปลอดภัย" if fits
+                        else "   ⚠️ ช่วงพาดยาวเกิน — ต้องเพิ่มจุดยึด ไม่ใช่เพิ่มขนาดเหล็ก")
+        for _l in (extra_lines or []):
+            rows.append("   " + str(_l))
+        rows.append("   * เป็นน้ำหนักตัวป้าย ยังไม่รวมแรงลม (ป้ายกลางแจ้งต้องคิดเพิ่ม)")
+        bw = max(len(r) for r in rows) * fs * 0.50 + pad * 2
+        bw = min(bw, vw * 0.86)
+        bh = len(rows) * fs * 1.32 + pad * 1.6
+        bx = vx + pad
+        by = vy + vh - bh - pad
+        p = ['<g id="wpanel">',
+             '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
+             'fill-opacity="0.94" stroke="#0f172a" stroke-width="%.2f"/>'
+             % (bx, by, bw, bh, fs * 0.5, max(0.6, fs * 0.07))]
+        ty = by + pad + fs * 0.95
+        for i, r in enumerate(rows):
+            col = "#0f172a" if i == 0 else ("#b45309" if r.strip().startswith("⚠️") else "#334155")
+            wt = "800" if i == 0 else ("700" if r.strip().startswith(("🔩", "✅", "⚠️")) else "500")
+            sz = fs if i == 0 else fs * 0.86
+            p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                     'font-weight="%s" fill="%s" xml:space="preserve">%s</text>'
+                     % (bx + pad, ty, sz, wt, col,
+                        str(r).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")))
+            ty += fs * 1.32
+        p.append("</g>")
+        i = svg.rfind("</svg>")
+        return svg[:i] + "".join(p) + svg[i:]
+    except Exception:
+        return svg
+
+
+def _sign_weight_block(out_layers, led_info, full, rec, frame=None):
+    """คิดน้ำหนักป้าย + เลือกขนาดเหล็กที่ปลอดภัย — คืน (wsum, tube, chk, span_mm, fits)
+       ต้นทุนเวลา ≈ 0 (เลขล้วน · พื้นที่ชั้นคำนวณไว้แล้วตอนสร้างชั้น)"""
+    from vectorcnc import sign_weight as _SW
+    _b = full.bounds
+    _span = float(frame.get("span_mm")) if (frame and frame.get("span_mm")) else (_b[2] - _b[0])
+    _tube0 = frame.get("tube") if frame else None
+    _flen = float(frame.get("len_mm") or 0.0) if frame else 0.0
+    _wsum = _SW.estimate(out_layers, led=led_info, frame_len_mm=_flen, frame_tube=_tube0)
+    if _tube0 and _flen > 0:
+        # 🔩 ประเภทที่มีโครงแขวน: เริ่มจากเหล็กที่ตัววางผังเลือกไว้ (เลือกโดยดูขนาดตัวอักษรด้วย)
+        #    แล้ว 'ตรวจซ้ำด้วยน้ำหนักจริงทั้งใบ' (ตอนวางผังยังไม่รู้น้ำหนักไฟ+ตัวโครงเอง)
+        #    ถ้าไม่ผ่าน -> ขยับขึ้นเบอร์ถัดไป แล้วคิดน้ำหนักโครงใหม่ให้ตรง
+        _tube = dict(_tube0)
+        _chk = _SW.tube_check(_tube, _span, _wsum["total_kg"])
+        if not _chk["ok"]:
+            _t2, _c2, _f2 = _SW.pick_tube(_span, _wsum["total_kg"], min_b_mm=_tube["b"])
+            _wsum = _SW.estimate(out_layers, led=led_info, frame_len_mm=_flen, frame_tube=_t2)
+            _c2 = _SW.tube_check(_t2, _span, _wsum["total_kg"])
+            return _wsum, _t2, _c2, _span, bool(_c2["ok"])
+        return _wsum, _tube, _chk, _span, bool(_chk["ok"])
+    _maxb = float(frame.get("max_b_mm") or 0.0) if frame else 0.0
+    _tube, _chk, _fits = _SW.pick_tube(_span, _wsum["total_kg"], max_b_mm=(_maxb or None))
+    if _flen <= 0:                       # ยังไม่รู้ความยาวโครง -> ประเมินคร่าว ๆ แล้วคิดน้ำหนักซ้ำ 1 รอบ
+        _flen = _span * 2.0 + (_b[3] - _b[1]) * 2.0
+        _wsum = _SW.estimate(out_layers, led=led_info, frame_len_mm=_flen, frame_tube=_tube)
+        _tube, _chk, _fits = _SW.pick_tube(_span, _wsum["total_kg"], max_b_mm=(_maxb or None))
+    return _wsum, _tube, _chk, _span, _fits
+
+
 def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_color=None, art_href="",
                mount="none", arm_len_cm=30.0, plate_cm=10.0, arm_side="right",
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0,
@@ -5882,6 +5988,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
               out_layers.append({"name": _btag + L["name"], "off": off, "kind": kind,
                                  "color": L["color"], "rgb": L["rgb"], "grp": (_btag[:-1] or "A"),
                                  "subs": subs, "w_mm": round(b[2] - b[0], 1), "h_mm": round(b[3] - b[1], 1),
+                                 # ⚖️ พื้นที่เนื้อวัสดุจริงของชั้นนี้ (หักรูในแล้ว) — ใช้คิดน้ำหนักป้าย
+                                 #    ค่ามาจาก shapely ที่คำนวณไว้แล้ว จึงไม่มีต้นทุนเวลาเพิ่ม
+                                 "area_mm2": round(float(getattr(g, "area", 0.0) or 0.0), 1),
                                  "junk": junk})
         # 📊 รายงานคุณภาพเส้นตัด — พี่จะได้เห็นว่าชิ้นไหนได้เส้นคมกริบแล้ว ชิ้นไหนยังใช้วิธีเดิม
         try:
@@ -5920,7 +6029,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _wb3 = _wallg.bounds
                     out_layers.append({"name": "แผ่นขอบข้าง (return) กว้าง %.0f ซม. × %d ท่อน" % (_D / 10.0, len(_lens)),
                                        "off": 0.0, "kind": "wallplate", "color": "#f59e0b", "rgb": (245, 158, 11),
-                                       "subs": _ws3, "w_mm": round(_wb3[2] - _wb3[0], 1), "h_mm": round(_wb3[3] - _wb3[1], 1)})
+                                       "subs": _ws3, "w_mm": round(_wb3[2] - _wb3[0], 1), "h_mm": round(_wb3[3] - _wb3[1], 1),
+                                       "area_mm2": round(float(_wallg.area), 1)})
         except Exception:
             pass
             if junk:
@@ -6241,15 +6351,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         if rec.get("mount_frame"):
             try:
                 from vectorcnc import mount_frame as MF
+                from vectorcnc import sign_weight as _SW0
+                # ⚖️ ประเมินน้ำหนักชั้นวัสดุก่อน (ยังไม่รวมโครง) เพื่อให้ตัวเลือกเหล็กมีน้ำหนักจริงมาคิด
+                _kg0 = _SW0.estimate(out_layers, led=None)["total_kg"]
                 _mf = MF.build(full, bars=max(1, int(frame_bars)),
                                bar_y_cm=(None if float(frame_level_cm) < 0 else float(frame_level_cm)),
                                gap_cm=float(frame_gap_cm), frame_x_cm=float(frame_x_cm),
                                standoff_cm=float(frame_standoff_cm), wire_offset_cm=float(wire_offset_cm),
-                               arm_len_cm=float(arm_len_cm), arm_edge_cm=float(arm_edge_cm))
+                               arm_len_cm=float(arm_len_cm), arm_edge_cm=float(arm_edge_cm),
+                               total_kg=max(1.0, _kg0 * 1.25))
                 if not _mf.get("error"):
                     svg_back = _mf.get("back_svg", "")
                     frame_info = {"letters": _mf.get("letters", 0), "bolts": _mf.get("bolts", 0),
-                                  "wires": _mf.get("wires", 0), "bars": _mf.get("bars", 0)}
+                                  "wires": _mf.get("wires", 0), "bars": _mf.get("bars", 0),
+                                  "rows": _mf.get("rows", 1), "tube": _mf.get("tube"),
+                                  "tubes": _mf.get("tubes", []), "pitch": _mf.get("pitch", {}),
+                                  "frame_len_mm": _mf.get("frame_len_mm", 0),
+                                  "span_mm": _mf.get("span_mm", 0), "max_b_mm": _mf.get("max_b_mm", 0),
+                                  "added_bars": _mf.get("added_bars", 0), "note": _mf.get("note", "")}
             except Exception:
                 svg_back = ""
         # 🏭 ค่าที่ต้องใช้ประกอบไฟล์สั่งผลิต — เก็บเป็นชุดเดียว (ใช้ทั้งตอนสร้างเลย และตอนกดสร้างทีหลัง)
@@ -6303,6 +6422,40 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except Exception:
             led_info = {}
 
+        # ⚖️ ============ น้ำหนักป้าย + ขนาดเหล็กที่ปลอดภัย (ทุกประเภทป้าย) ============
+        #    คิดจากพื้นที่เนื้อวัสดุจริงของแต่ละชั้น × ความหนา × ความหนาแน่น + ไฟ + โครง
+        #    แล้ว 'วางทับ' ลงภาพ 3 มิติที่วาดเสร็จแล้ว — ไม่แตะตัววาดภาพ จึงไม่ช้าลงเลย
+        weight_info = {}
+        try:
+            _fspec = None
+            if isinstance(frame_info, dict) and frame_info.get("tube"):
+                _fspec = {"tube": frame_info.get("tube"), "len_mm": frame_info.get("frame_len_mm"),
+                          "span_mm": frame_info.get("span_mm"), "max_b_mm": frame_info.get("max_b_mm")}
+            _ws, _tb, _ck, _sp, _ft = _sign_weight_block(out_layers, led_info, full, rec, frame=_fspec)
+            _xtra = []
+            if isinstance(frame_info, dict) and frame_info.get("tubes"):
+                for _t9 in frame_info["tubes"]:
+                    _xtra.append("🔧 โครงแถว %d: เหล็ก %s หนา %.1f มม. · ตัวอักษรเตี้ยสุด %.1f ซม. "
+                                 "· พาด %.0f ซม. · รับ %.1f กก."
+                                 % (_t9["row"], _t9["label"], float(_t9["t"]), float(_t9["letter_h_cm"]),
+                                    float(_t9["span_cm"]), float(_t9["load_kg"])))
+            if isinstance(frame_info, dict) and (frame_info.get("pitch") or {}).get("avg_mm"):
+                _p9 = frame_info["pitch"]
+                _xtra.append("📐 ระยะเจาะ: เฉลี่ย %.1f ซม. · แคบสุด %.1f ซม. · น็อต Ø3 %d รู · สายไฟ Ø5 %d รู"
+                             % (_p9["avg_mm"] / 10.0, _p9["min_mm"] / 10.0,
+                                int(frame_info.get("bolts") or 0), int(frame_info.get("wires") or 0)))
+            svg3d = _weight_panel_svg(svg3d, _ws, tube=_tb, chk=_ck, span_mm=_sp, fits=_ft,
+                                      extra_lines=_xtra)
+            weight_info = {"total_kg": _ws["total_kg"], "sheet_kg": _ws["sheet_kg"],
+                           "led_kg": _ws["led_kg"], "frame_kg": _ws["frame_kg"],
+                           "parts": _ws["parts"],
+                           "tube": {"label": _tb["label"], "t_mm": _tb["t"], "kg_m": _tb["kg_m"]},
+                           "span_cm": round(_sp / 10.0, 1), "safe": bool(_ft),
+                           "sigma_mpa": round(_ck["sigma"], 1), "sigma_limit_mpa": 140.0,
+                           "defl_mm": round(_ck["defl"], 2), "defl_limit_mm": round(_ck["defl_lim"], 2)}
+        except Exception:
+            weight_info = {}
+
         _resp9 = {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
                 "layers": [{"name": L["name"], "name_en": _en_layer(L["name"]), "off_cm": round(L["off"]/10.0, 3),
@@ -6311,7 +6464,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
-                "svg_face": svg_face, "led": led_info,
+                "svg_face": svg_face, "led": led_info, "weight": weight_info,
                 # 🖼️ ต้องส่ง 'เส้นดิบจากเอนจิ้น' เข้าไปด้วยเสมอ — ให้มองเป็นภาพแบน ๆ ภาพเดียว
                 #    แล้วลากเส้นตัดออกมาตรง ๆ (เหมือนแผนที่กลุ่มวัสดุที่ทำถูกอยู่แล้ว)
                 #    ถ้าไม่ส่ง จะตกไปทางสำรองที่วาดเป็น 'ก้อนทึบสีเทาเข้ม'
