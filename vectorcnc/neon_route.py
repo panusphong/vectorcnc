@@ -299,6 +299,56 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
             "plate": plate, "mask_ppm": ppm}
 
 
+def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
+    """🔌 หน้าบ้านสำหรับ app.py — คืน (subs, report) รูปแบบเดียวกับ neon_single.centerline()
+
+    subs = เส้นโค้งเบซิเยร์ในหน่วย มม. ({"start","segs","closed"})
+    ล้มเหลว -> ([], []) ให้ผู้เรียกถอยไปวิธีเดิม (งานห้ามพัง)
+    """
+    try:
+        if full is None or full.is_empty:
+            return [], []
+        r = neon_paths(full, tube_mm=tube_mm, px_per_mm=px_per_mm)
+        if not r["paths"]:
+            return [], []
+        try:                                    # ใช้ตัวฟิตเบซิเยร์ตัวเดียวกับโมดูลเดิม -> สไตล์เส้นเหมือนกัน
+            from neon_single import _to_curves
+        except Exception:
+            try:
+                from web.backend.neon_single import _to_curves
+            except Exception:
+                _to_curves = None
+        subs = []
+        for ls in r["paths"]:
+            pts = [tuple(p) for p in np.asarray(ls.coords)]
+            closed = bool(len(pts) > 3 and abs(pts[0][0] - pts[-1][0]) < 1e-6
+                          and abs(pts[0][1] - pts[-1][1]) < 1e-6)
+            if _to_curves is not None:
+                st, segs = _to_curves(pts, closed=closed)
+                if segs:
+                    subs.append({"start": st, "segs": segs, "closed": closed})
+                continue
+            segs = [("L", p) for p in pts[1:]]
+            if segs:
+                subs.append({"start": pts[0], "segs": segs, "closed": closed})
+        if not subs:
+            return [], []
+        # รายงานความเป็นไปได้จริง: ท่อกว้าง tube_mm ต้องมีเนื้อรองรับ tube+เผื่อข้างละ clear
+        need = float(tube_mm) + 2.0 * float(clear_mm)
+        report = []
+        parts = [p for p in (full.geoms if full.geom_type == "MultiPolygon" else [full])
+                 if p.geom_type == "Polygon" and not p.is_empty]
+        parts.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+        for i, pg in enumerate(parts):
+            m2, ppm2, _o2 = geom_to_mask(pg, px_per_mm)
+            w2 = stroke_width_mm(m2, ppm2)
+            report.append({"idx": i + 1, "min_mm": round(w2, 1), "med_mm": round(w2, 1),
+                           "ok": bool(w2 >= need), "mode": "center"})
+        return subs, report
+    except Exception:
+        return [], []
+
+
 def transformer_pick(watt):
     for w in (50, 75, 100, 150, 200, 350, 450):
         if watt <= w * 0.8:
