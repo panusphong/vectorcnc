@@ -1,0 +1,228 @@
+# -*- coding: utf-8 -*-
+"""
+spot_color.py — ระบุ "สีพิเศษ" ของป้าย (ไม่เกิน 3 สี) พร้อมเทียบเบอร์ Pantone
+
+ใช้ที่ไหน: ภาพ 3 มิติ (แถบตัวอย่างสี) + ใบสั่งผลิต (การ์ดสี) — ช่างและลูกค้าจะได้เห็น
+ตรงกันว่า "สีนี้คือเบอร์อะไร" ไม่ต้องเดาจากภาพบนจอ ซึ่งแต่ละจออกสีไม่เท่ากัน
+
+⚠️ ข้อจำกัดที่ต้องบอกตรง ๆ (พิมพ์กำกับไว้บนเอกสารด้วย):
+   สี Pantone เป็นหมึกผสมสำเร็จ ไม่มีค่า RGB ที่ "ถูกต้อง" เพียงค่าเดียว
+   ตารางด้านล่างเป็นค่าอ้างอิง sRGB โดยประมาณ (ใช้เทียบหาเบอร์ใกล้เคียง)
+   ก่อนผลิตจริงต้องยืนยันกับพัดสี Pantone/TOA ตัวจริงเสมอ
+
+การเทียบสี: แปลง sRGB -> Lab (D65) แล้ววัดระยะแบบ CIE76 (ΔE)
+   ΔE ≤ 2  = ตาคนแทบแยกไม่ออก · ΔE ≤ 5 = ใกล้เคียงมาก · ΔE > 10 = ควรเลือกเบอร์เอง
+"""
+
+# ── ตารางอ้างอิง Pantone Solid Coated (ค่า sRGB โดยประมาณ) ───────────────
+#    คัดเบอร์ที่ใช้จริงบ่อยในงานป้าย + กระจายทั่วสเปกตรัมเพื่อให้ "เบอร์ใกล้เคียง" มีของให้เลือกเสมอ
+PANTONE = {
+    # ── แม่สีพื้นฐานของระบบ Pantone ──
+    "Yellow C": "#FEDD00", "Yellow 012 C": "#FFD700", "Orange 021 C": "#FE5000",
+    "Warm Red C": "#F9423A", "Red 032 C": "#EF3340", "Rubine Red C": "#CE0058",
+    "Rhodamine Red C": "#E10098", "Purple C": "#BB29BB", "Violet C": "#440099",
+    "Blue 072 C": "#10069F", "Reflex Blue C": "#001489", "Process Blue C": "#0085CA",
+    "Green C": "#00AB84", "Black C": "#2D2926", "Cool Gray 11 C": "#53565A",
+    # ── เหลือง / ส้ม ──
+    "100 C": "#F6EB61", "101 C": "#F7EA48", "102 C": "#FCE300", "106 C": "#F9E547",
+    "109 C": "#FFD100", "116 C": "#FFCD00", "123 C": "#FFC72C", "124 C": "#EAAA00",
+    "130 C": "#F2A900", "137 C": "#FFA300", "144 C": "#ED8B00", "151 C": "#FF8200",
+    "158 C": "#E87722", "165 C": "#FF6900", "172 C": "#FA4616", "179 C": "#E03C31",
+    # ── แดง / ชมพู ──
+    "185 C": "#E4002B", "186 C": "#C8102E", "187 C": "#A6192E", "188 C": "#76232F",
+    "199 C": "#D50032", "200 C": "#BA0C2F", "201 C": "#9D2235", "202 C": "#862633",
+    "032 C": "#EF3340", "206 C": "#CE0037", "213 C": "#E31C79", "219 C": "#DA1884",
+    "226 C": "#D0006F", "234 C": "#A50050", "241 C": "#AF1685", "248 C": "#9B26B6",
+    # ── ม่วง / คราม ──
+    "254 C": "#8E258D", "266 C": "#753BBD", "267 C": "#5F259F", "268 C": "#582C83",
+    "273 C": "#24135F", "280 C": "#012169", "281 C": "#00205B", "282 C": "#041E42",
+    "286 C": "#0033A0", "287 C": "#003087", "288 C": "#002D72", "293 C": "#003DA5",
+    "294 C": "#002F6C", "300 C": "#005EB8", "301 C": "#004B87", "302 C": "#00587C",
+    # ── ฟ้า / เขียวน้ำทะเล ──
+    "306 C": "#00B5E2", "307 C": "#0067A0", "308 C": "#00566B", "312 C": "#00A3C4",
+    "313 C": "#0092BC", "315 C": "#007377", "319 C": "#2DCCD3", "320 C": "#009CA6",
+    "321 C": "#008C95", "326 C": "#00B2A9", "327 C": "#008675", "330 C": "#006F62",
+    "3272 C": "#00A499", "3282 C": "#006F62", "3285 C": "#009681",
+    # ── เขียว ──
+    "332 C": "#9BE3CB", "339 C": "#00B388", "341 C": "#007A53", "347 C": "#009A44",
+    "348 C": "#00843D", "349 C": "#046A38", "355 C": "#009639", "356 C": "#007A33",
+    "362 C": "#4C9C2E", "368 C": "#78BE20", "375 C": "#97D700", "376 C": "#84BD00",
+    "382 C": "#C4D600", "383 C": "#A9C23F", "390 C": "#B5BD00", "397 C": "#BFB800",
+    # ── น้ำตาล / ครีม / ดิน ──
+    "400 C": "#C9C4BE", "402 C": "#ADA49B", "404 C": "#7C7268", "405 C": "#6A5F55",
+    "412 C": "#332B25", "418 C": "#5B6236", "425 C": "#54585A", "432 C": "#333F48",
+    "440 C": "#4B3B32", "462 C": "#674230", "469 C": "#653819", "476 C": "#4E3629",
+    "477 C": "#5C3327", "484 C": "#9A3324", "490 C": "#5D2A2C", "491 C": "#6B2C2F",
+    "496 C": "#F1BFC6", "500 C": "#DE8CA0", "504 C": "#6B2233", "5185 C": "#7C2E3B",
+    # ── เทา / เงิน / โลหะ ──
+    "422 C": "#9EA2A2", "423 C": "#898D8D", "424 C": "#707372", "426 C": "#25282A",
+    "427 C": "#D0D3D4", "428 C": "#C1C6C8", "429 C": "#A2AAAD", "430 C": "#7C878E",
+    "431 C": "#5B6770", "433 C": "#1D252D", "877 C": "#8A8D8F", "871 C": "#84754E",
+    "Cool Gray 1 C": "#D9D9D6", "Cool Gray 5 C": "#B1B3B3", "Cool Gray 9 C": "#75787B",
+    "Warm Gray 3 C": "#BFB8AF", "Warm Gray 7 C": "#968C83",
+    # ── ขาว / ดำ (ค่ามาตรฐานงานป้าย) ──
+    "White": "#FFFFFF", "Black 6 C": "#101820", "Neutral Black C": "#22201F",
+    "Process Black C": "#231F20",
+}
+
+# ชื่อไทยกำกับ (ไว้โชว์ให้ช่างอ่านง่าย) — เดาจากค่าสีเอง ไม่ต้องมีในตาราง
+_HUE_TH = [(15, "แดง"), (40, "ส้ม"), (68, "เหลือง"), (160, "เขียว"),
+           (200, "ฟ้าอมเขียว"), (250, "น้ำเงิน"), (290, "ม่วง"), (335, "ชมพู"), (361, "แดง")]
+
+
+def hex_to_rgb(h):
+    h = str(h or "").strip().lstrip("#")
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    if len(h) != 6:
+        return None
+    try:
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except Exception:
+        return None
+
+
+def rgb_to_hex(rgb):
+    return "#%02X%02X%02X" % tuple(max(0, min(255, int(round(v)))) for v in rgb)
+
+
+def _srgb_to_lab(rgb):
+    """sRGB (0-255) -> CIE Lab (D65) — สูตรมาตรฐาน ใช้เทียบระยะสีให้ตรงกับสายตาคน"""
+    def _lin(u):
+        u = u / 255.0
+        return u / 12.92 if u <= 0.04045 else ((u + 0.055) / 1.055) ** 2.4
+    r, g, b = (_lin(v) for v in rgb)
+    x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
+    y = (0.2126729 * r + 0.7151522 * g + 0.0721750 * b) / 1.00000
+    z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
+
+    def _f(t):
+        return t ** (1.0 / 3.0) if t > 0.008856 else (7.787 * t + 16.0 / 116.0)
+    fx, fy, fz = _f(x), _f(y), _f(z)
+    return (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+
+
+def delta_e(hex_a, hex_b):
+    """ระยะสีแบบ CIE76 — ตัวเลขยิ่งน้อยยิ่งเหมือน"""
+    ra, rb = hex_to_rgb(hex_a), hex_to_rgb(hex_b)
+    if not ra or not rb:
+        return 999.0
+    la, lb = _srgb_to_lab(ra), _srgb_to_lab(rb)
+    return (sum((la[i] - lb[i]) ** 2 for i in range(3))) ** 0.5
+
+
+def nearest_pantone(hexv):
+    """หาเบอร์ Pantone ที่ใกล้ที่สุดจากค่าสี — คืน (code, hex_ref, deltaE)"""
+    best, bd = None, 1e9
+    for code, ref in PANTONE.items():
+        d = delta_e(hexv, ref)
+        if d < bd:
+            best, bd = (code, ref), d
+    if not best:
+        return ("—", hexv, 999.0)
+    return (best[0], best[1], round(bd, 1))
+
+
+def color_name_th(hexv):
+    """ชื่อสีภาษาไทยแบบคร่าว ๆ (ขาว/ดำ/เทา หรือชื่อโทนสี)"""
+    rgb = hex_to_rgb(hexv)
+    if not rgb:
+        return "—"
+    r, g, b = rgb
+    mx, mn = max(rgb), min(rgb)
+    if mx >= 245 and (mx - mn) <= 10:
+        return "ขาว"
+    if mx <= 45:
+        return "ดำ"
+    if (mx - mn) <= 18:
+        return "เทา" + ("อ่อน" if mx > 170 else ("เข้ม" if mx < 100 else ""))
+    # หา hue
+    mxv, mnv = mx / 255.0, mn / 255.0
+    d = mxv - mnv
+    if mx == r:
+        h = (60 * ((g - b) / 255.0 / d)) % 360
+    elif mx == g:
+        h = 60 * ((b - r) / 255.0 / d) + 120
+    else:
+        h = 60 * ((r - g) / 255.0 / d) + 240
+    for lim, nm in _HUE_TH:
+        if h < lim:
+            return nm
+    return "แดง"
+
+
+def cmyk_of(hexv):
+    """CMYK โดยประมาณ (ไว้พิมพ์กำกับในใบสั่งผลิต)"""
+    rgb = hex_to_rgb(hexv)
+    if not rgb:
+        return (0, 0, 0, 100)
+    r, g, b = (v / 255.0 for v in rgb)
+    k = 1.0 - max(r, g, b)
+    if k >= 0.9999:
+        return (0, 0, 0, 100)
+    c = (1 - r - k) / (1 - k); m = (1 - g - k) / (1 - k); y = (1 - b - k) / (1 - k)
+    return tuple(int(round(v * 100)) for v in (c, m, y, k))
+
+
+def _one(hexv, use="", code="", toa=""):
+    hx = (hexv or "").strip()
+    if not hx.startswith("#"):
+        hx = "#" + hx
+    if not hex_to_rgb(hx):
+        return None
+    pc, pref, dE = nearest_pantone(hx)
+    rgb = hex_to_rgb(hx)
+    return {"hex": rgb_to_hex(rgb), "use": use or "",
+            "pantone": (code or pc), "pantone_ref": pref,
+            "exact": bool(code), "delta_e": (0.0 if code else dE),
+            "toa": toa or "", "name_th": color_name_th(hx),
+            "rgb": "R%d G%d B%d" % rgb,
+            "cmyk": "C%d M%d Y%d K%d" % cmyk_of(hx)}
+
+
+def parse_spots(spec, face_color="", side_color="", max_n=3):
+    """อ่าน 'สีพิเศษ' ที่ผู้ใช้เลือก (ไม่เกิน 3 สี) — รับได้หลายรูปแบบ
+
+    1) JSON:  [{"hex":"#C8102E","pantone":"186 C","use":"ตัวอักษร","toa":"..."} , ...]
+    2) ข้อความสั้น:  "#C8102E|ตัวอักษร, #001F5B|พื้นหลัง"
+    3) ไม่ระบุอะไรเลย -> ใช้สีหน้า/สีข้างที่เลือกไว้ในหน้าออกแบบ
+    4) ไม่มีอะไรเลยจริง ๆ -> คืน 'ขาว + ดำ' พร้อมช่องสี (ตามที่ตกลงกันว่าต้องระบุให้ชัด)
+    """
+    import json as _json
+    out = []
+    spec = (spec or "").strip()
+    if spec:
+        try:
+            data = _json.loads(spec)
+            if isinstance(data, dict):
+                data = [data]
+            for it in (data or [])[:max_n]:
+                o = _one(str(it.get("hex", "")), str(it.get("use", "")),
+                         str(it.get("pantone", "")), str(it.get("toa", "")))
+                if o:
+                    out.append(o)
+        except Exception:
+            for part in spec.split(",")[:max_n]:
+                bits = [b.strip() for b in part.split("|")]
+                if bits and bits[0]:
+                    o = _one(bits[0], bits[1] if len(bits) > 1 else "",
+                             bits[2] if len(bits) > 2 else "")
+                    if o:
+                        out.append(o)
+    if not out:
+        for hv, us in ((face_color, "สีหน้า"), (side_color, "สีขอบข้าง")):
+            if hv and hex_to_rgb(hv):
+                o = _one(hv, us)
+                if o and all(o["hex"] != q["hex"] for q in out):
+                    out.append(o)
+    if not out:
+        # 🎯 ไม่ได้เลือกสีพิเศษ -> ต้องระบุให้ชัดว่าเป็นสีมาตรฐาน ขาว/ดำ (พร้อมช่องสีเหมือนกัน)
+        out = [_one("#FFFFFF", "สีมาตรฐาน (ไม่ได้เลือกสีพิเศษ)", "White"),
+               _one("#231F20", "สีมาตรฐาน (ไม่ได้เลือกสีพิเศษ)", "Process Black C")]
+    return out[:max_n]
+
+
+def summary_line(spots):
+    """สรุปสั้น ๆ 1 บรรทัด (ไว้ใส่บนภาพ/แจ้งเตือน)"""
+    return " · ".join("%s %s" % (s["pantone"], ("(%s)" % s["use"]) if s["use"] else "")
+                      for s in (spots or [])).strip()
