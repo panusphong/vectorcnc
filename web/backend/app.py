@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-01-b",
-        "build_note": "ฐาน -31a + เส้นเดี่ยว = แกนกลางกลางเนื้อ (เบซิเยร์เนียนกริบ) · ถอยเป็นเส้นตัดตัดช่องในถ้าโมดูลไม่ให้ผล",
+            "build": "2026-08-02-neon-size",
+        "build_note": "เส้นเดี่ยว = แกนกลางจริง (neon_route) · ตัวอักษรจากเส้นโค้งในไฟล์ฟอนต์ (font_geom) · ฟอนต์ฝังในแอป 49 ตัว · กำหนดขนาดตัวไฟนีออนแยกจากขนาดป้ายได้",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -5373,6 +5373,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
                     neon_line: str = Form("double"), neon_plate: str = Form("contour"),
                     neon_margin_cm: float = Form(5.0),
+                    neon_w_cm: float = Form(0.0), neon_h_cm: float = Form(0.0),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
                     frame_standoff_cm: float = Form(5.0), wire_offset_cm: float = Form(0.0),
@@ -5405,6 +5406,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(return_depth_cm), float(trim_width_cm), str(trim_dir), str(face_color), str(side_color),
                 int(n_colors), str(arm), float(arm_len_cm), str(arm_side), str(arm_adjust), float(arm_travel_cm),
                 str(neon_color), str(neon_line), str(neon_plate), float(neon_margin_cm),
+                float(neon_w_cm), float(neon_h_cm), str(ts_spec)[:400],
                 int(frame_bars), float(frame_level_cm), float(frame_gap_cm), float(frame_x_cm),
                 float(frame_standoff_cm), float(wire_offset_cm), float(led_pitch_cm), float(arm_edge_cm),
                 float(arm_gap_cm), float(leg_h_cm), float(leg_span_cm), float(caster_mm), str(caster_lock),
@@ -5582,15 +5584,54 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
         if _neon:
+            # 📐 ขนาด 'ตัวไฟนีออน' แยกออกจากขนาดแผ่นป้าย
+            #    ใส่ 0 = อัตโนมัติ (พฤติกรรมเดิมเป๊ะ — ตัวไฟเต็มขนาดที่กรอกไว้ด้านบน)
+            #    ใส่เลข = ย่อ/ขยายตัวไฟให้พอดีกรอบนั้น (รักษาสัดส่วน ไม่บิดเบี้ยว) แล้ววางกึ่งกลางแผ่น
+            _nw = max(0.0, float(neon_w_cm)) * 10.0
+            _nh = max(0.0, float(neon_h_cm)) * 10.0
+            _pw = max(1.0, float(real_width_mm))              # 📋 แผ่นป้าย = ขนาดที่กรอกด้านบน
+            _ph = max(1.0, float(real_height_mm))
+            if _nw > 0.0 or _nh > 0.0:
+                try:
+                    from shapely import affinity as _aff9
+                    _fb = full.bounds
+                    _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
+                    _cand = []
+                    if _nw > 0.0:
+                        _cand.append(_nw / _fw)
+                    if _nh > 0.0:
+                        _cand.append(_nh / _fh)
+                    _s9 = min(_cand)                          # พอดี 'กรอบใน' — ไม่ล้นทั้งสองด้าน
+                    if _s9 > 0 and abs(_s9 - 1.0) > 1e-6:
+                        full = _aff9.scale(full, xfact=_s9, yfact=_s9, origin=(_fb[0], _fb[1]))
+                        _nb = full.bounds
+                        full = _aff9.translate(full, xoff=-_nb[0], yoff=-_nb[1])
+                        _nb = full.bounds
+                        warns.append("📐 ตัวไฟนีออนถูกกำหนดขนาดแยกจากแผ่นป้าย — "
+                                     "ตัวไฟ %.1f × %.1f ซม. · แผ่นป้าย %.1f × %.1f ซม."
+                                     % ((_nb[2] - _nb[0]) / 10.0, (_nb[3] - _nb[1]) / 10.0,
+                                        _pw / 10.0, _ph / 10.0))
+                except Exception:
+                    pass
+            _neon_full = full
             _nmg = max(0.0, float(neon_margin_cm)) * 10.0     # ระยะเผื่ออะคริลิครอบตัวงาน (มม.)
             try:
                 _acrylic = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
             except Exception:
                 _acrylic = full.buffer(_nmg, join_style=1)
-            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):   # 🔲 ตัดเป็นแผ่น 4 เหลี่ยม (ครอบ bbox + เผื่อขอบ)
+            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):   # 🔲 ตัดเป็นแผ่น 4 เหลี่ยม
                 from shapely.geometry import box as _box
                 _ab = _acrylic.bounds
-                _acrylic = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+                if _nw > 0.0 or _nh > 0.0:
+                    # ✅ กำหนดขนาดไฟแยกแล้ว → แผ่น 4 เหลี่ยม = ขนาดป้ายที่กรอกไว้จริง ๆ วางตัวไฟไว้กึ่งกลาง
+                    #    (แผ่นต้องไม่เล็กกว่าตัวไฟ+เผื่อขอบ ไม่งั้นเส้นไฟจะล้นออกนอกแผ่น)
+                    _fb2 = full.bounds
+                    _cx9 = (_fb2[0] + _fb2[2]) / 2.0; _cy9 = (_fb2[1] + _fb2[3]) / 2.0
+                    _bw9 = max(_pw, _ab[2] - _ab[0]); _bh9 = max(_ph, _ab[3] - _ab[1])
+                    _acrylic = _box(_cx9 - _bw9 / 2.0, _cy9 - _bh9 / 2.0,
+                                    _cx9 + _bw9 / 2.0, _cy9 + _bh9 / 2.0)
+                else:
+                    _acrylic = _box(_ab[0], _ab[1], _ab[2], _ab[3])
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -7243,6 +7284,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     sticker_brand: str = Form(""),      # 🏷️ สติกเกอร์โปร่งแสง (ยี่ห้อ+เบอร์ = ข้อมูลสั่งซื้อ)
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
+                    neon_w_cm: float = Form(0.0), neon_h_cm: float = Form(0.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
@@ -7348,6 +7390,27 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         _nsub = None
         if rec.get("neon"):
             # 🌈 นีออน: ใช้ 'ภาพนีออนเรืองแสง' ตัวเดียวกับหน้าออกแบบ (ไม่ใช่ perspective เส้นเทา)
+            # 📐 ขนาดตัวไฟแยกจากขนาดแผ่นป้าย — ต้องคิดแบบเดียวกับ /api/layer-set เป๊ะ
+            _nw = max(0.0, float(neon_w_cm)) * 10.0
+            _nh = max(0.0, float(neon_h_cm)) * 10.0
+            _pw = max(1.0, float(real_width_mm)); _ph = max(1.0, float(real_height_mm))
+            if _nw > 0.0 or _nh > 0.0:
+                try:
+                    from shapely import affinity as _aff9
+                    _fb = full.bounds
+                    _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
+                    _cand = []
+                    if _nw > 0.0:
+                        _cand.append(_nw / _fw)
+                    if _nh > 0.0:
+                        _cand.append(_nh / _fh)
+                    _s9 = min(_cand)
+                    if _s9 > 0 and abs(_s9 - 1.0) > 1e-6:
+                        full = _aff9.scale(full, xfact=_s9, yfact=_s9, origin=(_fb[0], _fb[1]))
+                        _nb = full.bounds
+                        full = _aff9.translate(full, xoff=-_nb[0], yoff=-_nb[1])
+                except Exception:
+                    pass
             _nmg = max(0.0, float(neon_margin_cm)) * 10.0
             try:
                 _acr = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
@@ -7355,7 +7418,15 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 _acr = full.buffer(_nmg, join_style=1)
             if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):
                 from shapely.geometry import box as _box
-                _ab = _acr.bounds; _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+                _ab = _acr.bounds
+                if _nw > 0.0 or _nh > 0.0:
+                    _fb2 = full.bounds
+                    _cx9 = (_fb2[0] + _fb2[2]) / 2.0; _cy9 = (_fb2[1] + _fb2[3]) / 2.0
+                    _bw9 = max(_pw, _ab[2] - _ab[0]); _bh9 = max(_ph, _ab[3] - _ab[1])
+                    _acr = _box(_cx9 - _bw9 / 2.0, _cy9 - _bh9 / 2.0,
+                                _cx9 + _bw9 / 2.0, _cy9 + _bh9 / 2.0)
+                else:
+                    _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
             if str(neon_line).lower() == "single":
                 # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:

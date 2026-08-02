@@ -461,6 +461,14 @@ select.numin{cursor:pointer}
               <input class="numin" id="neonMargin" type="number" value="5" min="1" max="20" step="0.5" style="width:70px;padding:5px" title="ระยะแผ่นอะคริลิคออกจากตัวงาน (ซม.)">
               <span style="font-size:11px;color:#64748b">ซม.</span>
             </div>
+            <div style="font-size:11px;color:#64748b;margin:8px 0 3px">📐 ขนาด<b>ตัวไฟนีออน</b> (แยกจากขนาดป้ายด้านบน)</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="numin" id="neonWcm" type="number" value="0" min="0" step="0.5" placeholder="0 = อัตโนมัติ" style="flex:1;padding:5px" title="ความกว้างของตัวไฟนีออน (ซม.) — 0 = เต็มขนาดป้าย">
+              <span style="font-size:11px;color:#64748b">×</span>
+              <input class="numin" id="neonHcm" type="number" value="0" min="0" step="0.5" placeholder="0 = อัตโนมัติ" style="flex:1;padding:5px" title="ความสูงของตัวไฟนีออน (ซม.) — 0 = เต็มขนาดป้าย">
+              <span style="font-size:11px;color:#64748b">ซม.</span>
+            </div>
+            <div class="hint" style="margin-top:4px;margin-bottom:6px">ใส่ <b>0</b> ทั้งคู่ = ตัวไฟเต็มขนาดป้าย (เหมือนเดิม) · ใส่เลข = ย่อตัวไฟให้พอดีกรอบนั้น <b>รักษาสัดส่วนเดิม</b> แล้ววางกึ่งกลางแผ่น · ใส่ช่องเดียวก็ได้ อีกด้านจะคิดตามสัดส่วนให้ · เลือก <b>แผ่น 4 เหลี่ยม</b> แผ่นจะเท่าขนาดป้ายด้านบนพอดี</div>
             <div class="hint" style="margin-top:5px">เส้นไฟตามลายเส้นภาพ + อะคริลิคใส 8mm (ตามทรง/4เหลี่ยม) เผื่อขอบปรับได้ · เจาะรูยึด 4 จุด (อยู่ในแผ่นเสมอ) + รูสายไฟกลางล่าง · มีเลเยอร์ <b>เซาะร่อง CNC 4mm</b> ในไฟล์ .ai</div>
           </div>
           <!-- 💡 กล่องไฟอะคริลิค ไฟออกรอบ (type 18) -->
@@ -6175,6 +6183,7 @@ $('goLayer').onclick=function(){
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
+  fd.append('neon_w_cm',($('neonWcm')&&$('neonWcm').value)||'0');fd.append('neon_h_cm',($('neonHcm')&&$('neonHcm').value)||'0');
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
   fd.append('frame_gap_cm',($('fGap')&&$('fGap').value)||'20');fd.append('frame_x_cm',($('fXshift')&&$('fXshift').value)||'0');
   fd.append('frame_standoff_cm',($('fStand')&&$('fStand').value)||'5');fd.append('wire_offset_cm',($('fWire')&&$('fWire').value)||'0');
@@ -6468,6 +6477,7 @@ $('goLayer').onclick=function(){
       fd.append('delivery_date',($('pmDelivery')&&$('pmDelivery').value)||'');
       fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
       fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
+  fd.append('neon_w_cm',($('neonWcm')&&$('neonWcm').value)||'0');fd.append('neon_h_cm',($('neonHcm')&&$('neonHcm').value)||'0');
       try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
       _apiFetch((API||'')+'/api/job-sheet',fd).then(_apiJson).then(function(j){
         btn.disabled=false;btn.textContent=old;
