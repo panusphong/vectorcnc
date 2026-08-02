@@ -5703,6 +5703,14 @@ function applyGlow(){
   if(body){ img.style.filter='none'; }                 // ถ้ามีกลุ่มตัวป้ายแล้ว ไม่ต้องใส่ที่ทั้งภาพ
   function set(f){ try{ tgt.style.filter=f; }catch(_e){ img.style.filter=f; } }
   wrap.style.background='#faf9ff';                     // 🧼 พื้นหลังสว่างเสมอ (พี่สั่ง: ไม่เอาพื้นดำหลังภาพ)
+  // 🚫 แสงไฟต้องเรืองเฉพาะ 'ตัวป้าย' — ห้ามลามไปย้อมกล่องข้อมูล/สเปคสี ไม่งั้นอ่านตัวเลขไม่ออก
+  try{
+    ['wpanel','spotbox'].forEach(function(id){
+      var e=img.querySelector('#'+id); if(!e) return;
+      e.style.filter='none'; e.style.webkitFilter='none';
+      e.style.isolation='isolate';                    // กันฟิลเตอร์ของกลุ่มแม่ตกมาถึง
+    });
+  }catch(_e){}
   if(GLOW.mode==='off'){ set('none'); img.style.filter='none'; }
   else if(GLOW.mode==='front'){        // ไฟออกหน้า = หน้าป้ายสว่างเข้าหาเรา ฟุ้งใกล้ตัว
     set('drop-shadow(0 0 2px '+_hexA(c,0.95)+') drop-shadow(0 0 7px '+_hexA(c,0.8)+')'
