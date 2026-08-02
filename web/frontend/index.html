@@ -5314,6 +5314,31 @@ window._setSurf=function(hex){
     try{ if($('pantoneSw'))$('pantoneSw').style.background=hex; }catch(e){} }
   try{ recolor3d(); }catch(e){}
 };
+// 🖐️ ลากกล่องสเปคสีหลบได้ — เดิมมันวางทับเส้นจับระยะจนอ่านขนาดไม่ออก
+//    ลากไปวางตรงไหนก็ได้ · ดับเบิลคลิก = คืนตำแหน่งเดิม (หลักการเดียวกับตัวเลขระยะที่ลากได้อยู่แล้ว)
+window._spotDragInit=function(){
+  try{
+    var img=$('ls3dImg'); if(!img) return;
+    var g=img.querySelector('#spotbox'); if(!g || g._dragOn) return;
+    g._dragOn=1; g.style.cursor='move';
+    var svg=g.ownerSVGElement, dx=0, dy=0, sx=0, sy=0, on=false;
+    function pt(e){ var p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY;
+      var m=svg.getScreenCTM(); return m?p.matrixTransform(m.inverse()):{x:e.clientX,y:e.clientY}; }
+    g.addEventListener('pointerdown', function(e){
+      on=true; var q=pt(e); sx=q.x-dx; sy=q.y-dy;
+      try{ g.setPointerCapture(e.pointerId); }catch(_e){}
+      e.preventDefault(); e.stopPropagation();
+    });
+    g.addEventListener('pointermove', function(e){
+      if(!on) return; var q=pt(e); dx=q.x-sx; dy=q.y-sy;
+      g.setAttribute('transform','translate('+dx.toFixed(1)+','+dy.toFixed(1)+')');
+    });
+    g.addEventListener('pointerup', function(e){ on=false;
+      try{ g.releasePointerCapture(e.pointerId); }catch(_e){} });
+    g.addEventListener('dblclick', function(e){ dx=0; dy=0;
+      g.removeAttribute('transform'); e.preventDefault(); e.stopPropagation(); });
+  }catch(e){}
+};
 window._setStk=function(){
   window.STK_BRAND=(($('stkBrand')||{}).value||'').trim();
   window.STK_CODE=(($('stkCode')||{}).value||'').trim();
@@ -6156,6 +6181,7 @@ $('goLayer').onclick=function(){
       $('goProd').textContent=(j.ai_base64?'🏭 สร้างไฟล์ตัดใหม่อีกครั้ง (.ai)':(window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)')); } }catch(_e){}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
     try{ if(j.pantone_table) window.VC_PANTONE=j.pantone_table; }catch(_e){}   // 🎨 ตารางเทียบเบอร์ Pantone
+    try{ setTimeout(function(){ _spotDragInit(); }, 260); }catch(_e){}          // 🖐️ เปิดให้ลากกล่องสเปคสีหลบได้
     try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.add('full-stage');}catch(_e){}
     try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
     if($('dlSvg')){$('dlSvg').disabled=false;$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (แยก layer)';}
