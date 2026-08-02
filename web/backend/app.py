@@ -3171,7 +3171,7 @@ def _spot_box_svg(spots, vx, vy, vw, vh):
     bw = vw * 0.30
     bh = fs * 2.0 + len(spots) * rowh + pad
     bx = vx + vw - bw - vw * 0.012
-    by = vy + vh * 0.015
+    by = vy + vh - bh - vh * 0.02        # ⬇️ ชิดล่างขวา — มุมบนขวาเป็นที่ของเส้นจับระยะ (เคยวางทับจนอ่านไม่ออก)
     p = ['<g id="spotbox">',
          '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
          'fill-opacity="0.92" stroke="#94a3b8" stroke-width="%.2f"/>'
