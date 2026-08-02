@@ -3117,13 +3117,94 @@ def _armdim_v(out, spans, x, fs, lw, aw, col="#dc2626"):
                    % (x, _m + fs * 0.2, fs * 0.68, col, _rot, _nm, _val))
 
 
-def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, extra_lines=None,
-                      boq_items=None):
-    """⚖️ ต่อ 'แผงข้อมูลน้ำหนัก + ขนาดเหล็กที่รับน้ำหนักได้ปลอดภัย' ไว้ 'ใต้ภาพ 3 มิติ'
+def _spot_strip_svg(spots, x, y, w, fs):
+    """🎨 แถบ 'ช่องสีตัวอย่าง' แบบแคตตาล็อกสี — สี่เหลี่ยมชิ้นเล็ก + เบอร์ Pantone + การใช้งาน
+       คืน (ชิ้นส่วน svg, ความสูงที่ใช้)"""
+    if not spots:
+        return [], 0.0
+    p = []
+    colw = (w - fs * 1.6) / max(1, len(spots))
+    sw = min(fs * 3.4, colw * 0.30)                      # ด้านของช่องสี
+    p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+             'fill="#0f172a">&#127912; สีที่ใช้ผลิต (เทียบเบอร์ Pantone)</text>' % (x, y + fs, fs * 1.02))
+    ty = y + fs * 2.5
+    for i, s in enumerate(spots):
+        cx = x + i * colw
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" '
+                 'stroke="#334155" stroke-width="%.2f"/>'
+                 % (cx, ty, sw, sw, fs * 0.18, s["hex"], max(0.5, fs * 0.06)))
+        tx = cx + sw + fs * 0.55
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+                 'fill="#0f172a">%s</text>' % (tx, ty + fs * 0.95, fs * 0.95, s["pantone"]))
+        _sub = "%s · %s" % (s["hex"], s["name_th"])
+        if s.get("toa"):
+            _sub += " · TOA %s" % s["toa"]
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                 'fill="#475569">%s</text>' % (tx, ty + fs * 2.05, fs * 0.78, _sub))
+        if s.get("use"):
+            p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                     'fill="#64748b">%s</text>'
+                     % (tx, ty + fs * 3.05, fs * 0.74,
+                        str(s["use"]).replace("&", "&amp;").replace("<", "&lt;")))
+        if not s.get("exact") and float(s.get("delta_e") or 0) > 5.0:
+            p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                     'fill="#b45309">เทียบใกล้เคียง &#916;E %.1f</text>'
+                     % (tx, ty + fs * 3.95, fs * 0.72, float(s["delta_e"])))
+    return p, (fs * 2.5 + max(sw, fs * 4.4) + fs * 0.8)
 
-    ⚠️ บทเรียน: เคยวางทับบนภาพ -> บังงาน มองแบบไม่เห็น
-    ✅ จึงขยายกรอบภาพลงล่าง แล้ววางแผงในพื้นที่ที่เพิ่มมา — ตัวภาพ 3 มิติไม่ถูกแตะเลยแม้แต่จุดเดียว
-       (เป็นแค่การต่อสตริง ไม่มีต้นทุนเวลาเพิ่ม · ใช้ได้ทุกประเภทป้าย)
+
+def _spot_box_svg(spots, vx, vy, vw, vh):
+    """🎨 กล่องสเปคสี วางไว้ 'ในภาพ 3 มิติ' มุมขวาบน (ที่ว่างของภาพ)
+       ผู้ใช้ต้องเห็นเบอร์สีพร้อมภาพงานในภาพเดียวกัน ไม่ต้องเลื่อนหา"""
+    if not spots:
+        return []
+    fs = max(7.0, vw * 0.0135)
+    pad = fs * 0.9
+    sw = fs * 2.4                                    # ด้านของช่องสีตัวอย่าง
+    rowh = max(sw, fs * 3.15) + fs * 0.5
+    bw = vw * 0.30
+    bh = fs * 2.0 + len(spots) * rowh + pad
+    bx = vx + vw - bw - vw * 0.012
+    by = vy + vh * 0.015
+    p = ['<g id="spotbox">',
+         '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
+         'fill-opacity="0.92" stroke="#94a3b8" stroke-width="%.2f"/>'
+         % (bx, by, bw, bh, fs * 0.6, max(0.6, fs * 0.08)),
+         '<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+         'fill="#0f172a">&#127912; สเปคสี (เทียบเบอร์ Pantone)</text>'
+         % (bx + pad, by + pad + fs * 0.85, fs * 0.98)]
+    ty = by + pad + fs * 1.9
+    for s in spots:
+        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" '
+                 'stroke="#334155" stroke-width="%.2f"/>'
+                 % (bx + pad, ty, sw, sw, fs * 0.16, s["hex"], max(0.5, fs * 0.07)))
+        tx = bx + pad + sw + fs * 0.6
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
+                 'fill="#0f172a">%s</text>' % (tx, ty + fs * 0.9, fs * 0.95, s["pantone"]))
+        _sub = "%s · %s" % (s["hex"], s["name_th"])
+        if s.get("toa"):
+            _sub += " · TOA %s" % s["toa"]
+        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                 'fill="#475569">%s</text>' % (tx, ty + fs * 1.85, fs * 0.76, _sub))
+        if s.get("use"):
+            p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                     'fill="#64748b">%s</text>'
+                     % (tx, ty + fs * 2.7, fs * 0.72,
+                        str(s["use"])[:34].replace("&", "&amp;").replace("<", "&lt;")))
+        ty += rowh
+    p.append("</g>")
+    return p
+
+
+def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, extra_lines=None,
+                      boq_items=None, spots=None):
+    """⚖️🧾🎨 ต่อ 'แผงข้อมูล' ไว้ใต้ภาพ 3 มิติ — น้ำหนัก · โครงสร้างเหล็ก · BOQ ติดตั้ง · สีที่ใช้ผลิต
+
+    ⚠️ บทเรียน 2 ข้อจากการใช้จริง:
+      1) เคยวางทับบนภาพ -> บังงาน มองแบบไม่เห็น
+      2) เคยเรียงยาวเป็นแถวเดียว 40 บรรทัด -> ภาพสูงขึ้นเท่าตัว ต้องเลื่อนจอหาแบบ
+    ✅ ตอนนี้จัดเป็น 3 คอลัมน์เคียงกัน (กว้างแต่เตี้ย) แล้วต่อแถบสีไว้ล่างสุด
+       ตัวภาพ 3 มิติไม่ถูกแตะเลยแม้แต่จุดเดียว — แค่ขยายกรอบลงล่างแล้ววาดเพิ่ม
     """
     try:
         import re as _re9
@@ -3133,77 +3214,87 @@ def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, ex
         if not _m:
             return svg
         vx, vy, vw, vh = (float(_m.group(i)) for i in (1, 2, 3, 4))
-        fs = max(6.5, vw * 0.0112)                       # ขนาดตัวอักษรตามขนาดภาพ
-        pad = fs * 1.1
-        rows = ["⚖️ น้ำหนักป้ายโดยประมาณ  %.1f กก." % float(wsum.get("total_kg") or 0.0)]
+        fs = max(6.0, vw * 0.0092)
+        pad = fs * 1.2
+
+        def _esc9(t):
+            return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        # ── คอลัมน์ 1: น้ำหนัก ──────────────────────────────────────────
+        c1 = ["⚖️ น้ำหนักป้ายโดยประมาณ  %.1f กก." % float(wsum.get("total_kg") or 0.0)]
         _d = []
-        if float(wsum.get("sheet_kg") or 0) > 0:
-            _d.append("แผ่นวัสดุ %.1f" % wsum["sheet_kg"])
-        if float(wsum.get("led_kg") or 0) > 0:
-            _d.append("ไฟ+หม้อแปลง %.1f" % wsum["led_kg"])
-        if float(wsum.get("frame_kg") or 0) > 0:
-            _d.append("โครงเหล็ก %.1f" % wsum["frame_kg"])
+        for k, lb in (("sheet_kg", "แผ่นวัสดุ"), ("led_kg", "ไฟ+หม้อแปลง"), ("frame_kg", "โครงเหล็ก")):
+            if float(wsum.get(k) or 0) > 0:
+                _d.append("%s %.1f" % (lb, wsum[k]))
         if _d:
-            rows.append("   (" + " · ".join(_d) + " กก.)")
-        # 📋 แยกทีละชั้น — ช่างจะได้เห็นว่าน้ำหนักไปกองอยู่ที่ชั้นไหน (เรียงหนักไปเบา)
+            c1.append("   (" + " · ".join(_d) + " กก.)")
         _ps = sorted((wsum.get("parts") or []), key=lambda q: -float(q.get("kg") or 0))
-        for _q in _ps[:7]:
+        for _q in _ps[:8]:
             _nm = str(_q.get("name", ""))
-            if len(_nm) > 34:
-                _nm = _nm[:33] + "…"
+            _nm = (_nm[:26] + "…") if len(_nm) > 27 else _nm
             _th = (" %.1f มม." % float(_q.get("thick_mm") or 0)) if float(_q.get("thick_mm") or 0) > 0 else ""
-            _ar = (" · %.2f ตร.ม." % float(_q.get("area_m2") or 0)) if float(_q.get("area_m2") or 0) > 0 else ""
-            rows.append("   • %-34s %s%s%s = %.2f กก."
-                        % (_nm, _q.get("mat", ""), _th, _ar, float(_q.get("kg") or 0)))
-        if len(_ps) > 7:
-            rows.append("   • (อีก %d ชั้น รวม %.2f กก.)"
-                        % (len(_ps) - 7, sum(float(q.get("kg") or 0) for q in _ps[7:])))
+            c1.append("   • %-27s %s%s = %.2f กก." % (_nm, _q.get("mat", ""), _th, float(_q.get("kg") or 0)))
+        if len(_ps) > 8:
+            c1.append("   • (อีก %d ชั้น รวม %.2f กก.)"
+                      % (len(_ps) - 8, sum(float(q.get("kg") or 0) for q in _ps[8:])))
+
+        # ── คอลัมน์ 2: โครงสร้างเหล็ก ────────────────────────────────────
+        c2 = []
         if tube:
-            rows.append("🔩 เหล็กกล่อง %s หนา %.1f มม. · ช่วงพาด %.0f ซม."
-                        % (tube.get("label", ""), float(tube.get("t") or 0), float(span_mm) / 10.0))
+            c2.append("🔩 เหล็กกล่อง %s หนา %.1f มม. · ช่วงพาด %.0f ซม."
+                      % (tube.get("label", ""), float(tube.get("t") or 0), float(span_mm) / 10.0))
             if chk:
-                rows.append("   หน่วยแรง %.0f MPa (ไม่เกิน %.0f) · แอ่นตัว %.1f มม. (ไม่เกิน %.1f)"
-                            % (chk.get("sigma", 0), 140.0, chk.get("defl", 0), chk.get("defl_lim", 0)))
-            rows.append("   ✅ รับน้ำหนักได้ปลอดภัย" if fits
-                        else "   ⚠️ ช่วงพาดยาวเกิน — ต้องเพิ่มจุดยึด ไม่ใช่เพิ่มขนาดเหล็ก")
+                c2.append("   หน่วยแรง %.0f MPa (ไม่เกิน 140) · แอ่นตัว %.1f มม. (ไม่เกิน %.1f)"
+                          % (chk.get("sigma", 0), chk.get("defl", 0), chk.get("defl_lim", 0)))
+            c2.append("   ✅ รับน้ำหนักได้ปลอดภัย" if fits
+                      else "   ⚠️ ช่วงพาดยาวเกิน — ต้องเพิ่มจุดยึด ไม่ใช่เพิ่มขนาดเหล็ก")
         for _l in (extra_lines or []):
-            rows.append("   " + str(_l))
-        rows.append("   * เป็นน้ำหนักตัวป้าย ยังไม่รวมแรงลม (ป้ายกลางแจ้งต้องคิดเพิ่ม)")
-        # 🧾 BOQ อุปกรณ์สิ้นเปลืองงานติดตั้ง — แยกเป็นอีกส่วนต่อจากข้อมูลน้ำหนัก
+            c2.append("   " + str(_l))
+        c2.append("   * เป็นน้ำหนักตัวป้าย ยังไม่รวมแรงลม (ป้ายกลางแจ้งต้องคิดเพิ่ม)")
+
+        # ── คอลัมน์ 3: BOQ ของสิ้นเปลืองติดตั้ง ──────────────────────────
+        c3 = []
         if boq_items:
-            rows.append("")
-            rows.append("🧾 BOQ อุปกรณ์สิ้นเปลืองงานติดตั้ง (%d รายการ)" % len(boq_items))
+            c3.append("🧾 BOQ ของสิ้นเปลืองติดตั้ง (%d รายการ)" % len(boq_items))
             for _q in boq_items:
-                rows.append("   □ %-42s %6s %-6s  — %s"
-                            % (str(_q.get("name", ""))[:42], _q.get("qty"), _q.get("unit", ""),
-                               str(_q.get("note", ""))[:52]))
-        gap = fs * 1.6                                   # ช่องว่างคั่นระหว่างภาพกับแผงข้อมูล
-        bh = len(rows) * fs * 1.34 + pad * 2.2
-        bx = vx
-        by = vy + vh + gap
-        bw = vw
+                c3.append("   □ %-30s %6s %s"
+                          % (str(_q.get("name", ""))[:30], _q.get("qty"), _q.get("unit", "")))
+
+        cols = [c for c in (c1, c2, c3) if c]
+        nrow = max(len(c) for c in cols) if cols else 0
+        gap = fs * 1.6
+        bh = nrow * fs * 1.30 + pad * 2.0
+        bx, by, bw = vx, vy + vh + gap, vw
         p = ['<g id="wpanel">',
              '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#ffffff"/>'
              % (vx, vy + vh, vw, gap + bh),
              '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#f8fafc" '
              'stroke="#cbd5e1" stroke-width="%.2f"/>'
              % (bx + pad * 0.4, by, bw - pad * 0.8, bh, fs * 0.5, max(0.5, fs * 0.09))]
-        ty = by + pad * 1.25 + fs * 0.95
-        for i, r in enumerate(rows):
-            col = "#0f172a" if i == 0 else ("#b45309" if r.strip().startswith("⚠️") else "#334155")
-            wt = "800" if i == 0 else ("700" if r.strip().startswith(("🔩", "✅", "⚠️")) else "500")
-            sz = fs * 1.16 if i == 0 else fs * 0.94
-            p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
-                     'font-weight="%s" fill="%s" xml:space="preserve">%s</text>'
-                     % (bx + pad * 1.6, ty, sz, wt, col,
-                        str(r).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")))
-            ty += fs * 1.34
+        colw = (bw - pad * 2.4) / max(1, len(cols))
+        # ✂️ ตัดข้อความให้พอดีความกว้างคอลัมน์ ไม่งั้นบรรทัดยาวจะล้นไปทับคอลัมน์ข้าง ๆ
+        _maxch = max(24, int(colw / (fs * 0.55)))
+        for ci, col in enumerate(cols):
+            cx = bx + pad * 1.4 + ci * colw
+            ty = by + pad * 1.1 + fs * 0.95
+            for i, r in enumerate(col):
+                if len(r) > _maxch:
+                    r = r[:_maxch - 1] + "…"
+                head = (i == 0)
+                col_c = "#0f172a" if head else ("#b45309" if r.strip().startswith("⚠️") else "#334155")
+                wt = "800" if head else ("700" if r.strip().startswith(("🔩", "✅", "⚠️", "🔧", "📐", "🦾")) else "500")
+                sz = fs * 1.1 if head else fs * 0.92
+                p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                         'font-weight="%s" fill="%s" xml:space="preserve">%s</text>'
+                         % (cx, ty, sz, wt, col_c, _esc9(r)))
+                ty += fs * 1.30
         p.append("</g>")
-        # 📐 ขยาย 'กรอบภาพ' ลงล่างให้พอดีกับแผง — ภาพ 3 มิติเดิมอยู่ที่เดิมทุกพิกเซล
+        # 🎨 สเปคสี -> วางไว้ 'ในภาพ' มุมขวาบน (ตามที่ตกลงกันว่าอยากเห็นคู่กับแบบ ไม่ต้องแยกลงล่าง)
+        if spots:
+            p += _spot_box_svg(spots, vx, vy, vw, vh)
         _add = gap + bh + pad * 0.6
-        _old = _m.group(0)
         _new = 'viewBox="%s %s %s %.2f"' % (_m.group(1), _m.group(2), _m.group(3), vh + _add)
-        svg = svg.replace(_old, _new, 1)
+        svg = svg.replace(_m.group(0), _new, 1)
         _hm = _re9.search(r'(<svg\b[^>]*?)\bheight="([\d.]+)(mm)?"', svg)
         if _hm:
             _h2 = float(_hm.group(2)) * (vh + _add) / max(1e-6, vh)
@@ -5166,6 +5257,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     return_depth_cm: float = Form(0.0), trim_width_cm: float = Form(1.0),
                     trim_dir: str = Form("out"), face_color: str = Form(""),
                     side_color: str = Form(""), n_colors: int = Form(6),
+                    spot_colors: str = Form(""),        # 🎨 สีพิเศษไม่เกิน 3 สี (JSON หรือ "#hex|การใช้งาน, ...")
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
                     arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
@@ -5208,7 +5300,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
-                float(logo_w_cm), float(logo_h_cm), str(safe_mode), str(make_ai), str(only_ai))
+                float(logo_w_cm), float(logo_h_cm), str(spot_colors),   # 🎨 เปลี่ยนสีพิเศษ = ต้องคิดใหม่
+                str(safe_mode), str(make_ai), str(only_ai))
         _pk = _rck[:-2]                       # 🧺 กุญแจ 'ชุดค่าที่คำนวณไว้' (ไม่รวม 2 ช่องโหมดท้ายสุด)
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
         if _rhit is not None:
@@ -6447,7 +6540,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # ⚖️ ============ น้ำหนักป้าย + ขนาดเหล็กที่ปลอดภัย (ทุกประเภทป้าย) ============
         #    คิดจากพื้นที่เนื้อวัสดุจริงของแต่ละชั้น × ความหนา × ความหนาแน่น + ไฟ + โครง
         #    แล้ว 'วางทับ' ลงภาพ 3 มิติที่วาดเสร็จแล้ว — ไม่แตะตัววาดภาพ จึงไม่ช้าลงเลย
-        weight_info = {}
+        weight_info = {}; spot_info = []
         try:
             _fspec = None
             if isinstance(frame_info, dict) and frame_info.get("tube"):
@@ -6498,8 +6591,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             led_m=float((led_info or {}).get("total_m") or 0.0),
                             transformer_w=int((led_info or {}).get("transformer_w") or 0),
                             perimeter_mm=float(perimeter or 0.0) * 10.0, arm=(_arm_info or None))
+            # 🎨 สีที่ใช้ผลิต — ไม่เกิน 3 สี · ถ้าไม่ได้เลือกสีพิเศษจะระบุ ขาว/ดำ ให้ชัดเจนเอง
+            from vectorcnc import spot_color as _SPC
+            spot_info = _SPC.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
             svg3d = _weight_panel_svg(svg3d, _ws, tube=_tb, chk=_ck, span_mm=_sp, fits=_ft,
-                                      extra_lines=_xtra, boq_items=_boq)
+                                      extra_lines=_xtra, boq_items=_boq, spots=spot_info)
             weight_info = {"total_kg": _ws["total_kg"], "sheet_kg": _ws["sheet_kg"],
                            "led_kg": _ws["led_kg"], "frame_kg": _ws["frame_kg"],
                            "parts": _ws["parts"],
@@ -6510,6 +6606,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                            "arm": _arm_info, "boq": _boq}
         except Exception:
             weight_info = {}
+            try:
+                from vectorcnc import spot_color as _SPC2
+                spot_info = _SPC2.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
+            except Exception:
+                spot_info = []
 
         _resp9 = {"type_name": rec["name"], "type_name_en": _en_type(rec["name"]), "sign_type": str(sign_type),
                 "perimeter_cm": perimeter,
@@ -6519,7 +6620,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
-                "svg_face": svg_face, "led": led_info, "weight": weight_info,
+                "svg_face": svg_face, "led": led_info, "weight": weight_info, "spot_colors": spot_info,
                 # 🖼️ ต้องส่ง 'เส้นดิบจากเอนจิ้น' เข้าไปด้วยเสมอ — ให้มองเป็นภาพแบน ๆ ภาพเดียว
                 #    แล้วลากเส้นตัดออกมาตรง ๆ (เหมือนแผนที่กลุ่มวัสดุที่ทำถูกอยู่แล้ว)
                 #    ถ้าไม่ส่ง จะตกไปทางสำรองที่วาดเป็น 'ก้อนทึบสีเทาเข้ม'
@@ -6557,6 +6658,30 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         return _resp9
     except Exception as e:
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-700:]}, status_code=400)
+
+
+def _spot_card_html(spots, esc):
+    """🎨 การ์ด 'สีที่ใช้ผลิต' ในใบสั่งผลิต — ช่องสีตัวอย่างแบบแคตตาล็อก + เบอร์ Pantone + RGB/CMYK"""
+    if not spots:
+        return ""
+    rows = ""
+    for s in spots:
+        _warn = ("" if (s.get("exact") or float(s.get("delta_e") or 0) <= 5.0)
+                 else '<div style="color:#b45309;font-size:9px">เทียบใกล้เคียง &#916;E %.1f</div>'
+                      % float(s.get("delta_e") or 0))
+        rows += ('<tr><td style="width:34px"><div style="width:26px;height:26px;border-radius:4px;'
+                 'background:%s;border:1px solid #334155"></div></td>'
+                 '<td><b>%s</b>%s<div style="color:#64748b;font-size:9px">%s</div></td>'
+                 '<td style="font-size:9px;color:#475569">%s<br>%s<br>%s</td></tr>'
+                 % (s["hex"], esc(s["pantone"]),
+                    (' <span style="color:#64748b">· TOA %s</span>' % esc(s["toa"])) if s.get("toa") else "",
+                    esc(s.get("use", "")) or "&nbsp;",
+                    esc(s["hex"]) + " · " + esc(s["name_th"]), esc(s["rgb"]), esc(s["cmyk"]) + _warn))
+    return ('<div class="card"><div class="ct"><span class="no">&#127912;</span>สีที่ใช้ผลิต (เทียบเบอร์ Pantone)</div>'
+            '<div class="cbody"><table>%s</table>'
+            '<div style="font-size:9px;color:#64748b;margin-top:4px">* สี Pantone เป็นหมึกผสมสำเร็จ ไม่มีค่า RGB ที่ถูกต้องเพียงค่าเดียว '
+            'ค่าที่แสดงเป็นค่าอ้างอิงโดยประมาณ — <b>ก่อนผลิตจริงต้องยืนยันกับพัดสี Pantone/TOA ตัวจริงเสมอ</b></div>'
+            '</div></div>' % rows)
 
 
 def _weight_cards_html(weight, boq, esc):
@@ -6627,7 +6752,7 @@ def _weight_cards_html(weight, boq, esc):
     return wcard, bcard
 
 
-def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img="", views_svg="", weight=None, boq=None):
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img="", views_svg="", weight=None, boq=None, spots=None):
     """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
     def esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -6712,6 +6837,7 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
     except Exception:
         pass
     weight_card, boq_card = _weight_cards_html(weight or {}, boq or [], esc)
+    spot_card = _spot_card_html(spots or [], esc)
     html = _JOB_SHEET_CSS
     html = html.replace("__TITLE__", esc(type_name))
     for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
@@ -6723,7 +6849,7 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                  "__PERSP__": persp_svg, "__VIEWS__": views_card, "__LEDCOLOR__": ledcol_card,
                  "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
                  "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom,
-                 "__WEIGHT__": weight_card, "__BOQ__": boq_card}.items():
+                 "__WEIGHT__": weight_card, "__BOQ__": boq_card, "__SPOT__": spot_card}.items():
         html = html.replace(k, str(v))
     return html
 
@@ -6765,6 +6891,10 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
    ⚠️ ต้องใส่ break-inside:avoid ทุกใบ ไม่งั้นการ์ดจะถูกหั่นครึ่งข้ามคอลัมน์ */
 .masonry{column-count:5;column-gap:7px}
 .masonry .card{display:inline-block;width:100%;margin:0 0 7px;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
+/* 📸 โหมดแคปภาพ (JPG/PDF): html2canvas วาดคอลัมน์แบบ column-count ไม่ได้ -> การ์ดกลายเป็นกล่องเปล่า
+   ระหว่างแคปจึงสลับเป็นกริดธรรมดาชั่วคราว แล้วคืนสภาพทันทีหลังแคปเสร็จ */
+.sheet.capmode .masonry{column-count:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:7px;align-items:start}
+.sheet.capmode .masonry .card{display:block;width:auto;margin:0}
 .masonry .card{width:auto}
 .site{border:2px dashed #cbd5e1;border-radius:9px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;background:#f8fafc;cursor:pointer}
 .site:hover{border-color:#22d3ee;color:#0891b2}
@@ -6827,6 +6957,7 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
     </div>
     <!-- 📐 แถวกลาง: 4 มุมมองมาตรฐาน + ตัวอย่างสีไฟ -->
     <div class="masonry">
+      __SPOT__
       __VIEWS__
       __WEIGHT__
       __BOQ__
@@ -6844,8 +6975,9 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
   <div class="note">⚠️ กรุณาตรวจสอบ ข้อความ / ขนาด / สี / ตำแหน่งติดตั้ง ให้ถูกต้องก่อนเซ็นอนุมัติ — เมื่ออนุมัติแล้วเข้าสู่การผลิตทันที</div>
   <div class="foot"><div class="sign"><div class="line"></div><div class="r">ผู้ออกแบบ / เซลล์</div></div><div class="sign"><div class="line"></div><div class="r">ผู้อนุมัติผลิต (โรงงาน)</div></div><div class="sign"><div class="line"></div><div class="r">ลูกค้าอนุมัติแบบ · วันที่</div></div></div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- ⚡ ไม่โหลดสคริปต์แคปภาพตั้งแต่เปิดหน้า — โหลดเฉพาะตอนกด 'บันทึก JPG' เท่านั้น
+     (ใบสั่งผลิตเปิดบ่อยกว่าการแคปภาพมาก · เดิมโหลด 2 ไลบรารีทุกครั้งจนหน้าอืด)
+     ส่วน PDF ใช้ตัวพิมพ์ของเบราว์เซอร์เองแล้ว = คมชัดกว่า เร็วกว่า และไฟล์เล็กกว่ามาก -->
 <script>
 var JOBNO="__JOBNO__";
 // 📷 แนบภาพหน้างาน + 🖼️ ภาพอ้างอิง (ฝั่ง client — ติดไปกับ PDF/JPG/พิมพ์ ด้วย)
@@ -6876,7 +7008,7 @@ function _fitOnePage(){
 function _fitForCapture(on){
   var sh=document.querySelector('.sheet'); if(!sh)return 1;
   if(!on){ sh.style.transform=''; sh.style.transformOrigin=''; sh.style.width=''; return 1; }
-  var W=1900.0, targetH=W*(285.0/408.0);            // ตอนแคปภาพใช้สัดส่วน A3 พอ (ไม่ผูกกับ dpi เครื่องพิมพ์)
+  var W=sh.scrollWidth||1900.0, targetH=W*(285.0/408.0);   // ตอนแคปภาพใช้สัดส่วน A3 พอ (ไม่ผูกกับ dpi เครื่องพิมพ์)
   var h=sh.scrollHeight||sh.offsetHeight||1;
   var f=Math.min(1.0, targetH/h);
   if(f<0.999){ sh.style.width=W+'px'; sh.style.transformOrigin='top left'; sh.style.transform='scale('+f+')'; }
@@ -6886,24 +7018,40 @@ window.addEventListener('beforeprint', _fitOnePage);
 window.addEventListener('load', function(){ setTimeout(_fitOnePage, 350); });
 window.addEventListener('load', _fitOnePage);
 function _cap(cb){_busy(true);
+  var _sh0=document.querySelector('.sheet');
+  if(_sh0)_sh0.classList.add('capmode');             // 📸 สลับเป็นกริดก่อนแคป (กันการ์ดกลายเป็นกล่องเปล่า)
+  var _done=function(){ if(_sh0)_sh0.classList.remove('capmode'); _fitForCapture(false); _busy(false); };
   var fr=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
-  fr.then(function(){return new Promise(function(r){setTimeout(r,150);});}).then(function(){
-    var _f=_fitForCapture(true);                       // 📄 A3 แนวนอน 1 แผ่นเสมอ
+  fr.then(function(){return new Promise(function(r){setTimeout(r,260);});}).then(function(){
     var _sh=document.querySelector('.sheet');
-    var _opt={scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false};
-    if(_f<0.999){ _opt.width=Math.ceil(1560*_f); _opt.height=Math.ceil((_sh.scrollHeight||1)*_f);
-                  _opt.windowWidth=1560; }
+    var _W=_sh.scrollWidth||1900;                    // ⚠️ ต้องอ่านความกว้างจริง ห้ามฝังเลขตายตัว
+    var _f=_fitForCapture(true);                     // 📄 A3 แนวนอน 1 แผ่นเสมอ
+    // ⚡ scale 1.4 ก็คมพอสำหรับ A3 แล้ว (เดิม 2 = พื้นที่วาดมากกว่าเท่าตัว ช้าโดยไม่จำเป็น)
+    var _opt={scale:1.4,backgroundColor:'#ffffff',useCORS:true,logging:false};
+    if(_f<0.999){ _opt.width=Math.ceil(_W*_f); _opt.height=Math.ceil((_sh.scrollHeight||1)*_f);
+                  _opt.windowWidth=_W; }
     setTimeout(function(){
       html2canvas(_sh,_opt)
-        .then(function(cv){_fitForCapture(false);_busy(false);cb(cv);})
-        .catch(function(e){_fitForCapture(false);_busy(false);alert('สร้างภาพไม่ได้: '+e);});
-    },80);
+        .then(function(cv){_done();cb(cv);})
+        .catch(function(e){_done();alert('สร้างภาพไม่ได้: '+e);});
+    },120);
   });}
-function saveJPG(){_cap(function(cv){var a=document.createElement('a');a.href=cv.toDataURL('image/jpeg',.92);a.download='JobSheet_'+JOBNO+'.jpg';a.click();});}
-function savePDF(){_cap(function(cv){var J=(window.jspdf||{}).jsPDF;if(!J){alert('โหลดตัวสร้าง PDF ไม่ได้ — ลองใช้ปุ่มพิมพ์แทน');return;}
-  var pdf=new J({orientation:'landscape',unit:'mm',format:'a3'});var pw=420,ph=297,m=6;
-  var iw=cv.width,ih=cv.height;var r=Math.min((pw-2*m)/iw,(ph-2*m)/ih);var w=iw*r,h=ih*r;
-  pdf.addImage(cv.toDataURL('image/jpeg',.94),'JPEG',(pw-w)/2,(ph-h)/2,w,h);pdf.save('JobSheet_'+JOBNO+'.pdf');});}
+function saveJPG(){
+  // ⚡ โหลด html2canvas ตอนใช้จริงเท่านั้น
+  var go=function(){_cap(function(cv){var a=document.createElement('a');
+    a.href=cv.toDataURL('image/jpeg',.9);a.download='JobSheet_'+JOBNO+'.jpg';a.click();});};
+  if(window.html2canvas){go();return;}
+  _busy(true);
+  var sc=document.createElement('script');
+  sc.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  sc.onload=function(){_busy(false);go();};
+  sc.onerror=function(){_busy(false);alert('โหลดตัวแคปภาพไม่ได้ — ใช้ปุ่ม "พิมพ์" แล้วเลือก Save as PDF แทนได้ค่ะ');};
+  document.head.appendChild(sc);
+}
+// 📄 PDF = ใช้ตัวพิมพ์ของเบราว์เซอร์ ไม่ใช่แปลงเป็นภาพแล้วยัดใส่ PDF
+//    ข้อดีที่วัดได้: เร็วขึ้นมาก (ไม่ต้องวาดแคนวาสหลายพันพิกเซล) · ตัวหนังสือคมเป็นเวกเตอร์จริง
+//    · ไฟล์เล็กลงหลายเท่า · และไม่เพี้ยนเพราะ html2canvas วาด CSS บางอย่างไม่ได้
+function savePDF(){ try{_fitOnePage();}catch(e){} setTimeout(function(){window.print();},60); }
 </script>
 </body></html>'''
 
@@ -6927,6 +7075,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_scale: float = Form(100.0), logo_dx_cm: float = Form(0.0),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     face_color: str = Form(""), side_color: str = Form(""),
+                    spot_colors: str = Form(""),        # 🎨 สีพิเศษไม่เกิน 3 สี (ลงใบสั่งผลิต)
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
@@ -7335,7 +7484,13 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                            "rows": (frame_info or {}).get("tubes", []), "pitch": (frame_info or {}).get("pitch", {})}
         except Exception:
             weight_info = {}; boq_rows = []
-        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows)
+        # 🎨 สีที่ใช้ผลิต (ไม่เกิน 3 สี) — ไม่เลือกสีพิเศษ = ระบุ ขาว/ดำ ให้ชัดเจน
+        try:
+            from vectorcnc import spot_color as _SPC3
+            spot_rows = _SPC3.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
+        except Exception:
+            spot_rows = []
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows, spots=spot_rows)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
