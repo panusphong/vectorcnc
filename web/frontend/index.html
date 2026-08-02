@@ -5635,8 +5635,24 @@ function _glowBody(){
   function fillFonts(){
     var s=$('tsFont'); if(!s||s.options.length)return;
     try{
-      GFONTS_TH.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent='🇹🇭 '+f; s.appendChild(o); });
-      GFONTS_EN.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent=f; s.appendChild(o); });
+      function grp(label){ var g=document.createElement('optgroup'); g.label=label; s.appendChild(g); return g; }
+      function opt(g,val,txt){ var o=document.createElement('option'); o.value=val; o.textContent=txt;
+        try{ o.style.fontFamily='"'+val+'", inherit'; }catch(_e){} g.appendChild(o); return o; }
+      // 🌈 ฟอนต์ลายมือที่ฝังมากับแอป — โชว์ '%ความสม่ำเสมอของเส้น' ให้เห็นตั้งแต่ตอนเลือก
+      //    ช่างจะได้รู้ทันทีว่าตัวไหนทำนีออนเส้นเดี่ยวออกมาแล้วสวย ไม่ต้องลองผิดลองถูก
+      try{
+        if(typeof NEONFONTS!=='undefined' && NEONFONTS.length){
+          var gA=grp('🌈 นีออนเส้นเดี่ยว — แนะนำ (เส้นสม่ำเสมอ)');
+          var gB=grp('✍️ ลายมือ/คัดลายมือ — เหมาะกับเส้นคู่มากกว่า');
+          NEONFONTS.forEach(function(f){
+            opt(f[2]>=55?gA:gB, f[0], f[0]+'  —  สม่ำเสมอ '+f[2]+'%  ·  '+f[3]+'-'+f[4]+' มม.');
+          });
+        }
+      }catch(_e){}
+      var gT=grp('🇹🇭 ฟอนต์ไทย');
+      GFONTS_TH.forEach(function(f){ opt(gT,f,f); });
+      var gE=grp('🔤 ฟอนต์อังกฤษ/ดิสเพลย์');
+      GFONTS_EN.forEach(function(f){ opt(gE,f,f); });
     }catch(_e){ var o=document.createElement('option'); o.value='Prompt'; o.textContent='Prompt'; s.appendChild(o); }
     s.value='Prompt';
   }
@@ -9366,12 +9382,84 @@ buildTypeList();
 renderBoxRows();
 var textBoxes=[], _txtSel=-1, _txtDrag=false, _txtOff={x:0,y:0}, _txtMode='move', _txtCorner=-1;
 function _txtFit(t){ if(!t)return; var cv=$('wCanvas'); if(!cv)return; var s=wallSignReal(),ppm=s.ppm,ww=s.Wm*ppm,wh=s.Hm*ppm; var g=cv.getContext('2d'); var px=Math.max(4,(t.sizeCm||20)*ppm); g.font='700 '+px+'px "'+t.font+'", sans-serif'; var m=g.measureText(t.text||' '); var asc=(m.actualBoundingBoxAscent||px*0.72),desc=(m.actualBoundingBoxDescent||px*0.04),lft=(m.actualBoundingBoxLeft||0),rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width); var natW=Math.max(1,lft+rgt),natH=Math.max(1,asc+desc); t.fh=Math.max(0.008, px/wh); t.fw=Math.max(0.01,(natW*px/natH)/ww); }
+/* === 🔤 ฟอนต์ลายมือ 'ฝังมากับแอป' — ลูกค้าไม่ต้องโหลด/ติดตั้งอะไรเลย ===
+   เสิร์ฟจากเครื่องเราเองที่ /fonts/... (ไม่พึ่ง CDN ของ Google อีกแล้ว)
+   [ชื่อฟอนต์, ไฟล์, %ความสม่ำเสมอของเส้น, หนาต่ำสุด มม., หนาสูงสุด มม.]
+   ⚠️ ตัวเลขความสม่ำเสมอ = วัดจริงจากการวางเส้นนีออนคำว่า Emilia กว้าง 60 ซม. ทุกตัว
+      ยิ่งสูง = ท่อนีออน (ซึ่งกว้างคงที่) แทนลายเส้นได้ตรงยิ่งขึ้น
+      ต่ำกว่า 40% = ฟอนต์หนา-บางสลับกันมาก ทำเส้นเดี่ยวแล้วเสน่ห์หาย ควรใช้ 'เส้นคู่ (ตามขอบ)' แทน
+   เรียงจากเหมาะที่สุดลงมา */
+var NEONFONTS=[
+  ["Sacramento", "Sacramento-Regular.ttf", 90, 8.1, 9.0],
+  ["Meow Script", "MeowScript-Regular.ttf", 83, 8.5, 10.3],
+  ["Caveat", "Caveat-Variable.ttf", 71, 14.0, 19.7],
+  ["Grape Nuts", "GrapeNuts-Regular.ttf", 71, 10.6, 15.0],
+  ["Grand Hotel", "GrandHotel-Regular.ttf", 66, 15.4, 23.5],
+  ["Pacifico", "Pacifico-Regular.ttf", 64, 21.5, 33.8],
+  ["Yellowtail", "Yellowtail-Regular.ttf", 63, 17.0, 27.0],
+  ["Caveat Brush", "CaveatBrush-Regular.ttf", 58, 19.9, 34.4],
+  ["Courgette", "Courgette-Regular.ttf", 57, 14.5, 25.3],
+  ["Satisfy", "Satisfy-Regular.ttf", 57, 12.6, 22.1],
+  ["Damion", "Damion-Regular.ttf", 56, 15.3, 27.2],
+  ["Bilbo", "Bilbo-Regular.ttf", 55, 8.2, 14.9],
+  ["Mr Dafoe", "MrDafoe-Regular.ttf", 54, 11.3, 20.9],
+  ["Marck Script", "MarckScript-Regular.ttf", 49, 10.3, 20.8],
+  ["Moon Dance", "MoonDance-Regular.ttf", 47, 6.4, 13.6],
+  ["Lobster Two", "LobsterTwo-Italic.ttf", 46, 12.9, 27.9],
+  ["Parisienne", "Parisienne-Regular.ttf", 46, 5.4, 11.7],
+  ["Stalemate", "Stalemate-Regular.ttf", 46, 5.0, 10.9],
+  ["Mrs Saint Delafield", "MrsSaintDelafield-Regular.ttf", 44, 5.1, 11.7],
+  ["Clicker Script", "ClickerScript-Regular.ttf", 43, 5.0, 11.5],
+  ["Lobster", "Lobster-Regular.ttf", 43, 16.2, 37.6],
+  ["Cookie", "Cookie-Regular.ttf", 43, 9.9, 23.0],
+  ["Allura", "Allura-Regular.ttf", 40, 5.3, 13.1],
+  ["Dancing Script", "DancingScript-Variable.ttf", 39, 7.5, 19.0],
+  ["Mr De Haviland", "MrDeHaviland-Regular.ttf", 39, 4.5, 11.5],
+  ["Rouge Script", "RougeScript-Regular.ttf", 38, 5.0, 13.3],
+  ["Kaushan Script", "KaushanScript-Regular.ttf", 37, 10.7, 28.9],
+  ["Tangerine", "Tangerine-Regular.ttf", 36, 4.1, 11.3],
+  ["Norican", "Norican-Regular.ttf", 36, 10.5, 29.0],
+  ["Birthstone", "Birthstone-Regular.ttf", 36, 7.0, 19.4],
+  ["Monsieur La Doulaise", "MonsieurLaDoulaise-Regular.ttf", 35, 2.7, 7.6],
+  ["Italianno", "Italianno-Regular.ttf", 35, 4.5, 12.7],
+  ["Luxurious Script", "LuxuriousScript-Regular.ttf", 35, 4.7, 13.3],
+  ["Qwigley", "Qwigley-Regular.ttf", 35, 6.9, 19.6],
+  ["Niconne", "Niconne-Regular.ttf", 34, 7.2, 20.9],
+  ["Alex Brush", "AlexBrush-Regular.ttf", 34, 5.0, 14.6],
+  ["Beau Rivage", "BeauRivage-Regular.ttf", 34, 4.2, 12.5],
+  ["Felipa", "Felipa-Regular.ttf", 32, 5.8, 17.9],
+  ["Great Vibes", "GreatVibes-Regular.ttf", 32, 5.0, 15.5],
+  ["Lavishly Yours", "LavishlyYours-Regular.ttf", 32, 3.7, 11.5],
+  ["Carattere", "Carattere-Regular.ttf", 31, 5.0, 16.0],
+  ["Updock", "Updock-Regular.ttf", 30, 3.5, 11.5],
+  ["Ruthie", "Ruthie-Regular.ttf", 30, 3.2, 10.7],
+  ["Engagement", "Engagement-Regular.ttf", 30, 9.5, 31.8],
+  ["Pinyon Script", "PinyonScript-Regular.ttf", 27, 3.2, 12.0],
+  ["Petit Formal Script", "PetitFormalScript-Regular.ttf", 24, 3.3, 13.8],
+  ["Imperial Script", "ImperialScript-Regular.ttf", 21, 2.2, 10.3],
+  ["Herr Von Muellerhoff", "HerrVonMuellerhoff-Regular.ttf", 21, 2.9, 14.0],
+  ["Arizonia", "Arizonia-Regular.ttf", 19, 4.2, 22.3]
+];
+var GFONTS_NEON=NEONFONTS.map(function(f){return f[0];});
+(function(){                              /* ประกาศ @font-face ครบทุกตัวตั้งแต่เปิดหน้า
+                                             เบราว์เซอร์โหลดเฉพาะตัวที่ถูกใช้จริง (font-display:swap) */
+  try{
+    var css=NEONFONTS.map(function(f){
+      return "@font-face{font-family:'"+f[0]+"';src:url('/fonts/"+f[1]+"') format('truetype');"
+           + "font-weight:400 700;font-style:normal;font-display:swap}";
+    }).join("\n");
+    var st=document.createElement('style'); st.id='neonFontFaces'; st.textContent=css;
+    document.head.appendChild(st);
+  }catch(_e){}
+})();
 var GFONTS_TH=['Prompt','Sarabun','Kanit','Mitr','Bai Jamjuree','Chonburi','Charm','Charmonman','Mali','Sriracha','K2D','Taviraj','Athiti','Fahkwang','Krub','Niramit','Pridi','Trirong','Thasadith','Chakra Petch','Maitree','Kodchasan','KoHo','Itim','Pattaya','Srisakdi','Anuphan','IBM Plex Sans Thai','IBM Plex Sans Thai Looped','Noto Sans Thai','Noto Sans Thai Looped','Noto Serif Thai'];
 var GFONTS_EN=['Roboto','Open Sans','Lato','Montserrat','Poppins','Raleway','Nunito','Nunito Sans','Quicksand','Comfortaa','Josefin Sans','Work Sans','Rubik','Mukta','Barlow','Kanit','Oswald','Teko','Fjalla One','Archivo Black','Anton','Bebas Neue','Passion One','Titan One','Alfa Slab One','Abril Fatface','Playfair Display','Cormorant Garamond','Cinzel','Merriweather','Roboto Slab','Bitter','Bungee','Bangers','Fredoka','Baloo 2','Righteous','Russo One','Black Ops One','Monoton','Press Start 2P','Pacifico','Lobster','Dancing Script','Great Vibes','Sacramento','Satisfy','Caveat','Kaushan Script','Yellowtail','Courgette','Cookie','Tangerine','Allura','Parisienne','Marck Script','Permanent Marker','Shadows Into Light','Amatic SC','Indie Flower','Rock Salt','Gloria Hallelujah','Special Elite'];
-var GFONTS=GFONTS_TH.concat(GFONTS_EN);
-function loadGFont(f){ var id='gf-'+f.replace(/[^a-zA-Z0-9]/g,''); if(document.getElementById(id))return; var l=document.createElement('link'); l.id=id; l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+':wght@400;700&display=swap'; document.head.appendChild(l); }
+var GFONTS=GFONTS_TH.concat(GFONTS_NEON).concat(GFONTS_EN);
+function loadGFont(f){ try{ if(GFONTS_NEON.indexOf(f)>=0) return; }catch(_e){}   /* ฝังมากับแอปแล้ว ไม่ต้องโหลดซ้ำ */
+  var id='gf-'+f.replace(/[^a-zA-Z0-9]/g,''); if(document.getElementById(id))return; var l=document.createElement('link'); l.id=id; l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+f.replace(/ /g,'+')+':wght@400;700&display=swap'; document.head.appendChild(l); }
 (function(){ var sel=$('wTxtFont'); if(!sel)return; sel.innerHTML='';
   function grp(label,arr){ var og=document.createElement('optgroup'); og.label=label; arr.forEach(function(f){ var o=document.createElement('option'); o.value=f; o.textContent=f; og.appendChild(o); }); sel.appendChild(og); }
+  try{ grp('🌈 นีออนเส้นเดี่ยว ('+GFONTS_NEON.length+' · ฝังมากับแอป)', GFONTS_NEON); }catch(_e){}
   grp('ฟอนต์ไทย ('+GFONTS_TH.length+')', GFONTS_TH); grp('ฟอนต์อังกฤษ/ดิสเพลย์ ('+GFONTS_EN.length+')', GFONTS_EN);
   loadGFont('Prompt'); })();
 function _wTxtMargins(g,M,ww,wh,ppm,x,y,iw,ih){ if(!$('wLabels')||!$('wLabels').checked)return;
