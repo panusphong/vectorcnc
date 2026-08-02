@@ -5273,6 +5273,39 @@ function _mixLight(acr, light){
   }catch(_e){ return acr; }
 }
 function _faceShow(){ return window._fcolMix || FCOL; }   // สีหน้าที่กำลังแสดงจริง
+// 🎨 อัปเดต 'กล่องสเปคสี' บนภาพ 3 มิติ ให้ตรงกับสีที่เพิ่งเปลี่ยน (ไม่ต้องสร้างภาพใหม่)
+//    กล่องนี้มาจากฝั่งเซิร์ฟเวอร์ พร้อม id spotSw/spotCode/spotSub และ data-target = คลาสของชิ้นที่พ่นสี
+function _spotBoxSync(map){
+  try{
+    var img=$('ls3dImg'); if(!img) return;
+    var sw=img.querySelectorAll('[id^="spotSw"]'); if(!sw.length) return;
+    var TBL=window.VC_PANTONE||{};
+    function h2r(h){h=String(h||'').replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+      return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+    function lab(c){var f=function(u){u/=255;return u<=0.04045?u/12.92:Math.pow((u+0.055)/1.055,2.4);};
+      var r=f(c[0]),g=f(c[1]),b=f(c[2]);
+      var x=(0.4124564*r+0.3575761*g+0.1804375*b)/0.95047,
+          y=(0.2126729*r+0.7151522*g+0.0721750*b),
+          z=(0.0193339*r+0.1191920*g+0.9503041*b)/1.08883;
+      var t=function(v){return v>0.008856?Math.pow(v,1/3):(7.787*v+16/116);};
+      var fx=t(x),fy=t(y),fz=t(z);return [116*fy-16,500*(fx-fy),200*(fy-fz)];}
+    function near(hex){var bd=1e9,bc='';var a=lab(h2r(hex));
+      for(var k in TBL){var b=lab(h2r(TBL[k]));
+        var d=Math.pow(a[0]-b[0],2)+Math.pow(a[1]-b[1],2)+Math.pow(a[2]-b[2],2);
+        if(d<bd){bd=d;bc=k;}} return bc;}
+    for(var i=0;i<sw.length;i++){
+      var cls=sw[i].getAttribute('data-target')||'';
+      var col=map[cls]; if(!col) continue;
+      sw[i].setAttribute('fill',col); if(sw[i].style)sw[i].style.fill=col;
+      var idx=sw[i].id.replace('spotSw','');
+      var cd=img.querySelector('#spotCode'+idx), sb=img.querySelector('#spotSub'+idx);
+      var pc=near(col);
+      if(cd&&pc)cd.textContent=pc;
+      if(sb){var old=String(sb.textContent||''),k2=old.indexOf(' \u00b7 ');
+        sb.textContent=String(col).toUpperCase()+(k2>0?old.slice(k2):'');}
+    }
+  }catch(e){}
+}
 function recolor3d(){var img=$('ls3dImg');if(!img)return; var FCOL=_faceShow();
   // ย้อมด้วย class ถ้ามี · ถ้าไม่มี (backend เก่า) -> จับ path จาก 'สีที่เรนเดอร์มา' แล้วทาทับ (หลักการเดียวกับฝั่งจำลองผนัง)
   function setFill(p,col){ try{ var cf=(p.getAttribute('fill')||''); if(cf.indexOf('url(#mtx')===0)return; p.setAttribute('fill',col); if(p.style){ p.style.fill=col; } }catch(e){} }   // ⚠️ style ทับ attribute ได้ -> ตั้งทั้งคู่ · 🪙 ห้ามทับพื้นผิวโลหะ (gradient)
@@ -5315,6 +5348,7 @@ function recolor3d(){var img=$('ls3dImg');if(!img)return; var FCOL=_faceShow();
   }
   // 🎨 ถ้าย้อมผ่าน DOM ไม่ได้ -> ใช้วิธีเดียวกับ 'จำลองผนัง' เป๊ะ: แปลงเป็นภาพแล้วย้อมทับพิกเซล
   if(!nFace){ try{ _recolor3dRaster(); }catch(e){} }
+  try{ _spotBoxSync({'w3d-face':_faceShow(), 'w3d-side':(($('sideColor')||{}).value||''), 'w3d-kim':(($('faceColor')||{}).value||'')}); }catch(e){}   // 🎨 อัปเดตกล่องสเปคสีให้ตรงกัน
 }
 // 📋 คัดลอกหลักการจากจำลองผนัง — ย้อมทับบนภาพแรสเตอร์ (ไม่สนโครงสร้าง SVG)
 function _hex2rgb(h){ h=String(h||'#ffffff').replace('#',''); if(h.length===3)h=h.replace(/(.)/g,'$1$1');
@@ -6071,6 +6105,7 @@ $('goLayer').onclick=function(){
     try{ if($('goProd')){ $('goProd').disabled=false;
       $('goProd').textContent=(j.ai_base64?'🏭 สร้างไฟล์ตัดใหม่อีกครั้ง (.ai)':(window._prodBtnTxt||'🏭 สร้างไฟล์ตัดสั่งผลิต (.ai)')); } }catch(_e){}
     LSDXF_MAIN=j.dxf_base64||'';LS_SVGCUT=j.svg_cut||'';LS_ACTIVE=true;
+    try{ if(j.pantone_table) window.VC_PANTONE=j.pantone_table; }catch(_e){}   // 🎨 ตารางเทียบเบอร์ Pantone
     try{var _ab=document.querySelector('.app-body'); if(_ab)_ab.classList.add('full-stage');}catch(_e){}
     try{ window._lsFaceSvg=j.svg_face||''; }catch(_e){}   /* ภาพหน้าตรง สำหรับวางผนัง */
     if($('dlSvg')){$('dlSvg').disabled=false;$('dlSvg').textContent='⬇ ดาวน์โหลด SVG (แยก layer)';}
