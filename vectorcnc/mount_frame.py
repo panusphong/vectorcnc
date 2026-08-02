@@ -308,19 +308,25 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
     letters = split_letters(full)
     if not letters:
         return {"error": "แยกตัวอักษรไม่ได้ (ภาพควรเป็นตัวอักษร/โลโก้แยกชิ้น)"}
-    # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดกลางตัวอักษร -> รูน็อตยึด 2 ระดับ
+    # 🔩 เฟรม = 'คานคู่แนวนอน' (บน-ล่าง) พาดตัวอักษร -> รูน็อตยึด 2 ระดับ (บน+ล่าง) ทุกตัว
     _H = b[3] - b[1]
-    if bar_y_cm is None:
-        # auto: วางคานคู่ใน 'แถบที่ตัวอักษรทุกตัวใช้ร่วมกัน' → คานหลบหลังทั้งตัวใหญ่+ตัวเล็ก (ไม่ลอยเหนือตัวเล็ก)
+    # ── แถบยึด = ช่วง y ที่ 'ตัวอักษรหลักทุกตัว' ใช้ร่วมกัน ──
+    #    กรองจุด/ขีด/เครื่องหมายจิ๋ว (เช่น จุดบน i, hyphen) ออกก่อน ไม่ให้มันบีบแถบจนคานกระจุก
+    #    -> คานคู่กระจายยึด 'ตัวเตี้ยสุดในกลุ่มหลัก' ได้ทั้งบน+ล่าง (จุดจิ๋วค่อยได้รูตามคานที่ใกล้)
+    def _grip_band():
         try:
-            tops = [L.bounds[1] for L in letters]     # ขอบบนแต่ละตัว (y น้อย = สูง)
-            bots = [L.bounds[3] for L in letters]     # ขอบล่างแต่ละตัว
-            _ct = max(tops); _cb = min(bots)          # แถบร่วม = [ต่ำสุดของขอบบน .. สูงสุดของขอบล่าง]
-            if (_cb - _ct) > _H * 0.08:
-                _cyc = (_ct + _cb) / 2.0; _band = (_cb - _ct)
-            else:
-                _cyc = (b[1] + b[3]) / 2.0; _band = _H
+            _hmax = max((L.bounds[3] - L.bounds[1]) for L in letters)
+            _main = [L for L in letters if (L.bounds[3] - L.bounds[1]) >= _hmax * 0.5] or letters
+            _ct = max(L.bounds[1] for L in _main)     # ขอบบนที่ต่ำสุด = หัวของตัวเตี้ยสุด(กลุ่มหลัก)
+            _cb = min(L.bounds[3] for L in _main)     # ขอบล่างที่สูงสุด
+            return (_ct, _cb) if (_cb - _ct) > _H * 0.08 else None
         except Exception:
+            return None
+    _gb = _grip_band()
+    if bar_y_cm is None:
+        if _gb:
+            _cyc = (_gb[0] + _gb[1]) / 2.0; _band = _gb[1] - _gb[0]
+        else:
             _cyc = (b[1] + b[3]) / 2.0; _band = _H
     else:
         _cyc = (b[3] - float(bar_y_cm) * 10.0); _band = _H
@@ -332,6 +338,13 @@ def build(full, bars=1, bar_y_cm=None, gap_cm=20.0, frame_x_cm=0.0, standoff_cm=
         pass
     _fgap = max(30.0, _fgap)
     bars_y = [_cyc - _fgap / 2.0, _cyc + _fgap / 2.0]
+    # 🔒 กันพลาด: บังคับ 'คานทั้งสอง' ให้อยู่ในแถบยึดของกลุ่มหลักเสมอ -> ทุกตัวหลักยึดบน+ล่าง
+    if bar_y_cm is None and _gb:
+        _ins = min(bar_h_mm, (_gb[1] - _gb[0]) * 0.15)
+        _tl = _gb[0] + _ins; _bl = _gb[1] - _ins       # ขอบเขตที่คานต้องอยู่ภายใน
+        bars_y = [min(max(bars_y[0], _tl), _bl), min(max(bars_y[1], _tl), _bl)]
+        if abs(bars_y[0] - bars_y[1]) < 20.0:           # แถบแคบจนคานชนกัน -> ดันห่างสุด
+            bars_y = [_tl, _bl]
     holes = letter_holes(letters, bars_y, bolt_d=bolt_d, wire_d=wire_d,
                          wire_offset_mm=float(wire_offset_cm) * 10.0, bar_h_mm=bar_h_mm)
     return {
