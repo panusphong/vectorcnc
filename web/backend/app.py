@@ -1856,6 +1856,69 @@ def _vtrace_full_mm(img_path, real_width_mm):
     return _u
 
 
+def _text_full_from_spec(ts_spec, real_width_mm):
+    """✍️ สร้างรูปทรงตัวอักษรจาก 'เส้นโค้งในไฟล์ฟอนต์' ตามตำแหน่งที่หน้าเว็บวัดมาให้
+
+    ทำไมต้องมี: เดิมงาน 'พิมพ์ข้อความเอง' วาดตัวอักษรลงผืนผ้าใบเป็นภาพ แล้วส่งมาให้เทรซกลับ
+                = โยนความคมของฟอนต์ทิ้งตั้งแต่ก้าวแรก แล้วมานั่งเกลาบันไดพิกเซลที่เราสร้างเอง
+    ตอนนี้:     หน้าเว็บส่ง 'ข้อความ + ไฟล์ฟอนต์ + กล่องเนื้อหมึกของแต่ละบรรทัด (มม.)' มาด้วย
+                หลังบ้านดึงเส้นโค้งเบซิเยร์จากไฟล์ฟอนต์ตรง ๆ แล้ววางทับกล่องนั้นให้พอดี
+                -> ตำแหน่ง/สัดส่วนตรงกับที่เห็นบนจอเป๊ะ แต่ขอบเป็นเวกเตอร์แท้
+
+    คืน None เมื่อไหร่ก็ตามที่ไม่มั่นใจ -> ผู้เรียกถอยไปใช้ทางเดิม (งานห้ามพัง)
+    """
+    try:
+        if not ts_spec:
+            return None
+        import json as _js9
+        spec = _js9.loads(ts_spec) if isinstance(ts_spec, str) else ts_spec
+        rows = (spec or {}).get("lines") or []
+        if not rows:
+            return None
+        from vectorcnc import font_geom as _FG9
+        from shapely.ops import unary_union as _uu9
+        from shapely.affinity import scale as _sc9, translate as _tr9
+        _fdir = os.path.join(os.path.dirname(FRONTEND), "fonts")
+        parts = []
+        for _ln in rows:
+            _t = str(_ln.get("text") or "")
+            _f = os.path.basename(str(_ln.get("file") or ""))
+            if not _t.strip() or not _f:
+                return None
+            _p = os.path.join(_fdir, _f)
+            if not os.path.exists(_p):
+                return None                       # ฟอนต์ไม่มีในเครื่อง -> ถอยไปเทรซจากภาพ
+            _x0 = float(_ln.get("x0")); _x1 = float(_ln.get("x1"))
+            _y0 = float(_ln.get("y0")); _y1 = float(_ln.get("y1"))
+            if _x1 - _x0 <= 0.5 or _y1 - _y0 <= 0.5:
+                return None
+            _g, _h = _FG9.text_geom(_p, _t, width_mm=(_x1 - _x0))
+            if _g is None or _g.is_empty:
+                return None
+            _b = _g.bounds
+            if _b[3] - _b[1] <= 1e-6:
+                return None
+            # ยึด 'ความสูง' เป็นหลัก (สเกลเท่ากันสองแกน) แล้วจัดกึ่งกลางในกล่องแนวนอน
+            _s = (_y1 - _y0) / (_b[3] - _b[1])
+            _g = _sc9(_g, xfact=_s, yfact=_s, origin=(_b[0], _b[1]))
+            _b2 = _g.bounds
+            parts.append(_tr9(_g,
+                              xoff=_x0 + ((_x1 - _x0) - (_b2[2] - _b2[0])) / 2.0 - _b2[0],
+                              yoff=_y0 - _b2[1]))
+        if not parts:
+            return None
+        full = _uu9(parts)
+        b = full.bounds
+        if b[2] - b[0] <= 1e-6:
+            return None
+        s = float(real_width_mm) / (b[2] - b[0])       # ให้กว้างเท่าป้ายจริง (กติกาเดียวกับทางเดิม)
+        full = _sc9(full, xfact=s, yfact=s, origin=(b[0], b[1]))
+        b2 = full.bounds
+        return _tr9(full, xoff=-b2[0], yoff=-b2[1])
+    except Exception:
+        return None
+
+
 def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
     """คืน shapely polygon 'รูปเงาตัวอักษร/โลโก้' (รวมรูใน) ที่ขนาดจริง มม. (Y ลง)"""
     # ⚡ ไฟล์เดิม + ขนาดเดิม + ค่าเนียนเดิม = รูปทรง/เส้นดิบ/สถานะเอนจิ้น เดิมเป๊ะ ->
@@ -5325,6 +5388,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     make_ai: str = Form("1"), only_ai: str = Form("0"),
                     material_groups: str = Form(""),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
+                    ts_spec: str = Form(""),
                     safe_mode: str = Form("0")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
@@ -5388,6 +5452,16 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 if _nm.startswith("ยกขอบ") and "ใน" not in _nm:
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), float(real_height_mm), int(n_colors))
+        # ✍️ งาน 'พิมพ์ข้อความเอง' + ฟอนต์ที่ฝังมากับแอป -> ใช้เส้นโค้งจากไฟล์ฟอนต์แทนการเทรซภาพ
+        #    (ตำแหน่งอิงกล่องที่หน้าเว็บวัดมา จึงตรงกับที่ตาเห็นเป๊ะ · ล้มเหลวเมื่อไหร่ก็ใช้ของเดิม)
+        _ts_vec = False
+        try:
+            _tfull = _text_full_from_spec(ts_spec, float(real_width_mm))
+            if _tfull is not None and not _tfull.is_empty:
+                full = _tfull
+                _ts_vec = True          # ⤵️ ข้อความแจ้งไปต่อท้าย warns ทีหลัง (ตอนนี้ยังไม่ถูกสร้าง)
+        except Exception:
+            _ts_vec = False
         _raw_b0 = (full.bounds if (full is not None and not full.is_empty) else None)   # 📌 ตำแหน่งอ้างอิงของ 'เส้นดิบ'
         # 🥇 จำภาพต้นทาง + ขนาดจริง ไว้ทำชั้นขยาย/หด 'ด้วยวิธีเดียวกับปุ่มแปลงเป็นเส้นตัด'
         try:
@@ -5458,6 +5532,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if _punch_logo is not None:                              # ✂ ย่อ logo ให้อยู่ในกล่องพอดี (กล่องถูกสเกลตามผู้ใช้)
                 _punch_logo = _punch_fit_in_box(_punch_logo, full, float(rec.get("box_pad_cm", 3.0)) * 10.0)
         warns = list(_prewarn)                           # 📐 คำเตือนที่เกิดตอนขึ้นรูปกล่อง (ก่อนมีตัวแปร warns)
+        if _ts_vec:
+            warns.append("✍️ ตัวอักษรสร้างจาก 'เส้นโค้งในไฟล์ฟอนต์' โดยตรง — ไม่ผ่านการเทรซจากภาพ "
+                         "ขอบจึงคมระดับเวกเตอร์แท้ (เหมาะกับนีออนเส้นเดี่ยวที่สุด)")
         _FIXSTAT["chips"] = 0; _FIXSTAT["holes"] = 0     # 🧹 เริ่มนับเศษที่เก็บกวาดของงานนี้
         # 📊 ต้องรีเซ็ตทุกครั้ง ห้ามค้างข้ามงาน · ⏱️ เริ่มจับงบเวลาของงานนี้
         import time as _tm0
