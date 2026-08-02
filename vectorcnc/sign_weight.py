@@ -146,6 +146,53 @@ def pick_tube(span_mm, load_kg, max_b_mm=None, min_b_mm=0.0):
     return t, tube_check(t, span_mm, load_kg), False
 
 
+def cantilever_check(tube, arm_mm, load_kg):
+    """🦾 แขนยื่น (ป้ายกล่องไฟติดผนัง/ยื่นจากเสา) — คนละสูตรกับคานพาด 2 จุด!
+
+    แขนยื่นคือคานปลายอิสระ (cantilever) ยึดแน่นด้านเดียว น้ำหนักกดที่ปลาย:
+        โมเมนต์สูงสุดที่โคน  M = P·L        (คานพาดคือ wL²/8 — น้อยกว่ามาก)
+        การแอ่นที่ปลาย       δ = P·L³/(3EI)  (คานพาดคือ 5wL⁴/384EI)
+    ที่ความยาวเท่ากันและน้ำหนักเท่ากัน แขนยื่นรับแรงหนักกว่าคานพาดราว 8 เท่า
+    -> ห้ามเอาผลของคานพาดมาใช้กับแขนเด็ดขาด
+    """
+    L = max(1.0, float(arm_mm))
+    P = max(0.0, float(load_kg)) * G
+    B = float(tube["b"]); b2 = max(0.1, B - 2.0 * float(tube["t"]))
+    I = (B ** 4 - b2 ** 4) / 12.0
+    S = I / (B / 2.0)
+    M = P * L
+    sig = M / max(1e-6, S)
+    dl = (P * L ** 3) / (3.0 * E_STEEL * max(1e-6, I))
+    lim = L / DEFL_RATIO
+    return {"sigma": sig, "sigma_ok": sig <= SIGMA_ALLOW,
+            "defl": dl, "defl_lim": lim, "defl_ok": dl <= lim,
+            "ok": (sig <= SIGMA_ALLOW and dl <= lim)}
+
+
+def pick_arm_tube(arm_mm, load_kg, min_b_mm=0.0):
+    """เลือกเหล็กของ 'แขนยื่น' ที่เล็กที่สุดที่ยังผ่านทั้ง 2 ด่าน
+       คืน (tube, check, fits) — fits=False = แขนยาวเกินกำลังเหล็กที่มี ต้องค้ำยัน/ลดความยาวแขน"""
+    cand = [t for t in stock_tubes() if t["b"] >= float(min_b_mm) - 0.01]
+    for t in sorted(cand, key=lambda q: (q["b"], q["t"])):
+        c = cantilever_check(t, arm_mm, load_kg)
+        if c["ok"]:
+            return t, c, True
+    t = sorted(cand, key=lambda q: (q["b"], q["t"]))[-1] if cand else stock_tubes()[-1]
+    return t, cantilever_check(t, arm_mm, load_kg), False
+
+
+def max_arm(tube, load_kg):
+    """ความยาวแขนยื่นสูงสุดของเหล็กเส้นนี้ ที่ยังผ่านทั้ง 2 ด่าน (มม.)"""
+    lo, hi = 50.0, 4000.0
+    for _ in range(28):
+        mid = (lo + hi) / 2.0
+        if cantilever_check(tube, mid, load_kg)["ok"]:
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
 def max_span(tube, load_per_m_kg):
     """ช่วงพาดสูงสุดของเหล็กเส้นนี้ ที่ยังผ่านทั้ง 2 ด่าน (มม.) — ใช้ตัดสินว่าต้องเพิ่มกี่จุดยึด"""
     lo, hi = 100.0, 6000.0
@@ -156,6 +203,70 @@ def max_span(tube, load_per_m_kg):
         else:
             hi = mid
     return lo
+
+
+def boq(total_kg=0.0, frame_len_mm=0.0, frame_tube=None, supports=2, bolts=0, wires=0,
+        letters=0, led_m=0.0, transformer_w=0, perimeter_mm=0.0, arm=None, install_h_m=3.0):
+    """🧾 BOQ อุปกรณ์สิ้นเปลืองสำหรับ 'งานติดตั้ง' (ไม่ใช่วัสดุตัวป้าย)
+
+    ที่มาของแต่ละตัวเลข เขียนกำกับไว้ในช่อง note ทุกบรรทัด — ช่างจะได้ตรวจได้ว่าคิดมาจากอะไร
+    ตัวเลขเป็น 'จำนวนที่ต้องเบิก' ปัดขึ้นเป็นหน่วยขายจริงแล้ว (กระป๋อง · ม้วน · หลอด)
+    """
+    import math as _m
+    o = []
+
+    def add(name, qty, unit, note):
+        if qty and qty > 0:
+            o.append({"name": name, "qty": (int(qty) if float(qty).is_integer() else round(qty, 2)),
+                      "unit": unit, "note": note})
+    _sup = max(1, int(supports or 1))
+    _flen_m = float(frame_len_mm or 0.0) / 1000.0
+    _kg = max(0.0, float(total_kg))
+    # ── ยึดโครงเข้าผนัง/เพดาน ────────────────────────────────────────────
+    _anch = _sup * 4                                   # เพลทละ 4 รู เป็นมาตรฐานงานป้าย
+    _md = "M10" if _kg <= 60 else "M12"
+    add("พุกเคมี/พุกเหล็ก %s + แหวน + น็อต" % _md, _anch, "ชุด",
+        "จุดยึด %d จุด × 4 รู/เพลท (น้ำหนักป้าย %.1f กก.)" % (_sup, _kg))
+    add("เพลทเหล็กยึดผนัง 100×100×4 มม.", _sup, "แผ่น", "1 แผ่นต่อ 1 จุดยึด")
+    # ── ยึดตัวอักษร/ชิ้นงานเข้าโครง ──────────────────────────────────────
+    if bolts:
+        add("สกรู/น็อต M3 + แหวน (ยึดชิ้นงานเข้าโครง)", int(_m.ceil(bolts * 1.1)), "ตัว",
+            "รูน็อต %d รู + เผื่อเสียหาย 10%%" % int(bolts))
+    if letters:
+        add("ตัวเว้นระยะ (spacer) หลังชิ้นงาน", int(letters * 2), "ตัว",
+            "ชิ้นงาน %d ชิ้น × 2 จุด" % int(letters))
+    # ── งานไฟฟ้า ────────────────────────────────────────────────────────
+    _wire_m = _flen_m * 1.2 + float(install_h_m) + 3.0
+    add("สายไฟ VCT 2×1.5 ตร.มม. (กันน้ำ)", _m.ceil(_wire_m), "เมตร",
+        "เดินตามโครง %.1f ม. × 1.2 + ลงจุดจ่ายไฟ %.1f ม. + เผื่อ 3 ม." % (_flen_m, float(install_h_m)))
+    if wires:
+        add("ข้อต่อสายไฟกันน้ำ (IP65)", int(wires), "ตัว", "รูร้อยสายไฟ %d รู" % int(wires))
+        add("ยางกันน้ำ/grommet รูสายไฟ", int(wires), "ตัว", "1 ตัวต่อ 1 รูสายไฟ")
+    if transformer_w:
+        _nps = max(1, int(_m.ceil(float(transformer_w) / 300.0)))
+        add("กล่องกันน้ำใส่หม้อแปลง", _nps, "ใบ", "หม้อแปลงรวม %d W (ไม่เกิน 300 W/กล่อง)" % int(transformer_w))
+        add("เบรกเกอร์ + เต้ารับกันน้ำ", 1, "ชุด", "1 ชุดต่อป้าย")
+    if led_m:
+        add("เคเบิลไทร์ 200 มม. (รัดสายไฟ/เส้นไฟ)", int(_m.ceil(float(led_m) / 0.3)), "เส้น",
+            "รัดทุก 30 ซม. ตลอดแนวไฟ %.1f ม." % float(led_m))
+    add("เทปพันสายไฟ", max(1, int(_m.ceil((int(wires) + 4) / 20.0))), "ม้วน",
+        "1 ม้วนต่อจุดต่อสาย 20 จุด")
+    # ── งานเหล็ก/สี/กันน้ำ ───────────────────────────────────────────────
+    if _flen_m > 0:
+        add("ลวดเชื่อม 2.6 มม.", round(_flen_m * 0.05, 2), "กก.",
+            "เหล็กยาวรวม %.1f ม. × 0.05 กก./ม." % _flen_m)
+        add("ใบตัดไฟเบอร์ 4 นิ้ว", max(1, int(_m.ceil(_flen_m / 8.0))), "ใบ",
+            "1 ใบต่อการตัดเหล็ก 8 ม.")
+        add("สีกันสนิม (สเปรย์/กระป๋อง)", max(1, int(_m.ceil(_flen_m / 6.0))), "กระป๋อง",
+            "1 กระป๋องต่อเหล็ก 6 ม.")
+    if perimeter_mm:
+        add("ซิลิโคนกันน้ำ (ยาแนวขอบป้าย)", max(1, int(_m.ceil((float(perimeter_mm) / 1000.0) / 8.0))), "หลอด",
+            "เส้นรอบรูป %.1f ม. · 1 หลอดยาแนวได้ 8 ม." % (float(perimeter_mm) / 1000.0))
+    if arm and arm.get("n"):
+        add("ค้ำยันเฉียง (bracing) แขนยื่น", int(arm["n"]), "ชุด",
+            "แขนยื่น %d ต้น ยาว %.0f ซม. — ค้ำเฉียงกันแขนตก" % (int(arm["n"]), float(arm.get("len_cm") or 0)))
+    add("ถุงมือ/ใบเจียร/วัสดุสิ้นเปลืองหน้างาน", 1, "ชุด", "เหมารวมต่อ 1 งานติดตั้ง")
+    return o
 
 
 def estimate(layers, led=None, frame_len_mm=0.0, frame_tube=None, extra_kg=0.0):
