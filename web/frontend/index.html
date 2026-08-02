@@ -5273,6 +5273,56 @@ function _mixLight(acr, light){
   }catch(_e){ return acr; }
 }
 function _faceShow(){ return window._fcolMix || FCOL; }   // สีหน้าที่กำลังแสดงจริง
+// 🎨 ช่องกรอกเบอร์ Pantone — พิมพ์เบอร์ ระบบดึงสีมาแสดงในช่องสีทันที (ไม่ยิงเซิร์ฟเวอร์)
+//    รับได้ทั้ง '186' · '186 C' · 'PANTONE 186c' (ตัดช่องว่าง/เติม C ให้เอง เหมือนฝั่งเซิร์ฟเวอร์เป๊ะ)
+window.SPOT_SPEC=''; window.STK_COL=''; window.STK_CODE=''; window.STK_BRAND='';
+window._pantoneFind=function(code){
+  var T=window.VC_PANTONE||{}; var k=String(code||'').toUpperCase().replace(/PANTONE/g,'').replace(/\s+/g,'');
+  if(!k) return null;
+  for(var c in T){ if(c.toUpperCase().replace(/\s+/g,'')===k) return [c,T[c]]; }
+  if(k.slice(-1)!=='C'){ for(var c2 in T){ if(c2.toUpperCase().replace(/\s+/g,'')===k+'C') return [c2,T[c2]]; } }
+  return null;
+};
+window._setPantone=function(v){
+  var sw=$('pantoneSw'), ms=$('pantoneMsg'); var hit=window._pantoneFind(v);
+  if(hit){ if(sw)sw.style.background=hit[1]; if(ms){ms.textContent=hit[0]+' · '+hit[1];ms.style.color='#0f766e';}
+    window.SPOT_SPEC=JSON.stringify([{hex:hit[1],pantone:hit[0],use:'สีพ่น (ระบุเบอร์เอง)'}]);
+    // 🎯 ไฟออกหลัง = ไม่มีอะคริลิคบังหน้า ผิวหน้าคือโลหะพ่นสี -> สีต้องวิ่งตามเบอร์ที่พิมพ์ทั้งตัว
+    try{ if($('faceColor')){ $('faceColor').value=hit[1]; window.FCOL=hit[1]; } }catch(e){}
+    try{ recolor3d(); }catch(e){ try{ _spotBoxSync({'w3d-face':hit[1]}); }catch(_e){} } }
+  else { if(sw)sw.style.background='#fff';
+    if(ms){ms.textContent=(v?'ไม่พบเบอร์นี้ในตาราง':'');ms.style.color='#b45309';}
+    if(!v) window.SPOT_SPEC=''; }
+};
+// 🏷️ สติกเกอร์โปร่งแสง — ยี่ห้อ + เบอร์ (ข้อมูลสั่งซื้อ) · ไม่รู้เบอร์ก็เลือกสีแล้วให้ระบบเทียบให้
+// 🎨 สีผิวหน้า (ใช้กับไฟออกหลังเป็นหลัก — ผิวหน้าเป็นโลหะพ่นสี ไม่มีอะคริลิคบัง)
+//    ย้อมสดทันที + หาเบอร์ Pantone ใกล้เคียงมาโชว์ให้เอง
+window._setSurf=function(hex){
+  if(!hex)return;
+  try{ if($('surfColor'))$('surfColor').value=hex; }catch(e){}
+  try{ if($('faceColor')){ $('faceColor').value=hex; window.FCOL=hex; } }catch(e){}
+  var T=window.VC_PANTONE||{}, best='', bd=1e9;
+  function h2r(h){h=String(h||'').replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+  var a=h2r(hex);
+  for(var k in T){ var b=h2r(T[k]);
+    var d=Math.pow(a[0]-b[0],2)+Math.pow(a[1]-b[1],2)+Math.pow(a[2]-b[2],2);
+    if(d<bd){bd=d;best=k;} }
+  if(best){ window.SPOT_SPEC=JSON.stringify([{hex:hex,pantone:best,use:'ผิวหน้า (พ่นสี)'}]);
+    try{ if($('pantoneNo'))$('pantoneNo').value=best; }catch(e){}
+    try{ var ms=$('pantoneMsg'); if(ms){ms.textContent=best+' · '+hex;ms.style.color='#0f766e';} }catch(e){}
+    try{ if($('pantoneSw'))$('pantoneSw').style.background=hex; }catch(e){} }
+  try{ recolor3d(); }catch(e){}
+};
+window._setStk=function(){
+  window.STK_BRAND=(($('stkBrand')||{}).value||'').trim();
+  window.STK_CODE=(($('stkCode')||{}).value||'').trim();
+  window.STK_COL=(($('stkColor')||{}).value||'');
+  var ms=$('stkMsg'); if(!ms)return;
+  if(window.STK_CODE||window.STK_BRAND){
+    ms.textContent=(window.STK_BRAND+' '+window.STK_CODE).trim(); ms.style.color='#0f766e';
+  } else { ms.textContent='เลือกสี ระบบจะเทียบเบอร์ให้'; ms.style.color='#64748b'; }
+};
 // 🎨 อัปเดต 'กล่องสเปคสี' บนภาพ 3 มิติ ให้ตรงกับสีที่เพิ่งเปลี่ยน (ไม่ต้องสร้างภาพใหม่)
 //    กล่องนี้มาจากฝั่งเซิร์ฟเวอร์ พร้อม id spotSw/spotCode/spotSub และ data-target = คลาสของชิ้นที่พ่นสี
 function _spotBoxSync(map){
@@ -6019,7 +6069,7 @@ $('goLayer').onclick=function(){
   fd.append('arm_side',($('mainArmSide')&&$('mainArmSide').value)||'right');
   fd.append('arm_adjust',($('mainArmAdjust')&&$('mainArmAdjust').value)||'fixed');fd.append('arm_travel_cm',($('mainArmTravel')&&$('mainArmTravel').value)||'10');
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
-  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');window._mtxAppend(fd);fd.append('arm_color',ACOL||'');
+  fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('spot_colors',(window.SPOT_SPEC||''));fd.append('sticker_color',(window.STK_COL||''));fd.append('sticker_code',(window.STK_CODE||''));fd.append('sticker_brand',(window.STK_BRAND||''));window._mtxAppend(fd);fd.append('arm_color',ACOL||'');
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
   fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
@@ -6157,7 +6207,7 @@ $('goLayer').onclick=function(){
           '</select></label>'+
         '<span style="font-size:11px;color:#64748b;margin-left:8px">สี:</span>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">หน้าอะคริลิค<input type="color" id="faceColor" value="'+FCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
-        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">ขอบ/คิ้ว<input type="color" id="sideColor" value="'+SCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"></label>'+
+        '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b">ขอบ/คิ้ว<input type="color" id="sideColor" value="'+SCOL+'" style="width:30px;height:24px;border:none;background:none;cursor:pointer;padding:0"><span style="display:inline-flex;align-items:center;gap:4px;margin-left:10px;padding:2px 7px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc"><b style="font-size:11px;color:#334155">🎨 Pantone</b><input id="pantoneNo" placeholder="เช่น 186 C" oninput="_setPantone(this.value)" style="width:76px;font-family:inherit;font-size:11px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:5px"><span id="pantoneSw" title="สีของเบอร์ที่พิมพ์" style="width:20px;height:20px;border-radius:4px;border:1px solid #334155;background:#fff;display:inline-block"></span><span id="pantoneMsg" style="font-size:10px;color:#64748b"></span><span style="border-left:1px solid #cbd5e1;padding-left:6px;margin-left:4px;display:inline-flex;gap:3px;align-items:center"><b style="font-size:10px;color:#64748b">ผิวหน้า</b><span onclick="_setSurf(&quot;#FFFFFF&quot;)" title="ขาว" style="width:18px;height:18px;border-radius:4px;border:1px solid #334155;background:#FFFFFF;cursor:pointer"></span><span onclick="_setSurf(&quot;#231F20&quot;)" title="ดำ" style="width:18px;height:18px;border-radius:4px;border:1px solid #334155;background:#231F20;cursor:pointer"></span><span onclick="_setSurf(&quot;#A2AAAD&quot;)" title="เทา" style="width:18px;height:18px;border-radius:4px;border:1px solid #334155;background:#A2AAAD;cursor:pointer"></span><input type="color" id="surfColor" value="#A2AAAD" oninput="_setSurf(this.value)" title="เลือกสีผิวหน้าเอง" style="width:26px;height:22px;border:none;background:none;padding:0;cursor:pointer"></span></span><span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 7px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc"><b style="font-size:11px;color:#334155">🏷️ สติกเกอร์</b><input id="stkBrand" placeholder="ยี่ห้อ" oninput="_setStk()" style="width:64px;font-family:inherit;font-size:11px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:5px"><input id="stkCode" placeholder="เบอร์ เช่น 3630-033" oninput="_setStk()" style="width:104px;font-family:inherit;font-size:11px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:5px"><input type="color" id="stkColor" value="#ffffff" oninput="_setStk()" title="สีสติกเกอร์ (ถ้าไม่รู้เบอร์)" style="width:26px;height:22px;border:none;background:none;padding:0"><span id="stkMsg" style="font-size:10px;color:#64748b"></span></span></label>'+
         '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#64748b;margin-left:6px">🪙 พื้นผิวโลหะ'+
           '<select id="metalTex" onchange="_setMTX(this.value)" style="font-family:inherit;font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px">'+
             '<option value=""'+(MTEX===''?' selected':'')+'>— สีล้วน —</option>'+
@@ -6259,7 +6309,7 @@ $('goLayer').onclick=function(){
       fd.append('sales',(($('pmSales')&&$('pmSales').value)||(($('adminName')&&$('adminName').textContent)||''))||'');
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
       fd.append('logo_scale',($('laScale')&&$('laScale').value)||'100');fd.append('logo_dx_cm',($('laDx')&&$('laDx').value)||'0');fd.append('logo_dy_cm',($('laDy')&&$('laDy').value)||'0');
-      window._mtxAppend(fd);fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('arm_color',ACOL||'');
+      window._mtxAppend(fd);fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('spot_colors',(window.SPOT_SPEC||''));fd.append('sticker_color',(window.STK_COL||''));fd.append('sticker_code',(window.STK_CODE||''));fd.append('sticker_brand',(window.STK_BRAND||''));fd.append('arm_color',ACOL||'');
       try{
         // 📐 โน้ตเก็บพิกัดเทียบ 'กรอบพาเนล' แต่ใบสั่งผลิตใช้ 'ภาพ SVG' -> แปลงพิกัดให้ตรงกันก่อนส่ง (แก้ระยะเพี้ยน)
         var _nts=(window._ls3dNoteData||[]).map(function(n){var m={};for(var k in n)m[k]=n[k];return m;});
