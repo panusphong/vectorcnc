@@ -164,7 +164,25 @@ def cmyk_of(hexv):
     return tuple(int(round(v * 100)) for v in (c, m, y, k))
 
 
+def find_pantone(code):
+    """หาเบอร์ Pantone ที่ผู้ใช้พิมพ์เข้ามา (ยืดหยุ่น: '186', '186C', 'PANTONE 186 C' ก็เจอ)"""
+    k = "".join(str(code or "").upper().replace("PANTONE", "").split())
+    if not k:
+        return None
+    for cd, hx in PANTONE.items():
+        if "".join(cd.upper().split()) == k:
+            return (cd, hx)
+    if not k.endswith("C"):                    # พิมพ์แต่ตัวเลข -> เติม C ให้เอง
+        for cd, hx in PANTONE.items():
+            if "".join(cd.upper().split()) == k + "C":
+                return (cd, hx)
+    return None
+
+
 def _one(hexv, use="", code="", toa=""):
+    _pf = find_pantone(code)
+    if _pf:                                    # 🎯 พิมพ์เบอร์มา -> ใช้สีของเบอร์นั้นเลย
+        hexv = _pf[1]; code = _pf[0]
     hx = (hexv or "").strip()
     if not hx.startswith("#"):
         hx = "#" + hx
@@ -253,13 +271,19 @@ def painted_parts(rec, face_color="", side_color="", trim_color=""):
     return out
 
 
-def paint_spots(rec, spec="", face_color="", side_color="", trim_color="", max_n=3):
+def paint_spots(rec, spec="", face_color="", side_color="", trim_color="", max_n=3,
+                sticker_color="", sticker_code="", sticker_brand=""):
     """สีที่ต้องพ่น (ไม่เกิน 3 สี) — ถ้าผู้ใช้ระบุ spec เองให้ใช้ตามนั้น
        ถ้าไม่ระบุ -> ดึงจาก 'ชิ้นที่ต้องพ่นสี' ของชนิดป้ายนั้น
        ถ้าไม่มีอะไรเลย -> ขาว/ดำ พร้อมช่องสี (ตามที่ตกลงกันว่าต้องระบุให้ชัด)"""
     if (spec or "").strip():
         return parse_spots(spec, max_n=max_n)
     out = []
+    # 🏷️ สติกเกอร์โปร่งแสงปิดหน้าอะคริลิค — มาก่อนเสมอ เพราะเป็นข้อมูลสั่งซื้อ
+    if sticker_color or sticker_code:
+        o = sticker_spot(sticker_color or "#FFFFFF", code=sticker_code, brand=sticker_brand)
+        if o:
+            out.append(o)
     for hx, use, tg in painted_parts(rec, face_color, side_color, trim_color):
         o = _one(hx, use)
         if o and all(o["hex"] != q["hex"] or o["use"] != q["use"] for q in out):
@@ -272,3 +296,126 @@ def paint_spots(rec, spec="", face_color="", side_color="", trim_color="", max_n
         for o in out:
             o["target"] = "body"; o["target_class"] = "w3d-face"
     return out[:max_n]
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  🏷️ สติกเกอร์โปร่งแสง (translucent vinyl) — ปิดหน้าอะคริลิคเพื่อเปลี่ยนสี
+# ══════════════════════════════════════════════════════════════════════
+#  ทำไมต้องแยกจากสีพ่น: ไฟออกหน้าหลายงานไม่ได้พ่นสี แต่ใช้ 'สติกเกอร์โปร่งแสง'
+#  ปิดหน้าอะคริลิคใสแทน — แสงยังทะลุได้ แต่ได้สีตามต้องการ
+#  ข้อมูลนี้ต้องระบุใน 'ใบสั่งซื้อ' ให้ครบ: ยี่ห้อ · รุ่น · เบอร์สี
+#
+#  ⚠️ ต้องอ่านก่อนใช้:
+#     รายการเริ่มต้นด้านล่างเป็น 'โครงให้เริ่มใช้งานได้' เท่านั้น ไม่ใช่แคตตาล็อกจริงของร้าน
+#     เบอร์สติกเกอร์ผูกกับใบสั่งซื้อโดยตรง — ถ้าเบอร์ผิด ของที่สั่งมาจะผิดทั้งม้วน
+#     ✅ ให้โหลด 'แคตตาล็อกจริงของซัพพลายเออร์ที่ร้านใช้' เข้ามาแทนก่อนใช้สั่งของจริง
+#        โดยแก้ตัวแปร STICKER ด้านล่าง (หรือใส่ไฟล์ sticker_catalog.json ไว้ข้าง ๆ ไฟล์นี้)
+#     ระบบจะเตือนบนเอกสารเสมอถ้ายังใช้รายการเริ่มต้นอยู่
+STICKER_IS_SEED = True          # True = ยังเป็นรายการตั้งต้น ยังไม่ใช่ของร้าน
+STICKER = [
+    # (ยี่ห้อ, รุ่น, เบอร์, ชื่อสี, hex อ้างอิง)
+    ("3M", "Scotchcal 3630", "3630-020", "Light Tomato Red", "#E4002B"),
+    ("3M", "Scotchcal 3630", "3630-033", "Red", "#C8102E"),
+    ("3M", "Scotchcal 3630", "3630-015", "Yellow", "#FFC72C"),
+    ("3M", "Scotchcal 3630", "3630-044", "Orange", "#FF8200"),
+    ("3M", "Scotchcal 3630", "3630-126", "Blue", "#0033A0"),
+    ("3M", "Scotchcal 3630", "3630-136", "Green", "#009639"),
+    ("3M", "Scotchcal 3630", "3630-121", "Light Blue", "#0085CA"),
+    ("3M", "Scotchcal 3630", "3630-025", "White", "#FFFFFF"),
+    ("Oracal", "8500 Translucent", "8500-010", "White", "#FFFFFF"),
+    ("Oracal", "8500 Translucent", "8500-020", "Golden Yellow", "#EAAA00"),
+    ("Oracal", "8500 Translucent", "8500-032", "Light Red", "#EF3340"),
+    ("Oracal", "8500 Translucent", "8500-047", "Orange Red", "#FF6900"),
+    ("Oracal", "8500 Translucent", "8500-050", "Dark Blue", "#00205B"),
+    ("Oracal", "8500 Translucent", "8500-061", "Light Blue", "#00B5E2"),
+    ("Oracal", "8500 Translucent", "8500-068", "Green", "#00843D"),
+    ("Avery", "4500 Translucent", "4552", "Sunflower Yellow", "#FFCD00"),
+    ("Avery", "4500 Translucent", "4560", "Cardinal Red", "#BA0C2F"),
+    ("Avery", "4500 Translucent", "4570", "Sapphire Blue", "#003DA5"),
+]
+
+
+def _load_sticker_catalog():
+    """ถ้ามีไฟล์ sticker_catalog.json วางไว้ข้าง ๆ -> ใช้แคตตาล็อกจริงของร้านแทนรายการตั้งต้น
+       รูปแบบไฟล์: [{"brand":"3M","series":"3630","code":"3630-033","name":"Red","hex":"#C8102E"}, ...]"""
+    global STICKER, STICKER_IS_SEED
+    import os as _os
+    import json as _js
+    p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "sticker_catalog.json")
+    try:
+        if _os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                rows = _js.load(f)
+            out = []
+            for r in rows or []:
+                if r.get("hex") and r.get("code"):
+                    out.append((r.get("brand", ""), r.get("series", ""), r["code"],
+                                r.get("name", ""), r["hex"]))
+            if out:
+                STICKER = out
+                STICKER_IS_SEED = False
+    except Exception:
+        pass
+    return STICKER
+
+
+_load_sticker_catalog()
+
+
+def nearest_sticker(hexv):
+    """หา 'เบอร์สติกเกอร์โปร่งแสง' ที่ใกล้สีนี้ที่สุด — คืน dict พร้อม ΔE (None ถ้าไม่มีแคตตาล็อก)"""
+    best, bd = None, 1e9
+    for br, se, cd, nm, hx in (STICKER or []):
+        d = delta_e(hexv, hx)
+        if d < bd:
+            best, bd = (br, se, cd, nm, hx), d
+    if not best:
+        return None
+    return {"brand": best[0], "series": best[1], "code": best[2], "name": best[3],
+            "hex": best[4], "delta_e": round(bd, 1), "is_seed": bool(STICKER_IS_SEED),
+            "label": ("%s %s · %s" % (best[0], best[1], best[2])).strip()}
+
+
+def find_sticker(code):
+    """หาเบอร์สติกเกอร์ที่ผู้ใช้พิมพ์เข้ามาในแคตตาล็อก (ตัดช่องว่าง/ตัวพิมพ์เล็กใหญ่ทิ้ง)"""
+    k = "".join(str(code or "").split()).lower()
+    if not k:
+        return None
+    for br, se, cd, nm, hx in (STICKER or []):
+        if "".join(str(cd).split()).lower() == k:
+            return {"brand": br, "series": se, "code": cd, "name": nm, "hex": hx,
+                    "delta_e": 0.0, "is_seed": bool(STICKER_IS_SEED),
+                    "label": ("%s %s · %s" % (br, se, cd)).strip()}
+    return None
+
+
+def sticker_spot(hexv, use="หน้าอะคริลิค (ปิดสติกเกอร์โปร่งแสง)", code="", brand=""):
+    """สร้างรายการ 'สีสติกเกอร์' 1 รายการ พร้อมเบอร์สั่งซื้อ
+
+    ลำดับความน่าเชื่อถือ (สำคัญ เพราะผูกกับใบสั่งซื้อ):
+      1) ผู้ใช้พิมพ์เบอร์มา และเบอร์นั้นมีในแคตตาล็อก -> ใช้สีของเบอร์นั้นเลย (แม่นที่สุด)
+      2) ผู้ใช้พิมพ์เบอร์/ยี่ห้อมาเอง แต่ไม่มีในแคตตาล็อก -> เชื่อผู้ใช้ ใช้เบอร์ตามที่พิมพ์
+         แล้วโชว์ 'สีใกล้เคียงในแคตตาล็อก' กำกับไว้ให้ดูเทียบ
+      3) ไม่พิมพ์อะไรเลย -> เทียบสีหาเบอร์ใกล้ที่สุดให้
+    """
+    hit = find_sticker(code)
+    if hit:
+        hexv = hit["hex"]                      # เบอร์ที่พิมพ์มาชนะเสมอ -> ใช้สีของเบอร์นั้น
+    o = _one(hexv, use)
+    if not o:
+        return None
+    st = hit or nearest_sticker(hexv)
+    if st:
+        o["sticker"] = st
+        if hit:
+            o["sticker_label"] = st["label"]
+        elif code or brand:
+            o["sticker_label"] = (" ".join(x for x in (brand, code) if x)).strip()
+            o["sticker_user"] = True           # ผู้ใช้กรอกเอง -> ไม่ต้องเตือนว่าเป็นรายการตั้งต้น
+            o["sticker_near"] = st["label"]    # เบอร์ใกล้เคียงในแคตตาล็อก (ไว้เทียบสีเฉย ๆ)
+        else:
+            o["sticker_label"] = st["label"]
+    o["target"] = "face"
+    o["target_class"] = "w3d-face"
+    o["kind"] = "sticker"
+    return o
