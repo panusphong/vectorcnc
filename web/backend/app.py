@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-02-neon-size",
-        "build_note": "เส้นเดี่ยว = แกนกลางจริง (neon_route) · ตัวอักษรจากเส้นโค้งในไฟล์ฟอนต์ (font_geom) · ฟอนต์ฝังในแอป 49 ตัว · กำหนดขนาดตัวไฟนีออนแยกจากขนาดป้ายได้",
+            "build": "2026-08-02-fit-spec",
+        "build_note": "นีออน: ขนาดที่กรอก = ขนาดแผ่นป้าย · โลโก้จัดให้อยู่ในแผ่นอัตโนมัติ · กำหนดขนาดตัวไฟเอง กว้าง×สูง ได้ · กล่องสเปคสีย้ายลงใต้ภาพถาวร ไม่ทับตัวป้ายทุกประเภท",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -3235,19 +3235,28 @@ except Exception:
     _SPC_TABLE = {}
 
 
-def _spot_box_svg(spots, vx, vy, vw, vh):
-    """🎨 กล่องสเปคสี วางไว้ 'ในภาพ 3 มิติ' มุมขวาบน (ที่ว่างของภาพ)
-       ผู้ใช้ต้องเห็นเบอร์สีพร้อมภาพงานในภาพเดียวกัน ไม่ต้องเลื่อนหา"""
+def _spot_box_svg(spots, bx, by, bw, fs_in=0.0, ncol=0):
+    """🎨 กล่องสเปคสี — วาง 'นอกตัวป้าย' เสมอ (แถบใต้ภาพ) ทุกประเภทป้าย
+
+    ⚠️ บทเรียน: เดิมลอยทับมุมล่างขวาของภาพ พอป้ายเป็นแนวนอนยาว/ทรงเต็มกรอบ
+       กล่องนี้จะไปนั่งทับตัวงานจนดูแบบไม่ได้ ย้ายไปไว้ 'ใต้ภาพ' ถาวร
+       และเรียงเป็นหลายคอลัมน์ให้เตี้ย จะได้ไม่ดันภาพให้สูงเกินจอ
+
+    คืน (ชิ้นส่วน svg, ความสูงจริงของกล่อง)
+    """
     if not spots:
-        return []
-    fs = max(7.0, vw * 0.0135)
+        return [], 0.0
+    fs = fs_in if fs_in > 0 else max(7.0, bw * 0.0135)
     pad = fs * 0.9
     sw = fs * 2.4                                    # ด้านของช่องสีตัวอย่าง
     rowh = max(sw, fs * 3.15) + fs * 0.5
-    bw = vw * 0.30
-    bh = fs * 2.0 + len(spots) * rowh + pad
-    bx = vx + vw - bw - vw * 0.012
-    by = vy + vh - bh - vh * 0.02        # ⬇️ ชิดล่างขวา — มุมบนขวาเป็นที่ของเส้นจับระยะ (เคยวางทับจนอ่านไม่ออก)
+    # 🧱 กี่คอลัมน์: กว้างขั้นต่ำต่อคอลัมน์ ≈ 26 ตัวอักษร — เตี้ยไว้ก่อน แต่ต้องอ่านออก
+    _colw_min = fs * 16.0
+    if ncol <= 0:
+        ncol = max(1, min(len(spots), int((bw - pad * 2.0) / max(1e-6, _colw_min))))
+    _nrow = (len(spots) + ncol - 1) // ncol        # ปัดขึ้น (ไม่ต้องพึ่ง math — โมดูลนี้ import แบบเฉพาะที่)
+    colw = (bw - pad * 2.0) / ncol
+    bh = fs * 2.0 + _nrow * rowh + pad
     p = ['<g id="spotbox">',
          '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
          'fill-opacity="0.92" stroke="#94a3b8" stroke-width="%.2f"/>'
@@ -3255,14 +3264,17 @@ def _spot_box_svg(spots, vx, vy, vw, vh):
          '<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
          'fill="#0f172a">&#127912; สเปคสี (เทียบเบอร์ Pantone)</text>'
          % (bx + pad, by + pad + fs * 0.85, fs * 0.98)]
-    ty = by + pad + fs * 1.9
+    _ty0 = by + pad + fs * 1.9
     for _i9, s in enumerate(spots):
+        _cc = _i9 // _nrow                       # คอลัมน์ที่เท่าไหร่ (เติมลงล่างก่อนแล้วค่อยขึ้นคอลัมน์ใหม่)
+        _sx = bx + pad + _cc * colw
+        ty = _ty0 + (_i9 % _nrow) * rowh
         # 🏷️ ใส่ id/data ไว้ให้หน้าเว็บ 'เปลี่ยนสีสด' ได้ทันที ไม่ต้องเรียกสร้างภาพ 3 มิติใหม่
         p.append('<rect id="spotSw%d" data-target="%s" x="%.1f" y="%.1f" width="%.1f" height="%.1f" '
                  'rx="%.1f" fill="%s" stroke="#334155" stroke-width="%.2f"/>'
-                 % (_i9, s.get("target_class", ""), bx + pad, ty, sw, sw,
+                 % (_i9, s.get("target_class", ""), _sx, ty, sw, sw,
                     fs * 0.16, s["hex"], max(0.5, fs * 0.07)))
-        tx = bx + pad + sw + fs * 0.6
+        tx = _sx + sw + fs * 0.6
         p.append('<text id="spotCode%d" x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
                  'font-weight="800" fill="#0f172a">%s</text>'
                  % (_i9, tx, ty + fs * 0.9, fs * 0.95, s["pantone"]))
@@ -3278,9 +3290,8 @@ def _spot_box_svg(spots, vx, vy, vw, vh):
                      'fill="#64748b">%s</text>'
                      % (tx, ty + fs * 2.7, fs * 0.72,
                         str(s["use"])[:34].replace("&", "&amp;").replace("<", "&lt;")))
-        ty += rowh
     p.append("</g>")
-    return p
+    return p, bh
 
 
 def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, extra_lines=None,
@@ -3396,10 +3407,17 @@ def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, ex
                          % (cx, ty, sz, wt, col_c, _esc9(r)))
                 ty += fs * 1.30
         p.append("</g>")
-        # 🎨 สเปคสี -> วางไว้ 'ในภาพ' มุมขวาบน (ตามที่ตกลงกันว่าอยากเห็นคู่กับแบบ ไม่ต้องแยกลงล่าง)
+        # 🎨 สเปคสี -> ต่อไว้ 'ใต้แผงข้อมูล' นอกตัวป้ายเสมอ ทุกประเภทป้าย
+        #    (เดิมลอยทับมุมล่างขวาของภาพ พอป้ายเต็มกรอบจะบังตัวงาน — พี่สั่งให้หลบให้พ้นทุกกรณี)
+        _sbh = 0.0
         if spots:
-            p += _spot_box_svg(spots, vx, vy, vw, vh)
-        _add = gap + bh + pad * 0.6
+            _sp9, _sbh = _spot_box_svg(spots, bx + pad * 0.4, by + bh + gap * 0.7,
+                                       bw - pad * 0.8, fs * 1.35)
+            p += _sp9
+        _add = gap + bh + (gap * 0.7 + _sbh if _sbh > 0 else 0.0) + pad * 0.6
+        # 🧼 พื้นขาวต้องคลุมทั้งแถบใหม่ (ไม่งั้นกล่องสเปคสีจะลอยบนพื้นโปร่ง อ่านยาก)
+        p[1] = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#ffffff"/>'
+                % (vx, vy + vh, vw, _add))
         _new = 'viewBox="%s %s %s %.2f"' % (_m.group(1), _m.group(2), _m.group(3), vh + _add)
         svg = svg.replace(_m.group(0), _new, 1)
         _hm = _re9.search(r'(<svg\b[^>]*?)\bheight="([\d.]+)(mm)?"', svg)
@@ -4806,6 +4824,64 @@ def _trace_skeleton_mask(sk, full):
     return subs
 
 
+def _neon_fit(full, plate_w_mm, plate_h_mm, margin_mm, neon_w_mm=0.0, neon_h_mm=0.0, plate_rect=False):
+    """📐 จัดตัวไฟนีออนให้ 'อยู่ในแผ่นป้าย' เสมอ + ให้ผู้ใช้กำหนดขนาดตัวไฟเองได้
+
+    กติกาที่ยึด (ตรงกับความจริงหน้างาน):
+      • ขนาดที่กรอกด้านบน = **ขนาดแผ่นป้าย** (แผ่นอะคริลิครองหลัง) ไม่ใช่ขนาดตัวไฟ
+      • ตัวไฟต้องอยู่ในแผ่น โดยเว้นขอบรอบตัวงานตามที่ตั้งไว้ทุกด้าน
+      • ใส่ขนาดตัวไฟเอง (กว้าง/สูง) ก็ได้ — แต่ถ้าใหญ่เกินแผ่น จะย่อลงให้พอดีเสมอ ไม่ยอมให้ล้น
+      • รักษาสัดส่วนเดิมของโลโก้ตลอด ไม่บิด ไม่ยืด
+
+    คืน (full ที่จัดขนาด/ตำแหน่งแล้ว, แผ่นอะคริลิค, ข้อความรายงาน)
+    """
+    from shapely.geometry import box as _bx
+    from shapely import affinity as _af
+    _pw = max(1.0, float(plate_w_mm)); _ph = max(1.0, float(plate_h_mm))
+    _mg = max(0.0, float(margin_mm))
+    _fb = full.bounds
+    _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
+
+    # 1) กรอบว่างที่ตัวไฟใส่ได้จริง = แผ่นป้าย ลบเผื่อขอบทั้งสองด้าน
+    _availw = _pw - 2.0 * _mg
+    _availh = _ph - 2.0 * _mg
+    if _availw < _pw * 0.15:          # เผื่อขอบเว่อร์จนไม่เหลือที่ -> ใช้ 15% ของแผ่นเป็นพื้นขั้นต่ำ
+        _availw = _pw * 0.15
+    if _availh < _ph * 0.15:
+        _availh = _ph * 0.15
+
+    # 2) ขนาดตัวไฟที่ต้องการ — ผู้ใช้กำหนดเองได้ ไม่กำหนด (0) = เต็มกรอบว่าง
+    _tw = float(neon_w_mm) if float(neon_w_mm) > 0 else _availw
+    _th = float(neon_h_mm) if float(neon_h_mm) > 0 else _availh
+    _clip = (_tw > _availw + 0.01) or (_th > _availh + 0.01)
+    _tw = min(_tw, _availw); _th = min(_th, _availh)      # 🚧 ห้ามล้นแผ่นเด็ดขาด
+
+    # 3) ย่อ/ขยายแบบรักษาสัดส่วน แล้ววางกึ่งกลางแผ่น
+    _s = min(_tw / _fw, _th / _fh)
+    if _s > 0 and abs(_s - 1.0) > 1e-9:
+        full = _af.scale(full, xfact=_s, yfact=_s, origin=(_fb[0], _fb[1]))
+    _nb = full.bounds
+    _nw2 = _nb[2] - _nb[0]; _nh2 = _nb[3] - _nb[1]
+    full = _af.translate(full, xoff=(_pw - _nw2) / 2.0 - _nb[0],
+                               yoff=(_ph - _nh2) / 2.0 - _nb[1])
+
+    # 4) แผ่นอะคริลิค
+    if plate_rect:
+        acr = _bx(0.0, 0.0, _pw, _ph)                     # 🔲 เท่าขนาดป้ายที่กรอกเป๊ะ
+    else:
+        try:
+            acr = _wrap_silhouette(full, 45.0).buffer(_mg, join_style=1)   # 🫧 ล้อมทรงงาน
+        except Exception:
+            acr = full.buffer(_mg, join_style=1)
+
+    _nb = full.bounds
+    _note = ("📐 ตัวไฟนีออน %.1f × %.1f ซม. · แผ่นป้าย %.1f × %.1f ซม. · เว้นขอบ %.1f ซม."
+             % ((_nb[2] - _nb[0]) / 10.0, (_nb[3] - _nb[1]) / 10.0, _pw / 10.0, _ph / 10.0, _mg / 10.0))
+    if _clip:
+        _note += " · ⚠️ ขนาดตัวไฟที่สั่งใหญ่เกินแผ่น จึงย่อลงให้พอดี (ถ้าอยากได้ใหญ่กว่านี้ ต้องขยายขนาดป้าย หรือลดเผื่อขอบ)"
+    return full, acr, _note
+
+
 def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
     b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
@@ -5584,54 +5660,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🌈 นีออนเฟล็กซ์: full = เส้นงาน (นีออน) · อะคริลิคใส = ล้อมทรง (contour) + ระยะเผื่อ
         _neon = bool(rec.get("neon")); _acrylic = None; _neon_full = full
         if _neon:
-            # 📐 ขนาด 'ตัวไฟนีออน' แยกออกจากขนาดแผ่นป้าย
-            #    ใส่ 0 = อัตโนมัติ (พฤติกรรมเดิมเป๊ะ — ตัวไฟเต็มขนาดที่กรอกไว้ด้านบน)
-            #    ใส่เลข = ย่อ/ขยายตัวไฟให้พอดีกรอบนั้น (รักษาสัดส่วน ไม่บิดเบี้ยว) แล้ววางกึ่งกลางแผ่น
-            _nw = max(0.0, float(neon_w_cm)) * 10.0
-            _nh = max(0.0, float(neon_h_cm)) * 10.0
-            _pw = max(1.0, float(real_width_mm))              # 📋 แผ่นป้าย = ขนาดที่กรอกด้านบน
-            _ph = max(1.0, float(real_height_mm))
-            if _nw > 0.0 or _nh > 0.0:
-                try:
-                    from shapely import affinity as _aff9
-                    _fb = full.bounds
-                    _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
-                    _cand = []
-                    if _nw > 0.0:
-                        _cand.append(_nw / _fw)
-                    if _nh > 0.0:
-                        _cand.append(_nh / _fh)
-                    _s9 = min(_cand)                          # พอดี 'กรอบใน' — ไม่ล้นทั้งสองด้าน
-                    if _s9 > 0 and abs(_s9 - 1.0) > 1e-6:
-                        full = _aff9.scale(full, xfact=_s9, yfact=_s9, origin=(_fb[0], _fb[1]))
-                        _nb = full.bounds
-                        full = _aff9.translate(full, xoff=-_nb[0], yoff=-_nb[1])
-                        _nb = full.bounds
-                        warns.append("📐 ตัวไฟนีออนถูกกำหนดขนาดแยกจากแผ่นป้าย — "
-                                     "ตัวไฟ %.1f × %.1f ซม. · แผ่นป้าย %.1f × %.1f ซม."
-                                     % ((_nb[2] - _nb[0]) / 10.0, (_nb[3] - _nb[1]) / 10.0,
-                                        _pw / 10.0, _ph / 10.0))
-                except Exception:
-                    pass
-            _neon_full = full
+            # 📐 ขนาดที่กรอกด้านบน = 'ขนาดแผ่นป้าย' — ตัวไฟจะถูกจัดให้อยู่ในแผ่นเสมอ (อัตโนมัติ)
+            #    และผู้ใช้กำหนดขนาดตัวไฟเอง (กว้าง × สูง) ได้ด้วย ถ้าไม่กรอก = เต็มพื้นที่ในแผ่น
             _nmg = max(0.0, float(neon_margin_cm)) * 10.0     # ระยะเผื่ออะคริลิครอบตัวงาน (มม.)
-            try:
-                _acrylic = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
-            except Exception:
-                _acrylic = full.buffer(_nmg, join_style=1)
-            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):   # 🔲 ตัดเป็นแผ่น 4 เหลี่ยม
-                from shapely.geometry import box as _box
-                _ab = _acrylic.bounds
-                if _nw > 0.0 or _nh > 0.0:
-                    # ✅ กำหนดขนาดไฟแยกแล้ว → แผ่น 4 เหลี่ยม = ขนาดป้ายที่กรอกไว้จริง ๆ วางตัวไฟไว้กึ่งกลาง
-                    #    (แผ่นต้องไม่เล็กกว่าตัวไฟ+เผื่อขอบ ไม่งั้นเส้นไฟจะล้นออกนอกแผ่น)
-                    _fb2 = full.bounds
-                    _cx9 = (_fb2[0] + _fb2[2]) / 2.0; _cy9 = (_fb2[1] + _fb2[3]) / 2.0
-                    _bw9 = max(_pw, _ab[2] - _ab[0]); _bh9 = max(_ph, _ab[3] - _ab[1])
-                    _acrylic = _box(_cx9 - _bw9 / 2.0, _cy9 - _bh9 / 2.0,
-                                    _cx9 + _bw9 / 2.0, _cy9 + _bh9 / 2.0)
-                else:
-                    _acrylic = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+            full, _acrylic, _nnote = _neon_fit(
+                full, float(real_width_mm), float(real_height_mm), _nmg,
+                max(0.0, float(neon_w_cm)) * 10.0, max(0.0, float(neon_h_cm)) * 10.0,
+                str(neon_plate).lower() in ("rect", "rectangle", "4", "square"))
+            _neon_full = full
+            warns.append(_nnote)
         base_area = full.area
         # คิ้ว: ความหนา (ซม.) + ทิศทาง ('out'=ขยายออกนอกตัวต้น (มาตรฐานงานจริง) / 'in'=หดเข้า)
         TRIMW = float(trim_width_cm) * 10.0 if float(trim_width_cm) > 0 else 0.0
@@ -7390,43 +7427,12 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         _nsub = None
         if rec.get("neon"):
             # 🌈 นีออน: ใช้ 'ภาพนีออนเรืองแสง' ตัวเดียวกับหน้าออกแบบ (ไม่ใช่ perspective เส้นเทา)
-            # 📐 ขนาดตัวไฟแยกจากขนาดแผ่นป้าย — ต้องคิดแบบเดียวกับ /api/layer-set เป๊ะ
-            _nw = max(0.0, float(neon_w_cm)) * 10.0
-            _nh = max(0.0, float(neon_h_cm)) * 10.0
-            _pw = max(1.0, float(real_width_mm)); _ph = max(1.0, float(real_height_mm))
-            if _nw > 0.0 or _nh > 0.0:
-                try:
-                    from shapely import affinity as _aff9
-                    _fb = full.bounds
-                    _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
-                    _cand = []
-                    if _nw > 0.0:
-                        _cand.append(_nw / _fw)
-                    if _nh > 0.0:
-                        _cand.append(_nh / _fh)
-                    _s9 = min(_cand)
-                    if _s9 > 0 and abs(_s9 - 1.0) > 1e-6:
-                        full = _aff9.scale(full, xfact=_s9, yfact=_s9, origin=(_fb[0], _fb[1]))
-                        _nb = full.bounds
-                        full = _aff9.translate(full, xoff=-_nb[0], yoff=-_nb[1])
-                except Exception:
-                    pass
+            # 📐 จัดตัวไฟให้อยู่ในแผ่นป้าย — ใช้ตัวเดียวกับ /api/layer-set ผลจึงตรงกันเป๊ะ
             _nmg = max(0.0, float(neon_margin_cm)) * 10.0
-            try:
-                _acr = _wrap_silhouette(full, 45.0).buffer(_nmg, join_style=1)
-            except Exception:
-                _acr = full.buffer(_nmg, join_style=1)
-            if str(neon_plate).lower() in ("rect", "rectangle", "4", "square"):
-                from shapely.geometry import box as _box
-                _ab = _acr.bounds
-                if _nw > 0.0 or _nh > 0.0:
-                    _fb2 = full.bounds
-                    _cx9 = (_fb2[0] + _fb2[2]) / 2.0; _cy9 = (_fb2[1] + _fb2[3]) / 2.0
-                    _bw9 = max(_pw, _ab[2] - _ab[0]); _bh9 = max(_ph, _ab[3] - _ab[1])
-                    _acr = _box(_cx9 - _bw9 / 2.0, _cy9 - _bh9 / 2.0,
-                                _cx9 + _bw9 / 2.0, _cy9 + _bh9 / 2.0)
-                else:
-                    _acr = _box(_ab[0], _ab[1], _ab[2], _ab[3])
+            full, _acr, _ = _neon_fit(
+                full, float(real_width_mm), float(real_height_mm), _nmg,
+                max(0.0, float(neon_w_cm)) * 10.0, max(0.0, float(neon_h_cm)) * 10.0,
+                str(neon_plate).lower() in ("rect", "rectangle", "4", "square"))
             if str(neon_line).lower() == "single":
                 # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:
