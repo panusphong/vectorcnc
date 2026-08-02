@@ -3153,6 +3153,12 @@ def _spot_strip_svg(spots, x, y, w, fs):
     return p, (fs * 2.5 + max(sw, fs * 4.4) + fs * 0.8)
 
 
+try:
+    from vectorcnc.spot_color import PANTONE as _SPC_TABLE
+except Exception:
+    _SPC_TABLE = {}
+
+
 def _spot_box_svg(spots, vx, vy, vw, vh):
     """🎨 กล่องสเปคสี วางไว้ 'ในภาพ 3 มิติ' มุมขวาบน (ที่ว่างของภาพ)
        ผู้ใช้ต้องเห็นเบอร์สีพร้อมภาพงานในภาพเดียวกัน ไม่ต้องเลื่อนหา"""
@@ -3174,18 +3180,21 @@ def _spot_box_svg(spots, vx, vy, vw, vh):
          'fill="#0f172a">&#127912; สเปคสี (เทียบเบอร์ Pantone)</text>'
          % (bx + pad, by + pad + fs * 0.85, fs * 0.98)]
     ty = by + pad + fs * 1.9
-    for s in spots:
-        p.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="%s" '
-                 'stroke="#334155" stroke-width="%.2f"/>'
-                 % (bx + pad, ty, sw, sw, fs * 0.16, s["hex"], max(0.5, fs * 0.07)))
+    for _i9, s in enumerate(spots):
+        # 🏷️ ใส่ id/data ไว้ให้หน้าเว็บ 'เปลี่ยนสีสด' ได้ทันที ไม่ต้องเรียกสร้างภาพ 3 มิติใหม่
+        p.append('<rect id="spotSw%d" data-target="%s" x="%.1f" y="%.1f" width="%.1f" height="%.1f" '
+                 'rx="%.1f" fill="%s" stroke="#334155" stroke-width="%.2f"/>'
+                 % (_i9, s.get("target_class", ""), bx + pad, ty, sw, sw,
+                    fs * 0.16, s["hex"], max(0.5, fs * 0.07)))
         tx = bx + pad + sw + fs * 0.6
-        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="800" '
-                 'fill="#0f172a">%s</text>' % (tx, ty + fs * 0.9, fs * 0.95, s["pantone"]))
+        p.append('<text id="spotCode%d" x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                 'font-weight="800" fill="#0f172a">%s</text>'
+                 % (_i9, tx, ty + fs * 0.9, fs * 0.95, s["pantone"]))
         _sub = "%s · %s" % (s["hex"], s["name_th"])
         if s.get("toa"):
             _sub += " · TOA %s" % s["toa"]
-        p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
-                 'fill="#475569">%s</text>' % (tx, ty + fs * 1.85, fs * 0.76, _sub))
+        p.append('<text id="spotSub%d" x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
+                 'fill="#475569">%s</text>' % (_i9, tx, ty + fs * 1.85, fs * 0.76, _sub))
         if s.get("use"):
             p.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
                      'fill="#64748b">%s</text>'
@@ -6593,7 +6602,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                             perimeter_mm=float(perimeter or 0.0) * 10.0, arm=(_arm_info or None))
             # 🎨 สีที่ใช้ผลิต — ไม่เกิน 3 สี · ถ้าไม่ได้เลือกสีพิเศษจะระบุ ขาว/ดำ ให้ชัดเจนเอง
             from vectorcnc import spot_color as _SPC
-            spot_info = _SPC.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
+            # 🎨 เอาเฉพาะ 'ชิ้นที่ต้องพ่นสี' (คิ้ว · ขอบข้าง · หรือทั้งตัวถ้าเป็นไฟออกหลัง)
+            spot_info = _SPC.paint_spots(rec, spot_colors, face_color=face_color,
+                                         side_color=side_color, trim_color=face_color)
             svg3d = _weight_panel_svg(svg3d, _ws, tube=_tb, chk=_ck, span_mm=_sp, fits=_ft,
                                       extra_lines=_xtra, boq_items=_boq, spots=spot_info)
             weight_info = {"total_kg": _ws["total_kg"], "sheet_kg": _ws["sheet_kg"],
@@ -6608,7 +6619,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             weight_info = {}
             try:
                 from vectorcnc import spot_color as _SPC2
-                spot_info = _SPC2.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
+                spot_info = _SPC2.paint_spots(rec, spot_colors, face_color=face_color,
+                                              side_color=side_color, trim_color=face_color)
             except Exception:
                 spot_info = []
 
@@ -6620,7 +6632,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 "walls": rec["walls"], "wall_pieces": wall_pieces, "warns": warns,
                 "svg_preview": svg, "svg_3d": svg3d, "svg_views": svg_views, "svg_cut": svg_cut, "dxf_base64": dxf_b64,
                 "ai_base64": ai_b64, "svg_back": svg_back, "frame_info": frame_info,
-                "svg_face": svg_face, "led": led_info, "weight": weight_info, "spot_colors": spot_info,
+                "svg_face": svg_face, "led": led_info, "weight": weight_info, "spot_colors": spot_info, "pantone_table": _SPC_TABLE,
                 # 🖼️ ต้องส่ง 'เส้นดิบจากเอนจิ้น' เข้าไปด้วยเสมอ — ให้มองเป็นภาพแบน ๆ ภาพเดียว
                 #    แล้วลากเส้นตัดออกมาตรง ๆ (เหมือนแผนที่กลุ่มวัสดุที่ทำถูกอยู่แล้ว)
                 #    ถ้าไม่ส่ง จะตกไปทางสำรองที่วาดเป็น 'ก้อนทึบสีเทาเข้ม'
@@ -7487,7 +7499,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         # 🎨 สีที่ใช้ผลิต (ไม่เกิน 3 สี) — ไม่เลือกสีพิเศษ = ระบุ ขาว/ดำ ให้ชัดเจน
         try:
             from vectorcnc import spot_color as _SPC3
-            spot_rows = _SPC3.parse_spots(spot_colors, face_color=face_color, side_color=side_color)
+            spot_rows = _SPC3.paint_spots(rec, spot_colors, face_color=face_color,
+                                          side_color=side_color, trim_color=face_color)
         except Exception:
             spot_rows = []
         html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows, spots=spot_rows)
