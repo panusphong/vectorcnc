@@ -5610,15 +5610,32 @@ function _glowBody(){
     g.textBaseline='top';
     g.textAlign=(align==='left')?'left':(align==='right'?'right':'center');
     var ax=(align==='left')?Pmm*PX:(align==='right'?(Wmm-Pmm)*PX:cv.width/2);
+    /* 📐 บันทึก 'กล่องเนื้อหมึกจริง' ของแต่ละบรรทัด (หน่วย มม.)
+       เพื่อให้หลังบ้านเอา 'เส้นโค้งในไฟล์ฟอนต์' มาวางทับตำแหน่งนี้ได้เป๊ะ
+       -> ตัวอักษรที่เข้าสู่ไฟล์ตัดเป็นเวกเตอร์แท้ ไม่ใช่ภาพที่วาดลงผ้าใบแล้วเทรซกลับ
+       (ภาพผ้าใบยังใช้เหมือนเดิมสำหรับพรีวิว/ถอยเมื่อฟอนต์ไม่มีในเครื่อง) */
+    var _spec={w_mm:Wmm,h_mm:Hmm,lines:[]};
+    var _ffile=null;
+    try{ if(typeof NEONFONTS!=='undefined'){ for(var q=0;q<NEONFONTS.length;q++){ if(NEONFONTS[q][0]===font){ _ffile=NEONFONTS[q][1]; break; } } } }catch(_e){}
     for(var k=0;k<L.length;k++){
       var ph=unit*wt[k];
       g.fillStyle=colorOf(k);                    // 🎨 สีของแถวนี้ (ตั้งเองได้อิสระ)
       g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
       var m=g.measureText(L[k]);
       var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
-      g.fillText(L[k],ax,y+(ph-asc)*0.5);
+      var yd=y+(ph-asc)*0.5;
+      g.fillText(L[k],ax,yd);
+      try{
+        var lft=(m.actualBoundingBoxLeft!=null?m.actualBoundingBoxLeft:0);
+        var rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
+        var a2=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
+        var d2=(m.actualBoundingBoxDescent!=null?m.actualBoundingBoxDescent:0);
+        _spec.lines.push({text:L[k],font:font,file:_ffile,
+          x0:(ax-lft)/PX, x1:(ax+rgt)/PX, y0:(yd-a2)/PX, y1:(yd+d2)/PX});
+      }catch(_e){}
       y+=ph+unit*gapK;
     }
+    try{ window.TSPEC=(_ffile&&_spec.lines.length)?_spec:null; }catch(_e){}
     return {w:Wmm,h:Hmm};
   }
   var _t=null;
@@ -6133,6 +6150,9 @@ $('goLayer').onclick=function(){
   if(_isBoxT&&$('bxW')&&parseFloat($('bxW').value)>0){ fd.set('real_width_mm',String(Math.round(parseFloat($('bxW').value)*10))); }
   fd.append('real_height_mm',((!_isPunch)&&$('bxH')&&parseFloat($('bxH').value)>0)?String(Math.round(parseFloat($('bxH').value)*10)):'0');
   fd.append('box_h_cm',(_isPunch&&$('bxH')&&parseFloat($('bxH').value)>0)?$('bxH').value:'0');
+  // ✍️ ถ้างานนี้มาจาก 'พิมพ์ข้อความเอง' + ใช้ฟอนต์ที่ฝังมากับแอป -> ส่งสเปคตัวอักษรไปด้วย
+  //    หลังบ้านจะสร้างรูปทรงจาก 'เส้นโค้งในไฟล์ฟอนต์' แทนการเทรซจากภาพ = คมกริบ 100%
+  try{ fd.append('ts_spec', window.TSPEC? JSON.stringify(window.TSPEC) : ''); }catch(_e){}
   fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
   fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
   // 🎨/🏭 โหมด: 0 = ออกแบบ (ไม่สร้างไฟล์) · 1 = สร้างไฟล์ตัดสั่งผลิต
@@ -7086,6 +7106,7 @@ function _measureBlur(img){
 function pick(f){
   fileObj=f;lastName=(f.name||'image').replace(/\.[^.]+$/,'');
   IMG_W=0; IMG_H=0; IMG_BLUR=-1;
+  window.TSPEC=null;       // ✍️ อัปโหลดไฟล์ใหม่ = ทิ้งสเปคตัวอักษรของงานเก่า (ไม่งั้นรูปทรงจะสลับกัน)
   window._stickerIdx=[];   // 🏷️ ไฟล์ใหม่ = ล้างรายการชิ้นสติ๊กเกอร์ของงานเก่า
   window._matGroups=[]; window._matPick=[];   // 🧱 ไฟล์ใหม่ = ล้างกลุ่มวัสดุของงานเก่า (index ชิ้นไม่ตรงกันแล้ว)
   if($('resBox'))$('resBox').style.display='none';
