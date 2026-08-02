@@ -8239,6 +8239,43 @@ def home(request: Request):
     return {"msg": "VectorCNC API running. POST /api/vectorize"}
 
 
+@app.get("/fonts/{fname}")
+def font_file(fname: str):
+    """🔤 ฟอนต์ที่ 'ฝังมากับแอป' — ลูกค้าไม่ต้องโหลด/ติดตั้งอะไรเลย
+
+    เดิมหน้าเว็บดึงฟอนต์จาก CDN ของ Google ทุกครั้ง ซึ่งพังได้ 3 ทาง:
+      1) ร้านที่เน็ตช้า/ล่ม -> ตัวอักษรเด้งกลับเป็นฟอนต์ระบบ แบบที่เห็นบนจอไม่ตรงกับไฟล์ตัด
+      2) เครือข่ายบางที่บล็อก fonts.googleapis.com
+      3) วันไหน Google เปลี่ยน/ถอดฟอนต์ งานเก่าเปิดมาแล้วหน้าตาไม่เหมือนเดิม
+    -> ย้ายมาเสิร์ฟจากเครื่องเราเอง (ลิขสิทธิ์ OFL/Apache ใช้เชิงพาณิชย์ + ฝังไฟล์ได้)
+    """
+    try:
+        safe = os.path.basename(str(fname or ""))
+        if not safe.lower().endswith((".ttf", ".otf", ".woff", ".woff2")):
+            return JSONResponse({"error": "bad font"}, status_code=400)
+        p = os.path.join(os.path.dirname(FRONTEND), "fonts", safe)
+        if not os.path.exists(p):
+            return JSONResponse({"error": "font not found"}, status_code=404)
+        _mt = {"ttf": "font/ttf", "otf": "font/otf",
+               "woff": "font/woff", "woff2": "font/woff2"}[safe.rsplit(".", 1)[1].lower()]
+        return FileResponse(p, media_type=_mt,
+                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/fonts")
+def font_list():
+    """รายชื่อฟอนต์ที่ฝังมากับแอป (ให้หน้าเว็บเช็คว่ามีครบไหม)"""
+    try:
+        d = os.path.join(os.path.dirname(FRONTEND), "fonts")
+        fs = sorted(f for f in os.listdir(d)
+                    if f.lower().endswith((".ttf", ".otf", ".woff", ".woff2"))) if os.path.isdir(d) else []
+        return {"ok": True, "count": len(fs), "files": fs}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "count": 0, "files": []}
+
+
 @app.get("/login")
 def login_page():
     """หน้า Login (username/password ตรวจกับ Table: user ใน CRM Hub)"""
