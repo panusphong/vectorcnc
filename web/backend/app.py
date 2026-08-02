@@ -3191,7 +3191,9 @@ def _spot_box_svg(spots, vx, vy, vw, vh):
                  'font-weight="800" fill="#0f172a">%s</text>'
                  % (_i9, tx, ty + fs * 0.9, fs * 0.95, s["pantone"]))
         _sub = "%s · %s" % (s["hex"], s["name_th"])
-        if s.get("toa"):
+        if s.get("sticker_label"):
+            _sub = "🏷️ " + s["sticker_label"]        # 🏷️ สติกเกอร์ = โชว์เบอร์สั่งซื้อแทนค่าสี
+        elif s.get("toa"):
             _sub += " · TOA %s" % s["toa"]
         p.append('<text id="spotSub%d" x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" '
                  'fill="#475569">%s</text>' % (_i9, tx, ty + fs * 1.85, fs * 0.76, _sub))
@@ -5267,6 +5269,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     trim_dir: str = Form("out"), face_color: str = Form(""),
                     side_color: str = Form(""), n_colors: int = Form(6),
                     spot_colors: str = Form(""),        # 🎨 สีพิเศษไม่เกิน 3 สี (JSON หรือ "#hex|การใช้งาน, ...")
+                    sticker_color: str = Form(""),      # 🏷️ สีสติกเกอร์โปร่งแสงปิดหน้าอะคริลิค
+                    sticker_code: str = Form(""),       # 🏷️ เบอร์/รุ่นสติกเกอร์ (ผู้ใช้พิมพ์เองได้)
+                    sticker_brand: str = Form(""),      # 🏷️ ยี่ห้อสติกเกอร์ (สำคัญต่อใบสั่งซื้อ)
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
                     arm_side: str = Form("right"), arm_adjust: str = Form("fixed"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
@@ -5309,7 +5314,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 float(logo_scale), float(logo_dx_cm), float(logo_dy_cm), str(metal_tex), str(arm_color),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
-                float(logo_w_cm), float(logo_h_cm), str(spot_colors),   # 🎨 เปลี่ยนสีพิเศษ = ต้องคิดใหม่
+                float(logo_w_cm), float(logo_h_cm), str(spot_colors), str(sticker_color), str(sticker_code), str(sticker_brand),
                 str(safe_mode), str(make_ai), str(only_ai))
         _pk = _rck[:-2]                       # 🧺 กุญแจ 'ชุดค่าที่คำนวณไว้' (ไม่รวม 2 ช่องโหมดท้ายสุด)
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
@@ -6604,7 +6609,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             from vectorcnc import spot_color as _SPC
             # 🎨 เอาเฉพาะ 'ชิ้นที่ต้องพ่นสี' (คิ้ว · ขอบข้าง · หรือทั้งตัวถ้าเป็นไฟออกหลัง)
             spot_info = _SPC.paint_spots(rec, spot_colors, face_color=face_color,
-                                         side_color=side_color, trim_color=face_color)
+                                         side_color=side_color, trim_color=face_color,
+                                         sticker_color=sticker_color, sticker_code=sticker_code,
+                                         sticker_brand=sticker_brand)
             svg3d = _weight_panel_svg(svg3d, _ws, tube=_tb, chk=_ck, span_mm=_sp, fits=_ft,
                                       extra_lines=_xtra, boq_items=_boq, spots=spot_info)
             weight_info = {"total_kg": _ws["total_kg"], "sheet_kg": _ws["sheet_kg"],
@@ -6620,7 +6627,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             try:
                 from vectorcnc import spot_color as _SPC2
                 spot_info = _SPC2.paint_spots(rec, spot_colors, face_color=face_color,
-                                              side_color=side_color, trim_color=face_color)
+                                              side_color=side_color, trim_color=face_color,
+                                              sticker_color=sticker_color, sticker_code=sticker_code,
+                                              sticker_brand=sticker_brand)
             except Exception:
                 spot_info = []
 
@@ -6677,23 +6686,39 @@ def _spot_card_html(spots, esc):
     if not spots:
         return ""
     rows = ""
+    _seedwarn = ""
+    try:
+        from vectorcnc import spot_color as _SCw
+        if any(q.get("sticker") and not q.get("sticker_user") for q in spots) and _SCw.STICKER_IS_SEED:
+            _seedwarn = ('<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;'
+                         'border-radius:5px;padding:4px 7px;font-size:9px;margin-top:4px">'
+                         '⚠️ เบอร์สติกเกอร์ยังเป็นรายการตั้งต้นของระบบ ไม่ใช่แคตตาล็อกของร้าน — '
+                         '<b>ต้องตรวจกับแคตตาล็อกซัพพลายเออร์จริงก่อนออกใบสั่งซื้อ</b></div>')
+    except Exception:
+        _seedwarn = ""
     for s in spots:
         _warn = ("" if (s.get("exact") or float(s.get("delta_e") or 0) <= 5.0)
                  else '<div style="color:#b45309;font-size:9px">เทียบใกล้เคียง &#916;E %.1f</div>'
                       % float(s.get("delta_e") or 0))
+        _st = s.get("sticker") or {}
+        _stx = ('<div style="color:#0f766e;font-weight:700;font-size:9.5px">🏷️ สั่งซื้อ: %s%s</div>'
+                % (esc(s.get("sticker_label", "")),
+                   ('  <span style="color:#b45309">(เทียบใกล้เคียง ΔE %.1f)</span>' % float(_st.get("delta_e") or 0))
+                   if float(_st.get("delta_e") or 0) > 5 else "")) if s.get("sticker_label") else ""
         rows += ('<tr><td style="width:34px"><div style="width:26px;height:26px;border-radius:4px;'
                  'background:%s;border:1px solid #334155"></div></td>'
-                 '<td><b>%s</b>%s<div style="color:#64748b;font-size:9px">%s</div></td>'
+                 '<td><b>%s</b>%s%s<div style="color:#64748b;font-size:9px">%s</div></td>'
                  '<td style="font-size:9px;color:#475569">%s<br>%s<br>%s</td></tr>'
                  % (s["hex"], esc(s["pantone"]),
                     (' <span style="color:#64748b">· TOA %s</span>' % esc(s["toa"])) if s.get("toa") else "",
-                    esc(s.get("use", "")) or "&nbsp;",
+                    _stx, esc(s.get("use", "")) or "&nbsp;",
                     esc(s["hex"]) + " · " + esc(s["name_th"]), esc(s["rgb"]), esc(s["cmyk"]) + _warn))
     return ('<div class="card"><div class="ct"><span class="no">&#127912;</span>สีที่ใช้ผลิต (เทียบเบอร์ Pantone)</div>'
             '<div class="cbody"><table>%s</table>'
+            '%s'
             '<div style="font-size:9px;color:#64748b;margin-top:4px">* สี Pantone เป็นหมึกผสมสำเร็จ ไม่มีค่า RGB ที่ถูกต้องเพียงค่าเดียว '
             'ค่าที่แสดงเป็นค่าอ้างอิงโดยประมาณ — <b>ก่อนผลิตจริงต้องยืนยันกับพัดสี Pantone/TOA ตัวจริงเสมอ</b></div>'
-            '</div></div>' % rows)
+            '</div></div>' % (rows, _seedwarn))
 
 
 def _weight_cards_html(weight, boq, esc):
@@ -7088,6 +7113,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     logo_dy_cm: float = Form(0.0), metal_tex: str = Form(""), arm_color: str = Form(""),
                     face_color: str = Form(""), side_color: str = Form(""),
                     spot_colors: str = Form(""),        # 🎨 สีพิเศษไม่เกิน 3 สี (ลงใบสั่งผลิต)
+                    sticker_color: str = Form(""), sticker_code: str = Form(""),
+                    sticker_brand: str = Form(""),      # 🏷️ สติกเกอร์โปร่งแสง (ยี่ห้อ+เบอร์ = ข้อมูลสั่งซื้อ)
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
@@ -7500,7 +7527,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         try:
             from vectorcnc import spot_color as _SPC3
             spot_rows = _SPC3.paint_spots(rec, spot_colors, face_color=face_color,
-                                          side_color=side_color, trim_color=face_color)
+                                          side_color=side_color, trim_color=face_color,
+                                          sticker_color=sticker_color, sticker_code=sticker_code,
+                                              sticker_brand=sticker_brand)
         except Exception:
             spot_rows = []
         html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows, spots=spot_rows)
