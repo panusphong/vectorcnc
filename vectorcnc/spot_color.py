@@ -226,3 +226,49 @@ def summary_line(spots):
     """สรุปสั้น ๆ 1 บรรทัด (ไว้ใส่บนภาพ/แจ้งเตือน)"""
     return " · ".join("%s %s" % (s["pantone"], ("(%s)" % s["use"]) if s["use"] else "")
                       for s in (spots or [])).strip()
+
+
+# ── "ส่วนที่ต้องพ่นสี" ของแต่ละชนิดป้าย ────────────────────────────────
+#    สีที่ต้องระบุในแบบ = เฉพาะชิ้นที่ช่างต้องพ่นสีจริง ไม่ใช่ทุกสีที่เห็นบนจอ
+#      · ไฟออกหน้า/ทั่วไป -> พ่นที่ "คิ้ว" และ "ขอบข้าง (return)" · หน้าเป็นอะคริลิคไม่ได้พ่น
+#      · ไฟออกหลัง        -> พ่นทั้งตัว (หน้า+ขอบข้าง เป็นชิ้นทึบชิ้นเดียวกัน)
+#    target = ชื่อกลุ่มชิ้นในภาพ 3 มิติ (ใช้เปลี่ยนสีสดในหน้าเว็บโดยไม่ต้องสร้างภาพใหม่)
+_TARGET_CLASS = {"trim": "w3d-kim", "side": "w3d-side", "body": "w3d-face"}
+
+
+def painted_parts(rec, face_color="", side_color="", trim_color=""):
+    """คืน [(hex, ชื่อส่วน, target), ...] เฉพาะชิ้นที่ต้องพ่นสี"""
+    rec = rec or {}
+    nm = str(rec.get("name", ""))
+    out = []
+    if rec.get("back_lit") or "ออกหลัง" in nm:
+        out.append((face_color or side_color or "#231F20", "พ่นทั้งตัว (ไฟออกหลัง)", "body"))
+        return out
+    if trim_color:
+        out.append((trim_color, "คิ้ว (กรอบหน้า)", "trim"))
+    if side_color:
+        out.append((side_color, "ขอบข้าง (return)", "side"))
+    if not out and face_color:
+        out.append((face_color, "ผิวหน้า", "body"))
+    return out
+
+
+def paint_spots(rec, spec="", face_color="", side_color="", trim_color="", max_n=3):
+    """สีที่ต้องพ่น (ไม่เกิน 3 สี) — ถ้าผู้ใช้ระบุ spec เองให้ใช้ตามนั้น
+       ถ้าไม่ระบุ -> ดึงจาก 'ชิ้นที่ต้องพ่นสี' ของชนิดป้ายนั้น
+       ถ้าไม่มีอะไรเลย -> ขาว/ดำ พร้อมช่องสี (ตามที่ตกลงกันว่าต้องระบุให้ชัด)"""
+    if (spec or "").strip():
+        return parse_spots(spec, max_n=max_n)
+    out = []
+    for hx, use, tg in painted_parts(rec, face_color, side_color, trim_color):
+        o = _one(hx, use)
+        if o and all(o["hex"] != q["hex"] or o["use"] != q["use"] for q in out):
+            o["target"] = tg
+            o["target_class"] = _TARGET_CLASS.get(tg, "")
+            out.append(o)
+    if not out:
+        out = [_one("#FFFFFF", "สีมาตรฐาน (ไม่ได้เลือกสีพ่น)", "White"),
+               _one("#231F20", "สีมาตรฐาน (ไม่ได้เลือกสีพ่น)", "Process Black C")]
+        for o in out:
+            o["target"] = "body"; o["target_class"] = "w3d-face"
+    return out[:max_n]
