@@ -5442,6 +5442,8 @@ function _recolor3dRaster(){
   //    เดิมวนพิกเซลทั้งใบ -> พื้นหลังกล่องข้อมูลเปลี่ยนสีตามไปด้วย และเสียเวลาฟรีทั้งภาพ
   //    เก็บกรอบไว้ใน host เพราะรอบถัดไป svg ถูกแทนที่ด้วย canvas แล้ว (หาไม่เจออีก)
   if(s0){
+    // 🏷️ หลังบ้านบอกไว้ว่า 'ตัวป้ายจบที่สัดส่วนไหนของภาพ' — ต่ำกว่านั้นคือแผงข้อมูล ห้ามย้อม
+    try{ var _ah=parseFloat(s0.getAttribute('data-arth')||''); if(_ah>0.05&&_ah<=1) host._artH=_ah; }catch(e){}
     try{
       var _bd=(s0.getElementById?s0.getElementById('w3dBody'):s0.querySelector('#w3dBody'));
       var _vb=s0.viewBox&&s0.viewBox.baseVal;
@@ -5469,6 +5471,9 @@ function _recolor3dRaster(){
         y1=Math.min(c.height,Math.ceil((box.y+box.h)*c.height));
         if(x1-x0<8||y1-y0<8){ x0=0;y0=0;x1=c.width;y1=c.height; }   // กรอบเพี้ยน -> ถอยไปทั้งใบ
       }
+      // 🚧 เพดานเด็ดขาด: ห้ามย้อมเลยเข้าไปในแผงข้อมูล/สเปคสี ไม่ว่ากรณีใด
+      //    (ต่อให้หากรอบตัวป้ายไม่เจอจนถอยไปย้อมทั้งใบ ก็ต้องหยุดที่เส้นนี้)
+      if(host._artH>0){ y1=Math.min(y1, Math.floor(host._artH*c.height)); if(y1<=y0) y1=Math.floor(host._artH*c.height); }
       var d=g.getImageData(x0,y0,x1-x0,y1-y0), a=d.data, F=_hex2rgb(_faceShow()), S=_hex2rgb(SCOL);
       for(var i=0;i<a.length;i+=4){
         if(a[i+3]<8)continue;
@@ -5667,7 +5672,20 @@ function _glowBody(){
       if(!st) return;
       var p=toMM(e), r0=window._tsRows[st.i]||(window._tsRows[st.i]={});
       if(st.mode==='move'){
-        r0.dx=st.dx+(p.x-st.px); r0.dy=st.dy+(p.y-st.py);
+        var ndx=st.dx+(p.x-st.px), ndy=st.dy+(p.y-st.py);
+        // 🚧 ลากออกนอกป้ายไม่ได้ — หนีบให้กล่องบรรทัดอยู่ในกรอบป้ายเสมอ
+        //    (ถ้าปล่อยให้ล้นออกไป ตัวอักษรจะถูกตัดขาดตอนสร้างไฟล์ผลิต)
+        var bb=(window._tsBox||[])[st.i];
+        if(bb){
+          var Wl=(parseFloat(($('tsW')&&$('tsW').value)||65)||65)*10;
+          var Hl=(parseFloat(($('tsH')&&$('tsH').value)||100)||100)*10;
+          var Pl=Math.max(0,parseFloat(($('tsPad')&&$('tsPad').value)||0)||0)*10;
+          var w0=bb.x1-bb.x0, h0=bb.y1-bb.y0;
+          var bx0=bb.x0-st.dx, by0=bb.y0-st.dy;          // ตำแหน่งฐาน (ยังไม่รวมที่ลาก)
+          ndx=Math.max(Pl-bx0, Math.min(Wl-Pl-w0-bx0, ndx));
+          ndy=Math.max(Pl-by0, Math.min(Hl-Pl-h0-by0, ndy));
+        }
+        r0.dx=ndx; r0.dy=ndy;
       }else{
         var f=Math.max(0.25,Math.min(6,(st.w0+(p.x-st.px))/st.w0));
         r0.size=Math.max(0.2,Math.round(st.size*f*10)/10);   // ✂️ ขนาดตามสเกลจริง ปัด 0.1
