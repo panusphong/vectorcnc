@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-03-joint4",
+            "build": "2026-08-03-joint5",
         "build_note": "เส้นเดี่ยว: เชื่อมที่จุดตัดแบบทะลุตรง + เย็บปลายให้บรรจบเป๊ะ (147 เคส: รอยต่อไม่บรรจบ 7267→236 · ท่อนแยก 5386→2665) · ขนาดที่กรอก = ขนาดแผ่นป้าย โลโก้จัดลงในแผ่นอัตโนมัติ · กล่องสเปคสีอยู่ใต้ภาพเสมอ",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -6390,11 +6390,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         # 🔦 ถ้าระบบขยับความกว้างท่อให้เอง (ลายเส้นหนากว่าท่อที่เลือก) ต้องบอกผู้ใช้เสมอ
                         _tube_used = 8.0
                         for _r9 in (_nrep or []):
-                            if isinstance(_r9, dict) and _r9.get("mode") == "note":
+                            if isinstance(_r9, dict) and _r9.get("mode") in ("note", "bend"):
                                 warns.append(str(_r9.get("note", "")))
                                 _tube_used = float(_r9.get("tube_mm") or 8.0)
                         _nrep = [_r9 for _r9 in (_nrep or [])
-                                 if not (isinstance(_r9, dict) and _r9.get("mode") == "note")]
+                                 if not (isinstance(_r9, dict) and _r9.get("mode") in ("note", "bend"))]
                         try:
                             import neon_single as _NS
                             for _w in _NS.warn_messages(_nrep, tube_mm=_tube_used, clear_mm=1.0):
