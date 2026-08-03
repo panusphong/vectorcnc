@@ -13,7 +13,8 @@
 import math
 import numpy as np
 import cv2
-from shapely.geometry import LineString, MultiLineString, Point
+from shapely.geometry import LineString, MultiLineString, Point, Polygon
+from shapely.geometry import Point as _Pt
 from shapely.ops import unary_union
 
 
@@ -687,7 +688,7 @@ def stitch_ends(lines, tol_mm, dot_max=-0.10):
 
 
 
-def open_tiny_loops(lines, tube_mm, clear_ratio=0.95):
+def open_tiny_loops(lines, tube_mm, clear_ratio=0.95, geom=None):
     """🔁 ห่วงที่เล็กกว่าท่อ -> 'เดินผ่านตรงไป' แทนการวนรอบ
 
     ⚠️ นี่คือตำหนิที่เห็นด้วยตาแต่ตัววัดเดิมจับไม่ได้เลย:
@@ -703,6 +704,19 @@ def open_tiny_loops(lines, tube_mm, clear_ratio=0.95):
     """
     T = float(tube_mm)
     near = T * float(clear_ratio)              # ขาไป-ขากลับใกล้กว่านี้ = ท่อทับกันสนิท
+    # 🕳️ รวบรวม 'รูของตัวอักษร' ไว้ก่อน — ใช้แยกตาจริงออกจากรอยพับที่เราทำหล่นเอง
+    _holes = []
+    if geom is not None:
+        for _g in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
+            if _g.geom_type != "Polygon":
+                continue
+            for _in in _g.interiors:
+                try:
+                    _hp = Polygon(_in)
+                    if _hp.is_valid and _hp.area > 0.5:
+                        _holes.append(_hp)
+                except Exception:
+                    pass
     maxarc = T * math.pi * 6.0                 # เพดานกันไปแตะห่วงใหญ่ ๆ ของตัวอักษร
     out = []
     for l in lines:
@@ -739,6 +753,19 @@ def open_tiny_loops(lines, tube_mm, clear_ratio=0.95):
             inr = (2.0 * area / per) if per > 1e-9 else 0.0
             if inr >= T * 0.5:                 # ท่อใส่เข้าไปในห่วงได้ -> ห่วงจริง เก็บไว้
                 continue
+            # 🔑 ตัวชี้ขาด: 'ตาของตัวอักษร' กับ 'รอยพับที่เราทำหล่นเอง' หน้าตาเหมือนกันบนเส้น
+            #    แต่ต่างกันชัดเจนบนตัวอักษรจริง — ตาของตัวอักษรมี **รูในรูปทรง** รองรับอยู่
+            #    ถ้าตรงกลางห่วงตกอยู่ในรูของตัวอักษร = ตาจริง ต้องเดินไฟรอบไว้ ห้ามตัดทิ้ง
+            #    (เคยตัดทิ้งไปแล้วรอบหนึ่ง ผลคือตาของ E · e · a · o · r ดับหมดทุกตัว)
+            if _holes:
+                try:
+                    _lp = Polygon(ring)
+                    if not _lp.is_valid:
+                        _lp = _lp.buffer(0)
+                    if any(_lp.intersects(_h) for _h in _holes):
+                        continue               # ห่วงนี้ล้อม 'รูของตัวอักษร' -> ตาจริง เก็บไว้เสมอ
+                except Exception:
+                    continue                   # สงสัยเมื่อไหร่ = ไม่แตะ (งานห้ามพัง)
             if arc > maxarc:                   # ห่วงยาวเกินกว่าจะเป็นตาตัวอักษร -> ไม่แตะ
                 continue
             cand.append((i, j, arc))
@@ -1120,7 +1147,6 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
         for l in lines:
             try:
                 q = snap_to_outline(l, geom, _tree, _opts, max_shift_mm=max(sw, 2.0) * 0.6)
-                q = _respline(q, keep_mm=max(0.30, sw * 0.06))
                 _sm.append(q if (q is not None and q.length > 1.0) else l)
             except Exception:
                 _sm.append(l)
@@ -1150,8 +1176,7 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
         pass
     #      4) ห่วงที่เล็กกว่าท่อ (ตาของตัว e/o/ff) -> เดินผ่านตรงไป ไม่วน
     try:
-        lines = open_tiny_loops(lines, tube)
-        lines = [_respline(l, keep_mm=max(0.30, sw * 0.06)) for l in lines]
+        lines = open_tiny_loops(lines, tube, geom=geom)
     except Exception:
         pass
     #      5) 'ติ่ง/ตะขอ' — เส้นหักกลับทางเดิมจนท่อดัดไม่ได้จริง -> ตัดแยกเป็นสองท่อน
