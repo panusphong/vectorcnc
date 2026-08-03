@@ -1057,7 +1057,7 @@ def _local_radius(a, step_idx=1):
     return r
 
 
-def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
+def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0, geom=None, dt=None, ppm=1.0, org=(0.0, 0.0), drop_mm=0.3):
     """คลาย 'เฉพาะจุดที่โค้งแคบเกินท่อนีออนดัดได้' — ไม่ไปแตะช่วงที่ดีอยู่แล้ว
 
     ท่อนีออนซิลิโคนดัดในระนาบได้จำกัด ถ้าแบบมีมุมแคบกว่านั้น ช่างต้องมาดัดฝืน
@@ -1075,6 +1075,17 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
     if len(a) < 5:            # 🛡️ เส้นสั้นมาก (สั้นกว่า 5 มม.) — คลายไม่ได้และไม่จำเป็น
         return line           #    (np.convolve โหมด same คืนความยาวเท่าเคอร์เนลถ้าสัญญาณสั้นกว่า -> รูปทรงไม่ตรงกัน)
     closed = np.allclose(a[0], a[-1])
+    # 📌 อ้างอิง 'ระยะถึงขอบตอนเริ่ม' ไว้ก่อน — ต้องเทียบกับค่าตั้งต้นเสมอ
+    #    ถ้าเทียบกับรอบก่อนหน้า จะยอมให้ไหลออกทีละนิดจนสะสมหลายมิลลิเมตรใน 40 รอบ
+    _d0 = None
+    if dt is not None:
+        try:
+            _Hd, _Wd = dt.shape
+            _xx = np.clip(np.round((a[:, 0] - org[0]) * ppm).astype(int), 0, _Wd - 1)
+            _yy = np.clip(np.round((a[:, 1] - org[1]) * ppm).astype(int), 0, _Hd - 1)
+            _d0 = dt[_yy, _xx] / ppm
+        except Exception:
+            _d0 = None
     for _ in range(rounds):
         r = _local_radius(a)
         bad = r < r_min
@@ -1091,12 +1102,44 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
         b += lap * w[:, None]
         if not closed:
             b[0] = a[0]; b[-1] = a[-1]
+        # 🚧 ห้ามคลายจน 'เส้นหลุดออกนอกตัวอักษร'
+        #    บทเรียน: ห่วงยาว ๆ ของ f คลายแล้วดี (ห่วงเปิด ไม่บีบ)
+        #             แต่ตาเล็ก ๆ ของ e/a/r คลายแล้วเส้นหลุดออกนอกเนื้อ -> เกิดเสี้ยวมืด
+        #    ต่างกันตรงนี้จุดเดียว: 'ยังอยู่ในเนื้อตัวอักษรไหม' -> เอามาเป็นกติกาเลย
+        #    จุดไหนคลายแล้วหลุด ให้คงที่เดิมไว้ ที่เหลือคลายได้ตามปกติ
+        #    ⚠️ แค่ 'ยังอยู่ในเนื้อ' ไม่พอ — ลายเส้นกว้าง 6.6 มม. จุดขยับออกข้าง 3 มม. ก็ยังอยู่ในเนื้อ
+        #       แต่ท่อจะเลยไปข้างหนึ่ง อีกข้างมืด  ✅ ต้องอยู่ 'กลางเนื้อ' ด้วย
+        #       กลางเนื้อ = สันของ distance transform (ระยะถึงขอบไกลสุด)
+        #       จึงยอมให้ขยับได้เฉพาะจุดที่ 'ระยะถึงขอบไม่ลดลง' เกินที่กำหนด = ยังเกาะสันอยู่
+        if dt is not None:
+            try:
+                _Hd, _Wd = dt.shape
+
+                def _dd(q):
+                    _x = int(round((q[0] - org[0]) * ppm)); _y = int(round((q[1] - org[1]) * ppm))
+                    if _x < 0 or _y < 0 or _x >= _Wd or _y >= _Hd:
+                        return -1.0
+                    return float(dt[_y, _x]) / ppm
+
+                for _i in np.nonzero(np.linalg.norm(b - a, axis=1) > 1e-9)[0]:
+                    _ref = float(_d0[_i]) if _d0 is not None else _dd(a[_i])
+                    if _dd(b[_i]) < _ref - float(drop_mm):
+                        b[_i] = a[_i]                # หลุดออกจากกลางเนื้อ -> ไม่ขยับจุดนี้
+            except Exception:
+                pass
+        elif geom is not None:
+            try:
+                for _i in np.nonzero(np.linalg.norm(b - a, axis=1) > 1e-9)[0]:
+                    if not geom.contains(Point(float(b[_i, 0]), float(b[_i, 1]))):
+                        b[_i] = a[_i]
+            except Exception:
+                pass
         a = b
     return LineString(a)
 
 
 # ─────────────────────────── 5. ตัวหลัก ───────────────────────────
-def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=0.5,
+def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.5,
                snap=True):
     """คืน dict: paths (LineString มม.), tube_mm, length_m, watt, plate (Polygon)"""
     mask, ppm, org = geom_to_mask(geom, px_per_mm)
@@ -1122,6 +1165,11 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=0.
                 _tree = cKDTree(_opts)
         except Exception:
             _tree = _opts = None
+    _dt = None
+    try:
+        _dt = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+    except Exception:
+        _dt = None
     lines = []
     for c in items:
         ls = chain_to_line(c, ppm, org)
@@ -1130,7 +1178,7 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=0.
         if _tree is not None:
             ls = snap_to_outline(ls, geom, _tree, _opts, max_shift_mm=max(sw, 2.0))
             ls = ls.simplify(0.15)
-        lines.append(relax_tight_bends(ls, r_min))
+        lines.append(relax_tight_bends(ls, r_min, geom=geom, dt=_dt, ppm=ppm, org=org))
     # 🪡 เย็บปลายขั้นสุดท้ายก่อนค่อยคัดเศษทิ้ง — ท่อนสั้นที่เป็นสะพานเชื่อมจะได้ถูกดูดรวมไป
     #    ไม่ใช่ถูกโยนทิ้งจนเหลือช่องโหว่ตรงจุดต่อ (นี่คือที่มาของ 'เส้นขาดตรงรอยต่อ' แบบเดิม)
     #    เย็บซ้ำ 3 รอบ: รอบแรกจับได้คู่ที่ดีที่สุดก่อน คู่ที่ถูกเบียดตกไปจะได้โอกาสในรอบถัดไป
@@ -1165,19 +1213,17 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=0.
     #      2) ท่อขาดกลางลายเส้น            -> ยืดปลายไปชนท่อข้างเคียง
     #      3) หักศอกที่รอยต่อ (เกิดใหม่หลังต่อเส้น) -> คลายอีกรอบ
     # ══════════════════════════════════════════════════════════════════
-    _dt = None
     try:
-        _dt = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
         lines = trim_thin_ends(lines, _dt, ppm, org, tube, geom_ref=geom)
     except Exception:
-        _dt = None
+        pass
     try:
         lines = close_visible_gaps(lines, geom, tube, max_ext_mm=max(tube * 3.5, sw * 3.5),
                                    dt=_dt, ppm=ppm, org=org)
     except Exception:
         pass
     try:
-        lines = [relax_tight_bends(l, r_min) for l in lines]
+        lines = [relax_tight_bends(l, r_min, geom=geom, dt=_dt, ppm=ppm, org=org) for l in lines]
     except Exception:
         pass
     #      4) ห่วงที่เล็กกว่าท่อ (ตาของตัว e/o/ff) -> เดินผ่านตรงไป ไม่วน
