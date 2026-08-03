@@ -684,7 +684,38 @@ def stitch_ends(lines, tol_mm, dot_max=-0.10):
     return [LineString(s) for s in out if len(s) >= 2]
 
 
-def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=None):
+
+def _respline(line, keep_mm=0.35):
+    """เกลาทั้งเส้นอีกรอบหลังต่อเสร็จ — ปลายล็อกอยู่กับที่ ไม่ขยับ
+
+    ใช้หลังการต่อเส้นเท่านั้น: ตอนต่อ สองท่อนมาชนกันเป็น 'มุม'
+    การฟิตสไปลน์ทั้งเส้นทีเดียวจะกลืนมุมนั้นให้เป็นโค้งต่อเนื่อง
+    โดยยอมให้เส้นคลาดจากเดิมได้ไม่เกิน keep_mm (เล็กมาก) รูปทรงจึงไม่เปลี่ยน
+    """
+    a = np.asarray(line.coords, dtype=float)
+    if len(a) < 8:
+        return line
+    closed = bool(np.hypot(*(a[0] - a[-1])) < 1e-6)
+    try:
+        from scipy.interpolate import splprep, splev
+        pts = a[:-1] if (closed and len(a) > 8) else a
+        if len(pts) < 8:
+            return line
+        s = len(pts) * float(keep_mm) ** 2
+        tck, u = splprep([pts[:, 0], pts[:, 1]], s=s, k=3, per=1 if closed else 0)
+        n = max(48, min(4000, int(line.length / max(0.35, keep_mm))))
+        x, y = splev(np.linspace(0, 1, n), tck)
+        out = np.column_stack([x, y])
+        if closed:
+            out[-1] = out[0]
+        else:
+            out[0] = a[0]; out[-1] = a[-1]
+        return LineString(out)
+    except Exception:
+        return line
+
+
+def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=None, geom_ref=None):
     """✂️ ตัดปลายท่อที่ไปโผล่ตรง 'หางลายเส้นที่เรียวกว่าท่อ'
 
     ทำไม: ท่อนีออนกว้างคงที่ ถ้าหางตัวอักษรเรียวเหลือ 4 มม. แต่ท่อกว้าง 8 มม.
@@ -706,6 +737,25 @@ def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=No
             return 0.0
         return float(dt[y, x]) * 2.0 / ppm
 
+    from shapely.geometry import Point as _P
+    R = float(tube_mm) * 0.5
+
+    def _over(a, i, j):
+        """หัวท่อ 'ยื่นเลยปลายลายเส้น' ไหม — วัดที่ปลายสุดของหัวท่อกลม
+
+        กติกานี้แยกสองเรื่องออกจากกันได้พอดี:
+          • ท่อล้นออก 'ด้านข้าง' เพราะกว้างกว่าลายเส้น = เรื่องปกติ ไม่ต้องแก้
+          • ท่อล้นออก 'ตามยาว' เลยจุดจบของลายเส้น = ติ่งที่ต้องตัด
+        """
+        if geom_ref is None:
+            return False
+        v = a[i] - a[j]
+        n = float(np.linalg.norm(v))
+        if n < 1e-9:
+            return False
+        z = a[i] + v / n * R
+        return not geom_ref.contains(_P(float(z[0]), float(z[1])))
+
     out = []
     for l in lines:
         a = np.asarray(l.coords, dtype=float)
@@ -714,10 +764,10 @@ def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=No
         d = np.linalg.norm(np.diff(a, axis=0), axis=1)
         s = np.concatenate([[0.0], np.cumsum(d)])
         i0 = 0
-        while i0 < len(a) - 2 and s[i0] < lim and wmm(a[i0]) < need:
+        while i0 < len(a) - 3 and s[i0] < lim and (wmm(a[i0]) < need or _over(a, i0, min(i0 + 3, len(a) - 1))):
             i0 += 1
         i1 = len(a) - 1
-        while i1 > i0 + 2 and (s[-1] - s[i1]) < lim and wmm(a[i1]) < need:
+        while i1 > i0 + 3 and (s[-1] - s[i1]) < lim and (wmm(a[i1]) < need or _over(a, i1, max(i1 - 3, 0))):
             i1 -= 1
         b = a[i0:i1 + 1]
         out.append(LineString(b) if len(b) >= 2 else l)
@@ -930,6 +980,24 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
             break
     lines = [l for l in lines if l.length >= max(8.0, tube * 1.5)]
     # ══════════════════════════════════════════════════════════════════
+    # 🎯 'เกลารอยต่อ' — จุดที่ยังเห็นเป็นมุมแหลมอยู่ เกิดจากลำดับการทำงาน ไม่ใช่การจับคู่ผิด
+    #
+    # ⚠️ ของเดิม: เกลาเส้น -> ดึงเข้ากลางเนื้อ -> **แล้วค่อยต่อเส้น**
+    #    แปลว่า 'ช่วงรอยต่อ' ไม่เคยผ่านการดึงเข้ากลางเนื้อเลยสักครั้ง
+    #    สองท่อนจึงมาชนกันเป็นมุมแหลม (เห็นชัดที่ห่วงตัว e และคานขวางของ ff)
+    # ✅ พอต่อเสร็จแล้ว 'ดึงเข้ากลางเนื้อ + เกลาซ้ำอีกรอบทั้งเส้น'
+    #    รอยต่อจะถูกจัดให้อยู่กลางลายเส้นพอดีและโค้งต่อเนื่อง เหมือนเส้นเดียวมาแต่แรก
+    if _tree is not None:
+        _sm = []
+        for l in lines:
+            try:
+                q = snap_to_outline(l, geom, _tree, _opts, max_shift_mm=max(sw, 2.0) * 0.6)
+                q = _respline(q, keep_mm=max(0.30, sw * 0.06))
+                _sm.append(q if (q is not None and q.length > 1.0) else l)
+            except Exception:
+                _sm.append(l)
+        lines = _sm
+    # ══════════════════════════════════════════════════════════════════
     # 🔎 ด่านตรวจ-ซ่อมขั้นสุดท้าย — 'ตรวจผลลัพธ์จริง' ไม่ใช่จูนค่าเผื่อฟอนต์
     #    เกณฑ์ทั้งหมดต่อไปนี้วัดจากตัวงานที่ออกมาเทียบกับรูปตัวอักษรจริง
     #    จึงใช้ได้เหมือนกันทุกฟอนต์ ไม่มีตัวเลขที่ต้องตั้งใหม่ต่อฟอนต์เลย
@@ -940,7 +1008,7 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
     _dt = None
     try:
         _dt = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-        lines = trim_thin_ends(lines, _dt, ppm, org, tube)
+        lines = trim_thin_ends(lines, _dt, ppm, org, tube, geom_ref=geom)
     except Exception:
         _dt = None
     try:
