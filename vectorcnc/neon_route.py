@@ -182,36 +182,102 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
     #    3) เส้นที่จับคู่ไม่ได้ ก็ยังชนปมพอดี ไม่มีช่องว่างหลงเหลือ
     # ══════════════════════════════════════════════════════════════════════
     tol = max(1.8, 0.9 * ppm)              # ปมห่างกันไม่เกินนี้ = ปมเดียวกัน (มม. -> พิกเซล)
-    ends = []                              # [(chain_idx, 0=หัว/1=ท้าย, y, x)]
-    for i, c in enumerate(items):
-        ends.append((i, 0, float(c[0][0]), float(c[0][1])))
-        ends.append((i, 1, float(c[-1][0]), float(c[-1][1])))
-    P = np.asarray([[e[2], e[3]] for e in ends], dtype=float)
 
-    # ── ชั้น 1: จัดกลุ่มปลายเส้นที่อยู่ตำแหน่งเดียวกัน (union-find) ──
-    parent = list(range(len(ends)))
+    def _cluster(its, t):
+        """จัดกลุ่มปลายเส้นที่อยู่ตำแหน่งเดียวกัน -> (ends, P, groups)"""
+        en = []
+        for i, c in enumerate(its):
+            en.append((i, 0, float(c[0][0]), float(c[0][1])))
+            en.append((i, 1, float(c[-1][0]), float(c[-1][1])))
+        Q = np.asarray([[e[2], e[3]] for e in en], dtype=float)
+        par = list(range(len(en)))
 
-    def _find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]; x = parent[x]
-        return x
+        def _f(x):
+            while par[x] != x:
+                par[x] = par[par[x]]; x = par[x]
+            return x
 
-    def _uni(x, y):
-        rx, ry = _find(x), _find(y)
-        if rx != ry:
-            parent[ry] = rx
-    try:
-        from scipy.spatial import cKDTree as _KD
-        for x, y in _KD(P).query_pairs(tol):
-            _uni(x, y)
-    except Exception:
-        for x in range(len(P)):
-            for y in range(x + 1, len(P)):
-                if abs(P[x, 0] - P[y, 0]) <= tol and abs(P[x, 1] - P[y, 1]) <= tol:
-                    _uni(x, y)
-    groups = {}
-    for k in range(len(ends)):
-        groups.setdefault(_find(k), []).append(k)
+        def _u(x, y):
+            rx, ry = _f(x), _f(y)
+            if rx != ry:
+                par[ry] = rx
+        try:
+            from scipy.spatial import cKDTree as _KD
+            for x, y in _KD(Q).query_pairs(t):
+                _u(x, y)
+        except Exception:
+            for x in range(len(Q)):
+                for y in range(x + 1, len(Q)):
+                    if abs(Q[x, 0] - Q[y, 0]) <= t and abs(Q[x, 1] - Q[y, 1]) <= t:
+                        _u(x, y)
+        gr = {}
+        for k in range(len(en)):
+            gr.setdefault(_f(k), []).append(k)
+        return en, Q, gr
+
+    # ── ชั้น 0: ยุบ 'สะพานสั้นระหว่างสองปม' — หัวใจของจุดไขว้ (X) ──
+    #    เวลาลายเส้นสองเส้นตัดกันแบบเฉียง แกนกลางจะไม่ออกมาเป็นกากบาทจุดเดียว
+    #    แต่เป็นสามแฉกสองอันเชื่อมด้วย 'สะพาน' สั้น ๆ ตรงกลาง
+    #    ผลคือทั้งสองเส้นแย่งสะพานกัน มีแค่เส้นเดียวได้ทะลุ อีกเส้นถูกตัดขาดตรงนั้น
+    #    (นี่คือรอยที่พี่วงตรงคานขวางของ ff ในคำว่า coffee)
+    #    ✅ ยุบสะพานทิ้ง ให้ทั้ง 4 แขนมาเจอกันที่จุดเดียว แล้วค่อยจับคู่ทะลุตรง -> ผ่านได้ทั้งคู่
+    #    ความยาวสะพาน = ประมาณ 'ความหนาลายเส้น' เพราะสะพานคือช่วงที่แกนกลางวิ่งอยู่ในเนื้อที่ทับกัน
+    #    (spur_mm ถูกตั้งไว้ = ความหนา x 0.75 -> ย้อนกลับได้)
+    bridge_px = max(3.0, spur_px / 0.75 * 3.2)
+    for _round in range(3):
+        _en, _Q, _gr = _cluster(items, tol)
+        deg = {}
+        for _g in _gr.values():
+            for k in _g:
+                deg[k] = len(_g)
+        kof0 = {(_en[k][0], _en[k][1]): k for k in range(len(_en))}
+        drop = set(); merge = []
+        for i, c in enumerate(items):
+            if len(c) > bridge_px:
+                continue
+            k0 = kof0.get((i, 0)); k1 = kof0.get((i, 1))
+            if k0 is None or k1 is None:
+                continue
+            if deg.get(k0, 0) >= 3 and deg.get(k1, 0) >= 3:
+                drop.add(i); merge.append((k0, k1))
+        if not drop:
+            break
+        # ดึงปลายของ 'สองปมที่สะพานเชื่อมอยู่' มารวมเป็นจุดเดียวกัน แล้วทิ้งสะพาน
+        _root = {}
+        for r, v in _gr.items():
+            for k in v:
+                _root[k] = r
+        _mp = {}
+        for k0, k1 in merge:
+            _mp.setdefault(_root[k0], set()).add(_root[k1])
+            _mp.setdefault(_root[k1], set()).add(_root[k0])
+        seen_r = set()
+        for r0 in list(_mp):
+            if r0 in seen_r:
+                continue
+            stack = [r0]; comp = set()
+            while stack:
+                r = stack.pop()
+                if r in comp:
+                    continue
+                comp.add(r); seen_r.add(r)
+                stack.extend(_mp.get(r, ()))
+            ks = [k for r in comp for k in _gr[r]]
+            cy = float(np.mean([_Q[k, 0] for k in ks]))
+            cx = float(np.mean([_Q[k, 1] for k in ks]))
+            for k in ks:
+                i, side = _en[k][0], _en[k][1]
+                if i in drop:
+                    continue
+                if side == 0:
+                    items[i][0] = (cy, cx)
+                else:
+                    items[i][-1] = (cy, cx)
+        items = [c for i, c in enumerate(items) if i not in drop]
+        if not items:
+            return []
+
+    ends, P, groups = _cluster(items, tol)
 
     # ── ดึงปลายทุกเส้นมาชน 'จุดกลางปม' ให้ตรงกันเป๊ะ ──
     for _g in groups.values():
@@ -226,40 +292,102 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
             else:
                 items[i][-1] = (cy, cx)
 
-    # ── ชั้น 2: จับคู่ 'ทะลุตรง' ที่ปมเดียวกัน ──
-    win = max(4, int(round(2.5 * ppm)))    # ดูทิศทางย้อนกลับไป ~2.5 มม. (นิ่งกว่าดู 6 พิกเซล)
+    # ══════════════════════════════════════════════════════════════════
+    # ชั้น 2: จับคู่ 'ทะลุตรง' ที่ปมเดียวกัน — เลือก 'ชุดที่ดีที่สุดทั้งปม' ไม่ใช่ทีละคู่
+    #
+    # ⚠️ บทเรียนจากภาพจริง (คำว่า coffee ตรงคานขวางของ ff):
+    #    การไล่จับคู่ทีละคู่จากคะแนนดีสุด (greedy) ทำให้บางปมจับผิดเส้น —
+    #    คู่ที่ดีที่สุด 'คู่เดียว' ไปกินปลายที่คู่อื่นต้องใช้ เหลือคู่ที่เหลือต้องจับมั่ว
+    #    ✅ ปมหนึ่งมีปลายไม่กี่เส้น -> ลองทุกวิธีจับคู่แล้วเลือกชุดที่รวมแล้วดีที่สุดไปเลย
+    #
+    # ⚠️ บทเรียนที่ 2 (ห่วงเล็กของตัว E):
+    #    ถ้าปล่อยให้ 'หัวกับท้ายของเส้นเดียวกัน' จับคู่กันเอง ห่วงจะกลายเป็นเกาะปิด
+    #    ลอยอยู่ข้างเส้นหลัก ปลายท่อโผล่เป็นติ่ง — ของจริงช่างเดินท่อเข้าไปในห่วงแล้ววนออก
+    #    ✅ ใส่ค่าปรับหนักให้การจับคู่ตัวเอง จะเลือกก็ต่อเมื่อไม่มีทางอื่นจริง ๆ
+    # ══════════════════════════════════════════════════════════════════
+    _wins = [max(2.0, 1.5 * ppm), max(3.0, 3.0 * ppm), max(5.0, 6.0 * ppm)]   # ดูทิศหลายระยะ
 
-    def _away(i, side):
-        """ทิศที่เส้นพุ่ง 'ออกจากปม' — ใช้ตัดสินว่าเส้นไหนวิ่งทะลุเข้าหากัน"""
-        c = items[i]
-        seg = c[:win] if side == 0 else c[-win:][::-1]
-        a = np.asarray(seg, dtype=float)
-        if len(a) < 2:
-            return np.zeros(2)
-        v = a[-1] - a[0]
-        n = float(np.linalg.norm(v))
-        return v / n if n > 1e-9 else np.zeros(2)
+    def _dirs(i, side):
+        """ทิศที่เส้นพุ่ง 'ออกจากปม' วัดหลายระยะ — ระยะสั้นไวต่อสัญญาณรบกวน ระยะยาวไวต่อความโค้ง"""
+        c = np.asarray(items[i], dtype=float)
+        seg = c if side == 0 else c[::-1]
+        if len(seg) < 2:
+            return [np.zeros(2)] * len(_wins)
+        d = np.linalg.norm(np.diff(seg, axis=0), axis=1)
+        s = np.concatenate([[0.0], np.cumsum(d)])
+        out = []
+        for w in _wins:
+            j = int(np.searchsorted(s, min(w, s[-1])))
+            j = min(max(j, 1), len(seg) - 1)
+            v = seg[j] - seg[0]
+            n = float(np.linalg.norm(v))
+            out.append(v / n if n > 1e-9 else np.zeros(2))
+        return out
+
+    _dcache = {}
+
+    def _cost(ka, kb):
+        """ต้นทุนการต่อ: 0 = วิ่งทะลุตรงเป๊ะ · 2 = หักกลับทางเดิม · None = ต่อไม่ได้"""
+        ia, sa = ends[ka][0], ends[ka][1]
+        ib, sb = ends[kb][0], ends[kb][1]
+        if ia == ib and sa == sb:
+            return None
+        for k, (i, s) in ((ka, (ia, sa)), (kb, (ib, sb))):
+            if k not in _dcache:
+                _dcache[k] = _dirs(i, s)
+        va, vb = _dcache[ka], _dcache[kb]
+        dd = [float(np.dot(va[t], vb[t])) for t in range(len(_wins))]
+        m = sum(dd) / len(dd)
+        if m > -0.20:                        # หักศอกเกิน -> ไม่ต่อ
+            return None
+        c = 1.0 + m
+        if ia == ib:
+            c += 1.0                         # 🚫 ค่าปรับ 'จับคู่ตัวเอง' (กันห่วงกลายเป็นเกาะปิด)
+        return c
+
+    def _best_match(keys):
+        """ลองทุกวิธีจับคู่ในปมนี้ -> เอาชุดที่จับได้มากสุดก่อน แล้วค่อยเอาที่ต้นทุนรวมต่ำสุด"""
+        allow = {}
+        for _a in range(len(keys)):
+            for _b in range(_a + 1, len(keys)):
+                c = _cost(keys[_a], keys[_b])
+                if c is not None:
+                    allow[(keys[_a], keys[_b])] = c
+                    allow[(keys[_b], keys[_a])] = c
+        best = [0, 0.0, []]
+
+        def rec(rem, pairs, tot):
+            if len(rem) < 2:
+                if len(pairs) > best[0] or (len(pairs) == best[0] and tot < best[1] - 1e-12):
+                    best[0] = len(pairs); best[1] = tot; best[2] = list(pairs)
+                return
+            a = rem[0]; rest = rem[1:]
+            rec(rest, pairs, tot)                       # ทางเลือก: ไม่จับคู่ a
+            for b in rest:
+                c = allow.get((a, b))
+                if c is None:
+                    continue
+                pairs.append((a, b))
+                rec([q for q in rest if q != b], pairs, tot + c)
+                pairs.pop()
+        rec(list(keys), [], 0.0)
+        return best[2]
 
     partner = {}
     for _g in groups.values():
         if len(_g) < 2:
             continue
-        cand = []
-        for _a in range(len(_g)):
-            for _b in range(_a + 1, len(_g)):
-                ka, kb = _g[_a], _g[_b]
-                ia, sa = ends[ka][0], ends[ka][1]
-                ib, sb = ends[kb][0], ends[kb][1]
-                if ia == ib and sa == sb:
+        if len(_g) <= 8:
+            pr = _best_match(_g)
+        else:                                # ปมใหญ่ผิดปกติ -> ถอยไปไล่ทีละคู่ (กันเวลาบาน)
+            cand = sorted(((c, a, b) for a in _g for b in _g if a < b
+                           for c in [_cost(a, b)] if c is not None), key=lambda t: t[0])
+            pr = []; seen = set()
+            for c, a, b in cand:
+                if a in seen or b in seen:
                     continue
-                d = float(np.dot(_away(ia, sa), _away(ib, sb)))
-                cand.append((d, ka, kb))
-        cand.sort(key=lambda t: t[0])       # ยิ่งติดลบ = ยิ่งวิ่งทะลุตรงเข้าหากัน
-        for d, ka, kb in cand:
-            if d > -0.20:                   # หักศอกเกิน -> ปล่อยให้เป็นคนละเส้น
-                break
-            if ka in partner or kb in partner:
-                continue
+                seen.add(a); seen.add(b); pr.append((a, b))
+        for ka, kb in pr:
             partner[ka] = kb; partner[kb] = ka
 
     # ── ชั้น 3: เดินตามคู่ที่จับได้ ร้อยเป็นเส้นยาว ──
