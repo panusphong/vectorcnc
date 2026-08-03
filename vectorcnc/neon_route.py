@@ -685,6 +685,134 @@ def stitch_ends(lines, tol_mm, dot_max=-0.10):
 
 
 
+
+
+def open_tiny_loops(lines, tube_mm, clear_ratio=0.95):
+    """🔁 ห่วงที่เล็กกว่าท่อ -> 'เดินผ่านตรงไป' แทนการวนรอบ
+
+    ⚠️ นี่คือตำหนิที่เห็นด้วยตาแต่ตัววัดเดิมจับไม่ได้เลย:
+       ตาของตัว e · ตัว o · ห่วงของ ff ในฟอนต์ลายมือ มักเล็กกว่าท่อนีออน
+       แกนกลางจะวนเข้าไปในห่วงแล้วพับกลับออกมา ระยะห่างขาไป-ขากลับแค่ 1-2 มม.
+       ท่อกว้าง 8 มม. สองขานั้นจึงทับกันสนิท กลายเป็น 'ก้อนทึบ' มีรอยตะเข็บ
+       -> นี่คือติ่ง/ก้อนที่เห็นในตัว e, o และ ff ทุกตัว
+
+    ของจริงช่างทำยังไง: ท่อดัดวนห่วงเล็กกว่ารัศมีดัดขั้นต่ำไม่ได้อยู่แล้ว
+    ช่างจะ 'เดินท่อผ่านไปเลย' ไม่วนห่วง — ตาของตัวอักษรเกิดจากเส้นที่ไขว้กันเอง
+    ✅ จึงตรวจว่าเส้นวกกลับมาใกล้ตัวเองในระยะสั้นไหม ถ้าใช่และห่วงนั้นแคบกว่าท่อ
+       ให้ตัดช่วงที่วนออก แล้วต่อตรง — เกณฑ์คือ 'ท่อดัดเข้าไปได้จริงไหม' ใช้ได้ทุกฟอนต์
+    """
+    T = float(tube_mm)
+    near = T * float(clear_ratio)              # ขาไป-ขากลับใกล้กว่านี้ = ท่อทับกันสนิท
+    maxarc = T * math.pi * 6.0                 # เพดานกันไปแตะห่วงใหญ่ ๆ ของตัวอักษร
+    out = []
+    for l in lines:
+        a = np.asarray(l.coords, dtype=float)
+        if len(a) < 12:
+            out.append(l); continue
+        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
+        s = np.concatenate([[0.0], np.cumsum(d)])
+        try:
+            from scipy.spatial import cKDTree as _KD
+            tree = _KD(a)
+            pairs = sorted(tree.query_pairs(near))
+        except Exception:
+            out.append(l); continue
+        cand = []
+        for i, j in pairs:
+            if j <= i:
+                continue
+            arc = s[j] - s[i]
+            chord = float(np.linalg.norm(a[j] - a[i]))
+            # 🔑 'ห่วงจริง' ต้องวกกลับมาหาตัวเอง = ทางเดินยาวกว่าระยะตรงหลายเท่า
+            #    ถ้าไม่เช็คข้อนี้ ช่วงเส้นตรงธรรมดาจะถูกนับเป็นห่วงหมด (เจอจริง 9,928 จุดปลอม)
+            if arc < max(T * 1.2, chord * 2.5):
+                continue
+            # 📏 ท่อจะวนห่วงนี้ได้ ต้องมีวงกลมขนาดท่อ 'ใส่เข้าไปในห่วง' ได้จริง
+            #    ประเมินรัศมีในของห่วงด้วย 2 x พื้นที่ / เส้นรอบรูป (แม่นพอและเร็ว)
+            ring = a[i:j + 1]
+            if len(ring) < 4:
+                continue
+            per = float(np.sum(np.linalg.norm(np.diff(ring, axis=0), axis=1))) + \
+                  float(np.linalg.norm(ring[0] - ring[-1]))
+            x = ring[:, 0]; y = ring[:, 1]
+            area = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) * 0.5
+            inr = (2.0 * area / per) if per > 1e-9 else 0.0
+            if inr >= T * 0.5:                 # ท่อใส่เข้าไปในห่วงได้ -> ห่วงจริง เก็บไว้
+                continue
+            if arc > maxarc:                   # ห่วงยาวเกินกว่าจะเป็นตาตัวอักษร -> ไม่แตะ
+                continue
+            cand.append((i, j, arc))
+        if not cand:
+            out.append(l); continue
+        cand.sort(key=lambda t: (t[0], -t[2]))
+        keep = np.ones(len(a), dtype=bool)
+        last = -1
+        for i, j, arc in cand:
+            if i <= last:
+                continue
+            keep[i + 1:j] = False              # ตัดช่วงที่วนห่วงออก เหลือจุดต่อตรง
+            last = j
+        b = a[keep]
+        if len(b) < 4:
+            out.append(l); continue
+        out.append(LineString(b))
+    return out
+
+
+def cut_impossible_bends(lines, tube_mm, max_turn_deg=100.0, span_mm=3.0):
+    """✂️ ตัดเส้นตรงจุดที่ 'ท่อดัดไม่ได้จริง' — ต้นเหตุของติ่ง/ตะขอที่เห็นด้วยตา
+
+    ⚠️ นี่คือจุดที่หลุดสายตามาตลอด: ตัววัดเดิมดูแค่ 'ท่อขาดกลางลายเส้น'
+       แต่ตำหนิที่ตาเห็นจริงคือ 'เส้นหักกลับทางเดิม' (วัดได้ 176 องศาในระยะ 2 มม.)
+       ท่อยังคลุมเนื้อครบ ตัววัดจึงบอกว่าผ่าน ทั้งที่ตามองเห็นเป็นตะขอชัด ๆ
+
+    เกิดจาก: ตอนจับคู่แขนที่ปม เรายอมให้จับคู่ได้ทุกกรณีเพื่อไม่ให้เหลือปลายลอย
+             ถ้าบังเอิญจับคู่แขนสองเส้นที่พุ่งไปทางเดียวกัน เส้นจะพับกลับทันที
+    แก้: ท่อนีออนซิลิโคนดัดกลับ 180 องศาในระยะ 3 มม. ไม่ได้อยู่แล้วในความเป็นจริง
+         -> ตัดเส้นตรงนั้นเป็นสองท่อน เนื้อยังคลุมครบเท่าเดิม แต่ติ่งหายไป
+    """
+    out = []
+    lim = float(max_turn_deg)
+    for l in lines:
+        a = np.asarray(l.coords, dtype=float)
+        if len(a) < 5:
+            out.append(l); continue
+        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
+        s = np.concatenate([[0.0], np.cumsum(d)])
+        if s[-1] < span_mm * 3:
+            out.append(l); continue
+        cut = []
+        for i in range(1, len(a) - 1):
+            j0 = int(np.searchsorted(s, max(0.0, s[i] - span_mm)))
+            j1 = int(np.searchsorted(s, min(s[-1], s[i] + span_mm)))
+            if j0 >= i or j1 <= i:
+                continue
+            v1 = a[i] - a[j0]; v2 = a[j1] - a[i]
+            n1 = np.linalg.norm(v1); n2 = np.linalg.norm(v2)
+            if n1 < 1e-9 or n2 < 1e-9:
+                continue
+            c = float(np.dot(v1, v2) / (n1 * n2))
+            if np.degrees(np.arccos(max(-1.0, min(1.0, c)))) > lim:
+                cut.append(i)
+        if not cut:
+            out.append(l); continue
+        merged = []                       # รวมจุดตัดที่ติดกันให้เป็นจุดเดียว
+        for i in cut:
+            if merged and i - merged[-1][-1] <= 3:
+                merged[-1].append(i)
+            else:
+                merged.append([i])
+        idx = [int(np.mean(m)) for m in merged]
+        prev = 0
+        for i in idx:
+            if i - prev >= 3:
+                out.append(LineString(a[prev:i + 1]))
+            prev = i
+        if len(a) - prev >= 3:
+            out.append(LineString(a[prev:]))
+    return [l for l in out if l.length > 0.5]
+
+
 def _respline(line, keep_mm=0.35):
     """เกลาทั้งเส้นอีกรอบหลังต่อเสร็จ — ปลายล็อกอยู่กับที่ ไม่ขยับ
 
@@ -1018,6 +1146,18 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
         pass
     try:
         lines = [relax_tight_bends(l, r_min) for l in lines]
+    except Exception:
+        pass
+    #      4) ห่วงที่เล็กกว่าท่อ (ตาของตัว e/o/ff) -> เดินผ่านตรงไป ไม่วน
+    try:
+        lines = open_tiny_loops(lines, tube)
+        lines = [_respline(l, keep_mm=max(0.30, sw * 0.06)) for l in lines]
+    except Exception:
+        pass
+    #      5) 'ติ่ง/ตะขอ' — เส้นหักกลับทางเดิมจนท่อดัดไม่ได้จริง -> ตัดแยกเป็นสองท่อน
+    try:
+        lines = cut_impossible_bends(lines, tube)
+        lines = [l for l in lines if l.length >= max(6.0, tube * 1.2)]
     except Exception:
         pass
     total = sum(l.length for l in lines) / 1000.0
