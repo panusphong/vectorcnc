@@ -295,7 +295,8 @@ select.numin{cursor:pointer}
             <div id="tsRows" style="max-height:190px;overflow:auto"></div>
             <div id="tsWarn" style="display:none;font-size:10.5px;margin-top:5px;padding:5px 7px;border-radius:6px;background:#fffbeb;color:#92400e;border:1px solid #fde68a"></div>
           </div>
-          <canvas id="tsPrev" style="width:100%;margin-top:7px;border:1px dashed #0d9488;border-radius:7px;background:#fff"></canvas>
+          <canvas id="tsPrev" style="width:100%;margin-top:7px;border:1px dashed #0d9488;border-radius:7px;background:#fff;cursor:pointer"></canvas>
+          <div class="hint" style="margin:4px 0 0">🖐️ <b>ลากแต่ละบรรทัดบนภาพได้เลย</b> — คลิกเลือกบรรทัด แล้วลากเพื่อย้าย · ลาก<b>สี่เหลี่ยมมุมขวาล่าง</b>เพื่อย่อ/ขยาย · <b>ดับเบิลคลิก</b> = คืนตำแหน่งเดิม<br>📏 ตัวเลขสีเขียว = <b>ระยะห่างระหว่างบรรทัด</b> · สีเทา = ระยะจากขอบป้าย (เป็น ซม. ของงานจริง ย่อ/ขยายป้ายแล้วไม่เพี้ยน)</div>
           <button type="button" id="tsGo" class="btn" style="width:100%;margin-top:6px;background:#0f766e;color:#fff;border:none;font-weight:700;font-size:12px">✅ ใช้แบบนี้ → ไปเลือกประเภทป้าย</button>
           <div class="hint" style="margin-bottom:0">ระบบจะย่อ/ขยายให้พอดีป้ายอัตโนมัติ · กดแล้วเลือก "ประเภทป้าย" เช่น กล่องไฟ 2 หน้า แล้วกดสร้างไฟล์สั่งผลิตได้เลย</div>
         </div>
@@ -5568,7 +5569,120 @@ function _glowBody(){
         window._tsRows[i]=window._tsRows[i]||{}; window._tsRows[i].color=this.value; renderRows(); prev(); };
     });
   }
-  if($('tsRowReset'))$('tsRowReset').onclick=function(){ window._tsRows=[]; renderRows(); prev(); };
+  if($('tsRowReset'))$('tsRowReset').onclick=function(){ window._tsRows=[]; window._tsSel=null; renderRows(); prev(); };
+
+
+  /* ═══════════════════════════════════════════════════════════════════
+     📏 เส้นจับระยะระหว่างแถว + 🖐️ ลากย้าย/ย่อขยายแต่ละแถวได้อิสระ
+     ทุกตัวเลขเป็น 'ซม. ของงานจริง' ไม่ใช่พิกเซลบนจอ — ย่อ/ขยายป้ายแล้วระยะไม่เพี้ยน
+     ═══════════════════════════════════════════════════════════════════ */
+  window._tsRows=window._tsRows||[]; window._tsSel=(window._tsSel==null?null:window._tsSel);
+  function _tsDims(g,cv,Wmm,Hmm){
+    var B=window._tsBox||[]; if(!B.length) return;
+    var sc=cv.width/Wmm;                                   // มม. -> พิกเซลผ้าใบ
+    var fs=Math.max(11,Math.round(Wmm*sc*0.016));
+    g.save(); g.setLineDash([]); g.lineWidth=Math.max(1,sc*0.5);
+    g.font='600 '+fs+'px Prompt, sans-serif'; g.textBaseline='middle';
+    function vdim(x,ya,yb,txt,col){
+      if(Math.abs(yb-ya)<0.4) return;
+      g.strokeStyle=col; g.fillStyle=col;
+      g.beginPath(); g.moveTo(x*sc,ya*sc); g.lineTo(x*sc,yb*sc); g.stroke();
+      [ya,yb].forEach(function(yy){ g.beginPath(); g.moveTo((x-3)*sc,yy*sc); g.lineTo((x+3)*sc,yy*sc); g.stroke(); });
+      g.textAlign='left';
+      g.fillText(txt,(x+4.5)*sc,(ya+yb)/2*sc);
+    }
+    // ระยะห่างระหว่างแถวติดกัน (ช่องไฟจริงที่ช่างต้องเว้น)
+    var xg=0; B.forEach(function(b){ xg=Math.max(xg,b.x1); });
+    xg=Math.min(xg+6,Wmm-16);
+    for(var i=0;i+1<B.length;i++){
+      var gp=B[i+1].y0-B[i].y1;
+      // 🔴 ลากจนสองบรรทัดทับกัน = ผลิตไม่ได้ ต้องเห็นทันทีตั้งแต่ตอนออกแบบ
+      if(gp<0) vdim(xg,B[i+1].y0,B[i].y1,'⚠️ ซ้อนทับ '+(Math.abs(gp)/10).toFixed(1)+' ซม.','#dc2626');
+      else     vdim(xg,B[i].y1,B[i+1].y0,(gp/10).toFixed(1)+' ซม.','#0d9488');
+    }
+    // ระยะจากขอบบน/ล่างของป้าย
+    var xe=Math.max(4,Math.min(B[0].x0-9,Wmm*0.06));
+    vdim(xe,0,B[0].y0,(B[0].y0/10).toFixed(1)+' ซม.','#94a3b8');
+    vdim(xe,B[B.length-1].y1,Hmm,((Hmm-B[B.length-1].y1)/10).toFixed(1)+' ซม.','#94a3b8');
+    // กรอบแถว + มือจับย่อ/ขยาย (เห็นเฉพาะแถวที่กำลังเลือก)
+    var selK=(window._tsSel==null?-1:window._tsSel);
+    B.forEach(function(b,i){
+      var on=(i===selK);
+      g.strokeStyle=on?'#2563eb':'#cbd5e1'; g.setLineDash(on?[]:[4*sc,4*sc]);
+      g.lineWidth=Math.max(1,sc*(on?0.7:0.4));
+      g.strokeRect(b.x0*sc,b.y0*sc,(b.x1-b.x0)*sc,(b.y1-b.y0)*sc);
+      g.setLineDash([]);
+      if(on){
+        g.fillStyle='#2563eb';
+        var hs=Math.max(7,sc*3.2);
+        g.fillRect(b.x1*sc-hs/2,b.y1*sc-hs/2,hs,hs);       // มือจับมุมขวาล่าง = ย่อ/ขยาย
+        g.fillStyle='#1e3a8a'; g.textAlign='left';
+        g.fillText('กว้าง '+((b.x1-b.x0)/10).toFixed(1)+' ซม. · สูง '+((b.y1-b.y0)/10).toFixed(1)+' ซม.',
+                   b.x0*sc, Math.max(fs,b.y0*sc-fs*0.9));
+      }
+    });
+    g.restore();
+  }
+
+  /* 🖐️ ลากบนผืนผ้าใบ: ลากตัวแถว = ย้าย · ลากมือจับมุมขวาล่าง = ย่อ/ขยาย */
+  function _tsDragInit(){
+    var cv=$('tsPrev'); if(!cv||cv._tsDrag) return; cv._tsDrag=1;
+    cv.style.touchAction='none'; cv.style.cursor='pointer';
+    var st=null;
+    function toMM(e){
+      var r=cv.getBoundingClientRect();
+      // ⚠️ ต้องคิดแกน X และ Y แยกกัน — บางจอ/บางเลย์เอาต์ผ้าใบถูกบีบสัดส่วน
+      //    (วัดจริง: ผ้าใบ 650x1000 มม. แต่บนจอเป็น 267x201 px) ถ้าใช้สเกลเดียวจะจับไม่โดนเลย
+      var Wmm=(parseFloat(($('tsW')&&$('tsW').value)||65)||65)*10;
+      var Hmm=(parseFloat(($('tsH')&&$('tsH').value)||100)||100)*10;
+      var kx=Wmm/Math.max(1,r.width), ky=Hmm/Math.max(1,r.height);
+      return {x:(e.clientX-r.left)*kx, y:(e.clientY-r.top)*ky, kx:kx, ky:ky};
+    }
+    function hit(p){
+      var B=window._tsBox||[];
+      var tx=Math.max(6,p.kx*10), ty=Math.max(6,p.ky*10);   // ระยะจับ ≈ 10 พิกเซลบนจอ
+      for(var i=B.length-1;i>=0;i--){
+        var b=B[i];
+        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-b.y1)<ty) return {i:i,mode:'size'};
+        if(p.x>=b.x0-tx*0.5&&p.x<=b.x1+tx*0.5&&p.y>=b.y0-ty*0.5&&p.y<=b.y1+ty*0.5) return {i:i,mode:'move'};
+      }
+      return null;
+    }
+    cv.addEventListener('pointermove',function(e){
+      if(st) return;
+      var h=hit(toMM(e));
+      cv.style.cursor=h?(h.mode==='size'?'nwse-resize':'move'):'default';
+    });
+    cv.addEventListener('pointerdown',function(e){
+      var p=toMM(e), h=hit(p);
+      window._tsSel=h?h.i:null;
+      if(!h){ prev(); return; }
+      var r0=window._tsRows[h.i]||(window._tsRows[h.i]={});
+      st={i:h.i,mode:h.mode,px:p.x,py:p.y,dx:(+r0.dx||0),dy:(+r0.dy||0),
+          size:(+r0.size||sizeOf(h.i)),w0:Math.max(1,(window._tsBox[h.i].x1-window._tsBox[h.i].x0))};
+      try{ cv.setPointerCapture(e.pointerId); }catch(_e){}
+      e.preventDefault(); prev();
+    });
+    cv.addEventListener('pointermove',function(e){
+      if(!st) return;
+      var p=toMM(e), r0=window._tsRows[st.i]||(window._tsRows[st.i]={});
+      if(st.mode==='move'){
+        r0.dx=st.dx+(p.x-st.px); r0.dy=st.dy+(p.y-st.py);
+      }else{
+        var f=Math.max(0.25,Math.min(6,(st.w0+(p.x-st.px))/st.w0));
+        r0.size=Math.max(0.2,Math.round(st.size*f*10)/10);   // ✂️ ขนาดตามสเกลจริง ปัด 0.1
+        var el=document.querySelector('.tsRowSize[data-i="'+st.i+'"]'); if(el)el.value=r0.size;
+      }
+      prev(); e.preventDefault();
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+      cv.addEventListener(ev,function(){ if(st){ st=null; renderRows(); prev(); } });
+    });
+    cv.addEventListener('dblclick',function(e){        // 🔄 ดับเบิลคลิกที่แถว = คืนตำแหน่งเดิม
+      var h=hit(toMM(e)); if(!h)return;
+      var r0=window._tsRows[h.i]||(window._tsRows[h.i]={}); r0.dx=0; r0.dy=0; prev();
+    });
+  }
 
   /* วาดลงผืนผ้าใบ — คืนขนาดจริงเป็น มม. ให้ผู้เรียกใช้ต่อ */
   function draw(cv){
@@ -5606,6 +5720,7 @@ function _glowBody(){
     g.textBaseline='top';
     g.textAlign=(align==='left')?'left':(align==='right'?'right':'center');
     var ax=(align==='left')?Pmm*PX:(align==='right'?(Wmm-Pmm)*PX:cv.width/2);
+    window._tsBox=[];                      // 📦 กล่องของแต่ละแถวบนผืนผ้าใบ (ไว้ให้ลากจับ)
     /* 📐 บันทึก 'กล่องเนื้อหมึกจริง' ของแต่ละบรรทัด (หน่วย มม.)
        เพื่อให้หลังบ้านเอา 'เส้นโค้งในไฟล์ฟอนต์' มาวางทับตำแหน่งนี้ได้เป๊ะ
        -> ตัวอักษรที่เข้าสู่ไฟล์ตัดเป็นเวกเตอร์แท้ ไม่ใช่ภาพที่วาดลงผ้าใบแล้วเทรซกลับ
@@ -5615,22 +5730,27 @@ function _glowBody(){
     try{ if(typeof NEONFONTS!=='undefined'){ for(var q=0;q<NEONFONTS.length;q++){ if(NEONFONTS[q][0]===font){ _ffile=NEONFONTS[q][1]; break; } } } }catch(_e){}
     for(var k=0;k<L.length;k++){
       var ph=unit*wt[k];
+      // 🖐️ ระยะที่ผู้ใช้ลากแถวนี้ไป (เก็บเป็น มม. จึงคงที่แม้เปลี่ยนขนาดป้าย)
+      var _off=window._tsRows[k]||{}, _dx=(+_off.dx||0)*PX, _dy=(+_off.dy||0)*PX;
       g.fillStyle=colorOf(k);                    // 🎨 สีของแถวนี้ (ตั้งเองได้อิสระ)
       g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
       var m=g.measureText(L[k]);
       var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
       var yd=y+(ph-asc)*0.5;
-      g.fillText(L[k],ax,yd);
+      g.fillText(L[k],ax+_dx,yd+_dy);
       try{
         var lft=(m.actualBoundingBoxLeft!=null?m.actualBoundingBoxLeft:0);
         var rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
         var a2=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
         var d2=(m.actualBoundingBoxDescent!=null?m.actualBoundingBoxDescent:0);
+        var _b={x0:(ax+_dx-lft)/PX, x1:(ax+_dx+rgt)/PX, y0:(yd+_dy-a2)/PX, y1:(yd+_dy+d2)/PX};
         _spec.lines.push({text:L[k],font:font,file:_ffile,
-          x0:(ax-lft)/PX, x1:(ax+rgt)/PX, y0:(yd-a2)/PX, y1:(yd+d2)/PX});
+          x0:_b.x0, x1:_b.x1, y0:_b.y0, y1:_b.y1});
+        window._tsBox.push(_b);                  // 📦 หน่วย มม. — ใช้ทั้งลากจับและวาดเส้นวัดระยะ
       }catch(_e){}
       y+=ph+unit*gapK;
     }
+    _tsDims(g,cv,Wmm,Hmm);                       // 📏 เส้นจับระยะระหว่างแถว
     try{ window.TSPEC=(_ffile&&_spec.lines.length)?_spec:null; }catch(_e){}
     return {w:Wmm,h:Hmm};
   }
@@ -5639,7 +5759,7 @@ function _glowBody(){
     var cv=$('tsPrev'); if(!cv)return;
     var f=($('tsFont')&&$('tsFont').value)||'Prompt';
     try{ loadGFont(f); }catch(_e){}
-    var go=function(){ try{ draw(cv); }catch(_e){} };
+    var go=function(){ try{ draw(cv); _tsDragInit(); }catch(_e){} };
     if(document.fonts&&document.fonts.load){ document.fonts.load('700 60px "'+f+'"').then(go).catch(go); }
     else setTimeout(go,120);
   }
@@ -5679,7 +5799,16 @@ function _glowBody(){
     var el=$(id); if(!el)return;
     el.addEventListener(el.type==='checkbox'?'change':'input',schedule);
   });
-  if($('tsFont'))$('tsFont').addEventListener('change',prev);
+  if($('tsFont'))$('tsFont').addEventListener('change',function(){
+    prev();
+    // 🧹 เปลี่ยนฟอนต์ = แบบที่สร้างไว้เดิมใช้ไม่ได้แล้ว ต้องล้างทิ้งทันที
+    //    ไม่งั้นหน้าจอจะโชว์เส้นตัดของฟอนต์เก่าค้างอยู่ จนเข้าใจผิดว่าเปลี่ยนไม่ติด
+    try{ if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }catch(_e){}
+    try{ window.TSPEC=null; }catch(_e){}
+    var w=$('tsWarn');
+    if(w){ w.style.display='block';
+      w.innerHTML='🔤 เปลี่ยนฟอนต์แล้ว — กด <b>“✅ ใช้แบบนี้ → ไปเลือกประเภทป้าย”</b> อีกครั้ง แล้วสร้างไฟล์ตัดใหม่ ผลลัพธ์ถึงจะเป็นฟอนต์ใหม่'; }
+  });
   /* 📷 อ่านข้อความจากภาพ -> เติมลงช่องพิมพ์ ให้ผู้ใช้ตรวจแก้เองได้ทันที */
   function ocrMsg(t,ok){
     var m=$('tsOcrMsg'); if(!m)return;
@@ -5716,9 +5845,39 @@ function _glowBody(){
   };
   if($('tsGo'))$('tsGo').onclick=function(){
     var cv=$('tsPrev'); if(!cv){return;}
+    var btn=this, old=btn.textContent;
+    // ══════════════════════════════════════════════════════════════
+    // ⏳ ต้อง 'รอฟอนต์โหลดเสร็จ' ก่อนวาดลงผ้าใบเสมอ
+    //
+    // ⚠️ บั๊กที่เจอจริง: เปลี่ยนฟอนต์แล้วกดปุ่มนี้ทันที เบราว์เซอร์ยังโหลดฟอนต์ไม่เสร็จ
+    //    ผ้าใบจึงวาดด้วย 'ฟอนต์สำรอง' แล้วภาพนั้นถูกส่งเข้าไปทำเส้นตัด
+    //    ผลคือแบบที่ได้เป็นฟอนต์เดิม/ฟอนต์มั่ว ทั้งที่หน้าจอโชว์ฟอนต์ใหม่แล้ว
+    //    (ตัวพรีวิวรออยู่แล้ว แต่ปุ่มนี้ไม่ได้รอ — พลาดมาตั้งแต่ต้น)
+    // ✅ รอ document.fonts.load ให้เสร็จก่อน แล้วค่อยวาด + ส่งไฟล์
+    // ══════════════════════════════════════════════════════════════
+    var _fnt=($('tsFont')&&$('tsFont').value)||'Prompt';
+    btn.disabled=true; btn.textContent='⏳ กำลังโหลดฟอนต์...';
+    var _ready=Promise.resolve();
+    try{
+      loadGFont(_fnt);
+      if(document.fonts&&document.fonts.load){
+        _ready=Promise.all([document.fonts.load('700 80px "'+_fnt+'"'),
+                            document.fonts.load('400 80px "'+_fnt+'"')])
+               .then(function(){ return document.fonts.ready; })['catch'](function(){});
+      }
+    }catch(_e){}
+    _ready.then(function(){ _tsGoBuild(cv,btn,old,_fnt); });
+  };
+  function _tsGoBuild(cv,btn,old,_fnt){
     var r=null; try{ r=draw(cv); }catch(_e){ r=null; }
-    if(!r){ alert('พิมพ์ข้อความอย่างน้อย 1 บรรทัดก่อนค่ะ'); return; }
-    var btn=this, old=btn.textContent; btn.disabled=true; btn.textContent='⏳ กำลังสร้างแบบ...';
+    if(!r){ btn.disabled=false; btn.textContent=old; alert('พิมพ์ข้อความอย่างน้อย 1 บรรทัดก่อนค่ะ'); return; }
+    // 🔍 ตรวจซ้ำว่า 'ฟอนต์ที่เลือกถูกใช้จริง' — เทียบความกว้างกับฟอนต์สำรอง
+    try{
+      if(document.fonts&&document.fonts.check&&!document.fonts.check('700 80px "'+_fnt+'"')){
+        alert('⚠️ ฟอนต์ "'+_fnt+'" ยังโหลดไม่เสร็จ — แบบที่ได้อาจเป็นฟอนต์สำรอง\nรอสักครู่แล้วกดใหม่อีกครั้งค่ะ');
+      }
+    }catch(_e){}
+    btn.disabled=true; btn.textContent='⏳ กำลังสร้างแบบ...';
     cv.toBlob(function(bl){
       btn.disabled=false; btn.textContent=old;
       if(!bl){ alert('สร้างแบบไม่สำเร็จ ลองใหม่อีกครั้งค่ะ'); return; }
