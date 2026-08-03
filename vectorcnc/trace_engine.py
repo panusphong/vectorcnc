@@ -752,12 +752,52 @@ def trace_photo(image_path, n_colors=6, filter_speckle=8):
             polys.append(poly)
         if not polys:
             continue
-        geom = polys[0]
-        for q in polys[1:]:
-            geom = geom.symmetric_difference(q)
+        geom = _rings_nonzero(polys)
         if geom and not geom.is_empty:
             items.append((bgr, geom))
     return _cluster_colors(items, n_colors) if items else []
+
+
+
+def _rings_nonzero(polys):
+    """รวมวงเป็นรูปทรง โดยดู 'ชั้นความซ้อน' แทนการสลับเนื้อ/รูแบบ even-odd
+
+    ⚠️ ปัญหาที่เจอจริง: ตัวอักษรหนา ๆ ตัวติดกันจนวงขอบ 'ซ้อนทับ' กัน
+       ถ้ารวมด้วย symmetric_difference (even-odd) ช่วงที่ซ้อนกันจะหักล้างกันเอง
+       กลายเป็น 'รูโบ๋กลางตัวอักษร' ทั้งที่ควรเป็นเนื้อตัน
+    ✅ นับว่าวงนี้อยู่ในวงอื่นกี่ชั้น: ชั้นคู่ = เนื้อ (รวมกัน) · ชั้นคี่ = รู (หักออก)
+       วงที่แค่ซ้อนกันแต่ไม่ได้อยู่ในกันและกัน จะถูกรวมเป็นเนื้อเดียว ไม่หักล้างอีกต่อไป
+    """
+    ps = [p for p in polys if p is not None and not p.is_empty and p.area > 0]
+    if not ps:
+        return None
+    if len(ps) == 1:
+        return ps[0]
+    reps = []
+    for p in ps:
+        try:
+            reps.append(p.representative_point())
+        except Exception:
+            reps.append(p.centroid)
+    solid, holes = [], []
+    for i, p in enumerate(ps):
+        d = 0
+        for j, q in enumerate(ps):
+            if i == j:
+                continue
+            try:
+                if q.area > p.area and q.contains(reps[i]):
+                    d += 1
+            except Exception:
+                pass
+        (holes if (d % 2) else solid).append(p)
+    try:
+        g = unary_union(solid) if solid else None
+        if g is not None and holes:
+            g = g.difference(unary_union(holes))
+        return g
+    except Exception:
+        return unary_union(ps)
 
 
 def _cluster_colors(items, k):

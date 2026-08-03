@@ -78,10 +78,33 @@ def _rings_to_polys(rings):
             continue
     if not ps:
         return None
-    acc = None
+    # 🔁 ใช้ 'ชั้นความซ้อน' แทน even-odd — ตัวอักษรหนาที่ตัวติดกันจะได้ไม่เกิดรูโบ๋
+    if len(ps) == 1:
+        return ps[0]
+    reps = []
     for p in ps:
-        acc = p if acc is None else acc.symmetric_difference(p)
-    return acc
+        try:
+            reps.append(p.representative_point())
+        except Exception:
+            reps.append(p.centroid)
+    solid, holes = [], []
+    for i, p in enumerate(ps):
+        d = 0
+        for j, q in enumerate(ps):
+            if i != j and q.area > p.area:
+                try:
+                    if q.contains(reps[i]):
+                        d += 1
+                except Exception:
+                    pass
+        (holes if (d % 2) else solid).append(p)
+    try:
+        acc = unary_union(solid) if solid else None
+        if acc is not None and holes:
+            acc = acc.difference(unary_union(holes))
+        return acc
+    except Exception:
+        return unary_union(ps)
 
 
 def text_geom(ttf_path, text, width_mm=600.0, tracking=0.0, steps=28):
