@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-04-font",
+            "build": "2026-08-04-solid",
         "build_note": "เส้นเดี่ยว: เชื่อมที่จุดตัดแบบทะลุตรง + เย็บปลายให้บรรจบเป๊ะ (147 เคส: รอยต่อไม่บรรจบ 7267→236 · ท่อนแยก 5386→2665) · ขนาดที่กรอก = ขนาดแผ่นป้าย โลโก้จัดลงในแผ่นอัตโนมัติ · กล่องสเปคสีอยู่ใต้ภาพเสมอ",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -3418,7 +3418,11 @@ def _weight_panel_svg(svg, wsum, tube=None, chk=None, span_mm=0.0, fits=True, ex
         # 🧼 พื้นขาวต้องคลุมทั้งแถบใหม่ (ไม่งั้นกล่องสเปคสีจะลอยบนพื้นโปร่ง อ่านยาก)
         p[1] = ('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#ffffff"/>'
                 % (vx, vy + vh, vw, _add))
-        _new = 'viewBox="%s %s %s %.2f"' % (_m.group(1), _m.group(2), _m.group(3), vh + _add)
+        # 🏷️ บอกหน้าเว็บว่า 'ตัวป้ายจบตรงสัดส่วนไหน' — ส่วนที่เหลือคือแผงข้อมูล ห้ามย้อมสีเด็ดขาด
+        #    เดิมหน้าเว็บเดาเอาจากกรอบ #w3dBody ซึ่งบางประเภทป้ายไม่มี -> ถอยไปย้อมทั้งใบ
+        #    ผลคือพื้นขาวของแผงข้อมูลกลายเป็นสีหน้าอะคริลิค (เลือกสีดำ = แผงดำทั้งแผง อ่านไม่ออก)
+        _new = ('viewBox="%s %s %s %.2f" data-arth="%.5f"'
+                % (_m.group(1), _m.group(2), _m.group(3), vh + _add, vh / max(1e-6, vh + _add)))
         svg = svg.replace(_m.group(0), _new, 1)
         _hm = _re9.search(r'(<svg\b[^>]*?)\bheight="([\d.]+)(mm)?"', svg)
         if _hm:
