@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-02-joint",
+            "build": "2026-08-03-sheet",
         "build_note": "เส้นเดี่ยว: เชื่อมที่จุดตัดแบบทะลุตรง + เย็บปลายให้บรรจบเป๊ะ (147 เคส: รอยต่อไม่บรรจบ 7267→236 · ท่อนแยก 5386→2665) · ขนาดที่กรอก = ขนาดแผ่นป้าย โลโก้จัดลงในแผ่นอัตโนมัติ · กล่องสเปคสีอยู่ใต้ภาพเสมอ",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -6888,7 +6888,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
 def _spot_card_html(spots, esc):
     """🎨 การ์ด 'สีที่ใช้ผลิต' ในใบสั่งผลิต — ช่องสีตัวอย่างแบบแคตตาล็อก + เบอร์ Pantone + RGB/CMYK"""
     if not spots:
-        return ""
+        # ⚠️ ห้ามหายไปเงียบ ๆ — ใบสั่งผลิตที่ 'ไม่มีช่องสี' อ่านได้ว่า 'ไม่ต้องพ่นสี' ซึ่งคนละเรื่องกับ 'ยังไม่เลือก'
+        return ('<div class="card"><div class="ct"><span class="no">&#127912;</span>สีที่ใช้ผลิต (เทียบเบอร์ Pantone)</div>'
+                '<div class="cbody"><div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;'
+                'border-radius:6px;padding:7px 9px;font-weight:700">&#9888;&#65039; ยังไม่ระบุสีที่ใช้ผลิต — '
+                'ต้องระบุเบอร์ Pantone / TOA ก่อนเข้าผลิต</div></div></div>')
     rows = ""
     _seedwarn = ""
     try:
@@ -6923,6 +6927,49 @@ def _spot_card_html(spots, esc):
             '<div style="font-size:9px;color:#64748b;margin-top:4px">* สี Pantone เป็นหมึกผสมสำเร็จ ไม่มีค่า RGB ที่ถูกต้องเพียงค่าเดียว '
             'ค่าที่แสดงเป็นค่าอ้างอิงโดยประมาณ — <b>ก่อนผลิตจริงต้องยืนยันกับพัดสี Pantone/TOA ตัวจริงเสมอ</b></div>'
             '</div></div>' % (rows, _seedwarn))
+
+
+def _sticker_card_html(spots, sticker_brand, sticker_code, sticker_color, esc):
+    """🏷️ การ์ด 'สเปคสี / สติกเกอร์' — ต้องมี **ทุกใบ** ไม่ว่าจะเลือกหรือยังไม่เลือก
+
+    ทำไมต้องมีเสมอ: ใบสั่งผลิตคือเอกสารที่โรงงานใช้สั่งซื้อของ
+      ถ้าช่องนี้ 'หายไป' เพราะยังไม่ได้กรอก คนอ่านจะเข้าใจว่า 'งานนี้ไม่ใช้สติกเกอร์'
+      แล้วสั่งของขาด → ต้องขึ้นเป็นช่องว่างสีเหลืองให้เห็นชัดว่า 'ยังไม่ระบุ' แทน
+    """
+    _sp = [s for s in (spots or []) if s.get("kind") == "sticker" or s.get("sticker_label")]
+    rows = ""
+    if _sp:
+        for s in _sp:
+            _st = s.get("sticker") or {}
+            _de = float(_st.get("delta_e") or 0)
+            _nr = ('<div style="color:#b45309;font-size:9px">เทียบใกล้เคียงในแคตตาล็อก: %s (&#916;E %.1f)</div>'
+                   % (esc(s.get("sticker_near", "")), _de)) if (s.get("sticker_near") and _de > 5) else ""
+            rows += ('<tr><td style="width:32px"><div style="width:24px;height:24px;border-radius:4px;'
+                     'background:%s;border:1px solid #334155"></div></td>'
+                     '<td><b style="color:#0f766e">%s</b>%s'
+                     '<div style="color:#64748b;font-size:9px">%s</div></td>'
+                     '<td style="font-size:9px;color:#475569;text-align:right">%s<br>%s</td></tr>'
+                     % (s.get("hex", "#ffffff"),
+                        esc(s.get("sticker_label", "") or "— ไม่มีเบอร์ —"), _nr,
+                        esc(s.get("use", "")) or "หน้าอะคริลิค",
+                        esc(s.get("hex", "")), esc(s.get("name_th", ""))))
+    _typed = " ".join(x for x in (str(sticker_brand or "").strip(), str(sticker_code or "").strip()) if x)
+    if _typed:
+        rows += ('<tr><td><div style="width:24px;height:24px;border-radius:4px;background:%s;'
+                 'border:1px solid #334155"></div></td>'
+                 '<td><b>ที่กรอกในแบบ</b><div style="color:#64748b;font-size:9px">ยี่ห้อ / เบอร์ที่ระบุ</div></td>'
+                 '<td style="text-align:right;font-weight:700;color:#0f766e">%s</td></tr>'
+                 % (esc(sticker_color or "#ffffff"), esc(_typed)))
+    if not rows:
+        rows = ('<tr><td colspan="3" style="background:#fffbeb;color:#92400e;font-weight:700;padding:7px">'
+                '&#9888;&#65039; ยังไม่ระบุสติกเกอร์ — ต้องระบุ <b>ยี่ห้อ + เบอร์สี</b> ก่อนออกใบสั่งซื้อ'
+                '<div style="font-weight:400;font-size:9px;margin-top:2px">'
+                'ถ้างานนี้ไม่ใช้สติกเกอร์ ให้ขีดฆ่าช่องนี้แล้วเซ็นกำกับ</div></td></tr>')
+    return ('<div class="card"><div class="ct"><span class="no">&#127991;</span>สเปคสติกเกอร์โปร่งแสง</div>'
+            '<div class="cbody"><table>%s</table>'
+            '<div style="font-size:9px;color:#64748b;margin-top:4px">'
+            'สติกเกอร์โปร่งแสงปิดหน้าอะคริลิค — <b>สั่งซื้อด้วย &quot;ยี่ห้อ + เบอร์&quot; เท่านั้น</b> '
+            'ห้ามสั่งด้วยชื่อสี เพราะแต่ละยี่ห้อเรียกไม่เหมือนกัน</div></div></div>' % rows)
 
 
 def _weight_cards_html(weight, boq, esc):
@@ -6993,7 +7040,8 @@ def _weight_cards_html(weight, boq, esc):
     return wcard, bcard
 
 
-def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img="", views_svg="", weight=None, boq=None, spots=None):
+def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg, led, bom_rows, frame_info, cut_rows=None, cut_img="", views_svg="", weight=None, boq=None, spots=None,
+                    sticker_brand="", sticker_code="", sticker_color=""):
     """ประกอบ 'ใบสั่งผลิต / แบบยืนยันลูกค้า' เป็น HTML พร้อมพิมพ์ (Thai ผ่าน Google Fonts)"""
     def esc(t):
         return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -7079,6 +7127,7 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
         pass
     weight_card, boq_card = _weight_cards_html(weight or {}, boq or [], esc)
     spot_card = _spot_card_html(spots or [], esc)
+    sticker_card = _sticker_card_html(spots or [], sticker_brand, sticker_code, sticker_color, esc)
     html = _JOB_SHEET_CSS
     html = html.replace("__TITLE__", esc(type_name))
     for k, v in {"__JOBNO__": meta.get("job_no", "JOB-XXXX"), "__DATE__": meta.get("date", ""),
@@ -7090,7 +7139,8 @@ def _job_sheet_html(meta, type_name, type_name_en, Wcm, Hcm, persp_svg, back_svg
                  "__PERSP__": persp_svg, "__VIEWS__": views_card, "__LEDCOLOR__": ledcol_card,
                  "__FRAME__": frame_card, "__LED__": led_card, "__CUTIMG__": cutimg_card,
                  "__PRINT__": print_card, "__NEST__": nest_card, "__CUT__": cut_card, "__BOM__": bom,
-                 "__WEIGHT__": weight_card, "__BOQ__": boq_card, "__SPOT__": spot_card}.items():
+                 "__WEIGHT__": weight_card, "__BOQ__": boq_card, "__SPOT__": spot_card,
+                 "__STICKER__": sticker_card}.items():
         html = html.replace(k, str(v))
     return html
 
@@ -7113,13 +7163,31 @@ body{font-family:Prompt,sans-serif;background:#e7ebf2;color:#1e293b;padding:16px
 .ct{display:flex;align-items:center;gap:6px;padding:5px 9px;font-weight:700;font-size:11.5px;border-bottom:1px solid #eef2f7}
 .ct .no{width:22px;height:22px;border-radius:6px;background:#1e3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none}
 .cbody{padding:6px 8px}.imgwrap{background:#f1f5f9;border-radius:8px;padding:6px;text-align:center}.imgwrap svg{max-width:100%;height:auto;max-height:150px}.imgwrap.dark{background:#0f1522}
-/* 🖼️ ภาพ 3 มิติ = พระเอกของใบสั่งผลิต — กินพื้นที่ ~50% ของแผ่น A3 */
-.big3d .imgwrap svg{max-height:600px}
-.big3d .imgwrap{padding:10px}
-/* 🖼️ แถวบน: แบบ 3 มิติ (กว้าง 2 ส่วน) + ภาพหน้างาน + ภาพอ้างอิง อยู่คู่กัน */
-.toprow{display:grid;grid-template-columns:2.85fr 1fr;gap:10px;align-items:start;margin-bottom:9px}
-.toprow .rcol{display:grid;grid-template-rows:1fr 1fr;gap:12px}
-.toprow .site{min-height:118px}
+/* 🖼️ แถวบน — 'ล็อกความสูงตายตัว' คือหัวใจของการจบหน้าเดียวแบบไม่มีที่ว่าง
+   ⚠️ เดิมปล่อยให้ความสูงไหลตามภาพ 3 มิติ (max-height 600px) ส่วนคอลัมน์ขวามีแค่ 2 ใบ
+      ผลคือฝั่งขวาเตี้ยกว่าฝั่งซ้ายเกือบ 300px = ที่ว่างขาวโพลนกลางใบสั่งผลิต
+   ✅ ล็อกแถวบนไว้ที่ 470px แล้วให้ 'ทุกใบยืดเต็มช่องของตัวเอง' ภาพ 3 มิติก็ขยายเต็มกรอบ
+      -> ไม่มีที่ว่างเหลือ และเหลือพื้นที่ให้ตารางด้านล่างมากขึ้น */
+.toprow{display:grid;grid-template-columns:2.35fr 1fr 1fr;gap:8px;height:665px;margin-bottom:8px}
+.toprow>.card{min-height:0;display:flex;flex-direction:column}
+.toprow>.card>.cbody{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
+.big3d .imgwrap{padding:6px;flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.big3d .imgwrap svg{max-height:100%;max-width:100%;width:100%;height:100%}
+.toprow .rcol{display:grid;grid-template-rows:1fr 1fr;gap:8px;min-height:0}
+.toprow .rcol>.card{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.toprow .rcol>.card>.cbody{flex:1;min-height:0;display:flex;flex-direction:column}
+.toprow .site{flex:1;min-height:0}
+.toprow .rcol img{flex:1;min-height:0;object-fit:contain}
+/* 📋 คอลัมน์สเปคสี+สติกเกอร์ในแถวบน — เลื่อนดูไม่ได้บนกระดาษ จึงต้องบีบตัวอักษรให้พอดีแทน */
+.speccol{display:grid;grid-template-rows:auto auto 1fr;gap:8px;min-height:0}
+.speccol>.card{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.speccol>.card>.cbody{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center}
+.speccol .imgwrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.speccol .imgwrap svg{max-height:100%;max-width:100%}
+.speccol table{font-size:9.4px}.speccol td{padding:2px 4px}
+/* 🖼️ กล่องแนบภาพต้องยืดเต็มช่อง ไม่งั้นเหลือขาวใต้กรอบประ */
+.toprow .rcol>.card>.cbody>label{flex:1;min-height:0;display:flex}
+.toprow .rcol .site{flex:1;width:100%;min-height:0}
 /* 📐 แถวกลาง: 4 มุมมอง (กว้าง 3 ส่วน) + ตัวอย่างสีไฟ (1 ส่วน) */
 .midrow{display:grid;grid-template-columns:3fr 1fr;gap:10px;align-items:start;margin-bottom:9px}
 .midrow .imgwrap svg{max-height:150px}
@@ -7155,9 +7223,12 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
         1) transform:scale อย่างเดียว -> ย่อแค่ภาพที่เห็น กล่องยังสูงเท่าเดิม เลยล้นไปหน้า 2
         2) zoom -> ย่อกล่องจริงก็จริง แต่ 'ข้อความไหลใหม่' ความสูงเปลี่ยนหลังย่อ วัดครั้งเดียวไม่นิ่ง
      ✅ ใช้ transform (ไม่ไหลใหม่ = วัดครั้งเดียวจบ) + ล็อกความสูง body เป็น --fith ที่ JS คำนวณให้ */
-  html,body{height:var(--fith,auto)}
+  html,body{height:var(--fith,auto);width:var(--fitw,auto);overflow:hidden}
+  /* ⚠️ .sheet มี max-width:100% อยู่ — พอบีบความกว้าง body มันจะโดนหนีบก่อนแล้วค่อยถูกย่อซ้ำอีกชั้น
+     (ผลจริง: ย่อกำลังสอง 0.80 x 0.80 = 0.64 -> เนื้อหาเหลือ 3 ใน 4 ของแผ่น ขอบขาวเพียบ)
+     ต้องปลดเพดานความกว้างตอนพิมพ์ ให้ transform เป็นตัวย่อเพียงตัวเดียว */
   .sheet{box-shadow:none;border-radius:0;
-    width:1900px;transform:scale(var(--fit,1));transform-origin:top left}
+    width:1900px;max-width:none;transform:scale(var(--fit,1));transform-origin:top left}
   .expbar{display:none}
   .card,.big3d{break-inside:avoid;page-break-inside:avoid}
   .masonry{gap:9px}
@@ -7183,6 +7254,7 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
     <!-- 🖼️ แถวบน: แบบงานออกแบบ (3 มิติ) + ภาพหน้างานจริง + ภาพอ้างอิง — วางคู่กันให้เทียบได้ทันที -->
     <div class="toprow">
       <div class="card big3d"><div class="ct"><span class="no">1</span>ภาพ 3 มิติ (Perspective View) · พร้อมโครง + จับระยะ · วัสดุหลัก __MATERIAL__</div><div class="cbody"><div class="imgwrap">__PERSP__</div></div></div>
+      <div class="speccol">__SPOT____STICKER____VIEWS__</div>
       <div class="rcol">
       <div class="card"><div class="ct"><span class="no">2</span>ภาพหน้างานจริง / จุดติดตั้ง</div><div class="cbody">
         <label for="siteFile"><div class="site" id="siteBox"><div style="font-size:26px">📷</div><div>คลิกแนบภาพหน้างาน</div><div style="font-size:10px">ถ่ายจุดติดตั้งจริง</div></div></label>
@@ -7198,8 +7270,6 @@ table{width:100%;border-collapse:collapse;font-size:10.2px}td,th{padding:2.5px 5
     </div>
     <!-- 📐 แถวกลาง: 4 มุมมองมาตรฐาน + ตัวอย่างสีไฟ -->
     <div class="masonry">
-      __SPOT__
-      __VIEWS__
       __WEIGHT__
       __BOQ__
       __LEDCOLOR__
@@ -7239,8 +7309,13 @@ function _fitOnePage(){
     var PW=408.0/25.4*96.0, PH=285.0/25.4*96.0;
     var w=sh.scrollWidth||sh.offsetWidth||1;
     var h=sh.scrollHeight||sh.offsetHeight||1;
-    var fit=Math.min(1.0, PW/w, PH/h);
+    // 🔑 ห้ามจำกัดไว้ที่ 1.0 — ถ้าเนื้อหาเตี้ยกว่าหน้ากระดาษ ต้อง 'ขยายขึ้น' ให้เต็มแผ่นด้วย
+    //    ของเดิมมี Math.min(1.0, ...) ทำให้ใบที่การ์ดน้อยพิมพ์ออกมาเป็นเกาะเล็ก ๆ มุมซ้ายบน
+    //    เหลือขอบขาวรอบด้านครึ่งแผ่น (นี่คืออาการใน PDF ที่พี่ส่งมา)
+    // 🛡️ คูณ 0.995 กันปัดเศษ — เกินแม้ 1 พิกเซลก็เด้งไปหน้า 2 ทันที
+    var fit=Math.min(PW/w, PH/h)*0.995;
     document.documentElement.style.setProperty('--fit', String(fit));
+    document.documentElement.style.setProperty('--fitw', (w*fit)+'px');
     document.documentElement.style.setProperty('--fith', (h*fit)+'px');   // ล็อกความสูงหน้า = ความสูงจริงหลังย่อ
     return fit;
   }catch(e){ return 1; }
@@ -7251,7 +7326,7 @@ function _fitForCapture(on){
   if(!on){ sh.style.transform=''; sh.style.transformOrigin=''; sh.style.width=''; return 1; }
   var W=sh.scrollWidth||1900.0, targetH=W*(285.0/408.0);   // ตอนแคปภาพใช้สัดส่วน A3 พอ (ไม่ผูกกับ dpi เครื่องพิมพ์)
   var h=sh.scrollHeight||sh.offsetHeight||1;
-  var f=Math.min(1.0, targetH/h);
+  var f=Math.min(1.0, targetH/h);   // แคปภาพย่อได้อย่างเดียว (ขยายแล้วภาพแตก) — ส่วนที่ขาดเติมพื้นขาวให้ได้สัดส่วน A3
   if(f<0.999){ sh.style.width=W+'px'; sh.style.transformOrigin='top left'; sh.style.transform='scale('+f+')'; }
   return f;
 }
@@ -7742,7 +7817,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                                               sticker_brand=sticker_brand)
         except Exception:
             spot_rows = []
-        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows, spots=spot_rows)
+        html = _job_sheet_html(meta, rec["name"], _en_type(rec["name"]), Wcm, Hcm, persp, back_svg, led, bom, frame_info, cut_rows, cut_img=cut_img, views_svg=views_svg, weight=weight_info, boq=boq_rows, spots=spot_rows,
+                               sticker_brand=sticker_brand, sticker_code=sticker_code, sticker_color=sticker_color)
         return {"html": html, "w_cm": Wcm, "h_cm": Hcm,
                 "led": (led and {k: led[k] for k in ("total_m", "watts", "amps", "transformer_w")}) or {}}
     except Exception as e:
