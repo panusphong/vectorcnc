@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-03-joint100",
+            "build": "2026-08-03-joint2",
         "build_note": "เส้นเดี่ยว: เชื่อมที่จุดตัดแบบทะลุตรง + เย็บปลายให้บรรจบเป๊ะ (147 เคส: รอยต่อไม่บรรจบ 7267→236 · ท่อนแยก 5386→2665) · ขนาดที่กรอก = ขนาดแผ่นป้าย โลโก้จัดลงในแผ่นอัตโนมัติ · กล่องสเปคสีอยู่ใต้ภาพเสมอ",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
