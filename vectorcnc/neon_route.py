@@ -1096,7 +1096,7 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
 
 
 # ─────────────────────────── 5. ตัวหลัก ───────────────────────────
-def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.5,
+def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=0.5,
                snap=True):
     """คืน dict: paths (LineString มม.), tube_mm, length_m, watt, plate (Polygon)"""
     mask, ppm, org = geom_to_mask(geom, px_per_mm)
@@ -1105,6 +1105,12 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
     sk = skeleton(mask)
     chains, nodes = trace_chains(sk)
     items = prune_and_join(chains, nodes, ppm, spur_mm=max(sw, 2.0) * spur_ratio)
+    # ⚠️ บทเรียนสำคัญที่สุดของงานนี้: 'ตัวคุมรัศมีดัด' เคยตั้งไว้ 1.5 เท่าของท่อ (12 มม.)
+    #    แต่ตาของตัวอักษรลายมือมีรัศมีแค่ 4-7 มม. ตัวคุมจึงดัดเส้นออกจากตัวอักษรทุกตัว
+    #    วัดจริง: เนื้อที่ไฟไปไม่ถึง 594 ตร.มม. -> เหลือ 48 ตร.มม. เมื่อเลิกดัด (ลด 92%)
+    #    และการดัดเส้นออกจากตัวอักษร 'ไม่ได้ทำให้ท่อดัดได้จริง' — ได้แบบที่ทั้งผิดรูปและทำไม่ได้อยู่ดี
+    # ✅ เปลี่ยนหลักคิด: **เดินเส้นตามตัวอักษรให้ตรงที่สุด แล้ว 'รายงาน' จุดที่ดัดยาก**
+    #    ให้คนตัดสินใจ (ขยายป้าย / เปลี่ยนท่อ) ดีกว่าให้เครื่องแอบดัดแบบจนเพี้ยน
     r_min = tube * bend_ratio
     # 🎯 ตัวอ้างอิง 'ขอบเวกเตอร์' — เตรียมครั้งเดียว ใช้ดึงทุกเส้นเข้ากลาง
     _tree = _opts = None
@@ -1263,6 +1269,18 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
             w2 = stroke_width_mm(m2, ppm2)
             report.append({"idx": i + 1, "min_mm": round(w2, 1), "med_mm": round(w2, 1),
                            "ok": bool(w2 >= need), "mode": "center"})
+        # 🔧 รายงาน 'จุดที่ท่อต้องดัดแคบ' — ไม่แอบดัดแบบให้ แต่บอกให้รู้
+        try:
+            _rmin = float(r.get("r_min_mm") or 0.0)
+            if 0 < _rmin < _tube_use * 1.5:
+                _grow = (_tube_use * 1.5) / max(_rmin, 1e-6)
+                report.append({"idx": 0, "min_mm": 0.0, "med_mm": 0.0, "ok": True, "mode": "bend",
+                               "note": ("🔧 มีจุดที่ท่อต้องดัดโค้งแคบสุด %.0f มม. (ท่อ %.0f มม. ควรดัดไม่ต่ำกว่า %.0f มม.) — "
+                                        "จุดพวกนี้คือตา/ห่วงเล็กของตัวอักษร ช่างต้องดัดฝืนเล็กน้อย "
+                                        "ถ้าอยากให้ดัดสบาย ขยายป้ายขึ้นอีก %.0f%% หรือเปลี่ยนไปใช้ท่อเล็กลง"
+                                        % (_rmin, _tube_use, _tube_use * 1.5, (_grow - 1) * 100))})
+        except Exception:
+            pass
         if _note:
             # 🔔 แจ้งผู้ใช้ผ่านช่องเดียวกับรายงาน — app.py จะเอาไปขึ้นเป็นคำเตือน
             report.append({"idx": 0, "min_mm": 0.0, "med_mm": 0.0, "ok": True,
