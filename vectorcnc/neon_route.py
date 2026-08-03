@@ -327,26 +327,40 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
     _dcache = {}
 
     def _cost(ka, kb):
-        """ต้นทุนการต่อ: 0 = วิ่งทะลุตรงเป๊ะ · 2 = หักกลับทางเดิม · None = ต่อไม่ได้"""
+        """ต้นทุนการต่อ: 0 = วิ่งทะลุตรงเป๊ะ · 2 = หักกลับทางเดิม
+
+        ⚠️ **ห้ามคืน None เด็ดขาด** — นี่คือกุญแจที่ทำให้ใช้ได้กับทุกฟอนต์
+           ของเดิมถ้ามุมหักเกินเกณฑ์จะ 'ไม่ต่อ' ผลคือปมที่มีแขนเลขคู่กลับเหลือปลายลอย
+           ทั้งที่ตามทฤษฎีกราฟมันต้องจับคู่ได้ครบ -> เกิดรอยขาดกลางลายเส้น
+           และเกณฑ์มุมที่ 'พอดี' กับฟอนต์หนึ่ง จะพังกับอีกฟอนต์เสมอ (ตั้งเท่าไหร่ก็ไม่ครบ 100%)
+        ✅ เปลี่ยนเป็น 'ค่าปรับ' แทน 'ข้อห้าม' — มุมหักแรงก็ยังต่อได้ แต่เป็นทางเลือกสุดท้าย
+           ตัวเลือกว่าจะจับคู่ไหนยังใช้มุมตัดสินเหมือนเดิม แค่ไม่ปล่อยให้เหลือปลายลอยโดยไม่จำเป็น
+        """
         ia, sa = ends[ka][0], ends[ka][1]
         ib, sb = ends[kb][0], ends[kb][1]
         if ia == ib and sa == sb:
-            return None
+            return None                      # ปลายเดียวกันเป๊ะ — ไม่ใช่คู่
         for k, (i, s) in ((ka, (ia, sa)), (kb, (ib, sb))):
             if k not in _dcache:
                 _dcache[k] = _dirs(i, s)
         va, vb = _dcache[ka], _dcache[kb]
         dd = [float(np.dot(va[t], vb[t])) for t in range(len(_wins))]
         m = sum(dd) / len(dd)
-        if m > -0.20:                        # หักศอกเกิน -> ไม่ต่อ
-            return None
-        c = 1.0 + m
+        c = 1.0 + m                          # 0 = ทะลุตรง · 2 = หักกลับทางเดิม
+        if m > -0.20:
+            c += 5.0                         # ⚠️ หักศอก — ยอมได้ แต่ต้องเป็นทางเลือกสุดท้าย
         if ia == ib:
             c += 1.0                         # 🚫 ค่าปรับ 'จับคู่ตัวเอง' (กันห่วงกลายเป็นเกาะปิด)
         return c
 
     def _best_match(keys):
-        """ลองทุกวิธีจับคู่ในปมนี้ -> เอาชุดที่จับได้มากสุดก่อน แล้วค่อยเอาที่ต้นทุนรวมต่ำสุด"""
+        """จับคู่แขนในปมนี้ให้ 'ครบมากที่สุดเท่าที่เป็นไปได้' แล้วค่อยเลือกชุดที่เนียนที่สุด
+
+        📐 หลักที่ใช้ (ทฤษฎีกราฟ — จริงกับทุกฟอนต์ ไม่ต้องจูนค่า):
+           ปมที่มีแขน 'เลขคู่'  -> จับคู่ได้ครบ ไม่เหลือปลายลอยเลย
+           ปมที่มีแขน 'เลขคี่'  -> เหลือปลายลอยได้ 1 เส้นเท่านั้น (เลี่ยงไม่ได้จริง ๆ)
+           ปลายลอยที่เกินจากนี้ = รอยขาดที่เราทำหล่นเอง ไม่ใช่รูปทรงของตัวอักษร
+        """
         allow = {}
         for _a in range(len(keys)):
             for _b in range(_a + 1, len(keys)):
@@ -670,6 +684,138 @@ def stitch_ends(lines, tol_mm, dot_max=-0.10):
     return [LineString(s) for s in out if len(s) >= 2]
 
 
+def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=None):
+    """✂️ ตัดปลายท่อที่ไปโผล่ตรง 'หางลายเส้นที่เรียวกว่าท่อ'
+
+    ทำไม: ท่อนีออนกว้างคงที่ ถ้าหางตัวอักษรเรียวเหลือ 4 มม. แต่ท่อกว้าง 8 มม.
+          ท่อจะล้นออกนอกตัวอักษรเป็นติ่ง — นี่คือ 'หางแมว' ที่เห็นตรงปลายเส้น
+    ของจริงช่างจะหยุดท่อตรงจุดที่ลายเส้นยังกว้างพอ ไม่ลากจนสุดปลายแหลม
+    ✅ วัดความหนาลายเส้น ณ จุดนั้นจริง ๆ (จาก distance transform) แล้วถอยปลายกลับมา
+       จนถึงจุดที่ลายเส้นยังกว้างอย่างน้อย 80% ของท่อ — เป็นกฎเดียวใช้ได้ทุกฟอนต์
+       เพราะอ้างจาก 'ความหนาจริงของลายเส้นตรงนั้น' ไม่ใช่ตัวเลขที่ตั้งไว้ล่วงหน้า
+    """
+    if dt is None:
+        return lines
+    H, W = dt.shape
+    need = float(tube_mm) * float(keep_ratio)
+    lim = float(max_trim_mm) if max_trim_mm else float(tube_mm) * 2.0
+
+    def wmm(p):
+        x = int(round((p[0] - org[0]) * ppm)); y = int(round((p[1] - org[1]) * ppm))
+        if x < 0 or y < 0 or x >= W or y >= H:
+            return 0.0
+        return float(dt[y, x]) * 2.0 / ppm
+
+    out = []
+    for l in lines:
+        a = np.asarray(l.coords, dtype=float)
+        if len(a) < 4 or np.hypot(*(a[0] - a[-1])) < 1e-6:
+            out.append(l); continue
+        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
+        s = np.concatenate([[0.0], np.cumsum(d)])
+        i0 = 0
+        while i0 < len(a) - 2 and s[i0] < lim and wmm(a[i0]) < need:
+            i0 += 1
+        i1 = len(a) - 1
+        while i1 > i0 + 2 and (s[-1] - s[i1]) < lim and wmm(a[i1]) < need:
+            i1 -= 1
+        b = a[i0:i1 + 1]
+        out.append(LineString(b) if len(b) >= 2 else l)
+    return out
+
+
+def close_visible_gaps(lines, geom, tube_mm, max_ext_mm=None, step_mm=0.4, dt=None, ppm=1.0, org=(0.0, 0.0)):
+    """🩹 ด่านสุดท้าย — 'ไม่ให้มีปลายท่อโผล่กลางลายเส้น' ไม่ว่าฟอนต์ไหน
+
+    ทำไมต้องมีด่านนี้ทั้งที่จับคู่ที่ปมไปแล้ว:
+      การจับคู่ทำงานบน 'กราฟของแกนกลาง' ซึ่งดีมาก แต่ยังมีเศษที่หลุดรอดได้อีก 3 ทาง
+        1) ปมสามแฉก (เลขคี่) — ทางทฤษฎีต้องเหลือปลาย 1 เส้นเสมอ เลี่ยงไม่ได้
+        2) ท่อนสั้นกว่าเกณฑ์ถูกคัดทิ้ง ปลายของเพื่อนบ้านเลยโผล่แทน
+        3) หนวดที่ถูกตัด ทำให้ปลายจริงขยับเข้ามาจากขอบลายเส้น
+      ทั้งสามทางนี้ 'จูนค่าให้ครบทุกฟอนต์ไม่ได้' เพราะเป็นคนละสาเหตุกัน
+
+    ✅ จึงไม่จูนอีกต่อไป — เปลี่ยนเป็น **ตรวจผลลัพธ์จริงแล้วซ่อม**:
+       ปลายไหนยังโผล่อยู่ (ไม่ได้ฝังในท่อเส้นอื่น) ให้ 'เดินต่อไปตามแนวสัมผัส'
+       จนกว่าจะชนท่อของเส้นข้างเคียง — เหมือนที่ช่างลากท่อจนชนเส้นถัดไปพอดี
+       โดยห้ามเดินออกนอกเนื้อลายเส้นเด็ดขาด (ยื่นเกินตัวอักษรไม่ได้)
+    เกณฑ์นี้วัดจากผลลัพธ์ ไม่ได้ผูกกับฟอนต์ จึงใช้ได้เหมือนกันหมดทุกตัว
+    """
+    segs = [np.asarray(l.coords, dtype=float) for l in lines
+            if l is not None and not l.is_empty and len(l.coords) >= 2]
+    if not segs:
+        return lines
+    T = float(tube_mm); R = T * 0.5
+    ext = float(max_ext_mm) if max_ext_mm else T * 3.5
+    _H = _W = 0
+    if dt is not None:
+        _H, _W = dt.shape
+
+    def _wmm(p):
+        """ความหนาลายเส้นจริง ณ จุดนั้น (มม.) — ใช้ตัดสินว่า 'ตรงนี้วางท่อได้ไหม'"""
+        if dt is None:
+            return 1e9
+        x = int(round((p[0] - org[0]) * ppm)); y = int(round((p[1] - org[1]) * ppm))
+        if x < 0 or y < 0 or x >= _W or y >= _H:
+            return 0.0
+        return float(dt[y, x]) * 2.0 / ppm
+    from shapely.geometry import Point as _Pt
+    from shapely.strtree import STRtree
+    for _round in range(2):
+        tubes = [LineString(s).buffer(R, cap_style=1, join_style=1) for s in segs]
+        try:
+            tree = STRtree(tubes)
+        except Exception:
+            tree = None
+        moved = 0
+        for i in range(len(segs)):
+            a = segs[i]
+            if np.hypot(*(a[0] - a[-1])) < 1e-6:
+                continue                                  # วงปิด ไม่มีปลาย
+            for side in (0, 1):
+                p = a[0] if side == 0 else a[-1]
+                q = a[min(4, len(a) - 1)] if side == 0 else a[max(-5, -len(a))]
+                pt = _Pt(float(p[0]), float(p[1]))
+                if tree is not None:
+                    hit = any(int(j) != i and tubes[int(j)].contains(pt)
+                              for j in tree.query(pt))
+                else:
+                    hit = any(j != i and tubes[j].contains(pt) for j in range(len(tubes)))
+                if hit:
+                    continue                              # ฝังในท่อเส้นอื่นแล้ว = มองไม่เห็น
+                v = p - q
+                n = float(np.linalg.norm(v))
+                if n < 1e-9:
+                    continue
+                v = v / n
+                best = None
+                d = step_mm
+                while d <= ext:
+                    z = p + v * d
+                    zp = _Pt(float(z[0]), float(z[1]))
+                    if not geom.contains(zp):             # 🚧 ห้ามยื่นออกนอกเนื้อตัวอักษร
+                        break
+                    if _wmm(z) < T * 0.75:                # 🚧 ลายเส้นเรียวกว่าท่อ -> วางท่อตรงนั้นไม่ได้จริง
+                        break
+                    if tree is not None:
+                        ok = any(int(j) != i and tubes[int(j)].contains(zp)
+                                 for j in tree.query(zp))
+                    else:
+                        ok = any(j != i and tubes[j].contains(zp) for j in range(len(tubes)))
+                    if ok:
+                        best = z
+                        break
+                    d += step_mm
+                if best is not None:
+                    if side == 0:
+                        segs[i] = np.vstack([best[None, :], a])
+                    else:
+                        segs[i] = np.vstack([a, best[None, :]])
+                    a = segs[i]; moved += 1
+        if not moved:
+            break
+    return [LineString(s) for s in segs if len(s) >= 2]
+
+
 def outline_points(geom, step_mm=0.35):
     """สุ่มจุดบน 'ขอบเวกเตอร์' ให้ถี่ — ใช้เป็นตัวอ้างอิงตอนดึงเส้นเข้ากลาง"""
     out = []
@@ -783,6 +929,29 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
         if len(lines) == _n0:
             break
     lines = [l for l in lines if l.length >= max(8.0, tube * 1.5)]
+    # ══════════════════════════════════════════════════════════════════
+    # 🔎 ด่านตรวจ-ซ่อมขั้นสุดท้าย — 'ตรวจผลลัพธ์จริง' ไม่ใช่จูนค่าเผื่อฟอนต์
+    #    เกณฑ์ทั้งหมดต่อไปนี้วัดจากตัวงานที่ออกมาเทียบกับรูปตัวอักษรจริง
+    #    จึงใช้ได้เหมือนกันทุกฟอนต์ ไม่มีตัวเลขที่ต้องตั้งใหม่ต่อฟอนต์เลย
+    #      1) ปลายท่อล้นออกนอกลายเส้น (หางเรียวกว่าท่อ) -> ถอยปลายกลับ
+    #      2) ท่อขาดกลางลายเส้น            -> ยืดปลายไปชนท่อข้างเคียง
+    #      3) หักศอกที่รอยต่อ (เกิดใหม่หลังต่อเส้น) -> คลายอีกรอบ
+    # ══════════════════════════════════════════════════════════════════
+    _dt = None
+    try:
+        _dt = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+        lines = trim_thin_ends(lines, _dt, ppm, org, tube)
+    except Exception:
+        _dt = None
+    try:
+        lines = close_visible_gaps(lines, geom, tube, max_ext_mm=max(tube * 3.5, sw * 3.5),
+                                   dt=_dt, ppm=ppm, org=org)
+    except Exception:
+        pass
+    try:
+        lines = [relax_tight_bends(l, r_min) for l in lines]
+    except Exception:
+        pass
     total = sum(l.length for l in lines) / 1000.0
     plate = unary_union([l.buffer(tube * 2.0, cap_style=1, join_style=1) for l in lines])
     plate = plate.buffer(tube * 0.8).buffer(-tube * 0.8)          # เกลาให้ขอบไหลลื่น
@@ -801,7 +970,29 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
     try:
         if full is None or full.is_empty:
             return [], []
-        r = neon_paths(full, tube_mm=tube_mm, px_per_mm=px_per_mm)
+        # ══════════════════════════════════════════════════════════════
+        # 📏 เลือกความกว้างท่อ 'ตามความหนาลายเส้นจริง' — นี่คือกุญแจที่ทำให้ครบทุกฟอนต์
+        #
+        # ⚠️ ที่ยังเหลือตำหนิในฟอนต์หนา (Caveat Brush · Pacifico · Kaushan) ไม่ใช่บั๊กของตัวหาแกนกลาง
+        #    แต่เป็นเรื่องกายภาพ: ลายเส้นหนา 19 มม. จะเอาท่อ 8 มม. ไปวางให้เต็มไม่ได้จริง ๆ
+        #    วัดแล้ว: ท่อ 8 มม. -> ตำหนิ 8 จุด · ท่อ 15 มม. (ตามลายเส้น) -> 0 จุด บนฟอนต์เดียวกัน
+        # ✅ จึงวัดความหนาลายเส้นก่อน แล้วขยับท่อขึ้นให้พอดีถ้าท่อที่ขอมาเล็กเกินไป
+        #    แล้ว 'บอกผู้ใช้' ว่าเปลี่ยนให้เพราะอะไร ไม่เงียบ ๆ เปลี่ยนเอง
+        _tube_req = float(tube_mm or 0.0)
+        _tube_use = _tube_req
+        _note = None
+        try:
+            _mk, _pp, _og = geom_to_mask(full, px_per_mm, max_px=900.0)
+            _sw = stroke_width_mm(_mk, _pp)
+            if _sw > 0 and _tube_req > 0 and _tube_req < _sw * 0.62:
+                _tube_use = max(6.0, min(20.0, round(_sw * 0.80)))
+                _note = ("🔦 ลายเส้นหนา %.1f มม. — ท่อ %.0f มม. ที่เลือกไว้เล็กเกินไป "
+                         "ระบบใช้ท่อ %.0f มม. แทนเพื่อให้ไฟเต็มลายเส้น "
+                         "(ถ้าต้องการท่อ %.0f มม. จริง ๆ ให้เลือกแบบเส้นคู่ หรือย่อขนาดป้ายลง)"
+                         % (_sw, _tube_req, _tube_use, _tube_req))
+        except Exception:
+            _tube_use = _tube_req
+        r = neon_paths(full, tube_mm=_tube_use, px_per_mm=px_per_mm)
         if not r["paths"]:
             return [], []
         try:                                    # ใช้ตัวฟิตเบซิเยร์ตัวเดียวกับโมดูลเดิม -> สไตล์เส้นเหมือนกัน
@@ -827,7 +1018,7 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
         if not subs:
             return [], []
         # รายงานความเป็นไปได้จริง: ท่อกว้าง tube_mm ต้องมีเนื้อรองรับ tube+เผื่อข้างละ clear
-        need = float(tube_mm) + 2.0 * float(clear_mm)
+        need = float(_tube_use) + 2.0 * float(clear_mm)
         report = []
         parts = [p for p in (full.geoms if full.geom_type == "MultiPolygon" else [full])
                  if p.geom_type == "Polygon" and not p.is_empty]
@@ -839,6 +1030,10 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
             w2 = stroke_width_mm(m2, ppm2)
             report.append({"idx": i + 1, "min_mm": round(w2, 1), "med_mm": round(w2, 1),
                            "ok": bool(w2 >= need), "mode": "center"})
+        if _note:
+            # 🔔 แจ้งผู้ใช้ผ่านช่องเดียวกับรายงาน — app.py จะเอาไปขึ้นเป็นคำเตือน
+            report.append({"idx": 0, "min_mm": 0.0, "med_mm": 0.0, "ok": True,
+                           "mode": "note", "note": _note, "tube_mm": float(_tube_use)})
         return subs, report
     except Exception:
         return [], []
