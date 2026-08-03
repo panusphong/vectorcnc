@@ -70,7 +70,7 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-03-sheet",
+            "build": "2026-08-03-joint100",
         "build_note": "เส้นเดี่ยว: เชื่อมที่จุดตัดแบบทะลุตรง + เย็บปลายให้บรรจบเป๊ะ (147 เคส: รอยต่อไม่บรรจบ 7267→236 · ท่อนแยก 5386→2665) · ขนาดที่กรอก = ขนาดแผ่นป้าย โลโก้จัดลงในแผ่นอัตโนมัติ · กล่องสเปคสีอยู่ใต้ภาพเสมอ",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
@@ -4837,10 +4837,15 @@ def _neon_fit(full, plate_w_mm, plate_h_mm, margin_mm, neon_w_mm=0.0, neon_h_mm=
     """
     from shapely.geometry import box as _bx
     from shapely import affinity as _af
-    _pw = max(1.0, float(plate_w_mm)); _ph = max(1.0, float(plate_h_mm))
     _mg = max(0.0, float(margin_mm))
     _fb = full.bounds
     _fw = max(1e-6, _fb[2] - _fb[0]); _fh = max(1e-6, _fb[3] - _fb[1])
+    _pw = max(1.0, float(plate_w_mm or 0.0))
+    _ph = float(plate_h_mm or 0.0)
+    if _ph <= 1.0:
+        # ⚠️ ไม่ได้ส่งความสูงป้ายมา -> อย่าเดาเป็น 0 เด็ดขาด (จะบีบงานเหลือ 1 มม.)
+        #    คิดจากสัดส่วนของตัวงานเอง แล้วบวกเผื่อขอบบน-ล่าง = ได้แผ่นที่พอดีตัวงานเป๊ะ
+        _ph = max(1.0, (_pw - 2.0 * _mg) * (_fh / _fw) + 2.0 * _mg)
 
     # 1) กรอบว่างที่ตัวไฟใส่ได้จริง = แผ่นป้าย ลบเผื่อขอบทั้งสองด้าน
     _availw = _pw - 2.0 * _mg
@@ -6382,9 +6387,17 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         except Exception:
                             _neon_subs = None
                     if _neon_subs:
+                        # 🔦 ถ้าระบบขยับความกว้างท่อให้เอง (ลายเส้นหนากว่าท่อที่เลือก) ต้องบอกผู้ใช้เสมอ
+                        _tube_used = 8.0
+                        for _r9 in (_nrep or []):
+                            if isinstance(_r9, dict) and _r9.get("mode") == "note":
+                                warns.append(str(_r9.get("note", "")))
+                                _tube_used = float(_r9.get("tube_mm") or 8.0)
+                        _nrep = [_r9 for _r9 in (_nrep or [])
+                                 if not (isinstance(_r9, dict) and _r9.get("mode") == "note")]
                         try:
                             import neon_single as _NS
-                            for _w in _NS.warn_messages(_nrep, tube_mm=8.0, clear_mm=1.0):
+                            for _w in _NS.warn_messages(_nrep, tube_mm=_tube_used, clear_mm=1.0):
                                 warns.append(_w)
                         except Exception:
                             pass
@@ -7374,7 +7387,8 @@ function savePDF(){ try{_fitOnePage();}catch(e){} setTimeout(function(){window.p
 
 @app.post("/api/job-sheet")
 async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
-                    real_width_mm: float = Form(600.0), customer: str = Form(""),
+                    real_width_mm: float = Form(600.0), real_height_mm: float = Form(0.0),
+                    customer: str = Form(""),
                     job_no: str = Form(""), sales: str = Form(""),
                     return_depth_cm: float = Form(0.0), n_colors: int = Form(6),
                     arm: str = Form("none"), arm_len_cm: float = Form(30.0),
