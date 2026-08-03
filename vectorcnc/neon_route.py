@@ -162,32 +162,146 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
         n = np.linalg.norm(v)
         return v / n if n > 1e-9 else v
 
-    items = [list(c) for c in keep]
-    changed = True
-    while changed:
-        changed = False
-        endmap = {}
-        for i, c in enumerate(items):
-            endmap.setdefault(c[0], []).append((i, True))
-            endmap.setdefault(c[-1], []).append((i, False))
-        for p, lst in endmap.items():
-            if len(lst) != 2:
+    items = [list(c) for c in keep if len(c) >= 2]
+    if not items:
+        return []
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔗 เชื่อมที่ 'จุดตัด' — หัวใจของความเนียน
+    #
+    # ⚠️ ของเดิมต่อได้เฉพาะปมที่มีเส้นมาชนพอดี 2 เส้น
+    #    แต่ลายมือ/ตัวเขียนมีจุดไขว้ (X) และสามแฉก (Y) เต็มไปหมด
+    #    ปมพวกนั้นเลยถูกปล่อยขาด -> เส้นถูกหั่นเป็นท่อนสั้น ๆ แล้วเกลาแยกกันคนละที
+    #    ผลคือ 'ปลายเส้นไม่บรรจบกัน' (วัดจริงบนคำว่า Eleca bar: ห่างเฉลี่ย 3.15 มม.)
+    #    ซึ่งคือสิ่งที่เห็นเป็นรอยสะดุด/หางแมวตรงจุดเชื่อมในภาพพรีวิว
+    #
+    # ✅ วิธีใหม่ 3 ชั้น:
+    #    1) ปมที่อยู่ติด ๆ กันหลายพิกเซล -> ยุบเป็น 'ปมเดียว' แล้วดึงปลายทุกเส้นมาชนจุดนั้นเป๊ะ
+    #    2) ที่ปมเดียวกัน จับคู่เส้นที่ 'พุ่งทะลุตรงกันที่สุด' (มุมตรงข้ามกันมากสุด) แล้วต่อเป็นเส้นเดียว
+    #       -> จุดไขว้ X กลายเป็นเส้นตรง 2 เส้นวิ่งผ่านกัน เหมือนที่ช่างเดินท่อจริง
+    #    3) เส้นที่จับคู่ไม่ได้ ก็ยังชนปมพอดี ไม่มีช่องว่างหลงเหลือ
+    # ══════════════════════════════════════════════════════════════════════
+    tol = max(1.8, 0.9 * ppm)              # ปมห่างกันไม่เกินนี้ = ปมเดียวกัน (มม. -> พิกเซล)
+    ends = []                              # [(chain_idx, 0=หัว/1=ท้าย, y, x)]
+    for i, c in enumerate(items):
+        ends.append((i, 0, float(c[0][0]), float(c[0][1])))
+        ends.append((i, 1, float(c[-1][0]), float(c[-1][1])))
+    P = np.asarray([[e[2], e[3]] for e in ends], dtype=float)
+
+    # ── ชั้น 1: จัดกลุ่มปลายเส้นที่อยู่ตำแหน่งเดียวกัน (union-find) ──
+    parent = list(range(len(ends)))
+
+    def _find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]; x = parent[x]
+        return x
+
+    def _uni(x, y):
+        rx, ry = _find(x), _find(y)
+        if rx != ry:
+            parent[ry] = rx
+    try:
+        from scipy.spatial import cKDTree as _KD
+        for x, y in _KD(P).query_pairs(tol):
+            _uni(x, y)
+    except Exception:
+        for x in range(len(P)):
+            for y in range(x + 1, len(P)):
+                if abs(P[x, 0] - P[y, 0]) <= tol and abs(P[x, 1] - P[y, 1]) <= tol:
+                    _uni(x, y)
+    groups = {}
+    for k in range(len(ends)):
+        groups.setdefault(_find(k), []).append(k)
+
+    # ── ดึงปลายทุกเส้นมาชน 'จุดกลางปม' ให้ตรงกันเป๊ะ ──
+    for _g in groups.values():
+        if len(_g) < 2:
+            continue
+        cy = float(np.mean([P[k, 0] for k in _g]))
+        cx = float(np.mean([P[k, 1] for k in _g]))
+        for k in _g:
+            i, side = ends[k][0], ends[k][1]
+            if side == 0:
+                items[i][0] = (cy, cx)
+            else:
+                items[i][-1] = (cy, cx)
+
+    # ── ชั้น 2: จับคู่ 'ทะลุตรง' ที่ปมเดียวกัน ──
+    win = max(4, int(round(2.5 * ppm)))    # ดูทิศทางย้อนกลับไป ~2.5 มม. (นิ่งกว่าดู 6 พิกเซล)
+
+    def _away(i, side):
+        """ทิศที่เส้นพุ่ง 'ออกจากปม' — ใช้ตัดสินว่าเส้นไหนวิ่งทะลุเข้าหากัน"""
+        c = items[i]
+        seg = c[:win] if side == 0 else c[-win:][::-1]
+        a = np.asarray(seg, dtype=float)
+        if len(a) < 2:
+            return np.zeros(2)
+        v = a[-1] - a[0]
+        n = float(np.linalg.norm(v))
+        return v / n if n > 1e-9 else np.zeros(2)
+
+    partner = {}
+    for _g in groups.values():
+        if len(_g) < 2:
+            continue
+        cand = []
+        for _a in range(len(_g)):
+            for _b in range(_a + 1, len(_g)):
+                ka, kb = _g[_a], _g[_b]
+                ia, sa = ends[ka][0], ends[ka][1]
+                ib, sb = ends[kb][0], ends[kb][1]
+                if ia == ib and sa == sb:
+                    continue
+                d = float(np.dot(_away(ia, sa), _away(ib, sb)))
+                cand.append((d, ka, kb))
+        cand.sort(key=lambda t: t[0])       # ยิ่งติดลบ = ยิ่งวิ่งทะลุตรงเข้าหากัน
+        for d, ka, kb in cand:
+            if d > -0.20:                   # หักศอกเกิน -> ปล่อยให้เป็นคนละเส้น
+                break
+            if ka in partner or kb in partner:
                 continue
-            (i, si), (j, sj) = lst
-            if i == j:
-                continue
-            a, b = items[i], items[j]
-            va = dirv(a, si); vb = dirv(b, sj)
-            if float(np.dot(va, vb)) > -0.35:      # หักศอกเกินไป -> ไม่ต่อ
-                continue
-            aa = a[::-1] if si else a
-            bb = b if sj else b[::-1]
-            items[i] = aa + bb[1:]
-            items[j] = None
-            items = [x for x in items if x is not None]
-            changed = True
-            break
-    return items
+            partner[ka] = kb; partner[kb] = ka
+
+    # ── ชั้น 3: เดินตามคู่ที่จับได้ ร้อยเป็นเส้นยาว ──
+    kof = {(ends[k][0], ends[k][1]): k for k in range(len(ends))}
+    used = [False] * len(items)
+    out = []
+
+    def _walk(i0, side0):
+        """เริ่มจากปลาย (i0,side0) ที่เป็น 'ต้นทาง' แล้วไล่ต่อไปจนสุด"""
+        seq = []
+        i, side = i0, side0
+        while True:
+            if used[i]:
+                break
+            used[i] = True
+            c = items[i] if side == 0 else items[i][::-1]
+            seq = (seq + c[1:]) if seq else list(c)
+            k = kof.get((i, 1 - side))
+            nk = partner.get(k) if k is not None else None
+            if nk is None:
+                break
+            ni, ns = ends[nk][0], ends[nk][1]
+            if used[ni]:
+                break
+            i, side = ni, ns
+        return seq
+
+    for k in range(len(ends)):             # เริ่มจาก 'ปลายอิสระ' ก่อน (เส้นเปิด)
+        if k in partner:
+            continue
+        i, side = ends[k][0], ends[k][1]
+        if used[i]:
+            continue
+        s = _walk(i, side)
+        if len(s) >= 2:
+            out.append(s)
+    for i in range(len(items)):            # ที่เหลือคือวงปิด — เริ่มจากจุดไหนก็ได้
+        if not used[i]:
+            s = _walk(i, 0)
+            if len(s) >= 2:
+                out.append(s)
+    return out if out else items
 
 
 # ─────────────────────────── 4. เกลาเส้น + คุมรัศมีโค้ง ───────────────────────────
@@ -306,6 +420,16 @@ def snap_to_outline(line, geom, tree=None, pts=None, max_shift_mm=None):
         mid = (pts[ii[jp]] + pts[ii[jn]]) * 0.5
         if np.hypot(*(mid - a[i])) <= lim:
             out[i] = mid
+    # 🔒 ปลายเส้น = จุดที่ไปบรรจบกับเส้นอื่น — ห้ามขยับเด็ดขาด
+    #    ตรงปลาย/จุดตัด ขอบทั้งสองฝั่งจะสับสน (มีขอบของเส้นอื่นปนเข้ามา) จุดกึ่งกลางที่คำนวณได้จะเพี้ยน
+    #    จึงหรี่แรงดึงลงเหลือ 0 ที่ปลายทั้งสองข้าง แบบไล่ระดับ (ไม่ให้เกิดหักมุมตรงรอยต่อ)
+    _n9 = len(a)
+    _k9 = max(2, min(_n9 // 3, int(np.ceil(_n9 * 0.06)) + 2))
+    w = np.ones(_n9)
+    _r9 = np.linspace(0.0, 1.0, _k9 + 1)[1:]
+    w[:_k9] = _r9
+    w[-_k9:] = _r9[::-1]
+    out = a + (out - a) * w[:, None]
     # เกลาเบา ๆ กันจุดกระตุกตรงที่หาคู่ขอบไม่เจอ
     if len(out) >= 5:
         sm = out.copy()
@@ -313,6 +437,109 @@ def snap_to_outline(line, geom, tree=None, pts=None, max_shift_mm=None):
         sm[0] = out[0]; sm[-1] = out[-1]
         out = sm
     return LineString(out)
+
+
+def _end_dir(a, side, win_mm=3.0):
+    """ทิศที่เส้นพุ่ง 'ออกไปจากปลาย' — ใช้ตัดสินว่าสองเส้นวิ่งชนกันตรง ๆ หรือหักศอก"""
+    seg = a[:1] if len(a) < 2 else (a if side == 1 else a[::-1])
+    d = np.linalg.norm(np.diff(seg, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(d)])
+    j = int(np.searchsorted(s, max(0.0, s[-1] - win_mm)))
+    j = min(max(j, 0), len(seg) - 2)
+    v = seg[-1] - seg[j]
+    n = float(np.linalg.norm(v))
+    return v / n if n > 1e-9 else np.zeros(2)
+
+
+def stitch_ends(lines, tol_mm, dot_max=-0.10):
+    """🪡 เย็บปลายเส้นขั้นสุดท้าย — 'จุดเชื่อมต้องตรงและชนกันเป๊ะ'
+
+    ผ่านทุกขั้นตอนเกลาแล้วยังอาจเหลือปลายที่ควรเป็นจุดเดียวกันแต่คลาดกันนิดหน่อย
+    (จุดสามแฉกที่เนื้อหนา แกนกลางจะแตกตัวกว้างกว่าที่จับกลุ่มไว้ตอนพิกเซล)
+    ขั้นนี้จึงตรวจอีกรอบบน 'เส้นจริงหน่วยมิลลิเมตร':
+      • คู่ที่วิ่งทะลุเข้าหากัน -> ต่อเป็นเส้นเดียว (ช่างเดินท่อรวดเดียว ไม่ต้องตัดต่อ)
+      • คู่ที่หักศอก -> อย่างน้อยดึงให้ 'ชนจุดเดียวกันเป๊ะ' ไม่ให้เหลือรอยห่าง
+    """
+    segs = [np.asarray(l.coords, dtype=float) for l in lines
+            if l is not None and not l.is_empty and len(l.coords) >= 2]
+    if len(segs) < 2:
+        return [LineString(s) for s in segs]
+    ends = [(i, s) for i in range(len(segs)) for s in (0, 1)]
+    P = np.asarray([segs[i][0] if s == 0 else segs[i][-1] for i, s in ends])
+
+    # ── หาคู่ปลายที่ใกล้กันพอจะเป็นจุดเดียวกัน ──
+    try:
+        from scipy.spatial import cKDTree as _KD
+        pairs = list(_KD(P).query_pairs(tol_mm))
+    except Exception:
+        pairs = [(x, y) for x in range(len(P)) for y in range(x + 1, len(P))
+                 if float(np.hypot(*(P[x] - P[y]))) <= tol_mm]
+    cand = []
+    for x, y in pairs:
+        ix, sx = ends[x]; iy, sy = ends[y]
+        if ix == iy and sx == sy:
+            continue
+        d = float(np.hypot(*(P[x] - P[y])))
+        dot = float(np.dot(_end_dir(segs[ix], sx), _end_dir(segs[iy], sy)))
+        cand.append((d + dot * tol_mm, d, dot, x, y))     # ใกล้ + ตรง = คะแนนดี
+    cand.sort(key=lambda t: t[0])
+
+    used = set(); link = {}; weld = []
+    for _sc, d, dot, x, y in cand:
+        if x in used or y in used:
+            continue
+        used.add(x); used.add(y)
+        if dot <= dot_max and ends[x][0] != ends[y][0]:
+            link[x] = y; link[y] = x                       # ต่อเป็นเส้นเดียว
+        else:
+            weld.append((x, y))                            # แค่ดึงมาชนจุดเดียวกัน
+
+    # ── ดึงคู่ที่ต่อไม่ได้ให้ชนจุดเดียวกันเป๊ะ ──
+    for x, y in weld:
+        m = (P[x] + P[y]) * 0.5
+        for k in (x, y):
+            i, s = ends[k]
+            if s == 0:
+                segs[i][0] = m
+            else:
+                segs[i][-1] = m
+
+    # ── ร้อยคู่ที่ต่อได้ให้เป็นเส้นเดียว ──
+    kof = {(i, s): k for k, (i, s) in enumerate(ends)}
+    done = [False] * len(segs)
+    out = []
+    for k0 in range(len(ends)):
+        if k0 in link:
+            continue
+        i, s = ends[k0]
+        if done[i]:
+            continue
+        acc = None
+        while True:
+            if done[i]:
+                break
+            done[i] = True
+            a = segs[i] if s == 0 else segs[i][::-1]
+            if acc is None:
+                acc = a.copy()
+            else:
+                m = (acc[-1] + a[0]) * 0.5                 # จุดต่อ = กึ่งกลางของสองปลาย
+                acc[-1] = m
+                acc = np.vstack([acc, a[1:]])
+            nk = link.get(kof[(i, 1 - s)])
+            if nk is None:
+                break
+            ni, ns = ends[nk]
+            if done[ni]:
+                break
+            i, s = ni, ns
+        if acc is not None and len(acc) >= 2:
+            out.append(acc)
+    for i in range(len(segs)):                             # วงปิดที่ไม่มีปลายอิสระ
+        if not done[i]:
+            done[i] = True
+            out.append(segs[i])
+    return [LineString(s) for s in out if len(s) >= 2]
 
 
 def outline_points(geom, step_mm=0.35):
@@ -366,6 +593,8 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
     if s[-1] > step_mm * 3:
         t = np.arange(0, s[-1], step_mm)
         a = np.column_stack([np.interp(t, s, a[:, 0]), np.interp(t, s, a[:, 1])])
+    if len(a) < 5:            # 🛡️ เส้นสั้นมาก (สั้นกว่า 5 มม.) — คลายไม่ได้และไม่จำเป็น
+        return line           #    (np.convolve โหมด same คืนความยาวเท่าเคอร์เนลถ้าสัญญาณสั้นกว่า -> รูปทรงไม่ตรงกัน)
     closed = np.allclose(a[0], a[-1])
     for _ in range(rounds):
         r = _local_radius(a)
@@ -411,12 +640,21 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
     lines = []
     for c in items:
         ls = chain_to_line(c, ppm, org)
-        if ls is None or ls.length < max(8.0, tube * 1.5):
+        if ls is None:
             continue
         if _tree is not None:
             ls = snap_to_outline(ls, geom, _tree, _opts, max_shift_mm=max(sw, 2.0))
             ls = ls.simplify(0.15)
         lines.append(relax_tight_bends(ls, r_min))
+    # 🪡 เย็บปลายขั้นสุดท้ายก่อนค่อยคัดเศษทิ้ง — ท่อนสั้นที่เป็นสะพานเชื่อมจะได้ถูกดูดรวมไป
+    #    ไม่ใช่ถูกโยนทิ้งจนเหลือช่องโหว่ตรงจุดต่อ (นี่คือที่มาของ 'เส้นขาดตรงรอยต่อ' แบบเดิม)
+    #    เย็บซ้ำ 3 รอบ: รอบแรกจับได้คู่ที่ดีที่สุดก่อน คู่ที่ถูกเบียดตกไปจะได้โอกาสในรอบถัดไป
+    for _ in range(3):
+        _n0 = len(lines)
+        lines = stitch_ends(lines, tol_mm=max(tube * 0.9, sw * 0.45))
+        if len(lines) == _n0:
+            break
+    lines = [l for l in lines if l.length >= max(8.0, tube * 1.5)]
     total = sum(l.length for l in lines) / 1000.0
     plate = unary_union([l.buffer(tube * 2.0, cap_style=1, join_style=1) for l in lines])
     plate = plate.buffer(tube * 0.8).buffer(-tube * 0.8)          # เกลาให้ขอบไหลลื่น
