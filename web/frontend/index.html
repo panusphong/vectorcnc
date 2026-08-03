@@ -3455,15 +3455,9 @@ var I18N={
   'hint.size':'⚠️ กำหนดขนาดก่อนสร้างไฟล์ตัด (ภาพ JPG/PNG ไม่มีขนาดกำกับเหมือน .ai) → ระบบสเกลให้พอดี คงสัดส่วน',
   'u.mm':'มม.','u.bit':'ดอก','u.sharp':'ตัดคม (ไม่ปัดมุม)',
   'mat.ss':'Fiber · สแตนเลส','mat.zn':'Fiber · ซิงค์','mat.acr':'CO2 · อะคริลิค','mat.rt':'Router · ดอกกัด',
-  'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'4 · ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)','st.2':'5 · ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)',
+  'st.0':'— เส้นตัดแบน (ปกติ) —','st.1':'2 · ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)','st.2':'3 · ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)',
   'st.20':'1 · ตัวอักษร/โลโก้ แบน (ไม่ยกขอบ)','st.1':'2 · ตัวอักษรยกขอบไฟออกหน้า (มีคิ้ว)','st.2':'3 · ตัวอักษรยกขอบไฟออกหน้า (ไม่มีคิ้ว)','st.16':'4 · อักษรยกขอบไฟออกหน้า + โครงแขวน','st.6':'5 · อักษรยกขอบ ไฟออกหลัง','st.7':'6 · งานยกขอบ มีไส้','st.3':'7 · ตัวอักษรไฟออกรอบ','st.4':'8 · กล่องไฟสี่เหลี่ยม ฉลุหน้า','st.21':'9 · กล่องไฟวงกลม ฉลุหน้า','st.12':'10 · กล่องไฟสี่เหลี่ยม 1 หน้า','st.13':'11 · กล่องไฟสี่เหลี่ยม 2 หน้า','st.10':'12 · กล่องไฟทรงกลม 1 หน้า','st.11':'13 · กล่องไฟทรงกลม 2 หน้า','st.14':'14 · กล่องไฟวงรี 1 หน้า','st.15':'15 · กล่องไฟวงรี 2 หน้า','st.8':'16 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'17 · กล่องไฟล้อมตามทรง 2 หน้า','st.18':'18 · กล่องไฟอะคริลิค ไฟออกรอบ','st.17':'19 · นีออนเฟล็กซ์','st.22':'20 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.23':'21 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer','st.24':'22 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.25':'23 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer','st.28':'24 · พลาสวูดซ่อนไฟหลัง ไดคัท พิมพ์ UV / สติ๊กเกอร์ (ตกแต่งผนัง)','st.26':'25 · สแตนดี้ สี่เหลี่ยม','st.27':'26 · สแตนดี้ ล้อมตามทรง','st.5':'','st.19':'',
-  'st.8':'11 · กล่องไฟล้อมตามทรง 1 หน้า','st.9':'12 · กล่องไฟล้อมตามทรง 2 หน้า',
-  'st.10':'13 · กล่องไฟทรงกลม 1 หน้า','st.11':'14 · กล่องไฟทรงกลม 2 หน้า',
-  'st.12':'15 · กล่องไฟสี่เหลี่ยม 1 หน้า','st.13':'16 · กล่องไฟสี่เหลี่ยม 2 หน้า',
-  'st.14':'17 · กล่องไฟวงรี 1 หน้า','st.15':'18 · กล่องไฟวงรี 2 หน้า',
-  'st.22':'21 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.23':'22 · พลาสวูดไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer',
-  'st.24':'23 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 1 layer','st.25':'24 · อะคริลิคไดคัท อักษร/โลโก้ ไม่มีไฟ 2 layer',
-  'st.26':'25 · สแตนดี้ สี่เหลี่ยม','st.27':'26 · สแตนดี้ ล้อมตามทรง','st.28':'27 · พลาสวูดซ่อนไฟหลัง ไดคัท พิมพ์ UV / สติ๊กเกอร์ (ตกแต่งผนัง)',
+  /* 🔢 หมายเหตุ: ตารางเลขประเภทป้ายมีชุดเดียวเท่านั้น (บรรทัดด้านบน) — เดิมมีชุดเก่าต่อท้ายอีก 7 บรรทัด ซึ่ง JavaScript ถือว่า 'คีย์ซ้ำ ตัวหลังชนะ' เลขหน้ารายการจึงถูกทับกลับเป็นชุดเก่า สลับกันและซ้ำเลข 18 สองรายการ */
   'hint.signtype':'เลือกประเภท แล้วกด "🧊 แสดงแบบป้าย 3 มิติ แยกชั้นตัด" ทางขวา → ได้เส้นตัดแยกชั้น (คิ้วเจาะโบ๋/แผ่นพื้น/ยกขอบ) + ภาพ 3 มิติมีมิติ ตามแบบ',
   'app.nofile':'ยังไม่ได้เลือกไฟล์','stage.hint':'อัปโหลดภาพเพื่อเริ่ม',
   'chip.auto':'อัตโนมัติ','ph.own':'เอง',
@@ -3508,15 +3502,9 @@ var I18N={
   'hint.size':'⚠️ Set the size before generating the cut file (JPG/PNG has no real-world size like .ai) → we scale it to fit, keeping the aspect ratio.',
   'u.mm':'mm','u.bit':'bit','u.sharp':'sharp corners (no fillet)',
   'mat.ss':'Fiber · Stainless','mat.zn':'Fiber · Galvanised','mat.acr':'CO2 · Acrylic','mat.rt':'Router · End mill',
-  'st.0':'— Flat cut lines (normal) —','st.1':'4 · Front-lit Built-up Letters (with trim)','st.2':'5 · Front-lit Built-up Letters (no trim)',
+  'st.0':'— Flat cut lines (normal) —','st.1':'2 · Front-lit Built-up Letters (with Trim)','st.2':'3 · Front-lit Built-up Letters (no Trim)',
   'st.20':'1 · Flat Letters/Logo (no return)','st.1':'2 · Front-lit Built-up Letters (with Trim)','st.2':'3 · Front-lit Built-up Letters (no Trim)','st.16':'4 · Front-lit Raised Letters + Hanging Frame','st.6':'5 · Halo-lit Raised Letters (back-lit)','st.7':'6 · Raised letters with insert','st.3':'7 · Edge-lit Letters (light all around)','st.4':'8 · Rect Light Box · Punched Face','st.21':'9 · Round Light Box · Punched Face','st.12':'10 · Rectangle Light Box · Single-Face','st.13':'11 · Rectangle Light Box · Double-Face','st.10':'12 · Round Light Box · Single-Face','st.11':'13 · Round Light Box · Double-Face','st.14':'14 · Oval Light Box · Single-Face','st.15':'15 · Oval Light Box · Double-Face','st.8':'16 · Shaped Light Box · Single-Face','st.9':'17 · Shaped Light Box · Double-Face','st.18':'18 · Edge-lit Acrylic Light Box','st.17':'19 · Neon Flex + Clear Acrylic','st.22':'20 · Plaswood Die-cut · 1 layer (no light)','st.23':'21 · Plaswood Die-cut · 2 layers (no light)','st.24':'22 · Acrylic Die-cut · 1 layer (no light)','st.25':'23 · Acrylic Die-cut · 2 layers (no light)','st.28':'24 · Plaswood Hidden Back-light · Die-cut + UV/Sticker','st.26':'25 · Standee · Rectangle','st.27':'26 · Standee · Shaped','st.5':'','st.19':'',
-  'st.8':'11 · Contour light box · 1-face','st.9':'12 · Contour light box · 2-face',
-  'st.10':'13 · Round light box · 1-face','st.11':'14 · Round light box · 2-face',
-  'st.12':'15 · Rect light box · 1-face','st.13':'16 · Rect light box · 2-face',
-  'st.14':'17 · Oval light box · 1-face','st.15':'18 · Oval light box · 2-face',
-  'st.22':'21 · Plaswood Die-cut Letters/Logo · No Light · 1 Layer','st.23':'22 · Plaswood Die-cut Letters/Logo · No Light · 2 Layers',
-  'st.24':'23 · Acrylic Die-cut Letters/Logo · No Light · 1 Layer','st.25':'24 · Acrylic Die-cut Letters/Logo · No Light · 2 Layers',
-  'st.26':'25 · Standee · Rectangular Board','st.27':'26 · Standee · Contour Die-cut',
+  /* 🔢 หมายเหตุ: ตารางเลขประเภทป้ายมีชุดเดียวเท่านั้น (บรรทัดด้านบน) — เดิมมีชุดเก่าต่อท้ายอีก 7 บรรทัด ซึ่ง JavaScript ถือว่า 'คีย์ซ้ำ ตัวหลังชนะ' เลขหน้ารายการจึงถูกทับกลับเป็นชุดเก่า สลับกันและซ้ำเลข 18 สองรายการ */
   'hint.signtype':'Pick a type, then press "🏭 Cut Layers + 3D" below → you get layered cut lines (trim / base plate / return) plus a dimensioned 3D view.',
   'app.nofile':'No file selected','stage.hint':'Upload an image to start',
   'chip.auto':'Auto','ph.own':'custom',
@@ -6152,6 +6140,7 @@ $('goLayer').onclick=function(){
   }
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
+      fd.append('real_height_mm',($('realH')&&$('realH').value)||'0');   // 📐 ใบสั่งผลิต/พรีวิว 3 มิติ ต้องรู้ความสูงป้ายด้วย (นีออนใช้จัดตัวไฟลงแผ่น)
   var _isPunch=(t==='4'||t==='21');   // 🔦 กล่องฉลุ: สูงกล่องส่งแยก (box_h_cm) — ไม่บีบสัดส่วนโลโก้
   var _isBoxT=(['4','21','8','9','10','11','12','13','14','15','18','26'].indexOf(t)>=0);   // กล่องไฟ = backend คุมขนาดตรงเป๊ะ
   // 📐 กล่องไฟ: ใช้ค่า 'กว้าง' จากแผงกล่องเสมอ (กันเคสค่าไม่ซิงก์เพราะไม่ได้พิมพ์ใหม่)
@@ -6436,6 +6425,7 @@ $('goLayer').onclick=function(){
       var w=window.open('','_blank'); if(w)w.document.write('<p style="font-family:sans-serif;padding:24px">⏳ กำลังสร้างใบสั่งผลิต...</p>');
       var fd=new FormData();
       fd.append('file',fileObj);fd.append('sign_type',t);fd.append('real_width_mm',$('realW').value||'600');
+      fd.append('real_height_mm',($('realH')&&$('realH').value)||'0');   // 📐 ใบสั่งผลิต/พรีวิว 3 มิติ ต้องรู้ความสูงป้ายด้วย (นีออนใช้จัดตัวไฟลงแผ่น)
       fd.append('customer',cust);
       fd.append('sales',(($('pmSales')&&$('pmSales').value)||(($('adminName')&&$('adminName').textContent)||''))||'');
       fd.append('graphic',($('pmGraphic')&&$('pmGraphic').value)||'');
