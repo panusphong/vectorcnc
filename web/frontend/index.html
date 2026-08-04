@@ -9565,10 +9565,29 @@ function wIsLight(k){
   return k.indexOf('\u0e44\u0e1f')>=0||k.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0;            // \u0e21\u0e35 "\u0e44\u0e1f" \u0e2b\u0e23\u0e37\u0e2d "\u0e19\u0e35\u0e2d\u0e2d\u0e19"
 }
 function wIsLetter(k){ return !!k&&k.indexOf('\u0e2d\u0e31\u0e01\u0e29\u0e23')>=0; }
+/* 📐 ความสูง 'ตัวอักษรจริง' ของแบบที่พิมพ์เอง (ซม.) — ใช้ทั้งเลือกขั้นราคาและเช็คเพดาน 60 ซม.
+   ราคาแบบขั้นบันไดคิดตามความสูงตัวอักษร ถ้าส่งความสูงทั้งป้ายไปแทน จะได้ขั้นผิด (ราคาต่ำเกินจริง) */
+function wRowHcm(totalHcm){
+  try{
+    var B=window._tsBox||[]; if(!B.length) return totalHcm;
+    var Hd=0;
+    try{ Hd=(window.TSPEC&&window.TSPEC.h_mm)||0; }catch(_e){}
+    if(!(Hd>1)){ try{ Hd=(parseFloat(($('tsH')&&$('tsH').value)||0)||0)*10; }catch(_e2){} }
+    if(!(Hd>1)) return totalHcm;
+    var mx=0; for(var i=0;i<B.length;i++){ mx=Math.max(mx,(B[i].y1-B[i].y0)); }
+    if(!(mx>0)) return totalHcm;
+    var h=mx*totalHcm/Hd;                       // สเกลตามป้ายที่วางจริงบนผนัง
+    return (h>0.3&&h<=totalHcm*1.02)? h : totalHcm;
+  }catch(_e){ return totalHcm; }
+}
 function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey,role){
   var item=WCAT[itemKey]; if(!item)return {error:'\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22'};
   var isText=(role==='text')||(!role&&wIsLetter(itemKey)), isLogo=(role==='logo');
-  if(isText && heightM*100>60) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21.)'};
+  /* \ud83d\udccf \u0e40\u0e1e\u0e14\u0e32\u0e19 "\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21." \u0e15\u0e49\u0e2d\u0e07\u0e27\u0e31\u0e14\u0e17\u0e35\u0e48 '\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e08\u0e23\u0e34\u0e07' \u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22
+     \u0e40\u0e14\u0e34\u0e21\u0e43\u0e0a\u0e49\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e1b\u0e49\u0e32\u0e22 -> \u0e1b\u0e49\u0e32\u0e22 3 \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e2a\u0e39\u0e07\u0e23\u0e27\u0e21 60.8 \u0e0b\u0e21. (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e08\u0e23\u0e34\u0e07\u0e41\u0e04\u0e48 ~12 \u0e0b\u0e21.)
+     \u0e01\u0e47\u0e42\u0e14\u0e19\u0e15\u0e35\u0e40\u0e1b\u0e47\u0e19\u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 \u0e41\u0e25\u0e49\u0e27\u0e23\u0e32\u0e04\u0e32\u0e02\u0e36\u0e49\u0e19 0 \u0e1a\u0e32\u0e17 \u0e42\u0e14\u0e22\u0e44\u0e21\u0e48\u0e1a\u0e2d\u0e01\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25 */
+  var _lh=parseFloat(letterHeightCm); if(!(_lh>0)) _lh=heightM*100;
+  if(isText && _lh>60) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 '+_lh.toFixed(1)+' \u0e0b\u0e21. > 60 \u0e0b\u0e21.)'};
   var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey);
   if((isLogo||itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0) && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
   var colorFee=(!isPrint&&colorSpecial)?1500:0;
@@ -9605,7 +9624,9 @@ function wallPrice(){ if(!$('wPResult'))return;
   var lines=[], total=0, anyLight=false;
   function addLine(label,type,a,role){ if(!type){ lines.push({label:label,empty:true}); return; }
     if(wIsLight(type))anyLight=true;
-    var r=wCalcPrice(type, a.w/100, a.h/100, a.h, colorSpecial, 'none', role);   // 🔩 โครงคิดเป็นบรรทัดแยกด้านล่าง (คิดครั้งเดียวทั้งป้าย · กันซ้ำ)
+    // 🔩 โครงคิดเป็นบรรทัดแยกด้านล่าง (คิดครั้งเดียวทั้งป้าย · กันซ้ำ)
+    var _lhc=(role==='logo')?a.h:wRowHcm(a.h);   // ตัวอักษร -> ใช้ความสูงตัวอักษรจริง ไม่ใช่ความสูงป้าย
+    var r=wCalcPrice(type, a.w/100, a.h/100, _lhc, colorSpecial, 'none', role);
     if(r.error){ lines.push({label:label,error:r.error}); return; }
     lines.push({label:label,type:type,w:Math.round(a.w),h:Math.round(a.h),r:r}); total+=r.total; }
   if(splitOn){
@@ -9616,7 +9637,14 @@ function wallPrice(){ if(!$('wPResult'))return;
   if(typeof shapes!=='undefined'&&shapes.length){ shapes.forEach(function(sp){ var rp=shpPrice(sp); if(rp&&!rp.error){ lines.push({label:(sp.type==='circle'?'◯':'▭')+' แผ่นหลัง',type:rp.mat,w:rp.w,h:rp.h,r:{billable:rp.areaSqm,tiered:false,total:rp.total,material:rp.material,per:rp.per,transFee:0,colorFee:0,framePrice:0,minA:false,minTot:rp.minTot}}); total+=rp.total; } }); }
   if(typeof wLogos!=='undefined'&&wLogos.length){ wLogos.forEach(function(L,i){ if(!L.type)return; var wc=L.wCm, hc=L.wCm*(L.ar||1); if(wIsLight(L.type))anyLight=true; var rr=wCalcPrice(L.type, wc/100, hc/100, hc, colorSpecial, 'none'); if(rr&&!rr.error){ lines.push({label:'🟣 '+(L.name||('โลโก้'+(i+1))),type:L.type,w:Math.round(wc),h:Math.round(hc),r:rr}); total+=rr.total; } }); }
   var _valid=lines.filter(function(l){return l.r;});
-  if(!_valid.length){ $('wPResult').innerHTML='\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>'; _wLast=null; try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){} return; }
+  if(!_valid.length){
+    /* \u26a0\ufe0f \u0e40\u0e14\u0e34\u0e21\u0e02\u0e36\u0e49\u0e19 "0 \u0e1a\u0e32\u0e17" \u0e40\u0e09\u0e22 \u0e46 \u0e17\u0e31\u0e49\u0e07\u0e17\u0e35\u0e48\u0e08\u0e23\u0e34\u0e07\u0e21\u0e35\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25 (\u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19/\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22)
+       \u0e1c\u0e39\u0e49\u0e43\u0e0a\u0e49\u0e40\u0e25\u0e22\u0e40\u0e02\u0e49\u0e32\u0e43\u0e08\u0e27\u0e48\u0e32\u0e23\u0e30\u0e1a\u0e1a\u0e1e\u0e31\u0e07 \u2014 \u0e15\u0e49\u0e2d\u0e07\u0e1a\u0e2d\u0e01\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25\u0e15\u0e23\u0e07 \u0e46 \u0e15\u0e23\u0e07\u0e19\u0e35\u0e49 */
+    var _er=null; for(var _e9=0;_e9<lines.length;_e9++){ if(lines[_e9].error){ _er=lines[_e9].error; break; } }
+    $('wPResult').innerHTML = _er
+      ? ('<b style="color:#b91c1c">\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49</b><br><span style="font-size:12px">'+_er+'</span>')
+      : '\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>';
+    _wLast=null; try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){} return; }
   // \ud83c\udfa8 \u0e04\u0e48\u0e32\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 \u2014 \u0e1a\u0e27\u0e01\u0e40\u0e02\u0e49\u0e32\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e14\u0e35\u0e22\u0e27 (\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22)
   if(colorTotal>0){ lines.push({colorLine:true,n:nColor,fee:colorTotal}); total+=colorTotal; }
   // 🦾 แขนยึด/แขวน = คิดราคาเท่าโครงเหล็ก (1,800/ตร.ม.) เป็นบรรทัดแยกชัดเจน เพิ่มเสมอเมื่อเลือกแขน
