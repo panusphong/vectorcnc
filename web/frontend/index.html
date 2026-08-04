@@ -5455,6 +5455,25 @@ function _recolor3dRaster(){
   if(s0){
     // 🏷️ หลังบ้านบอกไว้ว่า 'ตัวป้ายจบที่สัดส่วนไหนของภาพ' — ต่ำกว่านั้นคือแผงข้อมูล ห้ามย้อม
     try{ var _ah=parseFloat(s0.getAttribute('data-arth')||''); if(_ah>0.05&&_ah<=1) host._artH=_ah; }catch(e){}
+    /* 🏷️ พื้นขาวรองใต้ 'ตัวเลขบอกระยะ' ต้องขาวเสมอ ห้ามโดนย้อมสีไฟ
+       (ไฟออกหน้าย้อมพิกเซลขาวทั้งกรอบตัวป้าย -> ป้ายตัวเลขกลายเป็นสีเหลืองอำพันไปด้วย)
+       หลังบ้านทำเครื่องหมาย data-nl ไว้ให้ -> เก็บกรอบเป็นสัดส่วนภาพ แล้วข้ามตอนย้อม */
+    try{
+      var _vb0=s0.viewBox&&s0.viewBox.baseVal, _nl=s0.querySelectorAll('[data-nl]');
+      if(_vb0&&_vb0.width>0&&_vb0.height>0&&_nl.length){
+        var _arr=[];
+        for(var _i0=0;_i0<_nl.length;_i0++){
+          try{
+            var _r0=_nl[_i0].getBoundingClientRect?null:null;
+            var _bb0=_nl[_i0].getBBox();
+            if(!_bb0||_bb0.width<=0) continue;
+            _arr.push({x:(_bb0.x-_vb0.x)/_vb0.width, y:(_bb0.y-_vb0.y)/_vb0.height,
+                       w:_bb0.width/_vb0.width, h:_bb0.height/_vb0.height});
+          }catch(_e2){}
+        }
+        host._noLight=_arr;
+      }
+    }catch(e){}
     try{
       var _bd=(s0.getElementById?s0.getElementById('w3dBody'):s0.querySelector('#w3dBody'));
       var _vb=s0.viewBox&&s0.viewBox.baseVal;
@@ -5486,8 +5505,22 @@ function _recolor3dRaster(){
       //    (ต่อให้หากรอบตัวป้ายไม่เจอจนถอยไปย้อมทั้งใบ ก็ต้องหยุดที่เส้นนี้)
       if(host._artH>0){ y1=Math.min(y1, Math.floor(host._artH*c.height)); if(y1<=y0) y1=Math.floor(host._artH*c.height); }
       var d=g.getImageData(x0,y0,x1-x0,y1-y0), a=d.data, F=_hex2rgb(_faceShow()), S=_hex2rgb(SCOL);
+      var _dw=x1-x0, _skip=null;
+      if(host._noLight&&host._noLight.length){          // 🚫 พื้นขาวใต้ตัวเลขบอกระยะ — ห้ามย้อม
+        _skip=new Uint8Array(_dw*(y1-y0));
+        for(var _q0=0;_q0<host._noLight.length;_q0++){
+          var _n0=host._noLight[_q0];
+          var _ax=Math.max(x0,Math.floor(_n0.x*c.width)-1), _bx2=Math.min(x1,Math.ceil((_n0.x+_n0.w)*c.width)+1);
+          var _ay=Math.max(y0,Math.floor(_n0.y*c.height)-1), _by=Math.min(y1,Math.ceil((_n0.y+_n0.h)*c.height)+1);
+          for(var _yy=_ay;_yy<_by;_yy++){
+            var _row=(_yy-y0)*_dw;
+            for(var _xx=_ax;_xx<_bx2;_xx++) _skip[_row+(_xx-x0)]=1;
+          }
+        }
+      }
       for(var i=0;i<a.length;i+=4){
         if(a[i+3]<8)continue;
+        if(_skip&&_skip[i>>2])continue;
         var r=a[i],gg=a[i+1],b=a[i+2];
         if(Math.max(r,gg,b)-Math.min(r,gg,b)>34)continue;              // สีจัด (เส้นบอกขนาด/ข้อความ) -> ไม่แตะ
         var L=0.299*r+0.587*gg+0.114*b;
