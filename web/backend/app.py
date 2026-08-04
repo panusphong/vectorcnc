@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-clean",
-        "build_note": "🩹 แก้ต้นเหตุ 'ผิวหน้าฉลุโบ๋ + ระยะในภาพ 3 มิติเพี้ยน': ภาพที่ส่งไปทำไฟล์ตัดเคยติดเส้นไกด์/กรอบเลือกบรรทัด/มือจับ/ตัวเลขวัดระยะไปด้วย เลยถูกเทรซกลายเป็นเส้นตัด — ตอนนี้วาดใหม่แบบสะอาดก่อนแปลงเป็นภาพเสมอ (ตรวจแล้ว: พิกเซลเส้นไกด์ในไฟล์ = 0) · ตัวเลขระยะในภาพ 3 มิติ: จัดใหม่ทุกครั้งที่แบบเปลี่ยน + ดันหลบทั้งแนวตั้ง/แนวนอน + ใส่ขอบขาวให้อ่านออก · ยืดทีละด้านได้แล้ว: มือจับส้ม 4 ด้าน — ลากขวา=ยืดออกขวา (ขอบซ้ายนิ่ง) · ลากซ้าย=ยืดออกซ้าย (ขอบขวานิ่ง) · ล่าง/บน เช่นกัน · มุมน้ำเงิน=ย่อ/ขยายทั้งบรรทัด · ไฟล์ตัดยืดตามที่เห็นบนจอเป๊ะ · เพิ่มปุ่ม ✕ ปิดหน้าต่าง + ยกหน้าต่างขึ้นเหนือแถบเมนู (เดิมแถบเมนูบังปุ่มจนกดไม่ติด) · บังคับเบราว์เซอร์เช็คไฟล์ใหม่ทุกครั้ง (no-cache) ไม่ให้ค้างหน้าเก่าหลัง deploy",
+            "build": "2026-08-05-fit",
+        "build_note": "🩹 แก้บรรทัดล่างสุดล้นตกขอบ จนตัวอักษรหายจากไฟล์ตัด (เคสจริง '101-108/201' เหลือ '0-0:0') · จัดเนื้อหมึกกลางช่องบรรทัดใหม่ + ย่อให้พอดีความสูงป้าย · เส้นบอกระยะในภาพ 3 มิติ: เส้นช่วยเริ่มที่ขอบป้าย ไม่ลากทะลุตัวอักษรอีก + ตัวเลขแยกคอลัมน์อัตโนมัติ ไม่ทับกัน + มีพื้นขาวรอง · ภาพที่ส่งไปทำไฟล์ตัดสะอาด ไม่มีเส้นไกด์ติดไป (0 พิกเซล) · ยืดทีละด้านได้ (มือจับส้ม 4 ด้าน) · ปุ่ม ✕ ปิดหน้าต่าง + no-cache กันหน้าเก่าค้าง",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -3603,10 +3603,28 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _dimg = _dimg[:6]
     except Exception:
         _dimg = []
+    # 🧮 จัด 'คอลัมน์' ให้เส้นบอกความสูงด้านขวา — กลุ่มที่ช่วงสูงคาบกันต้องอยู่คนละคอลัมน์
+    #    เดิมสลับแค่ 2 คอลัมน์ (i%2) พอมี 4-6 บรรทัด ตัวเลขจึงทับกันมั่วอย่างที่เห็น
+    _vcol = []; _vslot = []
+    try:
+        for _g9 in _dimg:
+            _ya, _yb = _g9[1], _g9[3]
+            _pad9 = max(fs * 1.2, H * 0.02)               # เผื่อความสูงตัวเลข ไม่ให้ชนกันแบบเฉียดฉิว
+            _k9 = 0
+            while True:
+                if _k9 >= len(_vslot):
+                    _vslot.append([])
+                if all((_yb + _pad9) < _s0 or (_ya - _pad9) > _s1 for _s0, _s1 in _vslot[_k9]):
+                    break
+                _k9 += 1
+            _vslot[_k9].append((_ya, _yb)); _vcol.append(_k9)
+    except Exception:
+        _vcol = [i % 2 for i in range(len(_dimg))]; _vslot = [[], []]
+    _ncol9 = max(1, len(_vslot))
     if _dimg:                                             # เผื่อพื้นที่นอกป้ายสำหรับเส้นบอกระยะ
         #  +2 แถว/คอลัมน์ สำหรับ 'ระยะห่างขอบ 4 ด้าน' ที่ย้ายออกมาไว้นอกกรอบ (ห้ามทับตัวงาน)
         padB += (len(_dimg) + 3) * fs * 1.9
-        padR += fs * 11.0
+        padR += fs * (6.0 + 2.6 * _ncol9)                 # กว้างพอสำหรับทุกคอลัมน์ที่ต้องใช้จริง
     ox = -b[0] + padL; oy = -b[1] + padT
     faceFill = face_color or "#c9cdd4"; wallFill = side_color or "#9aa1ac"; edge = "#3f4753"; boreFill = "#eef1f5"
     _edgelit = bool(rec.get("edge_lit"))
@@ -3932,27 +3950,44 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
         for _i9, _g9 in enumerate(_dimg):
             _x0d, _x1d = _g9[0] + ox, _g9[2] + ox
             _yd = _yBase + (_i9 + 1) * fs * 1.75
+            # 📏 เส้นช่วยต้องเริ่มที่ 'ขอบล่างของป้าย' ไม่ใช่ขอบล่างของบรรทัดนั้น
+            #    เดิมเริ่มที่ตัวบรรทัด -> เส้นวิ่งทะลุตัวอักษรบรรทัดล่าง ๆ ลงมา ภาพเลยรกเป็นตาราง
+            _wy9 = b[3] + oy
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.5"/>'
-                         % (_x0d, _g9[3] + oy, _x0d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+                         % (_x0d, _wy9, _x0d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.5"/>'
-                         % (_x1d, _g9[3] + oy, _x1d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+                         % (_x1d, _wy9, _x1d, _yd, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_x0d, _yd, _x1d, _yd, _dc, _dlw))
             for _xa, _sg in ((_x0d, 1), (_x1d, -1)):
                 parts.append('<path d="M %.1f %.1f L %.1f %.1f L %.1f %.1f" fill="none" stroke="%s" stroke-width="%.2f"/>'
                              % (_xa + _sg * aw * 0.7, _yd - aw * 0.4, _xa, _yd, _xa + _sg * aw * 0.7, _yd + aw * 0.4, _dc, _dlw))
-            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%s: กว้าง %.1f ซม.</text>'
-                         % ((_x0d + _x1d) / 2, _yd - fs * 0.28, _dfs, _dc,
-                            ("โลโก้" if _i9 == 0 and (_g9[2] - _g9[0]) < W * 0.45 else "แถว %d" % (_i9 + 1)),
-                            (_g9[2] - _g9[0]) / 10.0))
+            _txt9 = "%s: กว้าง %.1f ซม." % (
+                ("โลโก้" if _i9 == 0 and (_g9[2] - _g9[0]) < W * 0.45 else "แถว %d" % (_i9 + 1)),
+                (_g9[2] - _g9[0]) / 10.0)
+            # 🏷️ พื้นขาวรองใต้ตัวเลข — เส้นช่วยเส้นประวิ่งผ่านหลังตัวเลขได้ ต้องกันไว้ให้อ่านออก
+            _tw9 = len(_txt9) * _dfs * 0.55
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"/>'
+                         % ((_x0d + _x1d) / 2 - _tw9 / 2, _yd - fs * 0.28 - _dfs * 0.86,
+                            _tw9, _dfs * 1.16, _dfs * 0.18))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%s</text>'
+                         % ((_x0d + _x1d) / 2, _yd - fs * 0.28, _dfs, _dc, _txt9))
             # สูง — วางนอกป้ายด้านขวา
-            _xr = padL + W + dvx + fs * 1.2 + (_i9 % 2) * fs * 2.6
+            _xr = padL + W + dvx + fs * 1.2 + (_vcol[_i9] if _i9 < len(_vcol) else (_i9 % 2)) * fs * 2.6
+            # เส้นช่วยแนวนอนก็เหมือนกัน — เริ่มที่ 'ขอบขวาของป้าย' ไม่ให้ลากผ่านตัวอักษรอื่น
+            _wx9 = b[2] + ox
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.45"/>'
-                         % (_g9[2] + ox, _g9[1] + oy, _xr, _g9[1] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+                         % (_wx9, _g9[1] + oy, _xr, _g9[1] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f" stroke-dasharray="%.1f %.1f" opacity="0.45"/>'
-                         % (_g9[2] + ox, _g9[3] + oy, _xr, _g9[3] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
+                         % (_wx9, _g9[3] + oy, _xr, _g9[3] + oy, _dc, _dlw * 0.8, fs * 0.25, fs * 0.2))
             parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.2f"/>' % (_xr, _g9[1] + oy, _xr, _g9[3] + oy, _dc, _dlw))
-            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle" transform="rotate(-90 %.1f %.1f)">สูง %.1f ซม.</text>'
-                         % (_xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, _dfs, _dc, _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy, (_g9[3] - _g9[1]) / 10.0))
+            _tv9 = "สูง %.1f ซม." % ((_g9[3] - _g9[1]) / 10.0)
+            _cxv, _cyv = _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy
+            _rot9 = ' transform="rotate(-90 %.1f %.1f)"' % (_cxv, _cyv)
+            _tl9 = len(_tv9) * _dfs * 0.55
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"%s/>'
+                         % (_cxv - _tl9 / 2, _cyv - _dfs * 0.72, _tl9, _dfs * 1.16, _dfs * 0.18, _rot9))
+            parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle"%s>%s</text>'
+                         % (_cxv, _cyv, _dfs, _dc, _rot9, _tv9))
         # 📐 ระยะขอบ 4 ด้าน (ซ้าย · ขวา · บน · ล่าง) ของกลุ่มแรก — ช่างต้องรู้ว่าวางงานห่างขอบเท่าไหร่
         #    ⚠️ ต้องวาง 'นอกตัวป้าย' เสมอ — ห้ามลากทับหน้างาน ไม่งั้นบังแบบจนดูไม่รู้เรื่อง
         #    ใช้หลักเขียนแบบจริง: เส้นช่วย (witness line) ยิงออกจากขอบ แล้วเส้นวัดอยู่นอกกรอบ
@@ -3987,7 +4022,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
 
             # ── บน/ล่าง: เส้นวัดอยู่ 'ขวาป้าย' ถัดจากคอลัมน์จับระยะโลโก้
             #    ⚠️ กล่องไฟ 2 หน้า มีแผ่นพรีวิว 'Face 2' วางอยู่ทางขวา ต้องเลยมันไปอีก ไม่งั้นทับกัน
-            _xc = padL + W + dvx + fs * 1.2 + fs * 2.6 * 2 + fs * 1.6
+            _xc = padL + W + dvx + fs * 1.2 + fs * 2.6 * _ncol9 + fs * 1.6
             if _is2face:
                 _xc += W * 0.78 + fs * 5.0
             for _nm, _y0, _y1, _val in (("ห่างขอบบน", b[1] + oy, _g0[1] + oy, (_g0[1] - b[1]) / 10.0),
