@@ -463,15 +463,8 @@ select.numin{cursor:pointer}
               <button type="button" class="chip neonLn on" data-ln="double" style="flex:1">เส้นคู่ (ตามขอบ)</button>
               <button type="button" class="chip neonLn" data-ln="single" style="flex:1">เส้นเดี่ยว (แกนกลาง)</button>
             </div>
-            <!-- 🅰️ โหมดแนวเส้น: ต้องให้ผู้ใช้เลือกเอง เพราะแยก 'ขาตรง' กับ 'โค้งรัศมีใหญ่' อัตโนมัติไม่ได้ -->
-            <div id="neonSharpRow" style="display:none;margin-top:6px">
-              <div style="font-size:11px;color:#64748b;margin:0 0 3px">แนวเส้น (เฉพาะเส้นเดี่ยว)</div>
-              <div style="display:flex;gap:6px">
-                <button type="button" class="chip neonSh on" data-sh="0" style="flex:1">โค้งตามลายมือ</button>
-                <button type="button" class="chip neonSh" data-sh="1" style="flex:1">📐 แบบเหลี่ยม (ตรงเป๊ะ มุมคม)</button>
-              </div>
-              <div class="hint" style="margin-top:3px">เลือก <b>แบบเหลี่ยม</b> เมื่องานเป็นตัวพิมพ์/โลโก้เรขาคณิต — ระบบจะรีดขาตรงให้ตรงเป๊ะ และหามุมจากจุดตัดของสองเส้น (วัดแล้ว: ขาตรง 96%) · งานลายมือให้ใช้ <b>โค้งตามลายมือ</b> ไม่งั้นตัวกลมจะกลายเป็นเหลี่ยม</div>
-            </div>
+            <!-- 🅰️ โหมด 'แบบเหลี่ยม' ถูกถอดออกแล้ว — การเดินไฟเส้นเดี่ยวแบบเดิมดีอยู่แล้ว
+                 (โหมดเหลี่ยมรีดเส้นโค้งของงานลายมือให้กลายเป็นเส้นหักมุม = ยึกยือ) -->
             <!-- 🎨 สีรายตัว: จานสีต่อตัว + คลิกที่ตัวบนภาพก็เลือกได้ -->
             <div id="neonPerRow" style="display:none;margin-top:8px;padding:8px;border:1px dashed #67e8f9;border-radius:9px;background:#f0fdff">
               <div style="font-size:11.5px;font-weight:700;color:#0891b2">🎨 สีรายตัว (เลือกได้อิสระทีละตัว)</div>
@@ -6240,14 +6233,12 @@ var TRIMW=1, TRIMDIR='out';
       box.appendChild(bb); });
     if(box.firstChild){ window.NEON_SEL=list[0]; box.firstChild.style.borderColor='#0f172a'; }
     var ln=document.querySelectorAll('.neonLn'); window.NEON_LINE=window.NEON_LINE||'double';
-    function _nzRows(){ var r=$('neonSharpRow'), p=$('neonPerRow');
+    function _nzRows(){ var p=$('neonPerRow');
       var on=(window.NEON_LINE==='single');
-      if(r)r.style.display=on?'block':'none';
       if(p)p.style.display=(on&&(window.NEON_PIECES||[]).length)?'block':'none'; }
     window._nzRows=_nzRows;
     for(var i=0;i<ln.length;i++){ ln[i].onclick=function(){ window.NEON_LINE=this.getAttribute('data-ln'); for(var j=0;j<ln.length;j++)ln[j].classList.remove('on'); this.classList.add('on'); _nzRows(); }; }
-    var sh=document.querySelectorAll('.neonSh'); window.NEON_SHARP=window.NEON_SHARP||'0';
-    for(var s2=0;s2<sh.length;s2++){ sh[s2].onclick=function(){ window.NEON_SHARP=this.getAttribute('data-sh'); for(var t2=0;t2<sh.length;t2++)sh[t2].classList.remove('on'); this.classList.add('on'); }; }
+    window.NEON_SHARP='0';   /* 🔙 กลับไปใช้การเดินไฟเส้นเดี่ยวแบบเดิม (โค้งตามลายเส้นจริง) */
     if($('neonPerClear'))$('neonPerClear').onclick=function(){
       window.NEON_PCOL=(window.NEON_PIECES||[]).map(function(){return '';}); _nzPaint(); };
     _nzRows();
@@ -6267,7 +6258,8 @@ var TRIMW=1, TRIMDIR='out';
       var inp=document.createElement('input'); inp.type='color';
       inp.value=(C[i]||window.NEON_SEL||'#00e5ff');
       inp.style.cssText='width:26px;height:22px;border:none;background:none;padding:0;cursor:pointer';
-      inp.oninput=function(){ window.NEON_PCOL[i]=this.value; w.style.borderColor='#0891b2'; };
+      inp.oninput=function(){ window.NEON_PCOL[i]=this.value; w.style.borderColor='#0891b2';
+        window._nzApply(i, this.value); };   /* 🎨 เห็นผลทันที ไม่ต้องกดสร้างไฟล์ใหม่ */
       w.appendChild(n); w.appendChild(inp);
       if(C[i]){ w.style.borderColor='#0891b2'; }
       w.setAttribute('data-nzi', i);
@@ -6275,6 +6267,16 @@ var TRIMW=1, TRIMDIR='out';
     });
     var pr=$('neonPerRow');
     if(pr) pr.style.display=((window.NEON_LINE==='single')&&P.length)?'block':'none';
+  };
+  /* 🎨 ทาสีตัวที่ i ลงบนภาพที่เห็นอยู่ทันที (ทุกภาพในหน้า: 3 มิติ / หน้าตรง / จำลองผนัง)
+        หลังบ้านวาดเส้นไฟแยกกลุ่มไว้ให้แล้ว (class nz-glow / nz-tube · data-nz="i")
+        แกนขาวตรงกลาง (nz-core) ไม่ต้องเปลี่ยน — ของจริงไส้ในเป็นสีขาวเสมอ */
+  window._nzApply=function(i, col){
+    if(!col)return;
+    try{
+      var q=document.querySelectorAll('.nz-glow[data-nz="'+i+'"], .nz-tube[data-nz="'+i+'"]');
+      for(var k=0;k<q.length;k++) q[k].setAttribute('stroke', col);
+    }catch(_e){}
   };
   /* 🖱️ คลิกที่ตัวอักษรบนภาพนีออน = เลือกตัวนั้น แล้วเปิดจานสีให้เลย */
   window._nzClickInit=function(){
@@ -6632,7 +6634,7 @@ $('goLayer').onclick=function(){
   fd.append('trim_width_cm',String(TRIMW||1));fd.append('trim_dir',TRIMDIR||'out');
   fd.append('face_color',FCOL||'');fd.append('side_color',SCOL||'');fd.append('spot_colors',(window.SPOT_SPEC||''));fd.append('sticker_color',(window.STK_COL||''));fd.append('sticker_code',(window.STK_CODE||''));fd.append('sticker_brand',(window.STK_BRAND||''));window._mtxAppend(fd);fd.append('arm_color',ACOL||'');
   window._lsGenFace=FCOL||''; window._lsGenSide=SCOL||'';   // 🎨 จำสีที่ backend จะเรนเดอร์มา -> ใช้จับ path ตอนย้อมสีสด (ไม่พึ่ง class)
-  fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');fd.append('neon_sharp',window.NEON_SHARP||'0');try{var _pc=(window.NEON_PCOL||[]); if(_pc.some(function(c){return !!c;})) fd.append('neon_colors',_pc.join(','));}catch(_e){}
+  fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');fd.append('neon_sharp','0');try{var _pc=(window.NEON_PCOL||[]); if(_pc.some(function(c){return !!c;})) fd.append('neon_colors',_pc.join(','));}catch(_e){}
   fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
   fd.append('neon_w_cm',($('neonWcm')&&$('neonWcm').value)||'0');fd.append('neon_h_cm',($('neonHcm')&&$('neonHcm').value)||'0');
   fd.append('frame_bars',($('fBars')&&$('fBars').value)||'1');fd.append('frame_level_cm',($('fLevel')&&$('fLevel').value)||'-1');
@@ -6937,7 +6939,7 @@ $('goLayer').onclick=function(){
       fd.append('led_color',($('pmLedColor')&&$('pmLedColor').value)||'Warm White 3000K');
       fd.append('print_spec',($('pmPrint')&&$('pmPrint').value)||'');
       fd.append('delivery_date',($('pmDelivery')&&$('pmDelivery').value)||'');
-      fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');fd.append('neon_sharp',window.NEON_SHARP||'0');try{var _pc=(window.NEON_PCOL||[]); if(_pc.some(function(c){return !!c;})) fd.append('neon_colors',_pc.join(','));}catch(_e){}
+      fd.append('neon_color',window.NEON_SEL||'#00e5ff');fd.append('neon_line',window.NEON_LINE||'double');fd.append('neon_sharp','0');try{var _pc=(window.NEON_PCOL||[]); if(_pc.some(function(c){return !!c;})) fd.append('neon_colors',_pc.join(','));}catch(_e){}
       fd.append('neon_plate',window.NEON_PLATE||'contour');fd.append('neon_margin_cm',($('neonMargin')&&$('neonMargin').value)||'5');
   fd.append('neon_w_cm',($('neonWcm')&&$('neonWcm').value)||'0');fd.append('neon_h_cm',($('neonHcm')&&$('neonHcm').value)||'0');
       try{ if(window.lastNestDxf&&window._lastNestPng)fd.append('nesting_b64',window._lastNestPng); }catch(_e){}
