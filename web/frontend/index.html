@@ -5631,9 +5631,16 @@ function _glowBody(){
       g.strokeRect(b.x0*sc,b.y0*sc,(b.x1-b.x0)*sc,(b.y1-b.y0)*sc);
       g.setLineDash([]);
       if(on){
-        g.fillStyle='#2563eb';
-        var hs=Math.max(7,sc*3.2);
-        g.fillRect(b.x1*sc-hs/2,b.y1*sc-hs/2,hs,hs);       // มือจับมุมขวาล่าง = ย่อ/ขยาย
+        // 🔲 มือจับต้องใหญ่พอให้นิ้ว/เมาส์จับติด — คิดจากความกว้างผ้าใบ ไม่ใช่จากมิลลิเมตร
+        //    (ถ้าอิงมิลลิเมตร ป้ายใหญ่ๆ มือจับจะเล็กจนมองไม่เห็น) + ขอบขาวให้เด่นบนตัวอักษรดำ
+        var hs=Math.max(10,cv.width*0.020), my=(b.y0+b.y1)/2, mx=(b.x0+b.x1)/2;
+        function hnd(cx,cy,col){
+          g.fillStyle='#fff'; g.fillRect(cx-hs/2-2,cy-hs/2-2,hs+4,hs+4);
+          g.fillStyle=col;    g.fillRect(cx-hs/2,cy-hs/2,hs,hs);
+        }
+        hnd(b.x1*sc,b.y1*sc,'#2563eb');   // ◣ มุมขวาล่าง = ย่อ/ขยายทั้งตัว
+        hnd(b.x1*sc,my*sc,'#f97316');     // ↔️ ขวากลาง = ยืดกว้างอย่างเดียว
+        hnd(mx*sc,b.y1*sc,'#f97316');     // ↕️ ล่างกลาง = ยืดสูงอย่างเดียว
         g.fillStyle='#1e3a8a'; g.textAlign='left';
         g.fillText('กว้าง '+((b.x1-b.x0)/10).toFixed(1)+' ซม. · สูง '+((b.y1-b.y0)/10).toFixed(1)+' ซม.',
                    b.x0*sc, Math.max(fs,b.y0*sc-fs*0.9));
@@ -5660,8 +5667,10 @@ function _glowBody(){
       var B=window._tsBox||[];
       var tx=Math.max(6,p.kx*10), ty=Math.max(6,p.ky*10);   // ระยะจับ ≈ 10 พิกเซลบนจอ
       for(var i=B.length-1;i>=0;i--){
-        var b=B[i];
-        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-b.y1)<ty) return {i:i,mode:'size'};
+        var b=B[i], my=(b.y0+b.y1)/2, mx=(b.x0+b.x1)/2;
+        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-b.y1)<ty) return {i:i,mode:'size'};    // มุม = สเกลรวม
+        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-my)<ty)   return {i:i,mode:'wide'};    // ขวากลาง = ยืดกว้าง
+        if(Math.abs(p.x-mx)<tx  && Math.abs(p.y-b.y1)<ty)  return {i:i,mode:'tall'};    // ล่างกลาง = ยืดสูง
         if(p.x>=b.x0-tx*0.5&&p.x<=b.x1+tx*0.5&&p.y>=b.y0-ty*0.5&&p.y<=b.y1+ty*0.5) return {i:i,mode:'move'};
       }
       return null;
@@ -5669,15 +5678,17 @@ function _glowBody(){
     cv.addEventListener('pointermove',function(e){
       if(st) return;
       var h=hit(toMM(e));
-      cv.style.cursor=h?(h.mode==='size'?'nwse-resize':'move'):'default';
+      cv.style.cursor=h?(h.mode==='size'?'nwse-resize':(h.mode==='wide'?'ew-resize':(h.mode==='tall'?'ns-resize':'move'))):'default';
     });
     cv.addEventListener('pointerdown',function(e){
       var p=toMM(e), h=hit(p);
       window._tsSel=h?h.i:null;
       if(!h){ prev(); return; }
       var r0=window._tsRows[h.i]||(window._tsRows[h.i]={});
+      var _bx=window._tsBox[h.i];
       st={i:h.i,mode:h.mode,px:p.x,py:p.y,dx:(+r0.dx||0),dy:(+r0.dy||0),
-          size:(+r0.size||sizeOf(h.i)),w0:Math.max(1,(window._tsBox[h.i].x1-window._tsBox[h.i].x0))};
+          size:(+r0.size||sizeOf(h.i)),sx:(+r0.sx||1),sy:(+r0.sy||1),
+          w0:Math.max(1,_bx.x1-_bx.x0), h0:Math.max(1,_bx.y1-_bx.y0)};
       try{ cv.setPointerCapture(e.pointerId); }catch(_e){}
       e.preventDefault(); prev();
     });
@@ -5699,10 +5710,16 @@ function _glowBody(){
           ndy=Math.max(Pl-by0, Math.min(Hl-Pl-h0-by0, ndy));
         }
         r0.dx=ndx; r0.dy=ndy;
-      }else{
+      }else if(st.mode==='size'){
         var f=Math.max(0.25,Math.min(6,(st.w0+(p.x-st.px))/st.w0));
         r0.size=Math.max(0.2,Math.round(st.size*f*10)/10);   // ✂️ ขนาดตามสเกลจริง ปัด 0.1
         var el=document.querySelector('.tsRowSize[data-i="'+st.i+'"]'); if(el)el.value=r0.size;
+      }else if(st.mode==='wide'){
+        // ↔️ ยืดกว้างอย่างเดียว — ความสูงคงเดิม (ลูกศรยาวขึ้นโดยไม่หนาขึ้น)
+        r0.sx=Math.max(0.15,Math.min(12,st.sx*((st.w0+(p.x-st.px))/st.w0)));
+      }else if(st.mode==='tall'){
+        // ↕️ ยืดสูงอย่างเดียว — ความกว้างคงเดิม
+        r0.sy=Math.max(0.15,Math.min(12,st.sy*((st.h0+(p.y-st.py))/st.h0)));
       }
       prev(); e.preventDefault();
     });
@@ -5711,7 +5728,7 @@ function _glowBody(){
     });
     cv.addEventListener('dblclick',function(e){        // 🔄 ดับเบิลคลิกที่แถว = คืนตำแหน่งเดิม
       var h=hit(toMM(e)); if(!h)return;
-      var r0=window._tsRows[h.i]||(window._tsRows[h.i]={}); r0.dx=0; r0.dy=0; prev();
+      var r0=window._tsRows[h.i]||(window._tsRows[h.i]={}); r0.dx=0; r0.dy=0; r0.sx=1; r0.sy=1; prev();
     });
   }
 
@@ -5763,18 +5780,26 @@ function _glowBody(){
       var ph=unit*wt[k];
       // 🖐️ ระยะที่ผู้ใช้ลากแถวนี้ไป (เก็บเป็น มม. จึงคงที่แม้เปลี่ยนขนาดป้าย)
       var _off=window._tsRows[k]||{}, _dx=(+_off.dx||0)*PX, _dy=(+_off.dy||0)*PX;
+      // ↔️ ยืดกว้าง / ↕️ ยืดสูง แยกแกนได้ (ค่าเริ่มต้น 1 = ไม่ยืด)
+      //    ใช้มากกับ 'สัญลักษณ์' เช่น ลูกศร ที่ต้องยืดยาวออกด้านข้างโดยไม่ให้หนาขึ้น
+      var _sx=(+_off.sx||1), _sy=(+_off.sy||1);
       g.fillStyle=colorOf(k);                    // 🎨 สีของแถวนี้ (ตั้งเองได้อิสระ)
       g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
       var m=g.measureText(L[k]);
       var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
       var yd=y+(ph-asc)*0.5;
-      g.fillText(L[k],ax+_dx,yd+_dy);
+      if(_sx!==1||_sy!==1){
+        g.save(); g.translate(ax+_dx,yd+_dy); g.scale(_sx,_sy); g.fillText(L[k],0,0); g.restore();
+      }else{
+        g.fillText(L[k],ax+_dx,yd+_dy);
+      }
       try{
         var lft=(m.actualBoundingBoxLeft!=null?m.actualBoundingBoxLeft:0);
         var rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
         var a2=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
         var d2=(m.actualBoundingBoxDescent!=null?m.actualBoundingBoxDescent:0);
-        var _b={x0:(ax+_dx-lft)/PX, x1:(ax+_dx+rgt)/PX, y0:(yd+_dy-a2)/PX, y1:(yd+_dy+d2)/PX};
+        var _b={x0:(ax+_dx-lft*_sx)/PX, x1:(ax+_dx+rgt*_sx)/PX,
+                y0:(yd+_dy-a2*_sy)/PX,  y1:(yd+_dy+d2*_sy)/PX};
         _spec.lines.push({text:L[k],font:font,file:_ffile,
           x0:_b.x0, x1:_b.x1, y0:_b.y0, y1:_b.y1});
         window._tsBox.push(_b);                  // 📦 หน่วย มม. — ใช้ทั้งลากจับและวาดเส้นวัดระยะ
@@ -5898,13 +5923,23 @@ function _glowBody(){
       setTimeout(prev,180);                     // เผื่อฟอนต์เพิ่งโหลดเสร็จ
     }
   }
-  if($('tsBigBtn'))$('tsBigBtn').onclick=function(){ _tsBigOpen(true); };
-  if($('tsBigDone'))$('tsBigDone').onclick=function(){ _tsBigOpen(false); prev(); };
-  if($('tsBigReset'))$('tsBigReset').onclick=function(){
-    (window._tsRows||[]).forEach(function(r){ if(r){ r.dx=0; r.dy=0; } });
-    window._tsSel=null; prev();
-  };
-  if($('tsBigWrap'))$('tsBigWrap').addEventListener('click',function(e){ if(e.target===this) _tsBigOpen(false); });
+  /* ⚠️ ปุ่มของหน้าต่างเต็มจอถูกวางไว้ท้ายไฟล์ (หลังสคริปต์นี้) — ตอนสคริปต์รัน ปุ่มยังไม่เกิด
+     ถ้าผูก onclick ตรงๆ จะได้ null เงียบๆ แล้วปุ่ม "เสร็จแล้ว"/"คืนตำแหน่ง" จะกดไม่ติด
+     จึงต้องดักที่ document แล้วค่อยดูว่าโดนปุ่มไหน (ใช้ได้เสมอ ไม่ขึ้นกับลำดับโหลด) */
+  document.addEventListener('click',function(e){
+    var t=e.target&&e.target.closest?e.target.closest('#tsBigBtn,#tsBigDone,#tsBigReset'):null;
+    if(t){
+      if(t.id==='tsBigBtn'){ _tsBigOpen(true); }
+      else if(t.id==='tsBigDone'){ _tsBigOpen(false); prev(); }
+      else{
+        (window._tsRows||[]).forEach(function(r){ if(r){ r.dx=0; r.dy=0; r.sx=1; r.sy=1; } });
+        window._tsSel=null; prev();
+      }
+      e.preventDefault(); return;
+    }
+    var w=$('tsBigWrap');
+    if(w && e.target===w) _tsBigOpen(false);   // คลิกพื้นหลังมืด = ปิด
+  });
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape' && $('tsBigWrap') && $('tsBigWrap').style.display!=='none') _tsBigOpen(false);
   });
@@ -11145,8 +11180,8 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       <button type="button" id="tsBigDone" class="btn" style="background:#0d9488;color:#fff;border:none;font-weight:700;font-size:12px;padding:6px 16px">✅ เสร็จแล้ว</button>
     </div>
     <div style="padding:12px 14px;overflow:auto;background:#f8fafc">
-      <canvas id="tsBigCv" style="width:100%;max-width:100%;display:block;border:1px dashed #0d9488;border-radius:8px;background:#fff;cursor:pointer"></canvas>
-      <div class="hint" style="margin:8px 0 0">คลิกเลือกบรรทัด → ลากเพื่อย้าย · ลาก<b>สี่เหลี่ยมมุมขวาล่าง</b>เพื่อย่อ/ขยาย · <b>ดับเบิลคลิก</b> = คืนตำแหน่งเดิมของบรรทัดนั้น<br>
+      <canvas id="tsBigCv" style="width:auto;height:auto;max-width:100%;max-height:calc(100vh - 190px);display:block;margin:0 auto;border:1px dashed #0d9488;border-radius:8px;background:#fff;cursor:pointer"></canvas>
+      <div class="hint" style="margin:8px 0 0">คลิกเลือกบรรทัด → ลากเพื่อย้าย · <b style="color:#2563eb">มุมขวาล่าง (น้ำเงิน)</b> = ย่อ/ขยายทั้งบรรทัด · <b style="color:#f59e0b">ขวากลาง (ส้ม)</b> = ยืดกว้างอย่างเดียว · <b style="color:#f59e0b">ล่างกลาง (ส้ม)</b> = ยืดสูงอย่างเดียว · <b>ดับเบิลคลิก</b> = คืนค่าเดิมของบรรทัดนั้น<br>
       📏 <b style="color:#0d9488">ตัวเลขเขียว</b> = ระยะห่างระหว่างบรรทัด · <b style="color:#94a3b8">เทา</b> = ระยะจากขอบป้าย · <b style="color:#dc2626">แดง</b> = บรรทัดซ้อนทับกัน — <b>ทุกตัวเลขขยับตามทันทีขณะลาก</b></div>
     </div>
   </div>
