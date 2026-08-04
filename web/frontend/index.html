@@ -9587,7 +9587,10 @@ function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey,
      \u0e40\u0e14\u0e34\u0e21\u0e43\u0e0a\u0e49\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e1b\u0e49\u0e32\u0e22 -> \u0e1b\u0e49\u0e32\u0e22 3 \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e2a\u0e39\u0e07\u0e23\u0e27\u0e21 60.8 \u0e0b\u0e21. (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e08\u0e23\u0e34\u0e07\u0e41\u0e04\u0e48 ~12 \u0e0b\u0e21.)
      \u0e01\u0e47\u0e42\u0e14\u0e19\u0e15\u0e35\u0e40\u0e1b\u0e47\u0e19\u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 \u0e41\u0e25\u0e49\u0e27\u0e23\u0e32\u0e04\u0e32\u0e02\u0e36\u0e49\u0e19 0 \u0e1a\u0e32\u0e17 \u0e42\u0e14\u0e22\u0e44\u0e21\u0e48\u0e1a\u0e2d\u0e01\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25 */
   var _lh=parseFloat(letterHeightCm); if(!(_lh>0)) _lh=heightM*100;
-  if(isText && _lh>60) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 '+_lh.toFixed(1)+' \u0e0b\u0e21. > 60 \u0e0b\u0e21.)'};
+  if(isText && _lh>60) return {over60:true, hcm:_lh,
+    error:'\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 '+_lh.toFixed(1)+' \u0e0b\u0e21. \u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19\u0e15\u0e32\u0e23\u0e32\u0e07\u0e23\u0e32\u0e04\u0e32 (\u0e2a\u0e39\u0e07\u0e2a\u0e38\u0e14 60 \u0e0b\u0e21.) '
+         +'\u2014 \u0e07\u0e32\u0e19\u0e02\u0e19\u0e32\u0e14\u0e19\u0e35\u0e49\u0e15\u0e49\u0e2d\u0e07\u0e43\u0e2b\u0e49\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23\u0e01\u0e33\u0e2b\u0e19\u0e14\u0e23\u0e32\u0e04\u0e32\u0e40\u0e2d\u0e07 \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e44\u0e21\u0e48\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e43\u0e2b\u0e49\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34 '
+         +'\u00b7 \u0e17\u0e32\u0e07\u0e2d\u0e2d\u0e01: \u0e25\u0e14\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e43\u0e2b\u0e49 \u2264 60 \u0e0b\u0e21. \u0e2b\u0e23\u0e37\u0e2d\u0e01\u0e14 \u201c\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32\u201d \u0e2a\u0e48\u0e07\u0e43\u0e2b\u0e49\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23\u0e15\u0e35\u0e23\u0e32\u0e04\u0e32'};
   var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey);
   if((isLogo||itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0) && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
   var colorFee=(!isPrint&&colorSpecial)?1500:0;
@@ -9642,8 +9645,25 @@ function wallPrice(){ if(!$('wPResult'))return;
        \u0e1c\u0e39\u0e49\u0e43\u0e0a\u0e49\u0e40\u0e25\u0e22\u0e40\u0e02\u0e49\u0e32\u0e43\u0e08\u0e27\u0e48\u0e32\u0e23\u0e30\u0e1a\u0e1a\u0e1e\u0e31\u0e07 \u2014 \u0e15\u0e49\u0e2d\u0e07\u0e1a\u0e2d\u0e01\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25\u0e15\u0e23\u0e07 \u0e46 \u0e15\u0e23\u0e07\u0e19\u0e35\u0e49 */
     var _er=null; for(var _e9=0;_e9<lines.length;_e9++){ if(lines[_e9].error){ _er=lines[_e9].error; break; } }
     $('wPResult').innerHTML = _er
-      ? ('<b style="color:#b91c1c">\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49</b><br><span style="font-size:12px">'+_er+'</span>')
+      ? ('<div style="padding:10px 12px;border-radius:9px;background:#fef2f2;border:1px solid #ef4444;'
+         +'color:#7f1d1d;font-size:12.5px;line-height:1.5"><b style="font-size:13.5px">\u26a0\ufe0f \u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49</b>'
+         +'<br>'+_er+'</div>')
       : '\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22 \u2192 <b>0 \u0e1a\u0e32\u0e17</b>';
+    if(_er){ try{
+      var _sig2='NONE|'+_er;
+      if(window._wErrSig!==_sig2){ window._wErrSig=_sig2;
+        var _t2=$('wPWarnToast');
+        if(!_t2){ _t2=document.createElement('div'); _t2.id='wPWarnToast';
+          _t2.style.cssText='position:fixed;right:16px;bottom:16px;z-index:100020;max-width:360px;'
+            +'padding:12px 14px;border-radius:12px;background:#7f1d1d;color:#fff;font-size:12.5px;'
+            +'line-height:1.5;box-shadow:0 12px 34px rgba(0,0,0,.35);cursor:pointer';
+          _t2.onclick=function(){ this.style.display='none'; };
+          document.body.appendChild(_t2); }
+        _t2.innerHTML='\u26a0\ufe0f <b>\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49</b><br>'+_er+'<br><span style="opacity:.75;font-size:11px">(\u0e04\u0e25\u0e34\u0e01\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e1b\u0e34\u0e14)</span>';
+        _t2.style.display='block';
+        clearTimeout(window._wErrTid); window._wErrTid=setTimeout(function(){ try{_t2.style.display='none';}catch(_e){} },9000);
+      }
+    }catch(_e){} }
     _wLast=null; try{updateTxtInfo();}catch(_e){} try{updateShapeInfo();}catch(_e){} try{updateLogoInfo();}catch(_e){} return; }
   // \ud83c\udfa8 \u0e04\u0e48\u0e32\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29 \u2014 \u0e1a\u0e27\u0e01\u0e40\u0e02\u0e49\u0e32\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21\u0e04\u0e23\u0e31\u0e49\u0e07\u0e40\u0e14\u0e35\u0e22\u0e27 (\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22)
   if(colorTotal>0){ lines.push({colorLine:true,n:nColor,fee:colorTotal}); total+=colorTotal; }
@@ -9725,7 +9745,35 @@ function wallPrice(){ if(!$('wPResult'))return;
     } else { $('wFacadeBOM').innerHTML='เลือกโหมด Facade เพื่อคำนวณวัตถุดิบ'; }
   }
   var multi=_valid.length>1;
-  var html=lines.map(function(l){
+  /* 🔔 แจ้งเตือนใหญ่ด้านบนสุด ถ้ามีบรรทัดไหนคิดราคาไม่ได้ — ห้ามเงียบ
+     (เคสหลัก: ตัวอักษรสูงเกิน 60 ซม. ซึ่งตารางราคาไม่ครอบคลุม ต้องให้ผู้บริหารตีราคา) */
+  var _errL=lines.filter(function(l){return l.error;});
+  var _banner='';
+  if(_errL.length){
+    var _o60=_errL.filter(function(l){return /60 ซม/.test(l.error||'');}).length;
+    _banner='<div style="margin:0 0 8px;padding:9px 11px;border-radius:9px;background:#fef2f2;'
+      +'border:1px solid #ef4444;color:#7f1d1d;font-size:12.5px;line-height:1.5">'
+      +'<b style="font-size:13px">⚠️ ราคานี้ยังไม่ครบ — มี '+_errL.length+' รายการที่ระบบคิดให้ไม่ได้</b><br>'
+      +(_o60?'ตัวอักษรสูงเกิน 60 ซม. อยู่นอกตารางราคา <b>ต้องให้ผู้บริหารกำหนดราคา</b> ยอดรวมด้านล่างจึงยังไม่รวมรายการนั้น'
+            :'ดูเหตุผลในรายการสีแดงด้านล่าง')+'</div>';
+    try{
+      // เตือนซ้ำอีกชั้นแบบเห็นแน่ ๆ (ครั้งเดียวต่อเหตุผล ไม่รบกวนซ้ำ ๆ ตอนลากปรับขนาด)
+      var _sig=_errL.map(function(l){return l.error;}).join('|');
+      if(window._wErrSig!==_sig){ window._wErrSig=_sig;
+        var _t=$('wPWarnToast');
+        if(!_t){ _t=document.createElement('div'); _t.id='wPWarnToast';
+          _t.style.cssText='position:fixed;right:16px;bottom:16px;z-index:100020;max-width:360px;'
+            +'padding:12px 14px;border-radius:12px;background:#7f1d1d;color:#fff;font-size:12.5px;'
+            +'line-height:1.5;box-shadow:0 12px 34px rgba(0,0,0,.35);cursor:pointer';
+          _t.onclick=function(){ this.style.display='none'; };
+          document.body.appendChild(_t); }
+        _t.innerHTML='⚠️ <b>คิดราคาอัตโนมัติไม่ได้</b><br>'+_errL[0].error+'<br><span style="opacity:.75;font-size:11px">(คลิกเพื่อปิด)</span>';
+        _t.style.display='block';
+        clearTimeout(window._wErrTid); window._wErrTid=setTimeout(function(){ try{_t.style.display='none';}catch(_e){} },9000);
+      }
+    }catch(_e){}
+  } else { try{ window._wErrSig=null; var _t0=$('wPWarnToast'); if(_t0)_t0.style.display='none'; }catch(_e){} }
+  var html=_banner+lines.map(function(l){
     if(l.colorLine)return '<div style="margin-bottom:3px">\ud83c\udfa8 <b>\u0e2a\u0e35\u0e1e\u0e34\u0e40\u0e28\u0e29</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e2a\u0e35 \u00d7 1,500</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>';
     if(l.legLine){ return '<div style="margin-bottom:3px">\ud83e\uddbf <b>ขาตั้งพื้น + ล้อเลื่อน</b> <span style="font-size:10px;opacity:.85">ขาคู่ 2 ข้าง + คานล่าง + ล้อ 4 ตัว · เหมาชุด</span> \u2192 <b>'+l.fee.toLocaleString()+' บาท</b></div>'; }
     if(l.armLine){ var _an=(l.arm==='top2'?'\u0e41\u0e02\u0e27\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 2 \u0e41\u0e02\u0e19':l.arm==='side1'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 1 \u0e41\u0e02\u0e19':l.arm==='side2'?'\u0e41\u0e02\u0e19\u0e02\u0e49\u0e32\u0e07 2 \u0e41\u0e02\u0e19':'\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14'); return '<div style="margin-bottom:3px">\ud83e\uddbe <b>\u0e41\u0e02\u0e19\u0e22\u0e36\u0e14/\u0e41\u0e02\u0e27\u0e19</b> <span style="font-size:10px;opacity:.85">'+_an+' \u00b7 '+l.sqm.toFixed(3)+' \u0e15\u0e23.\u0e21. \u00d7 '+l.rate.toLocaleString()+' (\u0e40\u0e17\u0e48\u0e32\u0e42\u0e04\u0e23\u0e07\u0e40\u0e2b\u0e25\u0e47\u0e01)</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
@@ -9735,7 +9783,10 @@ function wallPrice(){ if(!$('wPResult'))return;
     if(l.backlitLine){ return '<div style="margin-bottom:3px">\ud83d\udca1 <b>\u0e44\u0e1f LED \u0e2b\u0e25\u0e31\u0e07\u0e41\u0e1c\u0e48\u0e19\u0e09\u0e25\u0e38</b> <span style="font-size:10px;opacity:.85">'+l.m.toFixed(1)+' \u0e21. \u00d7 '+l.rate.toLocaleString()+'/\u0e21.</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.spotLine){ return '<div style="margin-bottom:3px">\ud83d\udd26 <b>\u0e2a\u0e1b\u0e2d\u0e15\u0e44\u0e25\u0e15\u0e4c\u0e2a\u0e48\u0e2d\u0e07\u0e2b\u0e19\u0e49\u0e32\u0e15\u0e36\u0e01</b> <span style="font-size:10px;opacity:.85">'+l.n+' \u0e14\u0e27\u0e07 \u00d7 '+l.rate.toLocaleString()+'</span> \u2192 <b>'+l.fee.toLocaleString()+' \u0e1a\u0e32\u0e17</b></div>'; }
     if(l.empty)return '<div style="opacity:.7;font-size:12px">'+l.label+': (\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17)</div>';
-    if(l.error)return '<div style="font-size:12px">'+(l.label?l.label+': ':'')+'\u26d4 <span style="font-size:11px">'+l.error+'</span></div>';
+    // \u26d4 \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e17\u0e35\u0e48\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 \u0e15\u0e49\u0e2d\u0e07\u0e40\u0e14\u0e48\u0e19\u0e1e\u0e2d\u0e43\u0e2b\u0e49\u0e40\u0e2b\u0e47\u0e19\u0e17\u0e31\u0e19\u0e17\u0e35 \u2014 \u0e40\u0e14\u0e34\u0e21\u0e40\u0e1b\u0e47\u0e19\u0e15\u0e31\u0e27\u0e08\u0e34\u0e4b\u0e27\u0e1b\u0e19\u0e2d\u0e22\u0e39\u0e48\u0e01\u0e31\u0e1a\u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e2d\u0e37\u0e48\u0e19\u0e08\u0e19\u0e21\u0e2d\u0e07\u0e02\u0e49\u0e32\u0e21
+    if(l.error)return '<div style="margin:4px 0;padding:7px 9px;border-radius:8px;background:#fee2e2;'
+      +'border:1px solid #fca5a5;color:#7f1d1d;font-size:12px;line-height:1.45">'
+      +'<b>\u26d4 \u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49</b>'+(l.label?(' \u00b7 '+l.label):'')+'<br><span style="font-size:11.5px">'+l.error+'</span></div>';
     var head=(l.label?('<b>'+l.label+'</b> '):'')+'<span style="font-size:10px;opacity:.85">'+l.w+'\u00d7'+l.h+' \u0e0b\u0e21. \u00b7 '+l.r.billable.toFixed(3)+' \u0e15\u0e23.\u0e21.'+(l.r.tiered?(' \u00b7 '+l.r.tier):'')+'</span>';
     var tail=multi?(' \u2192 <b>'+Math.round(l.r.total).toLocaleString()+' \u0e1a\u0e32\u0e17</b>'):'';
     return '<div style="margin-bottom:3px">'+head+'<br><span style="font-size:11px;opacity:.9">'+_pDetail(l.r)+'</span>'+tail+'</div>'; }).join('');
