@@ -13,8 +13,7 @@
 import math
 import numpy as np
 import cv2
-from shapely.geometry import LineString, MultiLineString, Point, Polygon
-from shapely.geometry import Point as _Pt
+from shapely.geometry import LineString, MultiLineString, Point
 from shapely.ops import unary_union
 
 
@@ -163,288 +162,32 @@ def prune_and_join(chains, nodes, ppm, spur_mm):
         n = np.linalg.norm(v)
         return v / n if n > 1e-9 else v
 
-    items = [list(c) for c in keep if len(c) >= 2]
-    if not items:
-        return []
-
-    # ══════════════════════════════════════════════════════════════════════
-    # 🔗 เชื่อมที่ 'จุดตัด' — หัวใจของความเนียน
-    #
-    # ⚠️ ของเดิมต่อได้เฉพาะปมที่มีเส้นมาชนพอดี 2 เส้น
-    #    แต่ลายมือ/ตัวเขียนมีจุดไขว้ (X) และสามแฉก (Y) เต็มไปหมด
-    #    ปมพวกนั้นเลยถูกปล่อยขาด -> เส้นถูกหั่นเป็นท่อนสั้น ๆ แล้วเกลาแยกกันคนละที
-    #    ผลคือ 'ปลายเส้นไม่บรรจบกัน' (วัดจริงบนคำว่า Eleca bar: ห่างเฉลี่ย 3.15 มม.)
-    #    ซึ่งคือสิ่งที่เห็นเป็นรอยสะดุด/หางแมวตรงจุดเชื่อมในภาพพรีวิว
-    #
-    # ✅ วิธีใหม่ 3 ชั้น:
-    #    1) ปมที่อยู่ติด ๆ กันหลายพิกเซล -> ยุบเป็น 'ปมเดียว' แล้วดึงปลายทุกเส้นมาชนจุดนั้นเป๊ะ
-    #    2) ที่ปมเดียวกัน จับคู่เส้นที่ 'พุ่งทะลุตรงกันที่สุด' (มุมตรงข้ามกันมากสุด) แล้วต่อเป็นเส้นเดียว
-    #       -> จุดไขว้ X กลายเป็นเส้นตรง 2 เส้นวิ่งผ่านกัน เหมือนที่ช่างเดินท่อจริง
-    #    3) เส้นที่จับคู่ไม่ได้ ก็ยังชนปมพอดี ไม่มีช่องว่างหลงเหลือ
-    # ══════════════════════════════════════════════════════════════════════
-    tol = max(1.8, 0.9 * ppm)              # ปมห่างกันไม่เกินนี้ = ปมเดียวกัน (มม. -> พิกเซล)
-
-    def _cluster(its, t):
-        """จัดกลุ่มปลายเส้นที่อยู่ตำแหน่งเดียวกัน -> (ends, P, groups)"""
-        en = []
-        for i, c in enumerate(its):
-            en.append((i, 0, float(c[0][0]), float(c[0][1])))
-            en.append((i, 1, float(c[-1][0]), float(c[-1][1])))
-        Q = np.asarray([[e[2], e[3]] for e in en], dtype=float)
-        par = list(range(len(en)))
-
-        def _f(x):
-            while par[x] != x:
-                par[x] = par[par[x]]; x = par[x]
-            return x
-
-        def _u(x, y):
-            rx, ry = _f(x), _f(y)
-            if rx != ry:
-                par[ry] = rx
-        try:
-            from scipy.spatial import cKDTree as _KD
-            for x, y in _KD(Q).query_pairs(t):
-                _u(x, y)
-        except Exception:
-            for x in range(len(Q)):
-                for y in range(x + 1, len(Q)):
-                    if abs(Q[x, 0] - Q[y, 0]) <= t and abs(Q[x, 1] - Q[y, 1]) <= t:
-                        _u(x, y)
-        gr = {}
-        for k in range(len(en)):
-            gr.setdefault(_f(k), []).append(k)
-        return en, Q, gr
-
-    # ── ชั้น 0: ยุบ 'สะพานสั้นระหว่างสองปม' — หัวใจของจุดไขว้ (X) ──
-    #    เวลาลายเส้นสองเส้นตัดกันแบบเฉียง แกนกลางจะไม่ออกมาเป็นกากบาทจุดเดียว
-    #    แต่เป็นสามแฉกสองอันเชื่อมด้วย 'สะพาน' สั้น ๆ ตรงกลาง
-    #    ผลคือทั้งสองเส้นแย่งสะพานกัน มีแค่เส้นเดียวได้ทะลุ อีกเส้นถูกตัดขาดตรงนั้น
-    #    (นี่คือรอยที่พี่วงตรงคานขวางของ ff ในคำว่า coffee)
-    #    ✅ ยุบสะพานทิ้ง ให้ทั้ง 4 แขนมาเจอกันที่จุดเดียว แล้วค่อยจับคู่ทะลุตรง -> ผ่านได้ทั้งคู่
-    #    ความยาวสะพาน = ประมาณ 'ความหนาลายเส้น' เพราะสะพานคือช่วงที่แกนกลางวิ่งอยู่ในเนื้อที่ทับกัน
-    #    (spur_mm ถูกตั้งไว้ = ความหนา x 0.75 -> ย้อนกลับได้)
-    bridge_px = max(3.0, spur_px / 0.75 * 3.2)
-    for _round in range(3):
-        _en, _Q, _gr = _cluster(items, tol)
-        deg = {}
-        for _g in _gr.values():
-            for k in _g:
-                deg[k] = len(_g)
-        kof0 = {(_en[k][0], _en[k][1]): k for k in range(len(_en))}
-        drop = set(); merge = []
+    items = [list(c) for c in keep]
+    changed = True
+    while changed:
+        changed = False
+        endmap = {}
         for i, c in enumerate(items):
-            if len(c) > bridge_px:
+            endmap.setdefault(c[0], []).append((i, True))
+            endmap.setdefault(c[-1], []).append((i, False))
+        for p, lst in endmap.items():
+            if len(lst) != 2:
                 continue
-            k0 = kof0.get((i, 0)); k1 = kof0.get((i, 1))
-            if k0 is None or k1 is None:
+            (i, si), (j, sj) = lst
+            if i == j:
                 continue
-            if deg.get(k0, 0) >= 3 and deg.get(k1, 0) >= 3:
-                drop.add(i); merge.append((k0, k1))
-        if not drop:
+            a, b = items[i], items[j]
+            va = dirv(a, si); vb = dirv(b, sj)
+            if float(np.dot(va, vb)) > -0.35:      # หักศอกเกินไป -> ไม่ต่อ
+                continue
+            aa = a[::-1] if si else a
+            bb = b if sj else b[::-1]
+            items[i] = aa + bb[1:]
+            items[j] = None
+            items = [x for x in items if x is not None]
+            changed = True
             break
-        # ดึงปลายของ 'สองปมที่สะพานเชื่อมอยู่' มารวมเป็นจุดเดียวกัน แล้วทิ้งสะพาน
-        _root = {}
-        for r, v in _gr.items():
-            for k in v:
-                _root[k] = r
-        _mp = {}
-        for k0, k1 in merge:
-            _mp.setdefault(_root[k0], set()).add(_root[k1])
-            _mp.setdefault(_root[k1], set()).add(_root[k0])
-        seen_r = set()
-        for r0 in list(_mp):
-            if r0 in seen_r:
-                continue
-            stack = [r0]; comp = set()
-            while stack:
-                r = stack.pop()
-                if r in comp:
-                    continue
-                comp.add(r); seen_r.add(r)
-                stack.extend(_mp.get(r, ()))
-            ks = [k for r in comp for k in _gr[r]]
-            cy = float(np.mean([_Q[k, 0] for k in ks]))
-            cx = float(np.mean([_Q[k, 1] for k in ks]))
-            for k in ks:
-                i, side = _en[k][0], _en[k][1]
-                if i in drop:
-                    continue
-                if side == 0:
-                    items[i][0] = (cy, cx)
-                else:
-                    items[i][-1] = (cy, cx)
-        items = [c for i, c in enumerate(items) if i not in drop]
-        if not items:
-            return []
-
-    ends, P, groups = _cluster(items, tol)
-
-    # ── ดึงปลายทุกเส้นมาชน 'จุดกลางปม' ให้ตรงกันเป๊ะ ──
-    for _g in groups.values():
-        if len(_g) < 2:
-            continue
-        cy = float(np.mean([P[k, 0] for k in _g]))
-        cx = float(np.mean([P[k, 1] for k in _g]))
-        for k in _g:
-            i, side = ends[k][0], ends[k][1]
-            if side == 0:
-                items[i][0] = (cy, cx)
-            else:
-                items[i][-1] = (cy, cx)
-
-    # ══════════════════════════════════════════════════════════════════
-    # ชั้น 2: จับคู่ 'ทะลุตรง' ที่ปมเดียวกัน — เลือก 'ชุดที่ดีที่สุดทั้งปม' ไม่ใช่ทีละคู่
-    #
-    # ⚠️ บทเรียนจากภาพจริง (คำว่า coffee ตรงคานขวางของ ff):
-    #    การไล่จับคู่ทีละคู่จากคะแนนดีสุด (greedy) ทำให้บางปมจับผิดเส้น —
-    #    คู่ที่ดีที่สุด 'คู่เดียว' ไปกินปลายที่คู่อื่นต้องใช้ เหลือคู่ที่เหลือต้องจับมั่ว
-    #    ✅ ปมหนึ่งมีปลายไม่กี่เส้น -> ลองทุกวิธีจับคู่แล้วเลือกชุดที่รวมแล้วดีที่สุดไปเลย
-    #
-    # ⚠️ บทเรียนที่ 2 (ห่วงเล็กของตัว E):
-    #    ถ้าปล่อยให้ 'หัวกับท้ายของเส้นเดียวกัน' จับคู่กันเอง ห่วงจะกลายเป็นเกาะปิด
-    #    ลอยอยู่ข้างเส้นหลัก ปลายท่อโผล่เป็นติ่ง — ของจริงช่างเดินท่อเข้าไปในห่วงแล้ววนออก
-    #    ✅ ใส่ค่าปรับหนักให้การจับคู่ตัวเอง จะเลือกก็ต่อเมื่อไม่มีทางอื่นจริง ๆ
-    # ══════════════════════════════════════════════════════════════════
-    _wins = [max(2.0, 1.5 * ppm), max(3.0, 3.0 * ppm), max(5.0, 6.0 * ppm)]   # ดูทิศหลายระยะ
-
-    def _dirs(i, side):
-        """ทิศที่เส้นพุ่ง 'ออกจากปม' วัดหลายระยะ — ระยะสั้นไวต่อสัญญาณรบกวน ระยะยาวไวต่อความโค้ง"""
-        c = np.asarray(items[i], dtype=float)
-        seg = c if side == 0 else c[::-1]
-        if len(seg) < 2:
-            return [np.zeros(2)] * len(_wins)
-        d = np.linalg.norm(np.diff(seg, axis=0), axis=1)
-        s = np.concatenate([[0.0], np.cumsum(d)])
-        out = []
-        for w in _wins:
-            j = int(np.searchsorted(s, min(w, s[-1])))
-            j = min(max(j, 1), len(seg) - 1)
-            v = seg[j] - seg[0]
-            n = float(np.linalg.norm(v))
-            out.append(v / n if n > 1e-9 else np.zeros(2))
-        return out
-
-    _dcache = {}
-
-    def _cost(ka, kb):
-        """ต้นทุนการต่อ: 0 = วิ่งทะลุตรงเป๊ะ · 2 = หักกลับทางเดิม
-
-        ⚠️ **ห้ามคืน None เด็ดขาด** — นี่คือกุญแจที่ทำให้ใช้ได้กับทุกฟอนต์
-           ของเดิมถ้ามุมหักเกินเกณฑ์จะ 'ไม่ต่อ' ผลคือปมที่มีแขนเลขคู่กลับเหลือปลายลอย
-           ทั้งที่ตามทฤษฎีกราฟมันต้องจับคู่ได้ครบ -> เกิดรอยขาดกลางลายเส้น
-           และเกณฑ์มุมที่ 'พอดี' กับฟอนต์หนึ่ง จะพังกับอีกฟอนต์เสมอ (ตั้งเท่าไหร่ก็ไม่ครบ 100%)
-        ✅ เปลี่ยนเป็น 'ค่าปรับ' แทน 'ข้อห้าม' — มุมหักแรงก็ยังต่อได้ แต่เป็นทางเลือกสุดท้าย
-           ตัวเลือกว่าจะจับคู่ไหนยังใช้มุมตัดสินเหมือนเดิม แค่ไม่ปล่อยให้เหลือปลายลอยโดยไม่จำเป็น
-        """
-        ia, sa = ends[ka][0], ends[ka][1]
-        ib, sb = ends[kb][0], ends[kb][1]
-        if ia == ib and sa == sb:
-            return None                      # ปลายเดียวกันเป๊ะ — ไม่ใช่คู่
-        for k, (i, s) in ((ka, (ia, sa)), (kb, (ib, sb))):
-            if k not in _dcache:
-                _dcache[k] = _dirs(i, s)
-        va, vb = _dcache[ka], _dcache[kb]
-        dd = [float(np.dot(va[t], vb[t])) for t in range(len(_wins))]
-        m = sum(dd) / len(dd)
-        c = 1.0 + m                          # 0 = ทะลุตรง · 2 = หักกลับทางเดิม
-        if m > -0.20:
-            c += 5.0                         # ⚠️ หักศอก — ยอมได้ แต่ต้องเป็นทางเลือกสุดท้าย
-        if ia == ib:
-            c += 1.0                         # 🚫 ค่าปรับ 'จับคู่ตัวเอง' (กันห่วงกลายเป็นเกาะปิด)
-        return c
-
-    def _best_match(keys):
-        """จับคู่แขนในปมนี้ให้ 'ครบมากที่สุดเท่าที่เป็นไปได้' แล้วค่อยเลือกชุดที่เนียนที่สุด
-
-        📐 หลักที่ใช้ (ทฤษฎีกราฟ — จริงกับทุกฟอนต์ ไม่ต้องจูนค่า):
-           ปมที่มีแขน 'เลขคู่'  -> จับคู่ได้ครบ ไม่เหลือปลายลอยเลย
-           ปมที่มีแขน 'เลขคี่'  -> เหลือปลายลอยได้ 1 เส้นเท่านั้น (เลี่ยงไม่ได้จริง ๆ)
-           ปลายลอยที่เกินจากนี้ = รอยขาดที่เราทำหล่นเอง ไม่ใช่รูปทรงของตัวอักษร
-        """
-        allow = {}
-        for _a in range(len(keys)):
-            for _b in range(_a + 1, len(keys)):
-                c = _cost(keys[_a], keys[_b])
-                if c is not None:
-                    allow[(keys[_a], keys[_b])] = c
-                    allow[(keys[_b], keys[_a])] = c
-        best = [0, 0.0, []]
-
-        def rec(rem, pairs, tot):
-            if len(rem) < 2:
-                if len(pairs) > best[0] or (len(pairs) == best[0] and tot < best[1] - 1e-12):
-                    best[0] = len(pairs); best[1] = tot; best[2] = list(pairs)
-                return
-            a = rem[0]; rest = rem[1:]
-            rec(rest, pairs, tot)                       # ทางเลือก: ไม่จับคู่ a
-            for b in rest:
-                c = allow.get((a, b))
-                if c is None:
-                    continue
-                pairs.append((a, b))
-                rec([q for q in rest if q != b], pairs, tot + c)
-                pairs.pop()
-        rec(list(keys), [], 0.0)
-        return best[2]
-
-    partner = {}
-    for _g in groups.values():
-        if len(_g) < 2:
-            continue
-        if len(_g) <= 8:
-            pr = _best_match(_g)
-        else:                                # ปมใหญ่ผิดปกติ -> ถอยไปไล่ทีละคู่ (กันเวลาบาน)
-            cand = sorted(((c, a, b) for a in _g for b in _g if a < b
-                           for c in [_cost(a, b)] if c is not None), key=lambda t: t[0])
-            pr = []; seen = set()
-            for c, a, b in cand:
-                if a in seen or b in seen:
-                    continue
-                seen.add(a); seen.add(b); pr.append((a, b))
-        for ka, kb in pr:
-            partner[ka] = kb; partner[kb] = ka
-
-    # ── ชั้น 3: เดินตามคู่ที่จับได้ ร้อยเป็นเส้นยาว ──
-    kof = {(ends[k][0], ends[k][1]): k for k in range(len(ends))}
-    used = [False] * len(items)
-    out = []
-
-    def _walk(i0, side0):
-        """เริ่มจากปลาย (i0,side0) ที่เป็น 'ต้นทาง' แล้วไล่ต่อไปจนสุด"""
-        seq = []
-        i, side = i0, side0
-        while True:
-            if used[i]:
-                break
-            used[i] = True
-            c = items[i] if side == 0 else items[i][::-1]
-            seq = (seq + c[1:]) if seq else list(c)
-            k = kof.get((i, 1 - side))
-            nk = partner.get(k) if k is not None else None
-            if nk is None:
-                break
-            ni, ns = ends[nk][0], ends[nk][1]
-            if used[ni]:
-                break
-            i, side = ni, ns
-        return seq
-
-    for k in range(len(ends)):             # เริ่มจาก 'ปลายอิสระ' ก่อน (เส้นเปิด)
-        if k in partner:
-            continue
-        i, side = ends[k][0], ends[k][1]
-        if used[i]:
-            continue
-        s = _walk(i, side)
-        if len(s) >= 2:
-            out.append(s)
-    for i in range(len(items)):            # ที่เหลือคือวงปิด — เริ่มจากจุดไหนก็ได้
-        if not used[i]:
-            s = _walk(i, 0)
-            if len(s) >= 2:
-                out.append(s)
-    return out if out else items
+    return items
 
 
 # ─────────────────────────── 4. เกลาเส้น + คุมรัศมีโค้ง ───────────────────────────
@@ -563,16 +306,6 @@ def snap_to_outline(line, geom, tree=None, pts=None, max_shift_mm=None):
         mid = (pts[ii[jp]] + pts[ii[jn]]) * 0.5
         if np.hypot(*(mid - a[i])) <= lim:
             out[i] = mid
-    # 🔒 ปลายเส้น = จุดที่ไปบรรจบกับเส้นอื่น — ห้ามขยับเด็ดขาด
-    #    ตรงปลาย/จุดตัด ขอบทั้งสองฝั่งจะสับสน (มีขอบของเส้นอื่นปนเข้ามา) จุดกึ่งกลางที่คำนวณได้จะเพี้ยน
-    #    จึงหรี่แรงดึงลงเหลือ 0 ที่ปลายทั้งสองข้าง แบบไล่ระดับ (ไม่ให้เกิดหักมุมตรงรอยต่อ)
-    _n9 = len(a)
-    _k9 = max(2, min(_n9 // 3, int(np.ceil(_n9 * 0.06)) + 2))
-    w = np.ones(_n9)
-    _r9 = np.linspace(0.0, 1.0, _k9 + 1)[1:]
-    w[:_k9] = _r9
-    w[-_k9:] = _r9[::-1]
-    out = a + (out - a) * w[:, None]
     # เกลาเบา ๆ กันจุดกระตุกตรงที่หาคู่ขอบไม่เจอ
     if len(out) >= 5:
         sm = out.copy()
@@ -580,445 +313,6 @@ def snap_to_outline(line, geom, tree=None, pts=None, max_shift_mm=None):
         sm[0] = out[0]; sm[-1] = out[-1]
         out = sm
     return LineString(out)
-
-
-def _end_dir(a, side, win_mm=3.0):
-    """ทิศที่เส้นพุ่ง 'ออกไปจากปลาย' — ใช้ตัดสินว่าสองเส้นวิ่งชนกันตรง ๆ หรือหักศอก"""
-    seg = a[:1] if len(a) < 2 else (a if side == 1 else a[::-1])
-    d = np.linalg.norm(np.diff(seg, axis=0), axis=1)
-    s = np.concatenate([[0.0], np.cumsum(d)])
-    j = int(np.searchsorted(s, max(0.0, s[-1] - win_mm)))
-    j = min(max(j, 0), len(seg) - 2)
-    v = seg[-1] - seg[j]
-    n = float(np.linalg.norm(v))
-    return v / n if n > 1e-9 else np.zeros(2)
-
-
-def stitch_ends(lines, tol_mm, dot_max=-0.10):
-    """🪡 เย็บปลายเส้นขั้นสุดท้าย — 'จุดเชื่อมต้องตรงและชนกันเป๊ะ'
-
-    ผ่านทุกขั้นตอนเกลาแล้วยังอาจเหลือปลายที่ควรเป็นจุดเดียวกันแต่คลาดกันนิดหน่อย
-    (จุดสามแฉกที่เนื้อหนา แกนกลางจะแตกตัวกว้างกว่าที่จับกลุ่มไว้ตอนพิกเซล)
-    ขั้นนี้จึงตรวจอีกรอบบน 'เส้นจริงหน่วยมิลลิเมตร':
-      • คู่ที่วิ่งทะลุเข้าหากัน -> ต่อเป็นเส้นเดียว (ช่างเดินท่อรวดเดียว ไม่ต้องตัดต่อ)
-      • คู่ที่หักศอก -> อย่างน้อยดึงให้ 'ชนจุดเดียวกันเป๊ะ' ไม่ให้เหลือรอยห่าง
-    """
-    segs = [np.asarray(l.coords, dtype=float) for l in lines
-            if l is not None and not l.is_empty and len(l.coords) >= 2]
-    if len(segs) < 2:
-        return [LineString(s) for s in segs]
-    ends = [(i, s) for i in range(len(segs)) for s in (0, 1)]
-    P = np.asarray([segs[i][0] if s == 0 else segs[i][-1] for i, s in ends])
-
-    # ── หาคู่ปลายที่ใกล้กันพอจะเป็นจุดเดียวกัน ──
-    try:
-        from scipy.spatial import cKDTree as _KD
-        pairs = list(_KD(P).query_pairs(tol_mm))
-    except Exception:
-        pairs = [(x, y) for x in range(len(P)) for y in range(x + 1, len(P))
-                 if float(np.hypot(*(P[x] - P[y]))) <= tol_mm]
-    cand = []
-    for x, y in pairs:
-        ix, sx = ends[x]; iy, sy = ends[y]
-        if ix == iy and sx == sy:
-            continue
-        d = float(np.hypot(*(P[x] - P[y])))
-        dot = float(np.dot(_end_dir(segs[ix], sx), _end_dir(segs[iy], sy)))
-        cand.append((d + dot * tol_mm, d, dot, x, y))     # ใกล้ + ตรง = คะแนนดี
-    cand.sort(key=lambda t: t[0])
-
-    used = set(); link = {}; weld = []
-    for _sc, d, dot, x, y in cand:
-        if x in used or y in used:
-            continue
-        used.add(x); used.add(y)
-        if dot <= dot_max and ends[x][0] != ends[y][0]:
-            link[x] = y; link[y] = x                       # ต่อเป็นเส้นเดียว
-        else:
-            weld.append((x, y))                            # แค่ดึงมาชนจุดเดียวกัน
-
-    # ── ดึงคู่ที่ต่อไม่ได้ให้ชนจุดเดียวกันเป๊ะ ──
-    for x, y in weld:
-        m = (P[x] + P[y]) * 0.5
-        for k in (x, y):
-            i, s = ends[k]
-            if s == 0:
-                segs[i][0] = m
-            else:
-                segs[i][-1] = m
-
-    # ── ร้อยคู่ที่ต่อได้ให้เป็นเส้นเดียว ──
-    kof = {(i, s): k for k, (i, s) in enumerate(ends)}
-    done = [False] * len(segs)
-    out = []
-    for k0 in range(len(ends)):
-        if k0 in link:
-            continue
-        i, s = ends[k0]
-        if done[i]:
-            continue
-        acc = None
-        while True:
-            if done[i]:
-                break
-            done[i] = True
-            a = segs[i] if s == 0 else segs[i][::-1]
-            if acc is None:
-                acc = a.copy()
-            else:
-                m = (acc[-1] + a[0]) * 0.5                 # จุดต่อ = กึ่งกลางของสองปลาย
-                acc[-1] = m
-                acc = np.vstack([acc, a[1:]])
-            nk = link.get(kof[(i, 1 - s)])
-            if nk is None:
-                break
-            ni, ns = ends[nk]
-            if done[ni]:
-                break
-            i, s = ni, ns
-        if acc is not None and len(acc) >= 2:
-            out.append(acc)
-    for i in range(len(segs)):                             # วงปิดที่ไม่มีปลายอิสระ
-        if not done[i]:
-            done[i] = True
-            out.append(segs[i])
-    return [LineString(s) for s in out if len(s) >= 2]
-
-
-
-
-
-def open_tiny_loops(lines, tube_mm, clear_ratio=0.95, geom=None):
-    """🔁 ห่วงที่เล็กกว่าท่อ -> 'เดินผ่านตรงไป' แทนการวนรอบ
-
-    ⚠️ นี่คือตำหนิที่เห็นด้วยตาแต่ตัววัดเดิมจับไม่ได้เลย:
-       ตาของตัว e · ตัว o · ห่วงของ ff ในฟอนต์ลายมือ มักเล็กกว่าท่อนีออน
-       แกนกลางจะวนเข้าไปในห่วงแล้วพับกลับออกมา ระยะห่างขาไป-ขากลับแค่ 1-2 มม.
-       ท่อกว้าง 8 มม. สองขานั้นจึงทับกันสนิท กลายเป็น 'ก้อนทึบ' มีรอยตะเข็บ
-       -> นี่คือติ่ง/ก้อนที่เห็นในตัว e, o และ ff ทุกตัว
-
-    ของจริงช่างทำยังไง: ท่อดัดวนห่วงเล็กกว่ารัศมีดัดขั้นต่ำไม่ได้อยู่แล้ว
-    ช่างจะ 'เดินท่อผ่านไปเลย' ไม่วนห่วง — ตาของตัวอักษรเกิดจากเส้นที่ไขว้กันเอง
-    ✅ จึงตรวจว่าเส้นวกกลับมาใกล้ตัวเองในระยะสั้นไหม ถ้าใช่และห่วงนั้นแคบกว่าท่อ
-       ให้ตัดช่วงที่วนออก แล้วต่อตรง — เกณฑ์คือ 'ท่อดัดเข้าไปได้จริงไหม' ใช้ได้ทุกฟอนต์
-    """
-    T = float(tube_mm)
-    near = T * float(clear_ratio)              # ขาไป-ขากลับใกล้กว่านี้ = ท่อทับกันสนิท
-    # 🕳️ รวบรวม 'รูของตัวอักษร' ไว้ก่อน — ใช้แยกตาจริงออกจากรอยพับที่เราทำหล่นเอง
-    _holes = []
-    if geom is not None:
-        for _g in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom]):
-            if _g.geom_type != "Polygon":
-                continue
-            for _in in _g.interiors:
-                try:
-                    _hp = Polygon(_in)
-                    if _hp.is_valid and _hp.area > 0.5:
-                        _holes.append(_hp)
-                except Exception:
-                    pass
-    maxarc = T * math.pi * 6.0                 # เพดานกันไปแตะห่วงใหญ่ ๆ ของตัวอักษร
-    out = []
-    for l in lines:
-        a = np.asarray(l.coords, dtype=float)
-        if len(a) < 12:
-            out.append(l); continue
-        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
-        s = np.concatenate([[0.0], np.cumsum(d)])
-        try:
-            from scipy.spatial import cKDTree as _KD
-            tree = _KD(a)
-            pairs = sorted(tree.query_pairs(near))
-        except Exception:
-            out.append(l); continue
-        cand = []
-        for i, j in pairs:
-            if j <= i:
-                continue
-            arc = s[j] - s[i]
-            chord = float(np.linalg.norm(a[j] - a[i]))
-            # 🔑 'ห่วงจริง' ต้องวกกลับมาหาตัวเอง = ทางเดินยาวกว่าระยะตรงหลายเท่า
-            #    ถ้าไม่เช็คข้อนี้ ช่วงเส้นตรงธรรมดาจะถูกนับเป็นห่วงหมด (เจอจริง 9,928 จุดปลอม)
-            if arc < max(T * 1.2, chord * 2.5):
-                continue
-            # 📏 ท่อจะวนห่วงนี้ได้ ต้องมีวงกลมขนาดท่อ 'ใส่เข้าไปในห่วง' ได้จริง
-            #    ประเมินรัศมีในของห่วงด้วย 2 x พื้นที่ / เส้นรอบรูป (แม่นพอและเร็ว)
-            ring = a[i:j + 1]
-            if len(ring) < 4:
-                continue
-            per = float(np.sum(np.linalg.norm(np.diff(ring, axis=0), axis=1))) + \
-                  float(np.linalg.norm(ring[0] - ring[-1]))
-            x = ring[:, 0]; y = ring[:, 1]
-            area = abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))) * 0.5
-            inr = (2.0 * area / per) if per > 1e-9 else 0.0
-            if inr >= T * 0.5:                 # ท่อใส่เข้าไปในห่วงได้ -> ห่วงจริง เก็บไว้
-                continue
-            # 🔑 ตัวชี้ขาด: 'ตาของตัวอักษร' กับ 'รอยพับที่เราทำหล่นเอง' หน้าตาเหมือนกันบนเส้น
-            #    แต่ต่างกันชัดเจนบนตัวอักษรจริง — ตาของตัวอักษรมี **รูในรูปทรง** รองรับอยู่
-            #    ถ้าตรงกลางห่วงตกอยู่ในรูของตัวอักษร = ตาจริง ต้องเดินไฟรอบไว้ ห้ามตัดทิ้ง
-            #    (เคยตัดทิ้งไปแล้วรอบหนึ่ง ผลคือตาของ E · e · a · o · r ดับหมดทุกตัว)
-            if _holes:
-                try:
-                    _lp = Polygon(ring)
-                    if not _lp.is_valid:
-                        _lp = _lp.buffer(0)
-                    if any(_lp.intersects(_h) for _h in _holes):
-                        continue               # ห่วงนี้ล้อม 'รูของตัวอักษร' -> ตาจริง เก็บไว้เสมอ
-                except Exception:
-                    continue                   # สงสัยเมื่อไหร่ = ไม่แตะ (งานห้ามพัง)
-            if arc > maxarc:                   # ห่วงยาวเกินกว่าจะเป็นตาตัวอักษร -> ไม่แตะ
-                continue
-            cand.append((i, j, arc))
-        if not cand:
-            out.append(l); continue
-        cand.sort(key=lambda t: (t[0], -t[2]))
-        keep = np.ones(len(a), dtype=bool)
-        last = -1
-        for i, j, arc in cand:
-            if i <= last:
-                continue
-            keep[i + 1:j] = False              # ตัดช่วงที่วนห่วงออก เหลือจุดต่อตรง
-            last = j
-        b = a[keep]
-        if len(b) < 4:
-            out.append(l); continue
-        out.append(LineString(b))
-    return out
-
-
-def cut_impossible_bends(lines, tube_mm, max_turn_deg=100.0, span_mm=3.0):
-    """✂️ ตัดเส้นตรงจุดที่ 'ท่อดัดไม่ได้จริง' — ต้นเหตุของติ่ง/ตะขอที่เห็นด้วยตา
-
-    ⚠️ นี่คือจุดที่หลุดสายตามาตลอด: ตัววัดเดิมดูแค่ 'ท่อขาดกลางลายเส้น'
-       แต่ตำหนิที่ตาเห็นจริงคือ 'เส้นหักกลับทางเดิม' (วัดได้ 176 องศาในระยะ 2 มม.)
-       ท่อยังคลุมเนื้อครบ ตัววัดจึงบอกว่าผ่าน ทั้งที่ตามองเห็นเป็นตะขอชัด ๆ
-
-    เกิดจาก: ตอนจับคู่แขนที่ปม เรายอมให้จับคู่ได้ทุกกรณีเพื่อไม่ให้เหลือปลายลอย
-             ถ้าบังเอิญจับคู่แขนสองเส้นที่พุ่งไปทางเดียวกัน เส้นจะพับกลับทันที
-    แก้: ท่อนีออนซิลิโคนดัดกลับ 180 องศาในระยะ 3 มม. ไม่ได้อยู่แล้วในความเป็นจริง
-         -> ตัดเส้นตรงนั้นเป็นสองท่อน เนื้อยังคลุมครบเท่าเดิม แต่ติ่งหายไป
-    """
-    out = []
-    lim = float(max_turn_deg)
-    for l in lines:
-        a = np.asarray(l.coords, dtype=float)
-        if len(a) < 5:
-            out.append(l); continue
-        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
-        s = np.concatenate([[0.0], np.cumsum(d)])
-        if s[-1] < span_mm * 3:
-            out.append(l); continue
-        cut = []
-        for i in range(1, len(a) - 1):
-            j0 = int(np.searchsorted(s, max(0.0, s[i] - span_mm)))
-            j1 = int(np.searchsorted(s, min(s[-1], s[i] + span_mm)))
-            if j0 >= i or j1 <= i:
-                continue
-            v1 = a[i] - a[j0]; v2 = a[j1] - a[i]
-            n1 = np.linalg.norm(v1); n2 = np.linalg.norm(v2)
-            if n1 < 1e-9 or n2 < 1e-9:
-                continue
-            c = float(np.dot(v1, v2) / (n1 * n2))
-            if np.degrees(np.arccos(max(-1.0, min(1.0, c)))) > lim:
-                cut.append(i)
-        if not cut:
-            out.append(l); continue
-        merged = []                       # รวมจุดตัดที่ติดกันให้เป็นจุดเดียว
-        for i in cut:
-            if merged and i - merged[-1][-1] <= 3:
-                merged[-1].append(i)
-            else:
-                merged.append([i])
-        idx = [int(np.mean(m)) for m in merged]
-        prev = 0
-        for i in idx:
-            if i - prev >= 3:
-                out.append(LineString(a[prev:i + 1]))
-            prev = i
-        if len(a) - prev >= 3:
-            out.append(LineString(a[prev:]))
-    return [l for l in out if l.length > 0.5]
-
-
-def _respline(line, keep_mm=0.35):
-    """เกลาทั้งเส้นอีกรอบหลังต่อเสร็จ — ปลายล็อกอยู่กับที่ ไม่ขยับ
-
-    ใช้หลังการต่อเส้นเท่านั้น: ตอนต่อ สองท่อนมาชนกันเป็น 'มุม'
-    การฟิตสไปลน์ทั้งเส้นทีเดียวจะกลืนมุมนั้นให้เป็นโค้งต่อเนื่อง
-    โดยยอมให้เส้นคลาดจากเดิมได้ไม่เกิน keep_mm (เล็กมาก) รูปทรงจึงไม่เปลี่ยน
-    """
-    a = np.asarray(line.coords, dtype=float)
-    if len(a) < 8:
-        return line
-    closed = bool(np.hypot(*(a[0] - a[-1])) < 1e-6)
-    try:
-        from scipy.interpolate import splprep, splev
-        pts = a[:-1] if (closed and len(a) > 8) else a
-        if len(pts) < 8:
-            return line
-        s = len(pts) * float(keep_mm) ** 2
-        tck, u = splprep([pts[:, 0], pts[:, 1]], s=s, k=3, per=1 if closed else 0)
-        n = max(48, min(4000, int(line.length / max(0.35, keep_mm))))
-        x, y = splev(np.linspace(0, 1, n), tck)
-        out = np.column_stack([x, y])
-        if closed:
-            out[-1] = out[0]
-        else:
-            out[0] = a[0]; out[-1] = a[-1]
-        return LineString(out)
-    except Exception:
-        return line
-
-
-def trim_thin_ends(lines, dt, ppm, org, tube_mm, keep_ratio=0.80, max_trim_mm=None, geom_ref=None):
-    """✂️ ตัดปลายท่อที่ไปโผล่ตรง 'หางลายเส้นที่เรียวกว่าท่อ'
-
-    ทำไม: ท่อนีออนกว้างคงที่ ถ้าหางตัวอักษรเรียวเหลือ 4 มม. แต่ท่อกว้าง 8 มม.
-          ท่อจะล้นออกนอกตัวอักษรเป็นติ่ง — นี่คือ 'หางแมว' ที่เห็นตรงปลายเส้น
-    ของจริงช่างจะหยุดท่อตรงจุดที่ลายเส้นยังกว้างพอ ไม่ลากจนสุดปลายแหลม
-    ✅ วัดความหนาลายเส้น ณ จุดนั้นจริง ๆ (จาก distance transform) แล้วถอยปลายกลับมา
-       จนถึงจุดที่ลายเส้นยังกว้างอย่างน้อย 80% ของท่อ — เป็นกฎเดียวใช้ได้ทุกฟอนต์
-       เพราะอ้างจาก 'ความหนาจริงของลายเส้นตรงนั้น' ไม่ใช่ตัวเลขที่ตั้งไว้ล่วงหน้า
-    """
-    if dt is None:
-        return lines
-    H, W = dt.shape
-    need = float(tube_mm) * float(keep_ratio)
-    lim = float(max_trim_mm) if max_trim_mm else float(tube_mm) * 2.0
-
-    def wmm(p):
-        x = int(round((p[0] - org[0]) * ppm)); y = int(round((p[1] - org[1]) * ppm))
-        if x < 0 or y < 0 or x >= W or y >= H:
-            return 0.0
-        return float(dt[y, x]) * 2.0 / ppm
-
-    from shapely.geometry import Point as _P
-    R = float(tube_mm) * 0.5
-
-    def _over(a, i, j):
-        """หัวท่อ 'ยื่นเลยปลายลายเส้น' ไหม — วัดที่ปลายสุดของหัวท่อกลม
-
-        กติกานี้แยกสองเรื่องออกจากกันได้พอดี:
-          • ท่อล้นออก 'ด้านข้าง' เพราะกว้างกว่าลายเส้น = เรื่องปกติ ไม่ต้องแก้
-          • ท่อล้นออก 'ตามยาว' เลยจุดจบของลายเส้น = ติ่งที่ต้องตัด
-        """
-        if geom_ref is None:
-            return False
-        v = a[i] - a[j]
-        n = float(np.linalg.norm(v))
-        if n < 1e-9:
-            return False
-        z = a[i] + v / n * R
-        return not geom_ref.contains(_P(float(z[0]), float(z[1])))
-
-    out = []
-    for l in lines:
-        a = np.asarray(l.coords, dtype=float)
-        if len(a) < 4 or np.hypot(*(a[0] - a[-1])) < 1e-6:
-            out.append(l); continue
-        d = np.linalg.norm(np.diff(a, axis=0), axis=1)
-        s = np.concatenate([[0.0], np.cumsum(d)])
-        i0 = 0
-        while i0 < len(a) - 3 and s[i0] < lim and (wmm(a[i0]) < need or _over(a, i0, min(i0 + 3, len(a) - 1))):
-            i0 += 1
-        i1 = len(a) - 1
-        while i1 > i0 + 3 and (s[-1] - s[i1]) < lim and (wmm(a[i1]) < need or _over(a, i1, max(i1 - 3, 0))):
-            i1 -= 1
-        b = a[i0:i1 + 1]
-        out.append(LineString(b) if len(b) >= 2 else l)
-    return out
-
-
-def close_visible_gaps(lines, geom, tube_mm, max_ext_mm=None, step_mm=0.4, dt=None, ppm=1.0, org=(0.0, 0.0)):
-    """🩹 ด่านสุดท้าย — 'ไม่ให้มีปลายท่อโผล่กลางลายเส้น' ไม่ว่าฟอนต์ไหน
-
-    ทำไมต้องมีด่านนี้ทั้งที่จับคู่ที่ปมไปแล้ว:
-      การจับคู่ทำงานบน 'กราฟของแกนกลาง' ซึ่งดีมาก แต่ยังมีเศษที่หลุดรอดได้อีก 3 ทาง
-        1) ปมสามแฉก (เลขคี่) — ทางทฤษฎีต้องเหลือปลาย 1 เส้นเสมอ เลี่ยงไม่ได้
-        2) ท่อนสั้นกว่าเกณฑ์ถูกคัดทิ้ง ปลายของเพื่อนบ้านเลยโผล่แทน
-        3) หนวดที่ถูกตัด ทำให้ปลายจริงขยับเข้ามาจากขอบลายเส้น
-      ทั้งสามทางนี้ 'จูนค่าให้ครบทุกฟอนต์ไม่ได้' เพราะเป็นคนละสาเหตุกัน
-
-    ✅ จึงไม่จูนอีกต่อไป — เปลี่ยนเป็น **ตรวจผลลัพธ์จริงแล้วซ่อม**:
-       ปลายไหนยังโผล่อยู่ (ไม่ได้ฝังในท่อเส้นอื่น) ให้ 'เดินต่อไปตามแนวสัมผัส'
-       จนกว่าจะชนท่อของเส้นข้างเคียง — เหมือนที่ช่างลากท่อจนชนเส้นถัดไปพอดี
-       โดยห้ามเดินออกนอกเนื้อลายเส้นเด็ดขาด (ยื่นเกินตัวอักษรไม่ได้)
-    เกณฑ์นี้วัดจากผลลัพธ์ ไม่ได้ผูกกับฟอนต์ จึงใช้ได้เหมือนกันหมดทุกตัว
-    """
-    segs = [np.asarray(l.coords, dtype=float) for l in lines
-            if l is not None and not l.is_empty and len(l.coords) >= 2]
-    if not segs:
-        return lines
-    T = float(tube_mm); R = T * 0.5
-    ext = float(max_ext_mm) if max_ext_mm else T * 3.5
-    _H = _W = 0
-    if dt is not None:
-        _H, _W = dt.shape
-
-    def _wmm(p):
-        """ความหนาลายเส้นจริง ณ จุดนั้น (มม.) — ใช้ตัดสินว่า 'ตรงนี้วางท่อได้ไหม'"""
-        if dt is None:
-            return 1e9
-        x = int(round((p[0] - org[0]) * ppm)); y = int(round((p[1] - org[1]) * ppm))
-        if x < 0 or y < 0 or x >= _W or y >= _H:
-            return 0.0
-        return float(dt[y, x]) * 2.0 / ppm
-    from shapely.geometry import Point as _Pt
-    from shapely.strtree import STRtree
-    for _round in range(2):
-        tubes = [LineString(s).buffer(R, cap_style=1, join_style=1) for s in segs]
-        try:
-            tree = STRtree(tubes)
-        except Exception:
-            tree = None
-        moved = 0
-        for i in range(len(segs)):
-            a = segs[i]
-            if np.hypot(*(a[0] - a[-1])) < 1e-6:
-                continue                                  # วงปิด ไม่มีปลาย
-            for side in (0, 1):
-                p = a[0] if side == 0 else a[-1]
-                q = a[min(4, len(a) - 1)] if side == 0 else a[max(-5, -len(a))]
-                pt = _Pt(float(p[0]), float(p[1]))
-                if tree is not None:
-                    hit = any(int(j) != i and tubes[int(j)].contains(pt)
-                              for j in tree.query(pt))
-                else:
-                    hit = any(j != i and tubes[j].contains(pt) for j in range(len(tubes)))
-                if hit:
-                    continue                              # ฝังในท่อเส้นอื่นแล้ว = มองไม่เห็น
-                v = p - q
-                n = float(np.linalg.norm(v))
-                if n < 1e-9:
-                    continue
-                v = v / n
-                best = None
-                d = step_mm
-                while d <= ext:
-                    z = p + v * d
-                    zp = _Pt(float(z[0]), float(z[1]))
-                    if not geom.contains(zp):             # 🚧 ห้ามยื่นออกนอกเนื้อตัวอักษร
-                        break
-                    if _wmm(z) < T * 0.75:                # 🚧 ลายเส้นเรียวกว่าท่อ -> วางท่อตรงนั้นไม่ได้จริง
-                        break
-                    if tree is not None:
-                        ok = any(int(j) != i and tubes[int(j)].contains(zp)
-                                 for j in tree.query(zp))
-                    else:
-                        ok = any(j != i and tubes[j].contains(zp) for j in range(len(tubes)))
-                    if ok:
-                        best = z
-                        break
-                    d += step_mm
-                if best is not None:
-                    if side == 0:
-                        segs[i] = np.vstack([best[None, :], a])
-                    else:
-                        segs[i] = np.vstack([a, best[None, :]])
-                    a = segs[i]; moved += 1
-        if not moved:
-            break
-    return [LineString(s) for s in segs if len(s) >= 2]
 
 
 def outline_points(geom, step_mm=0.35):
@@ -1057,7 +351,7 @@ def _local_radius(a, step_idx=1):
     return r
 
 
-def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0, geom=None, dt=None, ppm=1.0, org=(0.0, 0.0), drop_mm=0.3):
+def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0):
     """คลาย 'เฉพาะจุดที่โค้งแคบเกินท่อนีออนดัดได้' — ไม่ไปแตะช่วงที่ดีอยู่แล้ว
 
     ท่อนีออนซิลิโคนดัดในระนาบได้จำกัด ถ้าแบบมีมุมแคบกว่านั้น ช่างต้องมาดัดฝืน
@@ -1072,20 +366,7 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0, geom=None, dt=None, p
     if s[-1] > step_mm * 3:
         t = np.arange(0, s[-1], step_mm)
         a = np.column_stack([np.interp(t, s, a[:, 0]), np.interp(t, s, a[:, 1])])
-    if len(a) < 5:            # 🛡️ เส้นสั้นมาก (สั้นกว่า 5 มม.) — คลายไม่ได้และไม่จำเป็น
-        return line           #    (np.convolve โหมด same คืนความยาวเท่าเคอร์เนลถ้าสัญญาณสั้นกว่า -> รูปทรงไม่ตรงกัน)
     closed = np.allclose(a[0], a[-1])
-    # 📌 อ้างอิง 'ระยะถึงขอบตอนเริ่ม' ไว้ก่อน — ต้องเทียบกับค่าตั้งต้นเสมอ
-    #    ถ้าเทียบกับรอบก่อนหน้า จะยอมให้ไหลออกทีละนิดจนสะสมหลายมิลลิเมตรใน 40 รอบ
-    _d0 = None
-    if dt is not None:
-        try:
-            _Hd, _Wd = dt.shape
-            _xx = np.clip(np.round((a[:, 0] - org[0]) * ppm).astype(int), 0, _Wd - 1)
-            _yy = np.clip(np.round((a[:, 1] - org[1]) * ppm).astype(int), 0, _Hd - 1)
-            _d0 = dt[_yy, _xx] / ppm
-        except Exception:
-            _d0 = None
     for _ in range(rounds):
         r = _local_radius(a)
         bad = r < r_min
@@ -1102,38 +383,6 @@ def relax_tight_bends(line, r_min, rounds=40, step_mm=1.0, geom=None, dt=None, p
         b += lap * w[:, None]
         if not closed:
             b[0] = a[0]; b[-1] = a[-1]
-        # 🚧 ห้ามคลายจน 'เส้นหลุดออกนอกตัวอักษร'
-        #    บทเรียน: ห่วงยาว ๆ ของ f คลายแล้วดี (ห่วงเปิด ไม่บีบ)
-        #             แต่ตาเล็ก ๆ ของ e/a/r คลายแล้วเส้นหลุดออกนอกเนื้อ -> เกิดเสี้ยวมืด
-        #    ต่างกันตรงนี้จุดเดียว: 'ยังอยู่ในเนื้อตัวอักษรไหม' -> เอามาเป็นกติกาเลย
-        #    จุดไหนคลายแล้วหลุด ให้คงที่เดิมไว้ ที่เหลือคลายได้ตามปกติ
-        #    ⚠️ แค่ 'ยังอยู่ในเนื้อ' ไม่พอ — ลายเส้นกว้าง 6.6 มม. จุดขยับออกข้าง 3 มม. ก็ยังอยู่ในเนื้อ
-        #       แต่ท่อจะเลยไปข้างหนึ่ง อีกข้างมืด  ✅ ต้องอยู่ 'กลางเนื้อ' ด้วย
-        #       กลางเนื้อ = สันของ distance transform (ระยะถึงขอบไกลสุด)
-        #       จึงยอมให้ขยับได้เฉพาะจุดที่ 'ระยะถึงขอบไม่ลดลง' เกินที่กำหนด = ยังเกาะสันอยู่
-        if dt is not None:
-            try:
-                _Hd, _Wd = dt.shape
-
-                def _dd(q):
-                    _x = int(round((q[0] - org[0]) * ppm)); _y = int(round((q[1] - org[1]) * ppm))
-                    if _x < 0 or _y < 0 or _x >= _Wd or _y >= _Hd:
-                        return -1.0
-                    return float(dt[_y, _x]) / ppm
-
-                for _i in np.nonzero(np.linalg.norm(b - a, axis=1) > 1e-9)[0]:
-                    _ref = float(_d0[_i]) if _d0 is not None else _dd(a[_i])
-                    if _dd(b[_i]) < _ref - float(drop_mm):
-                        b[_i] = a[_i]                # หลุดออกจากกลางเนื้อ -> ไม่ขยับจุดนี้
-            except Exception:
-                pass
-        elif geom is not None:
-            try:
-                for _i in np.nonzero(np.linalg.norm(b - a, axis=1) > 1e-9)[0]:
-                    if not geom.contains(Point(float(b[_i, 0]), float(b[_i, 1]))):
-                        b[_i] = a[_i]
-            except Exception:
-                pass
         a = b
     return LineString(a)
 
@@ -1148,12 +397,6 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
     sk = skeleton(mask)
     chains, nodes = trace_chains(sk)
     items = prune_and_join(chains, nodes, ppm, spur_mm=max(sw, 2.0) * spur_ratio)
-    # ⚠️ บทเรียนสำคัญที่สุดของงานนี้: 'ตัวคุมรัศมีดัด' เคยตั้งไว้ 1.5 เท่าของท่อ (12 มม.)
-    #    แต่ตาของตัวอักษรลายมือมีรัศมีแค่ 4-7 มม. ตัวคุมจึงดัดเส้นออกจากตัวอักษรทุกตัว
-    #    วัดจริง: เนื้อที่ไฟไปไม่ถึง 594 ตร.มม. -> เหลือ 48 ตร.มม. เมื่อเลิกดัด (ลด 92%)
-    #    และการดัดเส้นออกจากตัวอักษร 'ไม่ได้ทำให้ท่อดัดได้จริง' — ได้แบบที่ทั้งผิดรูปและทำไม่ได้อยู่ดี
-    # ✅ เปลี่ยนหลักคิด: **เดินเส้นตามตัวอักษรให้ตรงที่สุด แล้ว 'รายงาน' จุดที่ดัดยาก**
-    #    ให้คนตัดสินใจ (ขยายป้าย / เปลี่ยนท่อ) ดีกว่าให้เครื่องแอบดัดแบบจนเพี้ยน
     r_min = tube * bend_ratio
     # 🎯 ตัวอ้างอิง 'ขอบเวกเตอร์' — เตรียมครั้งเดียว ใช้ดึงทุกเส้นเข้ากลาง
     _tree = _opts = None
@@ -1165,78 +408,15 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
                 _tree = cKDTree(_opts)
         except Exception:
             _tree = _opts = None
-    _dt = None
-    try:
-        _dt = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    except Exception:
-        _dt = None
     lines = []
     for c in items:
         ls = chain_to_line(c, ppm, org)
-        if ls is None:
+        if ls is None or ls.length < max(8.0, tube * 1.5):
             continue
         if _tree is not None:
             ls = snap_to_outline(ls, geom, _tree, _opts, max_shift_mm=max(sw, 2.0))
             ls = ls.simplify(0.15)
-        lines.append(relax_tight_bends(ls, r_min, geom=geom, dt=_dt, ppm=ppm, org=org))
-    # 🪡 เย็บปลายขั้นสุดท้ายก่อนค่อยคัดเศษทิ้ง — ท่อนสั้นที่เป็นสะพานเชื่อมจะได้ถูกดูดรวมไป
-    #    ไม่ใช่ถูกโยนทิ้งจนเหลือช่องโหว่ตรงจุดต่อ (นี่คือที่มาของ 'เส้นขาดตรงรอยต่อ' แบบเดิม)
-    #    เย็บซ้ำ 3 รอบ: รอบแรกจับได้คู่ที่ดีที่สุดก่อน คู่ที่ถูกเบียดตกไปจะได้โอกาสในรอบถัดไป
-    for _ in range(3):
-        _n0 = len(lines)
-        lines = stitch_ends(lines, tol_mm=max(tube * 0.9, sw * 0.45))
-        if len(lines) == _n0:
-            break
-    lines = [l for l in lines if l.length >= max(8.0, tube * 1.5)]
-    # ══════════════════════════════════════════════════════════════════
-    # 🎯 'เกลารอยต่อ' — จุดที่ยังเห็นเป็นมุมแหลมอยู่ เกิดจากลำดับการทำงาน ไม่ใช่การจับคู่ผิด
-    #
-    # ⚠️ ของเดิม: เกลาเส้น -> ดึงเข้ากลางเนื้อ -> **แล้วค่อยต่อเส้น**
-    #    แปลว่า 'ช่วงรอยต่อ' ไม่เคยผ่านการดึงเข้ากลางเนื้อเลยสักครั้ง
-    #    สองท่อนจึงมาชนกันเป็นมุมแหลม (เห็นชัดที่ห่วงตัว e และคานขวางของ ff)
-    # ✅ พอต่อเสร็จแล้ว 'ดึงเข้ากลางเนื้อ + เกลาซ้ำอีกรอบทั้งเส้น'
-    #    รอยต่อจะถูกจัดให้อยู่กลางลายเส้นพอดีและโค้งต่อเนื่อง เหมือนเส้นเดียวมาแต่แรก
-    if _tree is not None:
-        _sm = []
-        for l in lines:
-            try:
-                q = snap_to_outline(l, geom, _tree, _opts, max_shift_mm=max(sw, 2.0) * 0.6)
-                _sm.append(q if (q is not None and q.length > 1.0) else l)
-            except Exception:
-                _sm.append(l)
-        lines = _sm
-    # ══════════════════════════════════════════════════════════════════
-    # 🔎 ด่านตรวจ-ซ่อมขั้นสุดท้าย — 'ตรวจผลลัพธ์จริง' ไม่ใช่จูนค่าเผื่อฟอนต์
-    #    เกณฑ์ทั้งหมดต่อไปนี้วัดจากตัวงานที่ออกมาเทียบกับรูปตัวอักษรจริง
-    #    จึงใช้ได้เหมือนกันทุกฟอนต์ ไม่มีตัวเลขที่ต้องตั้งใหม่ต่อฟอนต์เลย
-    #      1) ปลายท่อล้นออกนอกลายเส้น (หางเรียวกว่าท่อ) -> ถอยปลายกลับ
-    #      2) ท่อขาดกลางลายเส้น            -> ยืดปลายไปชนท่อข้างเคียง
-    #      3) หักศอกที่รอยต่อ (เกิดใหม่หลังต่อเส้น) -> คลายอีกรอบ
-    # ══════════════════════════════════════════════════════════════════
-    try:
-        lines = trim_thin_ends(lines, _dt, ppm, org, tube, geom_ref=geom)
-    except Exception:
-        pass
-    try:
-        lines = close_visible_gaps(lines, geom, tube, max_ext_mm=max(tube * 3.5, sw * 3.5),
-                                   dt=_dt, ppm=ppm, org=org)
-    except Exception:
-        pass
-    try:
-        lines = [relax_tight_bends(l, r_min, geom=geom, dt=_dt, ppm=ppm, org=org) for l in lines]
-    except Exception:
-        pass
-    #      4) ห่วงที่เล็กกว่าท่อ (ตาของตัว e/o/ff) -> เดินผ่านตรงไป ไม่วน
-    try:
-        lines = open_tiny_loops(lines, tube, geom=geom)
-    except Exception:
-        pass
-    #      5) 'ติ่ง/ตะขอ' — เส้นหักกลับทางเดิมจนท่อดัดไม่ได้จริง -> ตัดแยกเป็นสองท่อน
-    try:
-        lines = cut_impossible_bends(lines, tube)
-        lines = [l for l in lines if l.length >= max(6.0, tube * 1.2)]
-    except Exception:
-        pass
+        lines.append(relax_tight_bends(ls, r_min))
     total = sum(l.length for l in lines) / 1000.0
     plate = unary_union([l.buffer(tube * 2.0, cap_style=1, join_style=1) for l in lines])
     plate = plate.buffer(tube * 0.8).buffer(-tube * 0.8)          # เกลาให้ขอบไหลลื่น
@@ -1246,157 +426,7 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
             "plate": plate, "mask_ppm": ppm}
 
 
-def _rdp(pts, tol):
-    """ลดจุดแบบ Ramer–Douglas–Peucker — เก็บเฉพาะจุดที่ 'เปลี่ยนทิศจริง' (มุม)"""
-    if len(pts) < 3:
-        return list(range(len(pts)))
-    keep = [0, len(pts) - 1]
-    stack = [(0, len(pts) - 1)]
-    P = np.asarray(pts, float)
-    while stack:
-        i, j = stack.pop()
-        if j <= i + 1:
-            continue
-        a = P[i]; b = P[j]; ab = b - a
-        L = float(np.hypot(*ab))
-        seg = P[i + 1:j]
-        if L < 1e-9:
-            d = np.hypot(seg[:, 0] - a[0], seg[:, 1] - a[1])
-        else:
-            d = np.abs((ab[0] * (a[1] - seg[:, 1]) - (a[0] - seg[:, 0]) * ab[1]) / L)
-        k = int(np.argmax(d))
-        if float(d[k]) > tol:
-            m = i + 1 + k
-            keep.append(m)
-            stack.append((i, m)); stack.append((m, j))
-    return sorted(set(keep))
-
-
-def _fit_line(P, a, b):
-    """ฟิตเส้นตรงแบบ total least squares ให้ช่วง a..b คืน (จุดกลาง, เวกเตอร์ทิศ, rms, maxdev)"""
-    Q = P[a:b + 1]
-    c = Q.mean(axis=0)
-    U, S, Vt = np.linalg.svd(Q - c, full_matrices=False)
-    dvec = Vt[0]
-    n = np.array([-dvec[1], dvec[0]])
-    r = np.abs((Q - c) @ n)
-    return c, dvec, float(np.sqrt(np.mean(r * r))), float(np.max(r))
-
-
-def _straight_curve_mix(pts, closed, to_curves, tol_mm=0.45):
-    """✍️ ทำให้ 'ช่วงที่ตรง = ตรงเป๊ะ' และ 'มุม = เหลี่ยมคม' ส่วนช่วงที่โค้งจริงค่อยฟิตเบซิเยร์
-
-    ทำไมต้องมี: แกนกลางที่ได้จากการลอกโครง (skeleton) มีคลื่นเล็ก ๆ ±0.3-0.5 มม. ตลอดเส้น
-                พอส่งเข้าตัวฟิตเบซิเยร์ทั้งเส้น ขาตรงของ M/N/T/Z จึงออกมาเป็นเส้นแอ่น
-                และมุมหักถูกลบเหลี่ยมกลายเป็นมุมมน — ผิดกับงานดัดท่อนีออนจริง
-    วิธี:  1) หา 'ช่วงที่ฟิตเป็นเส้นตรงได้' แบบยาวที่สุด (total least squares)
-           2) ช่วงตรงติดกัน -> หามุมจาก 'จุดตัดของสองเส้น' = ได้มุมเหลี่ยมคมเป๊ะแบบงานเขียนแบบ
-           3) ช่วงที่โค้งจริง (ตัว O/S/ลายมือ) ค่อยฟิตเบซิเยร์เฉพาะช่วงนั้น -> โค้งยังสวยเหมือนเดิม
-    """
-    try:
-        if len(pts) < 2:
-            return (pts[0] if pts else (0.0, 0.0)), []
-        P = np.asarray(pts, float)
-        N = len(P)
-        d = np.hypot(np.diff(P[:, 0]), np.diff(P[:, 1]))
-        cum = np.concatenate([[0.0], np.cumsum(d)])
-        RMS_OK = 0.35        # คลื่นเฉลี่ยที่ยอมให้ 'รีดเป็นเส้นตรง' ได้ (มม.)
-        MAX_OK = 0.85        # จุดที่หลุดมากสุดต้องไม่เกินนี้
-        MIN_LEN = 6.0        # ท่อนตรงต้องยาวจริง ๆ ไม่งั้นถือว่าเป็นส่วนหนึ่งของโค้ง
-        runs = []            # (a, b, c, dir) ช่วงที่เป็นเส้นตรง
-        i = 0
-        while i < N - 1:
-            best = None
-            j = i + 1
-            # ขยายช่วงไปข้างหน้าเรื่อย ๆ ตราบที่ยังฟิตเส้นตรงได้
-            while j < N:
-                if cum[j] - cum[i] >= MIN_LEN * 0.5:
-                    c, dv, rms, mx = _fit_line(P, i, j)
-                    if rms <= RMS_OK and mx <= MAX_OK:
-                        best = (i, j, c, dv, mx)
-                    else:
-                        break
-                j += 1
-            # หมายเหตุ: ฟังก์ชันนี้ทำงานเฉพาะ 'โหมดแบบเหลี่ยม' ที่ผู้ใช้เลือกเองเท่านั้น
-            #           จึงรีดได้เต็มที่ ไม่ต้องมีด่านเดาว่าเป็นลายมือหรือไม่
-            if best is not None and (cum[best[1]] - cum[best[0]]) >= MIN_LEN:
-                runs.append(best)
-                i = best[1]
-            else:
-                i += 1
-        segs = []
-        cur = (float(P[0][0]), float(P[0][1]))
-
-        def _proj(c, dv, q):
-            t = float((np.asarray(q, float) - c) @ dv)
-            r = c + t * dv
-            return (float(r[0]), float(r[1]))
-
-        def _inter(c1, d1, c2, d2, fallback):
-            det = d1[0] * (-d2[1]) - (-d2[0]) * d1[1]
-            if abs(det) < 1e-6:
-                return fallback
-            rhs = c2 - c1
-            t = (rhs[0] * (-d2[1]) - (-d2[0]) * rhs[1]) / det
-            r = c1 + t * d1
-            if float(np.hypot(r[0] - fallback[0], r[1] - fallback[1])) > 12.0:
-                return fallback           # ตัดกันไกลผิดปกติ (เกือบขนาน) -> ใช้จุดเดิม
-            return (float(r[0]), float(r[1]))
-
-        prev = None                      # (b_index, c, dir) ของท่อนตรงก่อนหน้า
-        for (a, b, c, dv, _mx) in runs:
-            if prev is None:
-                if a > 0 and to_curves is not None and a >= 3:
-                    _st, _sg = to_curves([tuple(q) for q in P[0:a + 1]], closed=False)
-                    if _sg:
-                        segs.extend(_sg)
-                    else:
-                        segs.append(("L", (float(P[a][0]), float(P[a][1]))))
-                elif a > 0:
-                    segs.append(("L", (float(P[a][0]), float(P[a][1]))))
-            else:
-                pb, pc, pd = prev
-                if a - pb <= 2:                       # ต่อกันเลย = มุมหัก -> ใช้จุดตัดของสองเส้น
-                    k = _inter(pc, pd, c, dv, (float(P[pb][0]), float(P[pb][1])))
-                    segs.append(("L", k))
-                else:                                 # มีช่วงโค้งคั่นกลาง -> ฟิตเบซิเยร์เฉพาะช่วงนั้น
-                    if to_curves is not None and (a - pb) >= 4:
-                        _st, _sg = to_curves([tuple(q) for q in P[pb:a + 1]], closed=False)
-                        if _sg:
-                            segs.extend(_sg)
-                        else:
-                            segs.append(("L", (float(P[a][0]), float(P[a][1]))))
-                    else:
-                        segs.append(("L", (float(P[a][0]), float(P[a][1]))))
-            segs.append(("L", _proj(c, dv, P[b])))    # ปลายท่อนตรง (บนเส้นที่ฟิตได้)
-            prev = (b, c, dv)
-        if prev is None:                              # ไม่มีท่อนตรงเลย = เส้นโค้งล้วน
-            if to_curves is not None:
-                return to_curves(pts, closed=closed)
-            return (float(P[0][0]), float(P[0][1])), [("L", (float(q[0]), float(q[1]))) for q in P[1:]]
-        pb = prev[0]
-        if pb < N - 1:                                # หางที่เหลือหลังท่อนตรงสุดท้าย
-            if to_curves is not None and (N - 1 - pb) >= 4:
-                _st, _sg = to_curves([tuple(q) for q in P[pb:]], closed=False)
-                if _sg:
-                    segs.extend(_sg)
-                else:
-                    segs.append(("L", (float(P[-1][0]), float(P[-1][1]))))
-            else:
-                segs.append(("L", (float(P[-1][0]), float(P[-1][1]))))
-        if not segs:
-            segs = [("L", (float(P[-1][0]), float(P[-1][1])))]
-        return cur, segs
-    except Exception:
-        if to_curves is not None:
-            try:
-                return to_curves(pts, closed=closed)
-            except Exception:
-                pass
-        return pts[0], [("L", p) for p in pts[1:]]
-
-
-def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False):
+def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
     """🔌 หน้าบ้านสำหรับ app.py — คืน (subs, report) รูปแบบเดียวกับ neon_single.centerline()
 
     subs = เส้นโค้งเบซิเยร์ในหน่วย มม. ({"start","segs","closed"})
@@ -1405,29 +435,7 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False)
     try:
         if full is None or full.is_empty:
             return [], []
-        # ══════════════════════════════════════════════════════════════
-        # 📏 เลือกความกว้างท่อ 'ตามความหนาลายเส้นจริง' — นี่คือกุญแจที่ทำให้ครบทุกฟอนต์
-        #
-        # ⚠️ ที่ยังเหลือตำหนิในฟอนต์หนา (Caveat Brush · Pacifico · Kaushan) ไม่ใช่บั๊กของตัวหาแกนกลาง
-        #    แต่เป็นเรื่องกายภาพ: ลายเส้นหนา 19 มม. จะเอาท่อ 8 มม. ไปวางให้เต็มไม่ได้จริง ๆ
-        #    วัดแล้ว: ท่อ 8 มม. -> ตำหนิ 8 จุด · ท่อ 15 มม. (ตามลายเส้น) -> 0 จุด บนฟอนต์เดียวกัน
-        # ✅ จึงวัดความหนาลายเส้นก่อน แล้วขยับท่อขึ้นให้พอดีถ้าท่อที่ขอมาเล็กเกินไป
-        #    แล้ว 'บอกผู้ใช้' ว่าเปลี่ยนให้เพราะอะไร ไม่เงียบ ๆ เปลี่ยนเอง
-        _tube_req = float(tube_mm or 0.0)
-        _tube_use = _tube_req
-        _note = None
-        try:
-            _mk, _pp, _og = geom_to_mask(full, px_per_mm, max_px=900.0)
-            _sw = stroke_width_mm(_mk, _pp)
-            if _sw > 0 and _tube_req > 0 and _tube_req < _sw * 0.62:
-                _tube_use = max(6.0, min(20.0, round(_sw * 0.80)))
-                _note = ("🔦 ลายเส้นหนา %.1f มม. — ท่อ %.0f มม. ที่เลือกไว้เล็กเกินไป "
-                         "ระบบใช้ท่อ %.0f มม. แทนเพื่อให้ไฟเต็มลายเส้น "
-                         "(ถ้าต้องการท่อ %.0f มม. จริง ๆ ให้เลือกแบบเส้นคู่ หรือย่อขนาดป้ายลง)"
-                         % (_sw, _tube_req, _tube_use, _tube_req))
-        except Exception:
-            _tube_use = _tube_req
-        r = neon_paths(full, tube_mm=_tube_use, px_per_mm=px_per_mm)
+        r = neon_paths(full, tube_mm=tube_mm, px_per_mm=px_per_mm)
         if not r["paths"]:
             return [], []
         try:                                    # ใช้ตัวฟิตเบซิเยร์ตัวเดียวกับโมดูลเดิม -> สไตล์เส้นเหมือนกัน
@@ -1442,15 +450,6 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False)
             pts = [tuple(p) for p in np.asarray(ls.coords)]
             closed = bool(len(pts) > 3 and abs(pts[0][0] - pts[-1][0]) < 1e-6
                           and abs(pts[0][1] - pts[-1][1]) < 1e-6)
-            # 🅰️ โหมด 'แบบเหลี่ยม' (ผู้ใช้เลือกเอง) -> รีดขาตรงให้ตรงเป๊ะ + หามุมจากจุดตัดของสองเส้น
-            #    ทำไมต้องให้ผู้ใช้เลือก: วัดจากงานจริง 141 ช่วง — อัตราส่วน ยาว/เบี่ยง ของฟอนต์เหลี่ยม
-            #    (มัธยฐาน 28) กับฟอนต์ลายมือ (33) ทับกันสนิท แยกอัตโนมัติไม่ได้
-            #    เกณฑ์ไหนที่ทำให้ M/N/T ตรง จะรีดตัวลายมือเป็นเหลี่ยมไปด้วยเสมอ
-            if sharp:
-                st, segs = _straight_curve_mix(pts, closed, _to_curves, tol_mm=0.45)
-                if segs:
-                    subs.append({"start": st, "segs": segs, "closed": closed})
-                continue
             if _to_curves is not None:
                 st, segs = _to_curves(pts, closed=closed)
                 if segs:
@@ -1462,7 +461,7 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False)
         if not subs:
             return [], []
         # รายงานความเป็นไปได้จริง: ท่อกว้าง tube_mm ต้องมีเนื้อรองรับ tube+เผื่อข้างละ clear
-        need = float(_tube_use) + 2.0 * float(clear_mm)
+        need = float(tube_mm) + 2.0 * float(clear_mm)
         report = []
         parts = [p for p in (full.geoms if full.geom_type == "MultiPolygon" else [full])
                  if p.geom_type == "Polygon" and not p.is_empty]
@@ -1474,22 +473,6 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False)
             w2 = stroke_width_mm(m2, ppm2)
             report.append({"idx": i + 1, "min_mm": round(w2, 1), "med_mm": round(w2, 1),
                            "ok": bool(w2 >= need), "mode": "center"})
-        # 🔧 รายงาน 'จุดที่ท่อต้องดัดแคบ' — ไม่แอบดัดแบบให้ แต่บอกให้รู้
-        try:
-            _rmin = float(r.get("r_min_mm") or 0.0)
-            if 0 < _rmin < _tube_use * 1.5:
-                _grow = (_tube_use * 1.5) / max(_rmin, 1e-6)
-                report.append({"idx": 0, "min_mm": 0.0, "med_mm": 0.0, "ok": True, "mode": "bend",
-                               "note": ("🔧 มีจุดที่ท่อต้องดัดโค้งแคบสุด %.0f มม. (ท่อ %.0f มม. ควรดัดไม่ต่ำกว่า %.0f มม.) — "
-                                        "จุดพวกนี้คือตา/ห่วงเล็กของตัวอักษร ช่างต้องดัดฝืนเล็กน้อย "
-                                        "ถ้าอยากให้ดัดสบาย ขยายป้ายขึ้นอีก %.0f%% หรือเปลี่ยนไปใช้ท่อเล็กลง"
-                                        % (_rmin, _tube_use, _tube_use * 1.5, (_grow - 1) * 100))})
-        except Exception:
-            pass
-        if _note:
-            # 🔔 แจ้งผู้ใช้ผ่านช่องเดียวกับรายงาน — app.py จะเอาไปขึ้นเป็นคำเตือน
-            report.append({"idx": 0, "min_mm": 0.0, "med_mm": 0.0, "ok": True,
-                           "mode": "note", "note": _note, "tube_mm": float(_tube_use)})
         return subs, report
     except Exception:
         return [], []
