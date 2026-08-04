@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-fit",
-        "build_note": "🩹 แก้บรรทัดล่างสุดล้นตกขอบ จนตัวอักษรหายจากไฟล์ตัด (เคสจริง '101-108/201' เหลือ '0-0:0') · จัดเนื้อหมึกกลางช่องบรรทัดใหม่ + ย่อให้พอดีความสูงป้าย · เส้นบอกระยะในภาพ 3 มิติ: เส้นช่วยเริ่มที่ขอบป้าย ไม่ลากทะลุตัวอักษรอีก + ตัวเลขแยกคอลัมน์อัตโนมัติ ไม่ทับกัน + มีพื้นขาวรอง · ภาพที่ส่งไปทำไฟล์ตัดสะอาด ไม่มีเส้นไกด์ติดไป (0 พิกเซล) · ยืดทีละด้านได้ (มือจับส้ม 4 ด้าน) · ปุ่ม ✕ ปิดหน้าต่าง + no-cache กันหน้าเก่าค้าง",
+            "build": "2026-08-05-diecut",
+        "build_note": "🩹 ไดคัทตามตัวอักษร (พลาสวูด/อะคริลิค 1-2 layer): ลายพิมพ์เคยถูกย่อทั้งใบไปใส่ในทรง เลยเห็นแบบย่อส่วนโผล่ในตัวงาน ดูเหมือนผิวหน้าฉลุโบ๋ — ตอนนี้ทาบ 1:1 กับทรงที่ตัด พิมพ์เต็มหน้า ไม่มีคิ้วขาว (กล่องไฟ/ยกขอบ ใช้ทางเดิมทุกประการ) · พื้นขาวใต้ตัวเลขบอกระยะไม่โดนย้อมสีไฟอีก · แก้บรรทัดล่างสุดล้นตกขอบจนตัวอักษรหายจากไฟล์ตัด · เส้นบอกระยะไม่ลากทะลุตัวอักษร + ตัวเลขแยกคอลัมน์ไม่ทับกัน",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -3474,7 +3474,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                arm_adjust="fixed", arm_travel_cm=0.0, arm_edge_cm=20.0, arm_gap_cm=0.0,
                leg_h_cm=70.0, leg_span_cm=0.0, caster_mm=75.0, caster_lock=True, art_adj=None, metal_tex="", arm_color="", metal_tex_img="",
                metal_tex_scope="face", sticker_geom=None, bore_subs=None, art_geom=None,
-               mat_overlays=None, mat_cut=None):
+               mat_overlays=None, mat_cut=None, art_fit=None):
     """ภาพ 3 มิติ (extrude oblique) — เห็นผนังข้าง(ยกขอบ)ตั้งฉากแผ่นหลัง + คิ้วเจาะโบ๋โชว์ช่อง + เส้นบอกมิติ สูง/กว้าง/ลึก
        art_href: ถ้าใส่ data URI ของรูปงาน -> แปะรูปพิมพ์จริงบน 'หน้า' (กล่องไฟล้อมทรง = จบด้วยงานพิมพ์)
        mount: none / top2 (แขนยื่นลงจากบน 2) / side1 / side2 (แขนยื่นจากข้าง) · เหล็กกล่อง 1 นิ้ว + เพลท plate_cm"""
@@ -3701,7 +3701,11 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 elif _dot < -0.10:
                     parts.append('<path d="%s" fill="#0b1220" opacity="%.2f"/>' % (_qd, min(0.30, 0.08 + 0.22 * (-_dot))))
     if art_href:                                       # 🖨️ กล่องไฟหน้าพิมพ์: คิ้ว 1cm รอบตัว + artwork หดเข้า >1cm
-        _notrim = bool(rec.get("no_trim") or _edgelit)  # ไม่มีคิ้ว -> หน้าพิมพ์เต็ม ไม่มีขอบคิ้วเทา
+        # 🎯 งานไดคัทตามตัวอักษร: 'รูปงาน' กับ 'ทรงที่ตัด' คือของชิ้นเดียวกัน
+        #    -> ต้องพิมพ์เต็มหน้า ไม่มีคิ้วขาว และวางรูปให้ทาบตรงทรงเป๊ะ
+        #    (เดิมย่อรูปทั้งใบไปใส่ในกรอบทรงแบบ 'meet' -> เห็นแบบย่อส่วนโผล่อยู่ในตัวอักษร
+        #     ดูเหมือนผิวหน้าฉลุโบ๋เป็นหย่อม ๆ)
+        _notrim = bool(rec.get("no_trim") or _edgelit or art_fit)
         _KIM = 0.0 if _notrim else 10.0
         _ARTIN = max(2.0, S * 0.004) if _notrim else 14.0   # ไม่มีคิ้ว = พิมพ์เกือบเต็มหน้า (ไม่เว้นกรอบขาว)
         kimFill = "#fffdf5" if _notrim else "#a9b4c4"   # ไม่มีคิ้ว = หน้าอะคริลิคขาวเรืองแสงเต็มหน้า
@@ -3717,7 +3721,18 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             parts.append('<path class="%s" d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f" stroke-linejoin="round"/>' % (_kimcls, faced(pg, F), kimFill, edge, lw))
         for pg in _ikp:                                # หน้าใน (หลังคิ้ว) = อะคริลิค (ย้อมสีหน้าอะคริลิคได้)
             parts.append('<path class="w3d-face" d="%s" fill="#ffffff" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>' % (faced(pg, F), edge, lw * 0.7))
-        if _iap:                                       # artwork วางในหน้า · ไม่ล้นออกนอกทรง
+        if _iap and art_fit:
+            # 🎯 ไดคัทตามตัวอักษร: รูปงาน (ถูกครอปเหลือเฉพาะเนื้องานแล้ว) = ทรงที่ตัดชิ้นเดียวกัน
+            #    จึงทาบ 1:1 ลงบนกรอบของทรงตรง ๆ (ไม่ใช่ย่อแบบ meet ลงในกรอบที่หดเข้า)
+            #    ผลคือลายพิมพ์ตรงกับตัวอักษรเป๊ะ ไม่มีแบบย่อส่วนโผล่มาในตัวงาน
+            _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in polys)
+            parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
+            _gb8 = _drawg.bounds
+            _ix, _iy = F((_gb8[0], _gb8[1]))
+            parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                         'preserveAspectRatio="none" clip-path="url(#w3dArt)"/>'
+                         % (art_href, art_href, _ix, _iy, _gb8[2] - _gb8[0], _gb8[3] - _gb8[1]))
+        elif _iap:                                     # artwork วางในหน้า · ไม่ล้นออกนอกทรง
             _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in _iap)
             parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
             _ab = _ia.bounds
@@ -3966,7 +3981,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
                 (_g9[2] - _g9[0]) / 10.0)
             # 🏷️ พื้นขาวรองใต้ตัวเลข — เส้นช่วยเส้นประวิ่งผ่านหลังตัวเลขได้ ต้องกันไว้ให้อ่านออก
             _tw9 = len(_txt9) * _dfs * 0.55
-            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"/>'
+            parts.append('<rect data-nl="1" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"/>'
                          % ((_x0d + _x1d) / 2 - _tw9 / 2, _yd - fs * 0.28 - _dfs * 0.86,
                             _tw9, _dfs * 1.16, _dfs * 0.18))
             parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle">%s</text>'
@@ -3984,7 +3999,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _cxv, _cyv = _xr - fs * 0.3, (_g9[1] + _g9[3]) / 2 + oy
             _rot9 = ' transform="rotate(-90 %.1f %.1f)"' % (_cxv, _cyv)
             _tl9 = len(_tv9) * _dfs * 0.55
-            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"%s/>'
+            parts.append('<rect data-nl="1" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" opacity="0.92"%s/>'
                          % (_cxv - _tl9 / 2, _cyv - _dfs * 0.72, _tl9, _dfs * 1.16, _dfs * 0.18, _rot9))
             parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="%s" text-anchor="middle"%s>%s</text>'
                          % (_cxv, _cyv, _dfs, _dc, _rot9, _tv9))
@@ -3997,7 +4012,7 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             _dash = ' stroke-dasharray="%.1f %.1f" opacity="0.5"' % (fs * 0.25, fs * 0.2)
 
             def _lab9(_x, _y, _t, _rot=""):
-                parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
+                parts.append('<rect data-nl="1" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" '
                              'opacity="0.9"%s/>' % (_x - fs * 1.85, _y - fs * 0.55, fs * 3.7, fs * 0.86, fs * 0.13, _rot))
                 parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
                              'fill="%s" text-anchor="middle"%s>%s</text>'
@@ -6631,6 +6646,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             if rec.get("face_finish") == "print":       # กล่องไฟล้อมทรง = จบด้วยงานพิมพ์ -> โชว์รูปจริงบนหน้า
                 try: _art = _art_data_uri(inp)
                 except Exception: _art = ""
+            # 🎯 ทรงที่ตัด = ตัวงานเอง (ไดคัทตามตัวอักษร) -> ทาบลายพิมพ์ 1:1 · กล่องไฟใช้ทางเดิม
+            _artfit = bool(_art and body3d is full and not rec.get("box_shape")
+                           and not rec.get("punch_face"))
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
@@ -6651,7 +6669,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    art_adj=_art_adj, sticker_geom=_sticker_geom,
                                    metal_tex=str(metal_tex or ""), arm_color=str(arm_color or ""),
                                    metal_tex_img=str(metal_tex_img or ""), metal_tex_scope=str(metal_tex_scope or "face"),
-                                   bore_subs=_punch_raw_subs, mat_overlays=_mat_ov, mat_cut=_mat_cut)
+                                   bore_subs=_punch_raw_subs, mat_overlays=_mat_ov, mat_cut=_mat_cut,
+                                   art_fit=_artfit)
         except Exception:
             svg3d = ""
         # 📐 มุมมองมาตรฐาน Top / Front / Side (คู่กับ Perspective ด้านบน)
@@ -7555,6 +7574,9 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 fo = _mbuf(full, float(L["off"]) + 10.0); bore = _mbuf(full, float(L["off"])); break
         body3d = fo if (fo is not None and not fo.is_empty) else full
         _art = _art_data_uri(inp) if rec.get("face_finish") == "print" else ""
+        # 🎯 'ทรงที่ตัด = ตัวงานเอง' (ไดคัทตามตัวอักษร ไม่ใช่กล่องสี่เหลี่ยม/ทรงเรขา)
+        #    -> สั่งให้วางลายพิมพ์ทาบทรงเป๊ะ 1:1 · กล่องไฟยังใช้ทางเดิมทุกประการ
+        _artfit = bool(_art and body3d is full and not rec.get("box_shape") and _punch_logo is None)
         _bore = None if rec.get("face_finish") == "print" else bore
         _nsub = None
         if rec.get("neon"):
@@ -7591,7 +7613,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                                    art_adj=_art_adj, metal_tex=str(metal_tex or ""),
                                    face_color=(face_color or None), side_color=(side_color or None),
                                    arm_color=str(arm_color or ""), metal_tex_img=str(metal_tex_img or ""),
-                                   metal_tex_scope=str(metal_tex_scope or "face"), sticker_geom=_sticker_geom)
+                                   metal_tex_scope=str(metal_tex_scope or "face"), sticker_geom=_sticker_geom,
+                                   art_fit=_artfit)
             except Exception:
                 persp = ""
         # frame back (type ที่มีโครงแขวน)
