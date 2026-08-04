@@ -1246,7 +1246,157 @@ def neon_paths(geom, tube_mm=None, px_per_mm=4.0, spur_ratio=0.75, bend_ratio=1.
             "plate": plate, "mask_ppm": ppm}
 
 
-def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
+def _rdp(pts, tol):
+    """ลดจุดแบบ Ramer–Douglas–Peucker — เก็บเฉพาะจุดที่ 'เปลี่ยนทิศจริง' (มุม)"""
+    if len(pts) < 3:
+        return list(range(len(pts)))
+    keep = [0, len(pts) - 1]
+    stack = [(0, len(pts) - 1)]
+    P = np.asarray(pts, float)
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a = P[i]; b = P[j]; ab = b - a
+        L = float(np.hypot(*ab))
+        seg = P[i + 1:j]
+        if L < 1e-9:
+            d = np.hypot(seg[:, 0] - a[0], seg[:, 1] - a[1])
+        else:
+            d = np.abs((ab[0] * (a[1] - seg[:, 1]) - (a[0] - seg[:, 0]) * ab[1]) / L)
+        k = int(np.argmax(d))
+        if float(d[k]) > tol:
+            m = i + 1 + k
+            keep.append(m)
+            stack.append((i, m)); stack.append((m, j))
+    return sorted(set(keep))
+
+
+def _fit_line(P, a, b):
+    """ฟิตเส้นตรงแบบ total least squares ให้ช่วง a..b คืน (จุดกลาง, เวกเตอร์ทิศ, rms, maxdev)"""
+    Q = P[a:b + 1]
+    c = Q.mean(axis=0)
+    U, S, Vt = np.linalg.svd(Q - c, full_matrices=False)
+    dvec = Vt[0]
+    n = np.array([-dvec[1], dvec[0]])
+    r = np.abs((Q - c) @ n)
+    return c, dvec, float(np.sqrt(np.mean(r * r))), float(np.max(r))
+
+
+def _straight_curve_mix(pts, closed, to_curves, tol_mm=0.45):
+    """✍️ ทำให้ 'ช่วงที่ตรง = ตรงเป๊ะ' และ 'มุม = เหลี่ยมคม' ส่วนช่วงที่โค้งจริงค่อยฟิตเบซิเยร์
+
+    ทำไมต้องมี: แกนกลางที่ได้จากการลอกโครง (skeleton) มีคลื่นเล็ก ๆ ±0.3-0.5 มม. ตลอดเส้น
+                พอส่งเข้าตัวฟิตเบซิเยร์ทั้งเส้น ขาตรงของ M/N/T/Z จึงออกมาเป็นเส้นแอ่น
+                และมุมหักถูกลบเหลี่ยมกลายเป็นมุมมน — ผิดกับงานดัดท่อนีออนจริง
+    วิธี:  1) หา 'ช่วงที่ฟิตเป็นเส้นตรงได้' แบบยาวที่สุด (total least squares)
+           2) ช่วงตรงติดกัน -> หามุมจาก 'จุดตัดของสองเส้น' = ได้มุมเหลี่ยมคมเป๊ะแบบงานเขียนแบบ
+           3) ช่วงที่โค้งจริง (ตัว O/S/ลายมือ) ค่อยฟิตเบซิเยร์เฉพาะช่วงนั้น -> โค้งยังสวยเหมือนเดิม
+    """
+    try:
+        if len(pts) < 2:
+            return (pts[0] if pts else (0.0, 0.0)), []
+        P = np.asarray(pts, float)
+        N = len(P)
+        d = np.hypot(np.diff(P[:, 0]), np.diff(P[:, 1]))
+        cum = np.concatenate([[0.0], np.cumsum(d)])
+        RMS_OK = 0.35        # คลื่นเฉลี่ยที่ยอมให้ 'รีดเป็นเส้นตรง' ได้ (มม.)
+        MAX_OK = 0.85        # จุดที่หลุดมากสุดต้องไม่เกินนี้
+        MIN_LEN = 6.0        # ท่อนตรงต้องยาวจริง ๆ ไม่งั้นถือว่าเป็นส่วนหนึ่งของโค้ง
+        runs = []            # (a, b, c, dir) ช่วงที่เป็นเส้นตรง
+        i = 0
+        while i < N - 1:
+            best = None
+            j = i + 1
+            # ขยายช่วงไปข้างหน้าเรื่อย ๆ ตราบที่ยังฟิตเส้นตรงได้
+            while j < N:
+                if cum[j] - cum[i] >= MIN_LEN * 0.5:
+                    c, dv, rms, mx = _fit_line(P, i, j)
+                    if rms <= RMS_OK and mx <= MAX_OK:
+                        best = (i, j, c, dv, mx)
+                    else:
+                        break
+                j += 1
+            # หมายเหตุ: ฟังก์ชันนี้ทำงานเฉพาะ 'โหมดแบบเหลี่ยม' ที่ผู้ใช้เลือกเองเท่านั้น
+            #           จึงรีดได้เต็มที่ ไม่ต้องมีด่านเดาว่าเป็นลายมือหรือไม่
+            if best is not None and (cum[best[1]] - cum[best[0]]) >= MIN_LEN:
+                runs.append(best)
+                i = best[1]
+            else:
+                i += 1
+        segs = []
+        cur = (float(P[0][0]), float(P[0][1]))
+
+        def _proj(c, dv, q):
+            t = float((np.asarray(q, float) - c) @ dv)
+            r = c + t * dv
+            return (float(r[0]), float(r[1]))
+
+        def _inter(c1, d1, c2, d2, fallback):
+            det = d1[0] * (-d2[1]) - (-d2[0]) * d1[1]
+            if abs(det) < 1e-6:
+                return fallback
+            rhs = c2 - c1
+            t = (rhs[0] * (-d2[1]) - (-d2[0]) * rhs[1]) / det
+            r = c1 + t * d1
+            if float(np.hypot(r[0] - fallback[0], r[1] - fallback[1])) > 12.0:
+                return fallback           # ตัดกันไกลผิดปกติ (เกือบขนาน) -> ใช้จุดเดิม
+            return (float(r[0]), float(r[1]))
+
+        prev = None                      # (b_index, c, dir) ของท่อนตรงก่อนหน้า
+        for (a, b, c, dv, _mx) in runs:
+            if prev is None:
+                if a > 0 and to_curves is not None and a >= 3:
+                    _st, _sg = to_curves([tuple(q) for q in P[0:a + 1]], closed=False)
+                    if _sg:
+                        segs.extend(_sg)
+                    else:
+                        segs.append(("L", (float(P[a][0]), float(P[a][1]))))
+                elif a > 0:
+                    segs.append(("L", (float(P[a][0]), float(P[a][1]))))
+            else:
+                pb, pc, pd = prev
+                if a - pb <= 2:                       # ต่อกันเลย = มุมหัก -> ใช้จุดตัดของสองเส้น
+                    k = _inter(pc, pd, c, dv, (float(P[pb][0]), float(P[pb][1])))
+                    segs.append(("L", k))
+                else:                                 # มีช่วงโค้งคั่นกลาง -> ฟิตเบซิเยร์เฉพาะช่วงนั้น
+                    if to_curves is not None and (a - pb) >= 4:
+                        _st, _sg = to_curves([tuple(q) for q in P[pb:a + 1]], closed=False)
+                        if _sg:
+                            segs.extend(_sg)
+                        else:
+                            segs.append(("L", (float(P[a][0]), float(P[a][1]))))
+                    else:
+                        segs.append(("L", (float(P[a][0]), float(P[a][1]))))
+            segs.append(("L", _proj(c, dv, P[b])))    # ปลายท่อนตรง (บนเส้นที่ฟิตได้)
+            prev = (b, c, dv)
+        if prev is None:                              # ไม่มีท่อนตรงเลย = เส้นโค้งล้วน
+            if to_curves is not None:
+                return to_curves(pts, closed=closed)
+            return (float(P[0][0]), float(P[0][1])), [("L", (float(q[0]), float(q[1]))) for q in P[1:]]
+        pb = prev[0]
+        if pb < N - 1:                                # หางที่เหลือหลังท่อนตรงสุดท้าย
+            if to_curves is not None and (N - 1 - pb) >= 4:
+                _st, _sg = to_curves([tuple(q) for q in P[pb:]], closed=False)
+                if _sg:
+                    segs.extend(_sg)
+                else:
+                    segs.append(("L", (float(P[-1][0]), float(P[-1][1]))))
+            else:
+                segs.append(("L", (float(P[-1][0]), float(P[-1][1]))))
+        if not segs:
+            segs = [("L", (float(P[-1][0]), float(P[-1][1])))]
+        return cur, segs
+    except Exception:
+        if to_curves is not None:
+            try:
+                return to_curves(pts, closed=closed)
+            except Exception:
+                pass
+        return pts[0], [("L", p) for p in pts[1:]]
+
+
+def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0, sharp=False):
     """🔌 หน้าบ้านสำหรับ app.py — คืน (subs, report) รูปแบบเดียวกับ neon_single.centerline()
 
     subs = เส้นโค้งเบซิเยร์ในหน่วย มม. ({"start","segs","closed"})
@@ -1292,6 +1442,15 @@ def centerline_subs(full, tube_mm=8.0, clear_mm=1.0, px_per_mm=4.0):
             pts = [tuple(p) for p in np.asarray(ls.coords)]
             closed = bool(len(pts) > 3 and abs(pts[0][0] - pts[-1][0]) < 1e-6
                           and abs(pts[0][1] - pts[-1][1]) < 1e-6)
+            # 🅰️ โหมด 'แบบเหลี่ยม' (ผู้ใช้เลือกเอง) -> รีดขาตรงให้ตรงเป๊ะ + หามุมจากจุดตัดของสองเส้น
+            #    ทำไมต้องให้ผู้ใช้เลือก: วัดจากงานจริง 141 ช่วง — อัตราส่วน ยาว/เบี่ยง ของฟอนต์เหลี่ยม
+            #    (มัธยฐาน 28) กับฟอนต์ลายมือ (33) ทับกันสนิท แยกอัตโนมัติไม่ได้
+            #    เกณฑ์ไหนที่ทำให้ M/N/T ตรง จะรีดตัวลายมือเป็นเหลี่ยมไปด้วยเสมอ
+            if sharp:
+                st, segs = _straight_curve_mix(pts, closed, _to_curves, tol_mm=0.45)
+                if segs:
+                    subs.append({"start": st, "segs": segs, "closed": closed})
+                continue
             if _to_curves is not None:
                 st, segs = _to_curves(pts, closed=closed)
                 if segs:
