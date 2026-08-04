@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-neon",
-        "build_note": "🌈 นีออนเส้นเดี่ยว 2 ของใหม่: (1) โหมด 'แบบเหลี่ยม' — รีดขาตรงให้ตรงเป๊ะ + หามุมจากจุดตัดของสองเส้นแบบงานเขียนแบบ (วัดจริง: ขาตรง 0% → 96%) ต้องเลือกเอง เพราะแยกขาตรงกับโค้งรัศมีใหญ่อัตโนมัติไม่ได้ (ทดสอบ 141 ช่วง ตัวเลขทับกันสนิท) (2) เลือกสีได้อิสระทีละตัว — จานสีต่อตัวใต้แผงนีออน + คลิกที่ตัวอักษรบนภาพก็เลือกได้ กด 'ล้างสีรายตัว' กลับไปสีเดียวทั้งป้าย",
+            "build": "2026-08-05-neonrev",
+        "build_note": "🔙 นีออนเส้นเดี่ยว ถอยกลับรุ่น 2026-08-02 ที่เดินไฟตามลายเส้นได้ตรงกว่ามาก (รุ่นหลังจากนั้นรวมเส้นที่จุดไขว้แรงเกิน + ขยายท่ออัตโนมัติ 8→13 มม. วัดจริง: ตัว 'r' ในคำว่า bars หายทั้งตัว ตัว a ผิดรูป · 41 เส้น เหลือ 8 เส้น) · ถอดโหมด 'แบบเหลี่ยม' ออกด้วย · แผ่นอะคริลิคล้อมตามทรงจริง: เลิกเว้นระยะซ้อน 2 ชั้น (41→29.4 ซม.) + ห้ามล้นขนาดป้าย + รัศมีเกลาผูกกับความหนาลายเส้นจริง + เกลาขอบให้ไหลลื่น (คลื่นเล็กบนขอบ 5 ลูก เหลือ 1) + ขั้นเกลาห้ามตัดทรงขาด · ตัวเลขจับระยะมีพื้นขาวรอง ไม่หลุดขอบภาพ · เลือกสีรายตัวเห็นผลทันทีบนภาพ ไม่ต้องกดสร้างใหม่",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1222,7 +1222,7 @@ def _punch_min_stroke(logo, min_w_mm=1.2):
         return logo, 0
 
 
-def _wrap_silhouette(full, bridge_mm):
+def _wrap_silhouette(full, bridge_mm, pad_mm=None):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
        - เก็บเฉพาะขอบนอก (ไม่เอารูใน) = ทรงกล่องเรียบต่อเนื่อง
@@ -1244,27 +1244,69 @@ def _wrap_silhouette(full, bridge_mm):
 
         b = full.bounds
         size = max(b[2] - b[0], b[3] - b[1], 1.0)
-        r = max(float(bridge_mm), size * 0.06)      # bridge ปรับตามขนาดงาน (>=6% ของด้านยาว)
         RND = 1                                      # join_style=1 = โค้งมน (กันเดือยแหลม)
+        # ══════════════════════════════════════════════════════════════════
+        # 📏 วัด 'ความหนาลายเส้นจริง' ของงานก่อน แล้วค่อยตั้งรัศมีเกลาทุกขั้นจากค่านี้
+        #
+        # ⚠️ บทเรียนจากเคสจริง (โลโก้ลายมือ 'Eleca bars Coffee' 120×60 ซม.):
+        #    เดิมตั้งรัศมีจาก 'ด้านยาวของงาน' (4.5%) — งานยาว 107 ซม. => รัศมี 48 มม.
+        #    แต่ลายเส้นหนาแค่ 15.7 มม. รัศมีเกลาจึงใหญ่กว่าลายเส้น 3 เท่า
+        #    ผลคือช่องไฟระหว่างตัวอักษรถูกถมจนเต็ม -> ทรงกลายเป็น 'พื้นหลังสี่เหลี่ยม'
+        #    ไม่ใช่ 'ล้อมตามทรง' อีกต่อไป (แผ่นบวมจาก 19 ซม. เป็น 41 ซม.)
+        # ✅ ความหนาลายเส้น = 2 × พื้นที่ ÷ ความยาวเส้นรอบรูป (แม่นกับงานเส้นยาว ๆ)
+        #    แล้ว 'ห้ามรัศมีเกลาใหญ่กว่าลายเส้น' — งานลายเส้นบางจึงล้อมทรงได้แนบ
+        #    ส่วนงานตัวหนา/ตราวงกลม ค่า t ใหญ่อยู่แล้ว ผลลัพธ์เท่าเดิมทุกประการ
+        # ══════════════════════════════════════════════════════════════════
+        try:
+            _L = sum(p.exterior.length + sum(h.length for h in p.interiors)
+                     for p in (full.geoms if full.geom_type == "MultiPolygon" else [full]))
+            _t = max(1.0, 2.0 * full.area / max(_L, 1e-6))
+        except Exception:
+            _t = size * 0.03
 
-        # 1) CLOSE — เชื่อมทุกส่วนของงาน (ตัว+ตะเกียบ+ชาม) ให้ติดกันเป็นก้อนเดียว
-        g = full.buffer(r, join_style=RND).buffer(-r, join_style=RND)
+        # 1) CLOSE — เชื่อมทุกส่วนของงานให้ติดกันเป็นก้อนเดียว
+        #    ใช้ 'รัศมีน้อยที่สุดที่พอเชื่อมติด' แล้วค่อย ๆ เพิ่มถ้ายังไม่ติด
+        #    (เดิมยิงรัศมี 6% ของด้านยาวทันที = ถมช่องไฟทิ้งตั้งแต่ก้าวแรก)
+        r = max(2.0, min(float(bridge_mm or 0.0) or size, _t * 1.5))
+        g = full
+        for _ in range(14):
+            g = full.buffer(r, join_style=RND).buffer(-r, join_style=RND)
+            if g.geom_type != "MultiPolygon":
+                break
+            r *= 1.35
+            if r > size * 0.30:
+                break
         solid = _outer(g) or full
 
+        # ══════════════════════════════════════════════════════════════════
+        # 🔒 กติกา: ขั้น 'หดแล้วขยาย' (OPEN) ห้ามทำให้ทรงขาดเป็นหลายก้อนเด็ดขาด
+        #    เคสจริง: โลโก้ลายมือ 4 คำ — ขั้นเกลาหลังเว้นระยะหด 14.7 มม.
+        #    ตัดคอสะพานระหว่างคำขาด แล้วโค้ดเก่าเลือก 'ก้อนใหญ่สุด' ก้อนเดียว
+        #    -> คำว่า Coffee หลุดออกนอกแผ่น (แผ่นเหลือ 72.7 ซม. ทั้งที่งานยาว 110 ซม.)
+        #    ถ้าหดแล้วขาด/หายเกิน 12% = ไม่คุ้ม ไม่ต้องเกลาขั้นนั้น
+        # ══════════════════════════════════════════════════════════════════
+        def _open_safe(sol, rad, grow=None):
+            if not rad or rad <= 0.2:
+                return sol
+            try:
+                c = sol.buffer(-rad, join_style=RND, resolution=24).buffer(float(grow or rad), join_style=RND, resolution=24)
+                if c is None or c.is_empty or c.geom_type == "MultiPolygon":
+                    return sol
+                if c.area < sol.area * 0.88:
+                    return sol
+                return _outer(c) or sol
+            except Exception:
+                return sol
+
         # 2) OPEN — กลืน "แขน/ก้านบาง" ที่ยื่นออกมา (เช่น ปลายตะเกียบ) ให้ envelope เรียบ
-        o = size * 0.035
-        g2 = solid.buffer(-o, join_style=RND).buffer(o * 1.15, join_style=RND)
-        solid = _outer(g2) or solid
+        solid = _open_safe(solid, min(size * 0.035, _t * 0.35), min(size * 0.035, _t * 0.35) * 1.15)
 
         # 3) SMOOTH รอบสุดท้าย — โค้งมนทั้งเข้า-ออก ลบรอยหยัก/เดือย/เส้นไขว้
-        #    (เว้าลึก ๆ ที่ทำให้คิ้ว offset แล้วเส้นทับกัน จะถูกลบ)
-        #    🎨 เพิ่มรัศมีจาก 2% เป็น 4.5% ของด้านยาว — เดิมยังเหลือรอยหยักตามตัวอักษร
-        #       กล่องเลยดูเป็นคลื่นยึกยัก ไม่ใช่ทรงกล่องไฟที่ช่างดัดจริงได้สวย
-        s = size * 0.045
-        solid = solid.buffer(s, join_style=RND, resolution=24).buffer(-s, join_style=RND, resolution=24)
-        solid = _outer(solid) or solid
-        solid = solid.buffer(-s * 0.6, join_style=RND, resolution=24).buffer(s * 0.6, join_style=RND, resolution=24)
-        solid = _outer(solid) or solid
+        s = min(size * 0.045, _t * 1.0)
+        if s > 0.2:
+            solid = solid.buffer(s, join_style=RND, resolution=24).buffer(-s, join_style=RND, resolution=24)
+            solid = _outer(solid) or solid
+            solid = _open_safe(solid, s * 0.6)
 
         # 3b) 🔒 กติกาเหล็ก: ทรงกล่องต้อง 'คลุมงานเดิมครบทุกชิ้น' เสมอ
         #     ขั้น OPEN ด้านบนออกแบบมาให้กลืนก้านบาง ๆ (ปลายตะเกียบ) แต่มันกินของจริงไปด้วย
@@ -1292,20 +1334,68 @@ def _wrap_silhouette(full, bridge_mm):
             pass
 
         # 4) 🫧 ระยะเว้นรอบงาน — กล่องต้องไม่ชนตัวโลโก้ ไม่งั้นดูอึดอัดและงานพิมพ์เลยขอบ
-        #    เดิมไม่มีเลย ขอบกล่องจึงแนบติดตัวอักษร (เคสจริง: หาง 'o' ของ Nailito ชนขอบพอดี)
-        #    เว้น 5% ของด้านยาว (อย่างน้อย 15 มม.) แล้วเกลาอีกรอบให้ขอบยังมนเนียน
-        pad = max(15.0, size * 0.05)
-        solid = solid.buffer(pad, join_style=RND, resolution=24)
-        solid = _outer(solid) or solid
-        _s2 = max(pad * 0.55, size * 0.05)            # เกลารอยต่อที่เกิดจากการเว้นระยะ
-        solid = solid.buffer(-_s2, join_style=RND, resolution=24).buffer(_s2, join_style=RND, resolution=24)
-        solid = _outer(solid) or solid
-        _s3 = size * 0.025                            # ไล่คลื่นเล็ก ๆ ที่เหลือตามจังหวะตัวอักษร
-        solid = solid.buffer(_s3, join_style=RND, resolution=24).buffer(-_s3, join_style=RND, resolution=24)
-        solid = _outer(solid) or solid
+        #    pad_mm=0 -> ผู้เรียกจะเว้นระยะเอง (นีออนเฟล็กซ์ใช้ค่า 'เผื่อขอบ' ที่ผู้ใช้กรอก)
+        #    ⚠️ เดิมนีออนโดนเว้นระยะ 2 ชั้น (ในนี้ 5% + ของผู้ใช้อีก 5 ซม.) แผ่นเลยบวมเกินขนาดป้าย
+        pad = max(15.0, size * 0.05) if pad_mm is None else max(0.0, float(pad_mm))
+        if pad > 0.05:
+            solid = solid.buffer(pad, join_style=RND, resolution=24)
+            solid = _outer(solid) or solid
+        # ══════════════════════════════════════════════════════════════════
+        # 5) 🌊 เกลาขอบให้ 'ไหลลื่น' — ปิดร่องแล้วเกลาปุ่มด้วยรัศมีเท่ากัน
+        #
+        # ⚠️ การเว้นระยะรอบตัวอักษรทำให้ขอบกลายเป็น 'ฟองสบู่' ต่อกัน:
+        #    ทุกหัวตัวอักษรได้ส่วนโค้งรัศมี = ระยะเผื่อ แล้วมาบรรจบกันเป็นแง่งแหลม
+        #    วัดจากเคสจริง (Eleca bars Coffee): ขอบบนมีคลื่นเล็ก 5-7 มม. 5 ลูก
+        #    + ร่องลึก 80 มม. 2 ร่อง -> ดูเป็นก้อนเมฆการ์ตูน ไม่ใช่ทรงป้ายที่ช่างตัดจริงสวย
+        # ✅ ปิดร่อง r แล้วเกลาปุ่ม r เท่ากัน = ขอบไหลต่อเนื่องทั้งด้านเว้าและด้านนูน
+        #    r = 1.4 เท่าของระยะเผื่อ (ต้นตอของคลื่นคือรัศมีเผื่อนั่นเอง)
+        #    เงื่อนไขกันพลาด: ห้ามขาดเป็นหลายก้อน · ห้ามงานหลุดออกนอกแผ่น · พื้นที่ห้ามโตเกิน 15%
+        # ══════════════════════════════════════════════════════════════════
+        if pad > 0.05:
+            try:
+                _rf = min(pad * 1.4, size * 0.22)
+                _c = _outer(solid.buffer(_rf, join_style=RND, resolution=32)
+                                 .buffer(-_rf, join_style=RND, resolution=32)) or solid
+                if _c.area <= solid.area * 1.15:
+                    _o = _c.buffer(-_rf, join_style=RND, resolution=32).buffer(_rf, join_style=RND, resolution=32)
+                    # ✅ เกลาได้ แต่ห้ามกินระยะเผื่อจนเหลือน้อยกว่า 55% ของที่ตั้งไว้
+                    if (_o is not None and not _o.is_empty and _o.geom_type != "MultiPolygon"
+                            and _o.buffer(0.01).contains(full.buffer(pad * 0.55, join_style=RND))):
+                        _c = _outer(_o) or _c
+                    if _c.buffer(0.01).contains(full):
+                        solid = _c
+            except Exception:
+                pass
+        _s3 = min(size * 0.025, _t * 0.6)             # ไล่คลื่นเล็ก ๆ ที่เหลือตามจังหวะตัวอักษร
+        if _s3 > 0.2:
+            solid = solid.buffer(_s3, join_style=RND, resolution=24).buffer(-_s3, join_style=RND, resolution=24)
+            solid = _outer(solid) or solid
+
+        # 6) 🔒 ตาข่ายกันตกรอบสุดท้าย — ถ้าขั้นเกลาไหนยังกินงานหาย ให้รวมกลับเข้ามา
+        #     (ตรวจ 'ทุกชิ้นอยู่ในทรง' จริง ๆ ไม่ใช่เชื่อว่าขั้นก่อนหน้าทำถูก)
+        try:
+            _p9 = [Polygon(p.exterior) for p in (full.geoms if isinstance(full, MultiPolygon) else [full])
+                   if p and not p.is_empty]
+            _out9 = [p for p in _p9 if not solid.buffer(max(0.05, pad)).contains(p)]
+            if _out9:
+                _u9 = unary_union([solid] + _p9)
+                _r9 = max(r, _t * 1.5)
+                for _ in range(8):
+                    _v9 = _u9.buffer(_r9, join_style=RND).buffer(-_r9, join_style=RND)
+                    _u9 = _v9
+                    if _v9.geom_type != "MultiPolygon":
+                        break
+                    _r9 *= 1.6
+                    if _r9 > size * 0.6:
+                        break
+                solid = _outer(_u9) or solid
+                if pad > 0.05:
+                    solid = _outer(solid.buffer(pad * 0.35, join_style=RND, resolution=24)) or solid
+        except Exception:
+            pass
 
         # simplify พอประมาณ + ทำให้ valid (buffer(0) ซ่อมเส้นตัดกันเอง)
-        solid = solid.simplify(max(0.4, size * 0.0015))   # ละเอียดขึ้น = โค้งเนียน ไม่เป็นเหลี่ยม
+        solid = solid.simplify(min(max(0.4, size * 0.0015), _t * 0.08))   # ละเอียดขึ้น = โค้งเนียน ไม่เป็นเหลี่ยม
         if not solid.is_valid:
             solid = solid.buffer(0)
             solid = _outer(solid) or solid
@@ -4999,7 +5089,18 @@ def _neon_fit(full, plate_w_mm, plate_h_mm, margin_mm, neon_w_mm=0.0, neon_h_mm=
         acr = _bx(0.0, 0.0, _pw, _ph)                     # 🔲 เท่าขนาดป้ายที่กรอกเป๊ะ
     else:
         try:
-            acr = _wrap_silhouette(full, 45.0).buffer(_mg, join_style=1)   # 🫧 ล้อมทรงงาน
+            # 🫧 ล้อมทรงงาน — เว้นระยะ 'ตามที่ผู้ใช้กรอก' เท่านั้น (pad_mm=0 = ไม่เว้นซ้ำในตัวมันเอง)
+            #    เคสจริง: โลโก้ลายมือ 107×19 ซม. เคยได้แผ่น 131×41 ซม. (เกินขนาดป้าย 120 ซม. ที่สั่ง)
+            #    เพราะเว้นระยะซ้อนกัน 2 ชั้น -> ทรงบวมจนดูเป็นสี่เหลี่ยม ไม่ใช่ล้อมตามทรง
+            acr = _wrap_silhouette(full, 45.0, pad_mm=_mg)
+            # 🚧 กันแผ่นล้นขนาดป้ายที่สั่ง — ตัดพอดีกรอบป้ายเสมอ
+            _pbx = _bx(0.0, 0.0, _pw, _ph)
+            if not _pbx.contains(acr):
+                _cut = acr.intersection(_pbx)
+                if _cut and not _cut.is_empty:
+                    if _cut.geom_type == "MultiPolygon":
+                        _cut = max(_cut.geoms, key=lambda a: a.area)
+                    acr = _cut
         except Exception:
             acr = full.buffer(_mg, join_style=1)
 
@@ -5084,7 +5185,10 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
                     s += "C %.2f %.2f %.2f %.2f %.2f %.2f " % (c1[0]-b[0]+pad, c1[1]-b[1]+pad, c2[0]-b[0]+pad, c2[1]-b[1]+pad, e[0]-b[0]+pad, e[1]-b[1]+pad)
         return s
     # 🎨 สีรายตัว: ถ้าส่ง colors มา -> วาดทีละชิ้น ชิ้นละสี · ไม่ส่ง -> สีเดียวทั้งป้าย (เหมือนเดิม)
-    _pcs = _neon_pieces(neon_full) if (colors and neon_subs) else []
+    # ⚠️ เดิมแยกกลุ่ม 'เฉพาะตอนที่ส่งสีมาแล้ว' -> รอบแรกภาพเป็นเส้นเดียวรวด
+    #    หน้าเว็บจึงไม่มี data-nz ให้จับ กดเลือกสีรายตัวแล้วภาพไม่เปลี่ยนอะไรเลย
+    # ✅ แยกกลุ่มทุกครั้งที่มีเส้นไฟ -> เปลี่ยนสีเห็นผลทันทีในเบราว์เซอร์ ไม่ต้องกดสร้างใหม่
+    _pcs = _neon_pieces(neon_full) if neon_subs else []
     _grp = _neon_group_subs(neon_subs, _pcs) if _pcs else []
     if _pcs and _grp:
         for _i, _g in enumerate(_grp):
@@ -5167,28 +5271,39 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
         return ('<path d="M %.1f %.1f L %.1f %.1f" stroke="%s" stroke-width="%.2f"/>'
                 '<path d="M %.1f %.1f l %.1f %.1f l %.1f 0 z M %.1f %.1f l %.1f %.1f l %.1f 0 z" fill="%s"/>'
                 % (x, y1, x, y2, col, _dlw, x, y1, -a * 0.45, a, a * 0.9, x, y2, -a * 0.45, -a, a * 0.9, col))
+    # 🏷️ ป้ายตัวเลข: มีพื้นขาวรองเสมอ + บังคับให้อยู่ในกรอบภาพ
+    #    เดิมตัวเลข 'ความสูงตัวไฟ' ไปทับขอบแผ่น/หลุดขอบภาพเมื่องานชิดขอบขวา อ่านไม่ออก
+    def _lab(cx, cy, txt, col, rot=0):
+        _w = len(txt) * _fz2 * 0.56 + _fz2 * 0.5
+        _h = _fz2 * 1.25
+        _bw, _bh = (_w, _h) if not rot else (_h, _w)
+        cx = min(max(cx, _bw / 2 + 1), W + 2 * pad - _bw / 2 - 1)
+        cy = min(max(cy, _bh / 2 + 1), H + 2 * pad - _bh / 2 - 1)
+        return ('<g transform="translate(%.1f %.1f) rotate(%d)">'
+                '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#ffffff" fill-opacity="0.92"/>'
+                '<text x="0" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" '
+                'fill="%s" text-anchor="middle">%s</text></g>'
+                % (cx, cy, -90 if rot else 0, -_w / 2, -_h / 2, _w, _h, _fz2 * 0.28,
+                   _fz2 * 0.36, _fz2, col, txt))
+    _CM = "&#3595;&#3617;."
     try:
         nb = neon_full.bounds
         # แผ่นรองหลัง: กว้าง (ใต้แผ่น) + สูง (ซ้าย)
         _yW = pad + H + pad * 0.34
         parts.append(_arr_h(pad, pad + W, _yW, '#dc2626'))
-        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle">%.1f &#3595;&#3617;.</text>'
-                     % (pad + W / 2, _yW - _fz2 * 0.45, _fz2, W / 10.0))
+        parts.append(_lab(pad + W / 2, _yW - _fz2 * 0.85, "%.1f %s" % (W / 10.0, _CM), '#dc2626'))
         _xH = pad * 0.40
         parts.append(_arr_v(_xH, pad, pad + H, '#dc2626'))
-        parts.append('<text font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#dc2626" text-anchor="middle" transform="translate(%.1f %.1f) rotate(-90)">%.1f &#3595;&#3617;.</text>'
-                     % (_fz2, _xH - _fz2 * 0.45, pad + H / 2, H / 10.0))
+        parts.append(_lab(_xH - _fz2 * 0.85, pad + H / 2, "%.1f %s" % (H / 10.0, _CM), '#dc2626', rot=1))
         # ตัวงานเส้นไฟ: กว้าง (เหนือ art) + สูง (ขวา)
         ax1, ay1 = nb[0] - b[0] + pad, nb[1] - b[1] + pad
         ax2, ay2 = nb[2] - b[0] + pad, nb[3] - b[1] + pad
         _yA = max(pad * 0.5, ay1 - pad * 0.28)
         parts.append(_arr_h(ax1, ax2, _yA, '#0d9488'))
-        parts.append('<text x="%.1f" y="%.1f" font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#0d9488" text-anchor="middle">%.1f &#3595;&#3617;.</text>'
-                     % ((ax1 + ax2) / 2, _yA - _fz2 * 0.40, _fz2, (nb[2] - nb[0]) / 10.0))
+        parts.append(_lab((ax1 + ax2) / 2, _yA - _fz2 * 0.80, "%.1f %s" % ((nb[2] - nb[0]) / 10.0, _CM), '#0d9488'))
         _xA = min(W + 2 * pad - pad * 0.35, ax2 + pad * 0.30)
         parts.append(_arr_v(_xA, ay1, ay2, '#0d9488'))
-        parts.append('<text font-family="Prompt,Arial" font-size="%.1f" font-weight="700" fill="#0d9488" text-anchor="middle" transform="translate(%.1f %.1f) rotate(-90)">%.1f &#3595;&#3617;.</text>'
-                     % (_fz2, _xA + _fz2 * 0.85, (ay1 + ay2) / 2, (nb[3] - nb[1]) / 10.0))
+        parts.append(_lab(_xA + _fz2 * 0.85, (ay1 + ay2) / 2, "%.1f %s" % ((nb[3] - nb[1]) / 10.0, _CM), '#0d9488', rot=1))
     except Exception:
         pass
     Wt = W + 2 * pad; Ht = H + 2 * pad
@@ -6592,8 +6707,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         #       เช่นขีดใต้คำ 'bar' ที่ควรได้เส้นเดียว กลับออกมา 2 เส้น = ไม่ได้แนวเส้น
                         #    ตัวใหม่หาแกนกลางจากภาพ (skeletonize) แล้วตัดหนวดซ้ำหลายรอบ -> ได้เส้นเดียวจริง
                         from vectorcnc import neon_route as _NR
-                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0,
-                                                                sharp=(str(neon_sharp) in ("1","on","true","True")))
+                        # 🔙 กลับไปใช้ตัวเดินไฟรุ่น 2026-08-02 ที่ 'ตามลายเส้นได้ตรงกว่ามาก'
+                        #    รุ่นหลังจากนั้นรวมเส้นที่จุดไขว้แรงเกินไป + ขยายท่ออัตโนมัติ
+                        #    วัดจริง: ตัว 'r' ในคำว่า bars หายไปทั้งตัว ตัว a ผิดรูป (41 เส้น -> 8 เส้น)
+                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                     except Exception:
                         _neon_subs = None
                     if not _neon_subs:                      # ถอย: โมดูลเดิม (ยังดีกับตัวอักษรเนื้อหนา)
@@ -7768,8 +7885,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:
                     from vectorcnc import neon_route as _NR2
-                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0,
-                                                    sharp=(str(neon_sharp) in ("1","on","true","True")))
+                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                 except Exception:
                     _nsub = None
                 if not _nsub:
