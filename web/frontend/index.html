@@ -5639,8 +5639,10 @@ function _glowBody(){
           g.fillStyle=col;    g.fillRect(cx-hs/2,cy-hs/2,hs,hs);
         }
         hnd(b.x1*sc,b.y1*sc,'#2563eb');   // ◣ มุมขวาล่าง = ย่อ/ขยายทั้งตัว
-        hnd(b.x1*sc,my*sc,'#f97316');     // ↔️ ขวากลาง = ยืดกว้างอย่างเดียว
-        hnd(mx*sc,b.y1*sc,'#f97316');     // ↕️ ล่างกลาง = ยืดสูงอย่างเดียว
+        hnd(b.x1*sc,my*sc,'#f97316');     // ➡️ ขวากลาง = ยืดออกทางขวา (ขอบซ้ายอยู่กับที่)
+        hnd(b.x0*sc,my*sc,'#f97316');     // ⬅️ ซ้ายกลาง = ยืดออกทางซ้าย (ขอบขวาอยู่กับที่)
+        hnd(mx*sc,b.y1*sc,'#f97316');     // ⬇️ ล่างกลาง = ยืดลงล่าง (ขอบบนอยู่กับที่)
+        hnd(mx*sc,b.y0*sc,'#f97316');     // ⬆️ บนกลาง  = ยืดขึ้นบน (ขอบล่างอยู่กับที่)
         g.fillStyle='#1e3a8a'; g.textAlign='left';
         g.fillText('กว้าง '+((b.x1-b.x0)/10).toFixed(1)+' ซม. · สูง '+((b.y1-b.y0)/10).toFixed(1)+' ซม.',
                    b.x0*sc, Math.max(fs,b.y0*sc-fs*0.9));
@@ -5669,8 +5671,10 @@ function _glowBody(){
       for(var i=B.length-1;i>=0;i--){
         var b=B[i], my=(b.y0+b.y1)/2, mx=(b.x0+b.x1)/2;
         if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-b.y1)<ty) return {i:i,mode:'size'};    // มุม = สเกลรวม
-        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-my)<ty)   return {i:i,mode:'wide'};    // ขวากลาง = ยืดกว้าง
-        if(Math.abs(p.x-mx)<tx  && Math.abs(p.y-b.y1)<ty)  return {i:i,mode:'tall'};    // ล่างกลาง = ยืดสูง
+        if(Math.abs(p.x-b.x1)<tx && Math.abs(p.y-my)<ty)   return {i:i,mode:'wide'};    // ขวากลาง = ยืดไปขวา
+        if(Math.abs(p.x-b.x0)<tx && Math.abs(p.y-my)<ty)   return {i:i,mode:'widel'};   // ซ้ายกลาง = ยืดไปซ้าย
+        if(Math.abs(p.x-mx)<tx  && Math.abs(p.y-b.y1)<ty)  return {i:i,mode:'tall'};    // ล่างกลาง = ยืดลงล่าง
+        if(Math.abs(p.x-mx)<tx  && Math.abs(p.y-b.y0)<ty)  return {i:i,mode:'tallu'};   // บนกลาง  = ยืดขึ้นบน
         if(p.x>=b.x0-tx*0.5&&p.x<=b.x1+tx*0.5&&p.y>=b.y0-ty*0.5&&p.y<=b.y1+ty*0.5) return {i:i,mode:'move'};
       }
       return null;
@@ -5678,7 +5682,8 @@ function _glowBody(){
     cv.addEventListener('pointermove',function(e){
       if(st) return;
       var h=hit(toMM(e));
-      cv.style.cursor=h?(h.mode==='size'?'nwse-resize':(h.mode==='wide'?'ew-resize':(h.mode==='tall'?'ns-resize':'move'))):'default';
+      var _cur={size:'nwse-resize',wide:'ew-resize',widel:'ew-resize',tall:'ns-resize',tallu:'ns-resize',move:'move'};
+      cv.style.cursor=h?(_cur[h.mode]||'move'):'default';
     });
     cv.addEventListener('pointerdown',function(e){
       var p=toMM(e), h=hit(p);
@@ -5688,7 +5693,12 @@ function _glowBody(){
       var _bx=window._tsBox[h.i];
       st={i:h.i,mode:h.mode,px:p.x,py:p.y,dx:(+r0.dx||0),dy:(+r0.dy||0),
           size:(+r0.size||sizeOf(h.i)),sx:(+r0.sx||1),sy:(+r0.sy||1),
-          w0:Math.max(1,_bx.x1-_bx.x0), h0:Math.max(1,_bx.y1-_bx.y0)};
+          w0:Math.max(1,_bx.x1-_bx.x0), h0:Math.max(1,_bx.y1-_bx.y0),
+          bx0:_bx.x0, bx1:_bx.x1, by0:_bx.y0, by1:_bx.y1,
+          // ระยะจากจุดยึดถึงขอบ 'ต่อ 1 หน่วยสเกล' — คงที่ตลอดการลาก ใช้คำนวณกลับว่าจุดยึดต้องไปอยู่ตรงไหน
+          LFT:(_bx.a-_bx.x0)/Math.max(1e-6,(+_bx.sx||1)), RGT:(_bx.x1-_bx.a)/Math.max(1e-6,(+_bx.sx||1)),
+          UP :(_bx.b-_bx.y0)/Math.max(1e-6,(+_bx.sy||1)), DN :(_bx.y1-_bx.b)/Math.max(1e-6,(+_bx.sy||1)),
+          a0:_bx.a, b0:_bx.b};
       try{ cv.setPointerCapture(e.pointerId); }catch(_e){}
       e.preventDefault(); prev();
     });
@@ -5714,12 +5724,20 @@ function _glowBody(){
         var f=Math.max(0.25,Math.min(6,(st.w0+(p.x-st.px))/st.w0));
         r0.size=Math.max(0.2,Math.round(st.size*f*10)/10);   // ✂️ ขนาดตามสเกลจริง ปัด 0.1
         var el=document.querySelector('.tsRowSize[data-i="'+st.i+'"]'); if(el)el.value=r0.size;
-      }else if(st.mode==='wide'){
+      }else if(st.mode==='wide'||st.mode==='widel'){
         // ↔️ ยืดกว้างอย่างเดียว — ความสูงคงเดิม (ลูกศรยาวขึ้นโดยไม่หนาขึ้น)
-        r0.sx=Math.max(0.15,Math.min(12,st.sx*((st.w0+(p.x-st.px))/st.w0)));
-      }else if(st.mode==='tall'){
-        // ↕️ ยืดสูงอย่างเดียว — ความกว้างคงเดิม
-        r0.sy=Math.max(0.15,Math.min(12,st.sy*((st.h0+(p.y-st.py))/st.h0)));
+        //    ยืดขวา = ขอบซ้ายต้องอยู่กับที่ · ยืดซ้าย = ขอบขวาต้องอยู่กับที่
+        //    (ถ้าไม่ยึดขอบ ตัวอักษรจะบานออกสองข้างพร้อมกัน ซึ่งไม่ใช่สิ่งที่ต้องการ)
+        var _d=(p.x-st.px)*(st.mode==='wide'?1:-1);
+        var _ns=Math.max(0.15,Math.min(12,st.sx*((st.w0+_d)/st.w0)));
+        var _na=(st.mode==='wide')?(st.bx0+st.LFT*_ns):(st.bx1-st.RGT*_ns);
+        r0.sx=_ns; r0.dx=st.dx+(_na-st.a0);
+      }else if(st.mode==='tall'||st.mode==='tallu'){
+        // ↕️ ยืดสูงอย่างเดียว — ความกว้างคงเดิม (ยืดลง = ขอบบนนิ่ง · ยืดขึ้น = ขอบล่างนิ่ง)
+        var _e=(p.y-st.py)*(st.mode==='tall'?1:-1);
+        var _nt=Math.max(0.15,Math.min(12,st.sy*((st.h0+_e)/st.h0)));
+        var _nb=(st.mode==='tall')?(st.by0+st.UP*_nt):(st.by1-st.DN*_nt);
+        r0.sy=_nt; r0.dy=st.dy+(_nb-st.b0);
       }
       prev(); e.preventDefault();
     });
@@ -5798,8 +5816,11 @@ function _glowBody(){
         var rgt=(m.actualBoundingBoxRight!=null?m.actualBoundingBoxRight:m.width);
         var a2=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
         var d2=(m.actualBoundingBoxDescent!=null?m.actualBoundingBoxDescent:0);
+        // a,b = 'จุดยึด' ของบรรทัด (มม.) — ต้องเก็บไว้ด้วย ไม่งั้นตอนยืดจะไม่รู้ว่า
+        //       ขอบไหนควรอยู่กับที่ (ยืดขวา = ขอบซ้ายต้องนิ่ง / ยืดซ้าย = ขอบขวาต้องนิ่ง)
         var _b={x0:(ax+_dx-lft*_sx)/PX, x1:(ax+_dx+rgt*_sx)/PX,
-                y0:(yd+_dy-a2*_sy)/PX,  y1:(yd+_dy+d2*_sy)/PX};
+                y0:(yd+_dy-a2*_sy)/PX,  y1:(yd+_dy+d2*_sy)/PX,
+                a:(ax+_dx)/PX, b:(yd+_dy)/PX, sx:_sx, sy:_sy};
         _spec.lines.push({text:L[k],font:font,file:_ffile,
           x0:_b.x0, x1:_b.x1, y0:_b.y0, y1:_b.y1});
         window._tsBox.push(_b);                  // 📦 หน่วย มม. — ใช้ทั้งลากจับและวาดเส้นวัดระยะ
@@ -5927,10 +5948,10 @@ function _glowBody(){
      ถ้าผูก onclick ตรงๆ จะได้ null เงียบๆ แล้วปุ่ม "เสร็จแล้ว"/"คืนตำแหน่ง" จะกดไม่ติด
      จึงต้องดักที่ document แล้วค่อยดูว่าโดนปุ่มไหน (ใช้ได้เสมอ ไม่ขึ้นกับลำดับโหลด) */
   document.addEventListener('click',function(e){
-    var t=e.target&&e.target.closest?e.target.closest('#tsBigBtn,#tsBigDone,#tsBigReset'):null;
+    var t=e.target&&e.target.closest?e.target.closest('#tsBigBtn,#tsBigDone,#tsBigX,#tsBigReset'):null;
     if(t){
       if(t.id==='tsBigBtn'){ _tsBigOpen(true); }
-      else if(t.id==='tsBigDone'){ _tsBigOpen(false); prev(); }
+      else if(t.id==='tsBigDone'||t.id==='tsBigX'){ _tsBigOpen(false); prev(); }
       else{
         (window._tsRows||[]).forEach(function(r){ if(r){ r.dx=0; r.dy=0; r.sx=1; r.sy=1; } });
         window._tsSel=null; prev();
@@ -11170,7 +11191,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
 </script>
 
 <!-- 🖐️ จัดวางข้อความแบบเต็มจอ — ลากบรรทัดบนพื้นที่ใหญ่ พร้อมเส้นจับระยะสด ๆ -->
-<div id="tsBigWrap" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.72);padding:18px">
+<div id="tsBigWrap" style="display:none;position:fixed;inset:0;z-index:100010;background:rgba(15,23,42,.72);padding:18px">
   <div style="max-width:1180px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35);display:flex;flex-direction:column;max-height:100%">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff">
       <b style="font-size:14px">🖐️ จัดวางข้อความบนป้าย</b>
@@ -11178,10 +11199,11 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       <span style="flex:1"></span>
       <button type="button" id="tsBigReset" class="btn" style="background:#334155;color:#fff;border:none;font-size:11.5px;padding:5px 11px">↩︎ คืนตำแหน่งทั้งหมด</button>
       <button type="button" id="tsBigDone" class="btn" style="background:#0d9488;color:#fff;border:none;font-weight:700;font-size:12px;padding:6px 16px">✅ เสร็จแล้ว</button>
+      <button type="button" id="tsBigX" class="btn" title="ปิด (Esc)" style="background:#475569;color:#fff;border:none;font-weight:700;font-size:15px;line-height:1;padding:6px 12px">✕</button>
     </div>
     <div style="padding:12px 14px;overflow:auto;background:#f8fafc">
       <canvas id="tsBigCv" style="width:auto;height:auto;max-width:100%;max-height:calc(100vh - 190px);display:block;margin:0 auto;border:1px dashed #0d9488;border-radius:8px;background:#fff;cursor:pointer"></canvas>
-      <div class="hint" style="margin:8px 0 0">คลิกเลือกบรรทัด → ลากเพื่อย้าย · <b style="color:#2563eb">มุมขวาล่าง (น้ำเงิน)</b> = ย่อ/ขยายทั้งบรรทัด · <b style="color:#f59e0b">ขวากลาง (ส้ม)</b> = ยืดกว้างอย่างเดียว · <b style="color:#f59e0b">ล่างกลาง (ส้ม)</b> = ยืดสูงอย่างเดียว · <b>ดับเบิลคลิก</b> = คืนค่าเดิมของบรรทัดนั้น<br>
+      <div class="hint" style="margin:8px 0 0">คลิกเลือกบรรทัด → ลากเพื่อย้าย · <b style="color:#2563eb">มุมขวาล่าง (น้ำเงิน)</b> = ย่อ/ขยายทั้งบรรทัด · <b style="color:#f59e0b">มือจับส้ม 4 ด้าน</b> = ยืดไปด้านนั้นด้านเดียว (<b>ขวา</b> → ขอบซ้ายอยู่กับที่ · <b>ซ้าย</b> → ขอบขวาอยู่กับที่ · <b>ล่าง/บน</b> เช่นกัน) · <b>ดับเบิลคลิก</b> = คืนค่าเดิมของบรรทัดนั้น<br>
       📏 <b style="color:#0d9488">ตัวเลขเขียว</b> = ระยะห่างระหว่างบรรทัด · <b style="color:#94a3b8">เทา</b> = ระยะจากขอบป้าย · <b style="color:#dc2626">แดง</b> = บรรทัดซ้อนทับกัน — <b>ทุกตัวเลขขยับตามทันทีขณะลาก</b></div>
     </div>
   </div>
