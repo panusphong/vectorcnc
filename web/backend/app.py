@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-txtcolor",
-        "build_note": "🎨 กล่องข้อความบนหน้าจำลองผนัง + เอฟเฟกต์ 'ไฟออกหลัง': หน้าตัวอักษรถูกบังคับเป็นสีดำตายตัว ผู้ใช้เลือกสีขาวก็ยังได้ดำ — ตอนนี้ใช้สีที่ผู้ใช้เลือกเสมอ แสงเรืองรอบตัวยังเป็นสีตามอุณหภูมิไฟที่เลือก · กล่องไฟล้อมตามทรง: ทรงกล่องคลุมงานเดิมครบทุกชิ้น (หาง N · ตัวอักษรเล็ก · จุดลอย) + เว้นระยะรอบงาน + ขอบโค้งเนียน · คิ้วงานตัดแยกทีละตัว: พื้นต่ำสุด 5 มม. พร้อมเตือนเมื่อช่องไฟแคบ",
+            "build": "2026-08-05-neon",
+        "build_note": "🌈 นีออนเส้นเดี่ยว 2 ของใหม่: (1) โหมด 'แบบเหลี่ยม' — รีดขาตรงให้ตรงเป๊ะ + หามุมจากจุดตัดของสองเส้นแบบงานเขียนแบบ (วัดจริง: ขาตรง 0% → 96%) ต้องเลือกเอง เพราะแยกขาตรงกับโค้งรัศมีใหญ่อัตโนมัติไม่ได้ (ทดสอบ 141 ช่วง ตัวเลขทับกันสนิท) (2) เลือกสีได้อิสระทีละตัว — จานสีต่อตัวใต้แผงนีออน + คลิกที่ตัวอักษรบนภาพก็เลือกได้ กด 'ล้างสีรายตัว' กลับไปสีเดียวทั้งป้าย",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -5011,7 +5011,38 @@ def _neon_fit(full, plate_w_mm, plate_h_mm, margin_mm, neon_w_mm=0.0, neon_h_mm=
     return full, acr, _note
 
 
-def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None):
+_NEONBOX = {"vw": 0.0, "vh": 0.0, "items": []}   # 📦 กรอบของนีออนแต่ละตัว (ให้หน้าเว็บคลิกเลือกสี)
+
+
+def _neon_pieces(neon_full):
+    """แยก 'ชิ้น' ของงานนีออน (ตัวอักษร/สัญลักษณ์ทีละตัว) เรียงซ้าย→ขวา
+       ใช้ทั้งทำจานสีรายตัว และให้หน้าเว็บรู้ตำแหน่งไว้คลิกเลือก"""
+    try:
+        ps = [p for p in (neon_full.geoms if neon_full.geom_type == "MultiPolygon" else [neon_full])
+              if p.geom_type == "Polygon" and not p.is_empty]
+        ps.sort(key=lambda p: (round(p.bounds[0], 1), round(p.bounds[1], 1)))
+        return ps
+    except Exception:
+        return []
+
+
+def _neon_group_subs(neon_subs, pieces):
+    """จับเส้นไฟแต่ละเส้นเข้ากับ 'ชิ้น' ที่ใกล้ที่สุด (เส้นหนึ่งอยู่ในตัวอักษรตัวเดียวเสมอ)"""
+    from shapely.geometry import Point as _Pt
+    groups = [[] for _ in pieces]
+    if not pieces:
+        return groups
+    for sp in (neon_subs or []):
+        try:
+            q = _Pt(float(sp["start"][0]), float(sp["start"][1]))
+            k = min(range(len(pieces)), key=lambda i: pieces[i].distance(q))
+        except Exception:
+            k = 0
+        groups[k].append(sp)
+    return groups
+
+
+def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=None, colors=None):
     """ภาพนีออนเฟล็กซ์ 'หน้าตรง' — เส้นไฟเรืองสีตามทรงงาน + แผ่นอะคริลิคใสรองหลัง (ล้อมทรง) พื้นโปร่ง"""
     b = acrylic.bounds; W = b[2] - b[0]; H = b[3] - b[1]; S = max(W, H, 1.0); pad = S * 0.09
 
@@ -5052,10 +5083,29 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
                     c1, c2, e = seg[1], seg[2], seg[3]
                     s += "C %.2f %.2f %.2f %.2f %.2f %.2f " % (c1[0]-b[0]+pad, c1[1]-b[1]+pad, c2[0]-b[0]+pad, c2[1]-b[1]+pad, e[0]-b[0]+pad, e[1]-b[1]+pad)
         return s
-    nd = _subsd(neon_subs) if neon_subs else "".join(d(pg) for pg in P(neon_full))
-    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" filter="url(#ng)"><path stroke-width="%.2f" d="%s"/></g>' % (color, glow, nd))   # เรือง
-    parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="%.2f" d="%s"/></g>' % (color, tube, nd))                                  # เส้นไฟ
-    parts.append('<g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><path stroke-width="%.2f" d="%s"/></g>' % (max(1.4, tube * 0.34), nd))     # แกนขาว
+    # 🎨 สีรายตัว: ถ้าส่ง colors มา -> วาดทีละชิ้น ชิ้นละสี · ไม่ส่ง -> สีเดียวทั้งป้าย (เหมือนเดิม)
+    _pcs = _neon_pieces(neon_full) if (colors and neon_subs) else []
+    _grp = _neon_group_subs(neon_subs, _pcs) if _pcs else []
+    if _pcs and _grp:
+        for _i, _g in enumerate(_grp):
+            if not _g:
+                continue
+            _c = color
+            try:
+                _cc = (colors[_i] or "").strip()
+                if _cc:
+                    _c = _cc
+            except Exception:
+                pass
+            _dd = _subsd(_g)
+            parts.append('<g class="nz-glow" data-nz="%d" fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" filter="url(#ng)"><path stroke-width="%.2f" d="%s"/></g>' % (_i, _c, glow, _dd))
+            parts.append('<g class="nz-tube" data-nz="%d" fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="%.2f" d="%s"/></g>' % (_i, _c, tube, _dd))
+            parts.append('<g class="nz-core" data-nz="%d" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><path stroke-width="%.2f" d="%s"/></g>' % (_i, max(1.4, tube * 0.34), _dd))
+    else:
+        nd = _subsd(neon_subs) if neon_subs else "".join(d(pg) for pg in P(neon_full))
+        parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" filter="url(#ng)"><path stroke-width="%.2f" d="%s"/></g>' % (color, glow, nd))   # เรือง
+        parts.append('<g fill="none" stroke="%s" stroke-linecap="round" stroke-linejoin="round"><path stroke-width="%.2f" d="%s"/></g>' % (color, tube, nd))                                  # เส้นไฟ
+        parts.append('<g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><path stroke-width="%.2f" d="%s"/></g>' % (max(1.4, tube * 0.34), nd))     # แกนขาว
     # 🔩 จุดเจาะยึดผนัง (4 มุม) + 🔌 จุดสายไฟออก (กึ่งกลางล่าง) — บนแผ่นอะคริลิค
     ab = acrylic.bounds; cx = (ab[0] + ab[2]) / 2.0; ins = min(W, H) * 0.07 + 10.0
     rr = max(3.0, S * 0.008); mlw = max(1.0, S * 0.0022)
@@ -5142,6 +5192,17 @@ def _neon_sign_svg(neon_full, acrylic, color="#00e5ff", neon_subs=None, tube_mm=
     except Exception:
         pass
     Wt = W + 2 * pad; Ht = H + 2 * pad
+    # 🎨 บอกหน้าเว็บว่า 'แต่ละตัว' อยู่ตรงไหนในภาพ (พิกัดเดียวกับ viewBox) — ไว้ทำจานสีรายตัว + คลิกเลือก
+    try:
+        _bx = []
+        for _i, _p in enumerate(_neon_pieces(neon_full)):
+            _pb = _p.bounds
+            _bx.append({"i": _i,
+                        "x0": round(_pb[0] - b[0] + pad, 2), "y0": round(_pb[1] - b[1] + pad, 2),
+                        "x1": round(_pb[2] - b[0] + pad, 2), "y1": round(_pb[3] - b[1] + pad, 2)})
+        _NEONBOX["vw"] = round(Wt, 2); _NEONBOX["vh"] = round(Ht, 2); _NEONBOX["items"] = _bx
+    except Exception:
+        _NEONBOX["items"] = []
     return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
             'width="%.1f" height="%.1f" viewBox="0 0 %.1f %.1f">%s</svg>' % (Wt, Ht, Wt, Ht, "".join(parts)))
 
@@ -5578,6 +5639,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     arm_travel_cm: float = Form(0.0), neon_color: str = Form("#00e5ff"),
                     neon_line: str = Form("double"), neon_plate: str = Form("contour"),
                     neon_margin_cm: float = Form(5.0),
+                    neon_sharp: str = Form("0"), neon_colors: str = Form(""),
                     neon_w_cm: float = Form(0.0), neon_h_cm: float = Form(0.0),
                     frame_bars: int = Form(1), frame_level_cm: float = Form(-1.0),
                     frame_gap_cm: float = Form(20.0), frame_x_cm: float = Form(0.0),
@@ -5612,6 +5674,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 int(n_colors), str(arm), float(arm_len_cm), str(arm_side), str(arm_adjust), float(arm_travel_cm),
                 str(neon_color), str(neon_line), str(neon_plate), float(neon_margin_cm),
                 float(neon_w_cm), float(neon_h_cm), str(ts_spec)[:400],
+                str(neon_sharp), str(neon_colors)[:400],
                 int(frame_bars), float(frame_level_cm), float(frame_gap_cm), float(frame_x_cm),
                 float(frame_standoff_cm), float(wire_offset_cm), float(led_pitch_cm), float(arm_edge_cm),
                 float(arm_gap_cm), float(leg_h_cm), float(leg_span_cm), float(caster_mm), str(caster_lock),
@@ -6529,7 +6592,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         #       เช่นขีดใต้คำ 'bar' ที่ควรได้เส้นเดียว กลับออกมา 2 เส้น = ไม่ได้แนวเส้น
                         #    ตัวใหม่หาแกนกลางจากภาพ (skeletonize) แล้วตัดหนวดซ้ำหลายรอบ -> ได้เส้นเดียวจริง
                         from vectorcnc import neon_route as _NR
-                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
+                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0,
+                                                                sharp=(str(neon_sharp) in ("1","on","true","True")))
                     except Exception:
                         _neon_subs = None
                     if not _neon_subs:                      # ถอย: โมดูลเดิม (ยังดีกับตัวอักษรเนื้อหนา)
@@ -6755,8 +6819,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
+                _ncols = [c.strip() for c in str(neon_colors or "").split(",")] if neon_colors else None
                 svg3d = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
-                                       tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
+                                       tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None),
+                                       colors=_ncols)
             else:
                 # ป้ายอักษร + โครงแขวน -> ใช้ 'โครงยึดตัวอักษร' (เฟรมหลังอักษร + แขนขึ้น) ไม่ใช่แขนกล่องไฟ
                 _m3d = "letterframe" if rec.get("mount_frame") else str(arm or "none")
@@ -6845,8 +6911,10 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         svg_face = ""
         try:
             if _neon:
+                _ncols2 = [c.strip() for c in str(neon_colors or "").split(",")] if neon_colors else None
                 svg_face = _neon_sign_svg(_neon_full, _acrylic, color=str(neon_color or "#00e5ff"), neon_subs=_neon_subs,
-                                          tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None))
+                                          tube_mm=(8.0 if (str(neon_line).lower() == "single" and _neon_subs) else None),
+                                          colors=_ncols2)
             else:
                 # ภาพวางผนัง = 'ตัวป้ายสะอาด' (ไม่ฝังแขน/โครง) -> ขนาด+สัดส่วนตรง ไม่บีบเพี้ยน
                 # (แขน/โครง ทำเป็น overlay ปรับขยับแยกในหน้าจำลองผนัง)
@@ -7034,6 +7102,11 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                                      raw_subs=(_MAP_SUBS or _FLAT.get("subs") or _RAW_SUBS.get("subs")))
                                     if (rec.get("punch_face") and _stick_pieces) else ""),
                 "sticker_sel": sorted(_stick_sel),
+                # 🌈 นีออน: กรอบของ 'แต่ละตัว' ในภาพ (พิกัดเดียวกับ viewBox ของ svg_face/svg_3d)
+                #    หน้าเว็บเอาไปทำจานสีรายตัว + ใช้คลิกเลือกตัวบนภาพได้เลย
+                "neon_pieces": (_NEONBOX.get("items") or []) if _neon else [],
+                "neon_vw": (_NEONBOX.get("vw") or 0) if _neon else 0,
+                "neon_vh": (_NEONBOX.get("vh") or 0) if _neon else 0,
                 # 🧱 แผนที่ชิ้น สำหรับ 'จ่ายวัสดุคนละแบบในป้ายเดียว' (แตะคำเดียว = ทั้งคำ) — ใช้ได้ทุกประเภทป้าย
                 # 📏 ขนาดจริงของ logo บนหน้ากล่อง (ซม.) — ให้หน้าเว็บเติมกลับในช่องกรอก
                 "logo_w_cm": (_logo_wh[0] or round(_ARTFIT.get("w_mm", 0) / 10.0, 1) or
@@ -7575,6 +7648,7 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     sticker_brand: str = Form(""),      # 🏷️ สติกเกอร์โปร่งแสง (ยี่ห้อ+เบอร์ = ข้อมูลสั่งซื้อ)
                     neon_color: str = Form("#00e5ff"), neon_line: str = Form("double"),
                     neon_plate: str = Form("contour"), neon_margin_cm: float = Form(5.0),
+                    neon_sharp: str = Form("0"), neon_colors: str = Form(""),
                     neon_w_cm: float = Form(0.0), neon_h_cm: float = Form(0.0),
                     metal_tex_img: str = Form(""), metal_tex_scope: str = Form("face"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
@@ -7694,7 +7768,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:
                     from vectorcnc import neon_route as _NR2
-                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
+                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0,
+                                                    sharp=(str(neon_sharp) in ("1","on","true","True")))
                 except Exception:
                     _nsub = None
                 if not _nsub:
@@ -7703,7 +7778,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     except Exception:
                         _nsub = None
             try:
-                persp = _neon_sign_svg(full, _acr, color=str(neon_color or "#00e5ff"), neon_subs=_nsub)
+                persp = _neon_sign_svg(full, _acr, color=str(neon_color or "#00e5ff"), neon_subs=_nsub,
+                                       colors=([c.strip() for c in str(neon_colors or "").split(",")] if neon_colors else None))
             except Exception:
                 persp = ""
         else:
