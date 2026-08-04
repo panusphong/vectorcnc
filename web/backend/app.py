@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-wrap",
-        "build_note": "🫧 กล่องไฟล้อมตามทรง: เพิ่มระยะเว้นรอบโลโก้ 5% ของด้านยาว (อย่างน้อย 15 มม.) เดิมไม่มีเลย ขอบกล่องจึงแนบติดตัวอักษรจนดูอึดอัด + เพิ่มรัศมีเกลาขอบจาก 2% เป็น 4.5% แล้วไล่คลื่นอีก 2 รอบ ขอบโค้งเนียนเป็นทรงกล่องไฟจริง ไม่ยึกยักตามตัวอักษร (ใช้กับ กล่องไฟล้อมทรง 1/2 หน้า และ สแตนดี้ล้อมทรง) · ⚠️ ขนาดกล่องรวมจะโตขึ้นตามระยะเว้น ราคา/วัสดุจะขยับตามจริง",
+            "build": "2026-08-05-wrap2",
+        "build_note": "🫧 กล่องไฟล้อมตามทรง — งานหลุดขอบกล่อง: ขั้นตอน 'กลืนก้านบาง' กินของจริงไปด้วย (หางตัว N ของ Nailito · ตัวอักษรเล็ก TOKYO · จุดลอยเดี่ยว) ขอบกล่องเลยพาดผ่านกลางตัวอักษร — ตอนนี้บังคับให้ทรงกล่อง 'คลุมงานเดิมครบทุกชิ้น' เสมอ ชิ้นที่ลอยแยกจะถูกเชื่อมเข้ากล่อง ไม่ตัดทิ้ง (ตรวจแล้ว 3 แบบงาน: คลุมครบ 100% เว้นระยะ 5.8-9.7 ซม.) + วางลายพิมพ์ทาบ 1:1 กับตัวงาน ไม่ย่อใส่กรอบสี่เหลี่ยมอีก",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1265,6 +1265,31 @@ def _wrap_silhouette(full, bridge_mm):
         solid = _outer(solid) or solid
         solid = solid.buffer(-s * 0.6, join_style=RND, resolution=24).buffer(s * 0.6, join_style=RND, resolution=24)
         solid = _outer(solid) or solid
+
+        # 3b) 🔒 กติกาเหล็ก: ทรงกล่องต้อง 'คลุมงานเดิมครบทุกชิ้น' เสมอ
+        #     ขั้น OPEN ด้านบนออกแบบมาให้กลืนก้านบาง ๆ (ปลายตะเกียบ) แต่มันกินของจริงไปด้วย
+        #     เคสจริง: หางตัว N ของ Nailito และตัวอักษรเล็ก 'TOKYO' ถูกกินหาย
+        #     -> ขอบกล่องเลยพาดผ่านกลางตัวอักษร งานพิมพ์ทะลุออกนอกกล่อง
+        #     รวมกลับกับงานเดิมก่อนเว้นระยะ ทุกชิ้นจึงอยู่ในกล่องแน่นอน
+        try:
+            _parts0 = list(full.geoms) if isinstance(full, MultiPolygon) else [full]
+            _u0 = unary_union([solid] + [Polygon(p.exterior) for p in _parts0 if p and not p.is_empty])
+            # ชิ้นที่หลุดออกไป (เช่น TOKYO ที่ลอยอยู่เหนือคำหลัก) ต้องถูก 'เชื่อม' เข้ากล่อง
+            # ไม่ใช่ตัดทิ้ง -> ค่อย ๆ เพิ่มรัศมีเชื่อมจนรวมเป็นก้อนเดียว
+            if isinstance(_u0, MultiPolygon):
+                _rr = r
+                for _ in range(7):
+                    _u1 = _u0.buffer(_rr, join_style=RND).buffer(-_rr, join_style=RND)
+                    if not isinstance(_u1, MultiPolygon):
+                        _u0 = _u1
+                        break
+                    _rr *= 1.8
+                    if _rr > size * 0.6:
+                        _u0 = _u1
+                        break
+            solid = _outer(_u0) or solid
+        except Exception:
+            pass
 
         # 4) 🫧 ระยะเว้นรอบงาน — กล่องต้องไม่ชนตัวโลโก้ ไม่งั้นดูอึดอัดและงานพิมพ์เลยขอบ
         #    เดิมไม่มีเลย ขอบกล่องจึงแนบติดตัวอักษร (เคสจริง: หาง 'o' ของ Nailito ชนขอบพอดี)
@@ -3763,7 +3788,12 @@ def _iso3d_svg(full, rec, perimeter_cm, inner_bore=None, face_color=None, side_c
             #    ผลคือลายพิมพ์ตรงกับตัวอักษรเป๊ะ ไม่มีแบบย่อส่วนโผล่มาในตัวงาน
             _clip = "".join('<path d="%s"/>' % faced(pg, F) for pg in polys)
             parts.append('<defs><clipPath id="w3dArt" clip-rule="evenodd">%s</clipPath></defs>' % _clip)
-            _gb8 = _drawg.bounds
+            # art_fit เป็น tuple = 'กรอบตัวงานจริง' ที่ผู้เรียกส่งมา (กล่องล้อมทรง)
+            # art_fit เป็น True  = ทรงที่ตัดคือตัวงานเอง (ไดคัทตามตัวอักษร)
+            if isinstance(art_fit, (tuple, list)) and len(art_fit) == 4:
+                _gb8 = (float(art_fit[0]), float(art_fit[1]), float(art_fit[2]), float(art_fit[3]))
+            else:
+                _gb8 = _drawg.bounds
             _ix, _iy = F((_gb8[0], _gb8[1]))
             parts.append('<image href="%s" xlink:href="%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
                          'preserveAspectRatio="none" clip-path="url(#w3dArt)"/>'
@@ -5661,9 +5691,24 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
         except Exception:
             _FLAT["subs"] = None
         _prewarn = []; _ART_AR = 0.0
+        _ART_B0 = None
         # 🆕 กล่องไฟล้อมตามทรง: เชื่อมเป็นเงารวมก้อนเดียวก่อน (ทุกชั้นล้อมทรงเดียวกัน)
         if rec.get("wrap"):
+            # 🎯 เก็บ 'กรอบตัวงานจริง' ไว้ก่อนแปลงเป็นทรงกล่อง
+            #    ทรงกล่องสร้างจากตัวงานนี้ในระบบพิกัดเดียวกัน -> เอาไว้ทาบลายพิมพ์ 1:1 ได้เป๊ะ
+            #    (เดิมวางลายพิมพ์แบบ 'ย่อให้พอดีกรอบสี่เหลี่ยมของทรง' ซึ่งทรงไม่ใช่สี่เหลี่ยม
+            #     ตรงที่ทรงแคบกว่ากรอบ เช่น หาง N ของ Nailito งานพิมพ์จึงล้นออกนอกกล่อง)
+            #    ⚠️ ต้องเก็บเป็น 'สัดส่วนเทียบกล่อง' ไม่ใช่พิกัดดิบ — เพราะหลังจากนี้ระบบยังย่อ/ขยาย
+            #       ทั้งก้อนให้ได้ขนาดป้ายจริงอีกที ถ้าเก็บพิกัดดิบไว้ ลายพิมพ์จะใหญ่เกินกล่อง (หาง N ล้น)
+            _pb0 = full.bounds
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+            try:
+                _qb0 = full.bounds
+                _qw = max(1e-6, _qb0[2] - _qb0[0]); _qh = max(1e-6, _qb0[3] - _qb0[1])
+                _ART_B0 = ((_pb0[0] - _qb0[0]) / _qw, (_pb0[1] - _qb0[1]) / _qh,
+                           (_pb0[2] - _pb0[0]) / _qw, (_pb0[3] - _pb0[1]) / _qh)
+            except Exception:
+                _ART_B0 = None
         # 🆕 กล่องไฟทรงเรขาคณิต: แทนเงางานด้วยรูปทรง กลม/สี่เหลี่ยม/วงรี (ครอบงาน)
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
@@ -6204,12 +6249,25 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                                       if _d0 > 0.01:
                                           _gapmin = min(_gapmin, _d0)
                               if _gapmin < 1e17:
-                                  _bcap = max(1.5, _gapmin * 0.42)
+                                  # 🚧 พื้นคิ้วขั้นต่ำ 5 มม. — ต่ำกว่านี้ช่างดัด/ตัดจริงไม่ได้
+                                  #    เดิมพื้นไว้ 1.5 มม. ฟอนต์ที่ตัวชิดกันจึงถูกหั่นเหลือ 1.5-4 มม.
+                                  #    = 'คิ้วหายไปเลย' ทั้งที่ผู้ใช้กรอก 1.0 ซม. (เคสจริง: ฟอนต์ Mitr)
+                                  _BMIN0 = 5.0
+                                  _bfit = _gapmin * 0.42          # กว้างสุดที่ตัวอักษรยังไม่ชนกัน
+                                  _bcap = max(_BMIN0, _bfit)
                                   if band > _bcap:
                                       warns.append("🅰️ ตัดแยกทีละตัว: ลดคิ้วจาก %.1f ซม. เหลือ %.1f ซม. "
-                                                   "เพื่อไม่ให้ตัวอักษรเชื่อมติดกันเป็นกล่องเดียว"
-                                                   % (band / 10.0, _bcap / 10.0))
+                                                   "เพื่อไม่ให้ตัวอักษรเชื่อมติดกันเป็นกล่องเดียว "
+                                                   "(ช่องไฟแคบสุดระหว่างตัวอักษร %.1f ซม.)"
+                                                   % (band / 10.0, _bcap / 10.0, _gapmin / 10.0))
                                       band = _bcap
+                                  # ⚠️ ถ้าต้องใช้พื้นขั้นต่ำ = คิ้วจะกว้างกว่าที่ช่องไฟรับได้ ตัวอักษรจะแตะกัน
+                                  #    ต้องบอกตรง ๆ ให้ผู้ใช้เลือกเอง ไม่ใช่หั่นคิ้วทิ้งเงียบ ๆ จนทำไม่ได้
+                                  if _bfit < _BMIN0:
+                                      warns.append("⚠️ คิ้วขั้นต่ำที่ทำได้จริงคือ %.1f ซม. แต่ช่องไฟระหว่างตัวอักษร"
+                                                   "แคบเพียง %.1f ซม. — คิ้วของตัวที่ชิดกันจะแตะกัน "
+                                                   "ทางแก้: เพิ่มช่องไฟ/ลดขนาดตัวอักษร หรือเปลี่ยนเป็นแบบ 'ไม่มีคิ้ว'"
+                                                   % (_BMIN0 / 10.0, _gapmin / 10.0))
                       except Exception:
                           pass
                   if TRIM_OUT:
@@ -6685,6 +6743,15 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 🎯 ทรงที่ตัด = ตัวงานเอง (ไดคัทตามตัวอักษร) -> ทาบลายพิมพ์ 1:1 · กล่องไฟใช้ทางเดิม
             _artfit = bool(_art and body3d is full and not rec.get("box_shape")
                            and not rec.get("punch_face"))
+            # 🫧 กล่องไฟล้อมตามทรง: กางสัดส่วนที่เก็บไว้กลับเป็นพิกัดจริงของกล่อง ณ ขนาดสุดท้าย
+            if _art and rec.get("wrap") and _ART_B0:
+                try:
+                    _fb0 = full.bounds          # กรอบ 'ทรงกล่อง' ตัวจริง (ไม่ใช่ body3d ที่รวมคิ้วแล้ว)
+                    _fw0 = _fb0[2] - _fb0[0]; _fh0 = _fb0[3] - _fb0[1]
+                    _ax0 = _fb0[0] + _ART_B0[0] * _fw0; _ay0 = _fb0[1] + _ART_B0[1] * _fh0
+                    _artfit = (_ax0, _ay0, _ax0 + _ART_B0[2] * _fw0, _ay0 + _ART_B0[3] * _fh0)
+                except Exception:
+                    pass
             # 🖨️ หน้าพิมพ์ (face_finish=print) = แผ่นเต็มพิมพ์รูป -> ไม่มีคิ้วเจาะโบ๋มาทับรูป
             _bore = None if rec.get("face_finish") == "print" else bore_geom
             if _neon:                                   # 🌈 นีออน: เส้นไฟเรือง + อะคริลิคใส (แทนภาพ 3 มิติปกติ)
