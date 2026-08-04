@@ -5784,7 +5784,11 @@ function _glowBody(){
       if(over<=1.001) break;
       unit=unit/over;
     }
+    // 📐 ย่อให้พอดี 'ความสูง' ด้วย — เดิมย่อเฉพาะความกว้าง
+    //    ผลคือถ้าบรรทัดเยอะ/ตัวใหญ่ บรรทัดล่างสุดจะล้นออกนอกผ้าใบแล้วถูกตัดหัวตัดท้าย
+    //    พอส่งไปเทรซ ตัวอักษรที่ชนขอบภาพจะถูกทิ้ง -> ตัวเลข/ตัวอักษรหายไปจากไฟล์ตัดทั้งบรรทัด
     var totalH=unit*sumW+unit*gapK*(L.length-1);
+    if(totalH>areaH && areaH>1){ unit=unit*(areaH/totalH); totalH=areaH; }
     var y=Pmm*PX+(areaH-totalH)/2;
     g.textBaseline='top';
     g.textAlign=(align==='left')?'left':(align==='right'?'right':'center');
@@ -5808,7 +5812,14 @@ function _glowBody(){
       g.font=(bold?'700 ':'400 ')+ph+'px "'+font+'", sans-serif';
       var m=g.measureText(L[k]);
       var asc=(m.actualBoundingBoxAscent!=null?m.actualBoundingBoxAscent:ph*0.78);
-      var yd=y+(ph-asc)*0.5;
+      var dsc=(m.actualBoundingBoxDescent!=null?m.actualBoundingBoxDescent:0);
+      /* 🎯 จัดเนื้อหมึกให้อยู่ 'กลางช่องของบรรทัด' พอดี
+         สูตรเดิม (ph-asc)/2 คิดผิด เพราะ textBaseline='top' ทำให้ asc เป็นระยะจาก 'เส้นบนสุด'
+         ไม่ใช่จากเส้นฐาน -> ทุกบรรทัดถูกดันลงประมาณครึ่งตัวอักษร
+         อาการ: หัวป้ายโล่ง แต่บรรทัดล่างสุดล้นตกขอบจนโดนตัด แล้วตัวอักษรที่ชนขอบภาพ
+                จะถูกเอนจิ้นเทรซทิ้ง -> ตัวเลขทั้งบรรทัดหายไปจากไฟล์ตัด (เคสจริง 101-108/201)
+         สูตรถูก: กึ่งกลางเนื้อหมึก (asc+dsc) ให้ตรงกึ่งกลางช่อง ph */
+      var yd=y+(ph+asc-dsc)*0.5;
       if(_sx!==1||_sy!==1){
         g.save(); g.translate(ax+_dx,yd+_dy); g.scale(_sx,_sy); g.fillText(L[k],0,0); g.restore();
       }else{
