@@ -5751,7 +5751,10 @@ function _glowBody(){
   }
 
   /* วาดลงผืนผ้าใบ — คืนขนาดจริงเป็น มม. ให้ผู้เรียกใช้ต่อ */
-  function draw(cv){
+  /* clean=true -> วาดเฉพาะ 'ตัวงานจริง' ไม่มีเส้นไกด์/กล่องเลือก/มือจับ/ตัวเลขวัดระยะ
+     ⚠️ สำคัญมาก: ภาพที่ส่งไปทำไฟล์ตัดต้องสะอาด ไม่งั้นเส้นไกด์จะถูกเทรซกลายเป็นเส้นตัดไปด้วย
+        (อาการที่เจอ: ผิวหน้ามีกรอบสี่เหลี่ยม/ตัวเลขโผล่ = 'ฉลุโบ๋' และระยะในภาพ 3 มิติเพี้ยน) */
+  function draw(cv,clean){
     var L=lines(); if(!L.length) return null;
     var Wc=parseFloat(($('tsW')&&$('tsW').value)||65)||65;
     var Hc=parseFloat(($('tsH')&&$('tsH').value)||100)||100;
@@ -5827,7 +5830,7 @@ function _glowBody(){
       }catch(_e){}
       y+=ph+unit*gapK;
     }
-    _tsDims(g,cv,Wmm,Hmm);                       // 📏 เส้นจับระยะระหว่างแถว
+    if(!clean) _tsDims(g,cv,Wmm,Hmm);            // 📏 เส้นจับระยะระหว่างแถว (พรีวิวเท่านั้น)
     try{
       // ⚠️ ถ้ามีสัญลักษณ์พิเศษปนอยู่ ต้องปิดทาง 'เวกเตอร์จากไฟล์ฟอนต์'
       //    เพราะฟอนต์ลายมือไม่มีสัญลักษณ์พวกนี้ -> จะหายไปจากไฟล์ตัดทั้งตัว
@@ -6047,8 +6050,9 @@ function _glowBody(){
     _ready.then(function(){ _tsGoBuild(cv,btn,old,_fnt); });
   };
   function _tsGoBuild(cv,btn,old,_fnt){
-    var r=null; try{ r=draw(cv); }catch(_e){ r=null; }
-    if(!r){ btn.disabled=false; btn.textContent=old; alert('พิมพ์ข้อความอย่างน้อย 1 บรรทัดก่อนค่ะ'); return; }
+    // 🧼 วาดใหม่แบบ 'สะอาด' ก่อนแปลงเป็นภาพเสมอ — ห้ามให้เส้นไกด์ติดไปในไฟล์ตัด
+    var r=null; try{ r=draw(cv,true); }catch(_e){ r=null; }
+    if(!r){ btn.disabled=false; btn.textContent=old; try{draw(cv);}catch(_e2){} alert('พิมพ์ข้อความอย่างน้อย 1 บรรทัดก่อนค่ะ'); return; }
     // 🔍 ตรวจซ้ำว่า 'ฟอนต์ที่เลือกถูกใช้จริง' — เทียบความกว้างกับฟอนต์สำรอง
     try{
       if(document.fonts&&document.fonts.check&&!document.fonts.check('700 80px "'+_fnt+'"')){
@@ -6072,6 +6076,7 @@ function _glowBody(){
       try{ if($('go'))$('go').disabled=false; if($('goProd'))$('goProd').disabled=false; }catch(_e){}
       try{ if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }catch(_e){}
       try{ var sel=$('mainSignType'); if(sel){ sel.scrollIntoView({behavior:'smooth',block:'center'}); sel.focus(); } }catch(_e){}
+      try{ draw(cv); }catch(_e){}                 // คืนเส้นไกด์ให้พรีวิวหลังเก็บภาพเสร็จ
     },'image/png');
   };
 })();
@@ -11121,24 +11126,45 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     if(el.getAttribute('data-tbase')===null) el.setAttribute('data-tbase', el.getAttribute('transform')||'');
     el.setAttribute('transform','translate('+tx+' '+ty+') '+(el.getAttribute('data-tbase')||''));   // ย้ายก่อนหมุน -> ทิศตรงเมาส์เสมอ
   }
-  function unstack(svg){
-    // 🧲 กันตัวเลขระยะทับกัน: ถ้ากรอบข้อความชนกัน เขยิบตัวหลังลง/ขึ้นเล็กน้อยอัตโนมัติ
+  function halo(svg){
+    /* 🕶️ ขอบขาวรอบตัวเลขระยะ — ต่อให้เลขไปทับเส้น/ตัวป้าย ก็ยังอ่านออก
+       (paint-order:stroke = วาดเส้นขอบก่อนแล้วค่อยทับด้วยตัวอักษร ตัวเลขจึงไม่บวม) */
     try{
-      var ts=[].slice.call(svg.querySelectorAll('text'));
-      for(var pass=0; pass<2; pass++){
+      var ts=svg.querySelectorAll('text');
+      for(var i=0;i<ts.length;i++){
+        var t=ts[i]; if(t._halo) continue; t._halo=1;
+        var txt=(t.textContent||'');
+        if(txt.indexOf('ซม.')<0 && txt.indexOf('มม.')<0 && txt.indexOf('cm')<0) continue;
+        t.style.paintOrder='stroke'; t.style.stroke='#ffffff';
+        t.style.strokeWidth='3px'; t.style.strokeLinejoin='round';
+        t.style.strokeOpacity='0.92';
+      }
+    }catch(_e){}
+  }
+  function unstack(svg){
+    // 🧲 กันตัวเลขระยะทับกัน: ถ้ากรอบข้อความชนกัน เขยิบตัวหลังออกไปทางที่ว่างที่สุด
+    //    ⚠️ ต้องเขยิบได้ทั้งแนวตั้ง/แนวนอน — ป้ายด้านข้าง (แนวตั้ง) ถ้าดันลงอย่างเดียวจะไล่ทับกันเป็นทอด ๆ
+    try{
+      var ts=[].slice.call(svg.querySelectorAll('text')).filter(function(t){
+        var s=(t.textContent||''); return s.indexOf('ซม.')>=0||s.indexOf('มม.')>=0;
+      });
+      for(var pass=0; pass<5; pass++){
+        var moved=0;
         for(var i=0;i<ts.length;i++){
           var a=ts[i].getBoundingClientRect(); if(a.width<2) continue;
           for(var j=i+1;j<ts.length;j++){
             var b=ts[j].getBoundingClientRect(); if(b.width<2) continue;
             var ox=Math.min(a.right,b.right)-Math.max(a.left,b.left);
             var oy=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
-            if(ox>2&&oy>2){
-              var down=(b.top>=a.top)?1:-1;
-              nudge(ts[j], svg, 0, down*(oy+3));
-              b=ts[j].getBoundingClientRect();
+            if(ox>1&&oy>1){
+              // ดันไปทางที่ต้องขยับน้อยที่สุด (แนวตั้งถ้าซ้อนกันตื้น · แนวนอนถ้าเป็นเลขคนละคอลัมน์)
+              if(oy<=ox){ nudge(ts[j], svg, 0, ((b.top>=a.top)?1:-1)*(oy+3)); }
+              else      { nudge(ts[j], svg, ((b.left>=a.left)?1:-1)*(ox+4), 0); }
+              moved++;
             }
           }
         }
+        if(!moved) break;
       }
     }catch(_e){}
   }
@@ -11181,8 +11207,15 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   function setup(){
     var img=document.getElementById('ls3dImg'); if(!img) return;
     var svg=img.querySelector('svg'); if(!svg) return;
-    fitViewBox(svg); enableDrag(svg); slimLabels(svg);
-    if(!svg._unstacked){ svg._unstacked=true; setTimeout(function(){ unstack(svg); }, 120); }
+    fitViewBox(svg); enableDrag(svg); slimLabels(svg); halo(svg);
+    /* 🔁 ต้องจัดใหม่ทุกครั้งที่ 'เนื้อภาพเปลี่ยน' ไม่ใช่ครั้งเดียวต่อ svg
+       เดิมตั้งธงไว้ที่ svg แล้วจบ -> พอเปลี่ยนแบบ/ขนาด ตัวเลขชุดใหม่เลยทับกันค้างตลอด */
+    var sig=svg.querySelectorAll('text').length+'|'+(svg.textContent||'').length;
+    if(svg._usig!==sig){
+      svg._usig=sig;
+      setTimeout(function(){ halo(svg); unstack(svg); }, 140);
+      setTimeout(function(){ unstack(svg); }, 700);   // รอบสอง เผื่อฟอนต์/เลย์เอาต์เพิ่งนิ่ง
+    }
   }
   var mo=new MutationObserver(function(){ setTimeout(setup, 60); });
   mo.observe(document.body,{childList:true,subtree:true});
