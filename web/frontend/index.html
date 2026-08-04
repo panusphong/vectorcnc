@@ -9968,7 +9968,12 @@ function drawTextBoxes(g,M,ww,wh,ppm){ var Wc=parseFloat($('wWall').value)||0, H
     g.save(); g.translate(x,y); g.scale(bw/natW, bh/natH);
     var eff=t.light||'', lc=_lightCol(t), TXT=t.text||'';
     if(eff==='front'){ g.shadowColor=lc; g.fillStyle=lc; g.shadowBlur=natH*0.55; g.fillText(TXT,lft,asc); g.fillText(TXT,lft,asc); g.shadowBlur=natH*0.22; g.fillText(TXT,lft,asc); g.shadowBlur=0; }
-    else if(eff==='back'){ g.shadowColor=lc; g.fillStyle=lc; g.shadowBlur=natH*0.8; g.fillText(TXT,lft,asc); g.fillText(TXT,lft,asc); g.shadowBlur=0; g.fillStyle='#0d0d0d'; g.fillText(TXT,lft,asc); }
+    // 🌙 ไฟออกหลัง = แสงเรืองรอบตัว + 'หน้าตัวอักษรตามสีที่ผู้ใช้เลือก'
+    //    เดิมบังคับเป็นสีดำ #0d0d0d ตายตัว -> ผู้ใช้เลือกขาวก็ยังได้ดำ (แก้ตามที่แจ้ง)
+    //    เงาดำจาง ๆ ใต้ตัวอักษรทำหน้าที่ 'ขับให้ลอย' แทน โดยไม่ไปเปลี่ยนสีจริงของงาน
+    else if(eff==='back'){ g.shadowColor=lc; g.fillStyle=lc; g.shadowBlur=natH*0.8;
+      g.fillText(TXT,lft,asc); g.fillText(TXT,lft,asc); g.shadowBlur=0;
+      g.fillStyle=(t.color||'#111111'); g.fillText(TXT,lft,asc); }
     else if(eff==='neon'){ g.lineJoin='round'; g.shadowColor=lc; g.strokeStyle=lc; g.lineWidth=Math.max(1.4,natH*0.05); g.shadowBlur=natH*0.6; g.strokeText(TXT,lft,asc); g.strokeText(TXT,lft,asc); g.shadowBlur=natH*0.28; g.fillStyle='#ffffff'; g.fillText(TXT,lft,asc); g.shadowBlur=0; }
     else { g.fillStyle=t.color; g.fillText(TXT,lft,asc); }
     g.restore();
