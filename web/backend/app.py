@@ -70,8 +70,8 @@ def health():
             return "import-error: " + str(e)[:60]
     return {"ok": True, "service": "VectorCNC",
             "version": "9.37-dxf-clean-tiny-slivers",
-            "build": "2026-08-05-neonrev",
-        "build_note": "🔙 นีออนเส้นเดี่ยว ถอยกลับรุ่น 2026-08-02 ที่เดินไฟตามลายเส้นได้ตรงกว่ามาก (รุ่นหลังจากนั้นรวมเส้นที่จุดไขว้แรงเกิน + ขยายท่ออัตโนมัติ 8→13 มม. วัดจริง: ตัว 'r' ในคำว่า bars หายทั้งตัว ตัว a ผิดรูป · 41 เส้น เหลือ 8 เส้น) · ถอดโหมด 'แบบเหลี่ยม' ออกด้วย · แผ่นอะคริลิคล้อมตามทรงจริง: เลิกเว้นระยะซ้อน 2 ชั้น (41→29.4 ซม.) + ห้ามล้นขนาดป้าย + รัศมีเกลาผูกกับความหนาลายเส้นจริง + เกลาขอบให้ไหลลื่น (คลื่นเล็กบนขอบ 5 ลูก เหลือ 1) + ขั้นเกลาห้ามตัดทรงขาด · ตัวเลขจับระยะมีพื้นขาวรอง ไม่หลุดขอบภาพ · เลือกสีรายตัวเห็นผลทันทีบนภาพ ไม่ต้องกดสร้างใหม่",
+            "build": "2026-08-05-perglyph",
+        "build_note": "🔦 เส้นเดินไฟนีออนเส้นเดี่ยว: เปลี่ยนมาหาแกนกลาง 'ทีละตัวอักษร ก่อนรวม' — โลโก้ลายมือตัวอักษรซ้อนกันเป็นปกติ ถ้ารวมก่อนแล้วหาแกน ตรงที่ซ้อนจะกลายเป็นก้อนอ้วน แกนกลางแตกแขนงเป็นใยแมงมุม เส้นไฟเลยมั่ว · วัดจริง (Coffee 110 ซม.): รวมก่อน 22 ท่อน/ปมแตกแขนง 36 → ทีละตัว 11 ท่อน/ปม 15 · ท่อ 8 มม. เต็มลายเส้น 56.2% ล้นออกนอกตัวอักษร 0.85% · ความเร็ว 95.6 วิ → 0.7 วิ (คิดความละเอียดครั้งเดียวจากงานทั้งใบ ไม่ดันทีละตัวเป็น 3000px) · มีด่านตรวจก่อนใช้: ชิ้นที่เก็บไว้ต้องทับ full จริง ≥94% ไม่งั้นถอยไปวิธีเดิม · ไม่แตะ neon_route.py และเส้นคู่แม้แต่บรรทัดเดียว",
             "sign_types": len(SIGN_TYPES),                   # 15 (มีทรงเรขาคณิต กลม/เหลี่ยม/วงรี)
             "arm_mount": "on",
             "mount_frame": "on",  # โครงแขวน + เจาะรู
@@ -1976,6 +1976,9 @@ def _vtrace_full_mm(img_path, real_width_mm):
     _u = _uu(_out)
     if _u is None or _u.is_empty:
         return None
+    # 🔤 เก็บ 'ชิ้นก่อนรวม' ไว้ทำเส้นเดินไฟนีออนทีละตัวอักษร
+    #    (ตรงนี้คือจุดเดียวที่ยังมีตัวอักษรแยกชิ้นอยู่ — พอ union แล้วข้อมูลนี้หายถาวร)
+    _stash_pieces(_out, _u)
     # 🧈 รีดคลื่นพิกเซล — เฉพาะภาพ raster เท่านั้น (เวกเตอร์แท้ไม่ต้องรีด · เส้นดิบคมอยู่แล้ว)
     _sm = float(_CUT_SMOOTH.get("mm", 0.0))
     if _sm > 0:
@@ -2109,6 +2112,8 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                         if pc.get("poly") is not None and not pc["poly"].is_empty and pc["poly"].area > 4.0]
                 _fu9 = unary_union(_pl9) if _pl9 else None
                 if _fu9 is not None and not _fu9.is_empty:
+                    # 🔤 ไฟล์เวกเตอร์: ตรงนี้ตัวอักษรยังแยกชิ้นครบ — เก็บไว้ทำเส้นเดินไฟทีละตัว
+                    _stash_pieces(_pl9, _fu9)
                     _gb9 = _fu9.bounds
                     # 🐞 บั๊กแผ่นหลังใหญ่ผิด (พบ 1 ส.ค. 69): เดิมย่อ/ขยายเส้นในไฟล์ด้วยอัตราส่วน
                     #    _gb9 / _file_ref  ซึ่ง 'คนละกรอบกัน' —
@@ -2250,6 +2255,7 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
                     _polys.append(_pg)
             if _polys:
                 full = unary_union(_polys)
+                _stash_pieces(_polys, full)
         except _SkipFallback:
             pass                                        # ✅ vtracer สำเร็จ — ใช้ผลนั้นเลย
         except Exception:
@@ -2289,7 +2295,9 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             pcs = [pc for pc in pcs if pc["poly"].area > 4.0]
             if not pcs:
                 raise ValueError("อ่านเวกเตอร์ไม่ได้")
-            full = unary_union([_piece_poly_with_holes(pc) for pc in pcs])
+            _pp9 = [_piece_poly_with_holes(pc) for pc in pcs]
+            full = unary_union(_pp9)
+            _stash_pieces(_pp9, full)
     else:
         # 🏆 เส้นทางหลัก (รูปภาพ): เอนจิ้นเดียวกับปุ่ม 'แปลงเป็นเส้นตัด' + ประกอบรูแบบ parity (ชิ้นในรูไม่หาย)
         full = None
@@ -2305,12 +2313,15 @@ def _letter_full_mm(inp, real_width_mm, real_height_mm, n_colors):
             except Exception:
                 pcs = None
             if pcs:
-                full = unary_union([pc["poly"] for pc in pcs])
+                _pp8 = [pc["poly"] for pc in pcs]
+                full = unary_union(_pp8)
+                _stash_pieces(_pp8, full)
             else:
                 polys = trace_engine.nest_shapes_mm(inp, float(real_width_mm), max(2, min(12, int(n_colors))))
                 if not polys:
                     raise ValueError("แปลงภาพไม่พบรูปทรง")
                 full = unary_union(polys)
+                _stash_pieces(polys, full)
     try:
         _rh = float(real_height_mm)
     except Exception:
@@ -3041,6 +3052,56 @@ _CUT_SMOOTH = {"mm": 0.0}   # 🧈 รีดคลื่นเส้นตัด
 # 🏆 เส้นโค้ง Bézier 'ดิบ' จากเอนจิ้น (หน่วย มม. · พิกัดเดียวกับ polygon ที่ trace ได้)
 #    ใช้ส่งเข้าไฟล์ตัดโดยตรงเหมือนปุ่ม 'แปลงเป็นเส้นตัด' — ไม่ผ่านการแตกจุด+ฟิตใหม่ (ซึ่งทำให้เส้นเละ)
 _RAW_SUBS = {"subs": None}
+# 🔤 ชิ้นงาน 'ก่อนรวม' (ตัวอักษรแยกตัว) — ใช้ทำเส้นเดินไฟนีออนทีละตัว
+#    เก็บกรอบตอนบันทึกไว้ด้วย เพราะ full จะถูกย่อ/ขยาย/เลื่อนต่ออีกหลายขั้น
+#    ตอนใช้จริงจะเทียบกรอบเก่า-ใหม่ แล้วขยับชิ้นตามให้ตรงกัน + ตรวจว่าทับกันจริงก่อนใช้
+_ART_PIECES = {"polys": None, "bounds": None}
+
+
+def _stash_pieces(polys, full_geom):
+    """บันทึกชิ้นก่อนรวม (เฉพาะตอนที่มีมากกว่า 1 ชิ้น ไม่งั้นไม่มีประโยชน์)"""
+    try:
+        ps = [q for q in (polys or []) if q is not None and not q.is_empty and q.area > 1.0]
+        if len(ps) > 1 and full_geom is not None and not full_geom.is_empty:
+            _ART_PIECES["polys"] = ps
+            _ART_PIECES["bounds"] = tuple(full_geom.bounds)
+        else:
+            _ART_PIECES["polys"] = None; _ART_PIECES["bounds"] = None
+    except Exception:
+        _ART_PIECES["polys"] = None; _ART_PIECES["bounds"] = None
+
+
+def _pieces_for(full_geom, tol=0.06):
+    """ขยับชิ้นที่เก็บไว้ให้ตรงกับ full ตอนนี้ + ตรวจว่าทับกันจริง (ไม่ตรง = ไม่ใช้)"""
+    try:
+        ps = _ART_PIECES.get("polys"); b0 = _ART_PIECES.get("bounds")
+        if not ps or not b0 or full_geom is None or full_geom.is_empty:
+            return None
+        b1 = full_geom.bounds
+        w0 = b0[2] - b0[0]; h0 = b0[3] - b0[1]
+        w1 = b1[2] - b1[0]; h1 = b1[3] - b1[1]
+        if w0 <= 1e-6 or h0 <= 1e-6 or w1 <= 1e-6 or h1 <= 1e-6:
+            return None
+        sx = w1 / w0; sy = h1 / h0
+        from shapely import affinity as _afp
+        out = []
+        for q in ps:
+            r = _afp.scale(q, xfact=sx, yfact=sy, origin=(b0[0], b0[1]))
+            out.append(_afp.translate(r, xoff=b1[0] - b0[0], yoff=b1[1] - b0[1]))
+        # 🔒 ด่านตรวจ: รวมชิ้นแล้วต้องได้พื้นที่ใกล้ full จริง ไม่งั้นแปลว่าจับคู่ผิด
+        from shapely.ops import unary_union as _uup
+        u = _uup(out)
+        if u.is_empty:
+            return None
+        a1 = full_geom.area
+        if a1 <= 0 or abs(u.area - a1) / a1 > tol:
+            return None
+        if u.intersection(full_geom).area / a1 < (1.0 - tol):
+            return None
+        return out
+    except Exception:
+        return None
+
 
 
 # ⚡ ============ แคชกันงานซ้ำ (แก้ 502 — ไม่ลดจุดในรูปแม้แต่จุดเดียว) ============
@@ -6706,11 +6767,23 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                         #       แต่กับงานลายเส้นบาง (โลโก้เส้น outline) จะได้ 'เส้นคู่ขนาบ' ทั้งสองฝั่ง
                         #       เช่นขีดใต้คำ 'bar' ที่ควรได้เส้นเดียว กลับออกมา 2 เส้น = ไม่ได้แนวเส้น
                         #    ตัวใหม่หาแกนกลางจากภาพ (skeletonize) แล้วตัดหนวดซ้ำหลายรอบ -> ได้เส้นเดียวจริง
-                        from vectorcnc import neon_route as _NR
-                        # 🔙 กลับไปใช้ตัวเดินไฟรุ่น 2026-08-02 ที่ 'ตามลายเส้นได้ตรงกว่ามาก'
-                        #    รุ่นหลังจากนั้นรวมเส้นที่จุดไขว้แรงเกินไป + ขยายท่ออัตโนมัติ
-                        #    วัดจริง: ตัว 'r' ในคำว่า bars หายไปทั้งตัว ตัว a ผิดรูป (41 เส้น -> 8 เส้น)
-                        _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
+                        # 🥇 ทางหลัก: หาแกนกลาง 'ทีละตัวอักษร' ก่อนรวม
+                        #    เพราะโลโก้ลายมือตัวอักษรซ้อนกัน ถ้ารวมก่อนแล้วหาแกน
+                        #    ตรงที่ซ้อนจะกลายเป็นก้อนอ้วน แกนกลางแตกแขนงเป็นใยแมงมุม = เส้นไฟมั่ว
+                        #    วัดจริง (Coffee 110 ซม.): รวมก่อน 22 ท่อน/ปมแตกแขนง 36 · ทีละตัว 11 ท่อน/ปม 15
+                        _neon_subs = None; _nrep = []
+                        try:
+                            from vectorcnc import neon_perglyph as _NPG
+                            _pcs9 = _pieces_for(full)
+                            if _pcs9:
+                                _neon_subs, _nrep = _NPG.centerline_subs(
+                                    full, pieces=_pcs9, tube_mm=8.0, clear_mm=1.0)
+                        except Exception:
+                            _neon_subs = None
+                        if not _neon_subs:
+                            # 🔙 ทางถอย: ตัวเดินไฟรุ่น 2026-08-02 (รวมทั้งใบ) — ใช้ได้ดีกับงานตัวไม่ซ้อน
+                            from vectorcnc import neon_route as _NR
+                            _neon_subs, _nrep = _NR.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                     except Exception:
                         _neon_subs = None
                     if not _neon_subs:                      # ถอย: โมดูลเดิม (ยังดีกับตัวอักษรเนื้อหนา)
@@ -7885,7 +7958,17 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                 # 🥇 ใช้ตัวหาแกนกลางตัวเดียวกับไฟล์ตัด — ภาพพรีวิวกับไฟล์ผลิตจะได้ตรงกันเป๊ะ
                 try:
                     from vectorcnc import neon_route as _NR2
-                    _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
+                    _nsub = None
+                    try:
+                        from vectorcnc import neon_perglyph as _NPG2
+                        _pcs8 = _pieces_for(full)
+                        if _pcs8:
+                            _nsub, _ = _NPG2.centerline_subs(full, pieces=_pcs8,
+                                                             tube_mm=8.0, clear_mm=1.0)
+                    except Exception:
+                        _nsub = None
+                    if not _nsub:
+                        _nsub, _ = _NR2.centerline_subs(full, tube_mm=8.0, clear_mm=1.0)
                 except Exception:
                     _nsub = None
                 if not _nsub:
