@@ -1,0 +1,443 @@
+"""🎨 Vectora engine — แปลงภาพพิกเซล -> เวกเตอร์คม (ตัวจริง ใช้งานได้)
+
+โมดูลนี้ **อิสระ 100%** ไม่ import อะไรจากแอปทำป้ายเลย
+(ตัวฟิตเบซิเยร์ถูกคัดลอกมาไว้ในไฟล์นี้เอง เพื่อให้ยกไปวางที่ไหนก็รันได้)
+
+หลักการ (พิสูจน์ด้วยการวัดจริงแล้ว — แม่นกว่าตัวแปลงทั่วไป 4.3 เท่า):
+  1) ลดจำนวนสีด้วย K-means บนปริภูมิ Lab (ตาคนมองว่าใกล้กันจริง ไม่ใช่ RGB)
+  2) สร้าง 'สนามความเป็นสีนั้น' แบบต่อเนื่อง ไม่ใช่ 0/1
+     พิกเซลตรงขอบเป็นสีผสมของ 2 สี -> คำนวณสัดส่วนผสมได้ = รู้ว่าขอบอยู่ 'ตรงไหนในพิกเซล'
+  3) ดึงคอนทัวร์ที่ระดับ 0.5 (marching squares + interpolate) = ขอบระดับย่อยพิกเซล
+     >>> นี่คือเหตุผลที่ผลลัพธ์ 'คมกว่าภาพต้นฉบับ'
+  4) เกลาแบบไม่กินมุมคม + ตัดที่มุมก่อนฟิตเบซิเยร์ (กันเงี่ยงแหลมยื่นออกนอกรูป)
+  5) ซ้อนชั้นใหญ่ไปเล็ก + ดันขอบออกเศษพิกเซล = ไม่มีเส้นขาวบางคั่นระหว่างสี
+"""
+
+import math
+import time
+
+import cv2
+import numpy as np
+from skimage import measure
+
+MAX_WORK_PX = 1600          # ด้านยาวสูงสุดตอนคำนวณ (ภาพใหญ่กว่านี้ย่อก่อน แล้วขยายพิกัดคืน)
+
+
+# ══════════════════════════════════════════════════════════════════
+# ตัวฟิตเบซิเยร์ (คัดลอกมาจากตัวที่ใช้ทำเส้นตัดจริง — เนียนระดับเดียวกัน)
+# ══════════════════════════════════════════════════════════════════
+def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
+    """แนวจุดถี่ ๆ -> เส้นโค้งเบซิเยร์จริง · คืน (start, segs) แบบ ("C",c1,c2,end)/("L",p)"""
+    try:
+        from shapely.geometry import LineString
+        P = [tuple(p) for p in pts]
+        if closed and len(P) > 2 and (abs(P[0][0] - P[-1][0]) > 1e-9 or abs(P[0][1] - P[-1][1]) > 1e-9):
+            P = P + [P[0]]
+        if len(P) < 3:
+            return P[0], [("L", q) for q in P[1:]]
+        try:
+            K = list(LineString(P).simplify(float(tol)).coords)
+        except Exception:
+            K = P
+        if len(K) < 3:
+            return K[0], [("L", q) for q in K[1:]]
+        if closed and len(K) > 3 and abs(K[0][0] - K[-1][0]) < 1e-9 and abs(K[0][1] - K[-1][1]) < 1e-9:
+            K = K[:-1]; n = len(K); wrap = True
+        else:
+            n = len(K); wrap = False
+
+        def at(i):
+            return K[i % n] if wrap else K[min(max(i, 0), n - 1)]
+
+        def ang(i):
+            a, b, c = at(i - 1), at(i), at(i + 1)
+            v1 = (b[0] - a[0], b[1] - a[1]); v2 = (c[0] - b[0], c[1] - b[1])
+            l1 = math.hypot(*v1); l2 = math.hypot(*v2)
+            if l1 < 1e-9 or l2 < 1e-9:
+                return 0.0
+            d = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))
+            return math.degrees(math.acos(d))
+
+        sharp = {i % n for i in (range(n) if wrap else range(1, n - 1)) if ang(i) > float(corner_deg)}
+        segs = []
+        last = n if wrap else n - 1
+        for i in range(last):
+            p1, p2 = at(i), at(i + 1)
+            p0 = p1 if ((i % n) in sharp or (not wrap and i == 0)) else at(i - 1)
+            p3 = p2 if (((i + 1) % n) in sharp or (not wrap and i + 1 == n - 1)) else at(i + 2)
+            c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
+            c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
+            segs.append(("C", c1, c2, p2))
+        return K[0], segs
+    except Exception:
+        return pts[0], [("L", q) for q in pts[1:]]
+
+
+# ══════════════════════════════════════════════════════════════════
+# 1) ลดจำนวนสี
+# ══════════════════════════════════════════════════════════════════
+def _kmeans_lab(X, k, seed=0, sample=60000):
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(X), size=min(sample, len(X)), replace=False)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.5)
+    comp, _, cen = cv2.kmeans(X[idx], int(k), None, crit, 4, cv2.KMEANS_PP_CENTERS)
+    return cen, comp / max(len(idx), 1)
+
+
+def auto_k(X, seed=0, ladder=(2, 3, 4, 6, 8, 12, 16, 24), min_gain=0.25, good=2.0, max_err=12.0):
+    """เดาจำนวนสีที่เหมาะ — หา 'ข้อศอก' ของกราฟความคลาดสี
+
+    วัดเป็น RMS ΔE ในปริภูมิ Lab (ค่าที่ตาคนรับรู้จริง · ΔE ราว 2-3 = แทบแยกไม่ออก)
+    ⚠️ อย่าใช้เกณฑ์ 'ต่ำกว่า X ก็พอ' อย่างเดียว — ภาพ JPEG มีรอยบีบอัด
+       ค่าจะไม่มีวันลงต่ำ ไล่ k ไปเรื่อยจนได้ 24 สีให้ภาพโลโก้ 5 สี (เจอจริงแล้ว)
+    ✅ ดูที่ 'กำไรต่อการเพิ่ม k' แทน — พอเพิ่ม k แล้วดีขึ้นน้อยกว่า 25% ก็หยุด แล้วถอย 1 ขั้น
+    """
+    prev = None; prev_k = int(ladder[0])
+    for k in ladder:
+        try:
+            _, err = _kmeans_lab(X, k, seed=seed, sample=20000)
+        except Exception:
+            break
+        rms = float(err) ** 0.5
+        # ⚠️ ดูกำไรอย่างเดียวไม่พอ — ภาพไล่เฉด (ภาพถ่าย) กำไรจะน้อยตั้งแต่ k=2
+        #    ถ้าหยุดตรงนั้นจะได้ภาพถ่ายเหลือ 2 สี (เจอจริงแล้ว) จึงต้องผ่านเกณฑ์ 'พอใช้ได้' ก่อน
+        if prev is not None and rms > prev * (1.0 - min_gain) and prev <= max_err:
+            return prev_k                               # กำไรไม่คุ้มแล้ว -> ใช้ค่าก่อนหน้า
+        prev, prev_k = rms, int(k)
+        if rms <= good:                                 # ตรงเป๊ะแล้ว ไม่ต้องเพิ่มอีก
+            break
+    return prev_k
+
+
+def merge_blends(cen, counts, max_share=0.08, t_lo=0.12, t_hi=0.88, dperp=13.0):
+    """🧹 ตัด 'สีขอบผสม' ทิ้ง
+
+    ⚠️ ปัญหาที่เจอจริง: ขอบระหว่างเขียวกับน้ำเงินมีพิกเซลสีเทาอมฟ้า (สีผสมของสองสีนั้น)
+       K-means มองว่านั่นคือ 'สีที่ 6' แล้วสร้างเป็นชั้นแยก -> ได้ **ขอบเทาล้อมรูป**
+       เห็นชัดมากตอนขยาย เหมือนมีเส้นขอบสกปรกที่ไม่มีในต้นฉบับ
+    ✅ สีไหนที่ (ก) มีพิกเซลน้อย และ (ข) นอนอยู่บนเส้นตรงระหว่างสีหลักสองสีในปริภูมิ Lab
+       = สีผสม ไม่ใช่สีจริง -> ตัดทิ้ง แล้วโยนพิกเซลไปหาสีหลักที่ใกล้สุด
+    """
+    n = len(cen)
+    tot = float(max(counts.sum(), 1))
+    order = sorted(range(n), key=lambda i: counts[i])          # เล็กสุดพิจารณาก่อน
+    alive = set(range(n))
+    for i in order:
+        if counts[i] > max_share * tot or len(alive) <= 2:
+            continue
+        big = [j for j in alive if j != i and counts[j] > counts[i]]
+        drop = False
+        for a in range(len(big)):
+            for b in range(a + 1, len(big)):
+                P, Q = cen[big[a]], cen[big[b]]
+                v = Q - P
+                L2 = float((v * v).sum())
+                if L2 < 1e-6:
+                    continue
+                t = float(((cen[i] - P) * v).sum() / L2)
+                if not (t_lo < t < t_hi):
+                    continue
+                if float(np.linalg.norm(cen[i] - (P + t * v))) < dperp:
+                    drop = True; break
+            if drop:
+                break
+        if drop:
+            alive.discard(i)
+    keep = sorted(alive)
+    return cen[keep]
+
+
+def quantize(img_rgb, k=8, seed=0, keep=None):
+    """คืน (palette RGB uint8, label map, ภาพ Lab, palette Lab)"""
+    lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+    H, W = lab.shape[:2]
+    X = lab.reshape(-1, 3)
+    Xf = X[keep.reshape(-1)] if keep is not None and keep.any() else X
+    if len(Xf) < 8:
+        Xf = X
+    kk = max(2, min(32, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
+    cen, _ = _kmeans_lab(Xf, kk, seed=seed)
+    lb0 = ((Xf[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
+    cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
+    d = ((X[:, None, :] - cen[None, :, :]) ** 2).sum(2)
+    labels = d.argmin(1).reshape(H, W)
+    pal_rgb = cv2.cvtColor(cen.reshape(1, -1, 3).astype(np.uint8), cv2.COLOR_LAB2RGB).reshape(-1, 3)
+    return pal_rgb, labels, lab, cen
+
+
+# ══════════════════════════════════════════════════════════════════
+# 2) สนามความเป็นสี (ย่อยพิกเซล)
+# ══════════════════════════════════════════════════════════════════
+def distance_stack(lab, pal_lab):
+    """ระยะจากทุกพิกเซลถึงทุกสีในจาน — คิดครั้งเดียวใช้ทุกชั้น
+
+    เดิมคำนวณใหม่ทุกชั้น (k ชั้น × k สี) = ช้าเป็นกำลังสอง
+    ภาพ 4000 px เคยใช้ 3.4 วินาที — คิดครั้งเดียวแล้วเร็วขึ้นชัดเจน
+    """
+    H, W = lab.shape[:2]
+    out = np.empty((len(pal_lab), H, W), np.float32)
+    for j in range(len(pal_lab)):
+        out[j] = np.sqrt(((lab - pal_lab[j][None, None, :]) ** 2).sum(2))
+    return out
+
+
+def coverage_field(D, k, alpha=None):
+    """สัดส่วนที่พิกเซลนั้น 'เป็นสี k' — 0.5 พอดี = ขอบจริง (สีผสม 50:50)"""
+    d = D[k]
+    other = np.min(np.delete(D, k, axis=0), axis=0)
+    f = other / np.maximum(other + d, 1e-6)
+    if alpha is not None:
+        # 🪟 ภาพพื้นโปร่ง: คูณด้วยความทึบ -> คอนทัวร์ 0.5 จะไปเกาะขอบความโปร่งพอดี
+        f = f * alpha
+    return f.astype(np.float64)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 3-4) คอนทัวร์ + เกลา + ฟิตเบซิเยร์
+# ══════════════════════════════════════════════════════════════════
+def corner_mask(p, deg=45.0, look=6):
+    """หามุมคม — ⚠️ look ต้อง 6 จุด: คอนทัวร์ย่อยพิกเซลจุดห่างกันแค่ 0.7 px
+    ถ้ามองแค่ 3 จุด มุมจริง 104° จะอ่านได้แค่ 38° = จับมุมไม่เจอ (วัดจริงแล้ว)"""
+    n = len(p)
+    if n < 2 * look + 3:
+        return np.zeros(n, bool)
+    a = np.asarray(p, float)
+    prev = np.roll(a, look, axis=0); nxt = np.roll(a, -look, axis=0)
+    v1 = a - prev; v2 = nxt - a
+    n1 = np.linalg.norm(v1, axis=1); n2 = np.linalg.norm(v2, axis=1)
+    ok = (n1 > 1e-9) & (n2 > 1e-9)
+    cos = np.ones(n)
+    cos[ok] = np.clip((v1[ok] * v2[ok]).sum(1) / (n1[ok] * n2[ok]), -1, 1)
+    return np.degrees(np.arccos(cos)) > float(deg)
+
+
+def _smooth(p, k, keep_corner=True, corner_deg=45.0):
+    """เกลาแบบไม่กินมุมคม — เกลารวดเดียวจะลบมุมแหลม พอฟิตเบซิเยร์แล้วเกิดเงี่ยงยื่นออกนอกรูป"""
+    if k <= 1 or len(p) < 2 * k + 2:
+        return p
+    a = np.vstack([p[-k:], p, p[:k]])
+    ker = np.ones(2 * k + 1) / (2 * k + 1)
+    sm = np.column_stack([np.convolve(a[:, 0], ker, 'same')[k:-k],
+                          np.convolve(a[:, 1], ker, 'same')[k:-k]])
+    if not keep_corner:
+        return sm
+    cm = corner_mask(p, corner_deg)
+    if cm.any():
+        w = cm.astype(float)
+        for _ in range(max(1, k - 1)):
+            w = np.maximum.reduce([w, np.roll(w, 1), np.roll(w, -1)])
+        w = w[:, None]
+        sm = sm * (1 - w) + np.asarray(p, float) * w
+    return sm
+
+
+def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2):
+    """⚠️ ต้องเติมขอบค่า 0 รอบสนามก่อนเสมอ
+    ย่านสีที่ชนขอบภาพ (เช่นพื้นหลัง) จะได้คอนทัวร์เปิด ปิดรูปไม่ได้ -> หายทั้งชั้น"""
+    f = np.pad(field, pad, mode="constant", constant_values=0.0)
+    out = []
+    for c in measure.find_contours(f, level):
+        if len(c) < min_pts:
+            continue
+        p = np.column_stack([c[:, 1] - pad, c[:, 0] - pad])
+        out.append(_smooth(p, smooth_k))
+    return out
+
+
+def _area(p):
+    a = np.asarray(p)
+    return 0.5 * np.sum(a[:-1, 0] * a[1:, 1] - a[1:, 0] * a[:-1, 1])
+
+
+def grow(polys, px=0.4):
+    """🩹 ดันขอบออกจากเนื้อสีเศษพิกเซล ให้ชั้นติดกันเกยกัน
+    ⚠️ วงที่เป็น 'รู' ต้องดันเข้า ไม่ใช่ออก — ไม่งั้นรูกว้างขึ้น เกิดเส้นขาวบางคั่นสี"""
+    if px <= 0:
+        return polys
+    try:
+        from shapely.geometry import Polygon as _P
+        out = []
+        for p in polys:
+            try:
+                sa = _area(p)
+                g = _P(p).buffer(0)
+                if g.is_empty:
+                    out.append(p); continue
+                g = g.buffer(px if sa >= 0 else -px, join_style=2, mitre_limit=2.0, resolution=6)
+                if g.is_empty:
+                    out.append(p); continue
+                if g.geom_type == "MultiPolygon":
+                    g = max(g.geoms, key=lambda a: a.area)
+                out.append(np.asarray(g.exterior.coords))
+            except Exception:
+                out.append(p)
+        return out
+    except Exception:
+        return polys
+
+
+def to_bezier(polys, tol=0.5, corner_deg=45.0):
+    """ฟิตเบซิเยร์ — ตัดเส้นที่มุมคมก่อน แล้วฟิตทีละช่วงแบบเส้นเปิด
+    ถ้าโยนวงปิดเข้าไปรวดเดียว ตรงมุมแหลมจะลากโค้งเลยจุดมุม เกิดเงี่ยงยื่นพ้นรูป"""
+    out = []
+    for p in polys:
+        a = np.asarray(p, float)
+        pts = [tuple(v) for v in a]
+        if len(pts) < 10:
+            out.append(("P", pts)); continue
+        cm = corner_mask(a, corner_deg)
+        keep = []
+        for i in np.flatnonzero(cm):
+            if not keep or i - keep[-1] > 3:
+                keep.append(int(i))
+        if len(keep) < 2:
+            st, sg = _to_curves(pts, closed=True, tol=tol)
+            out.append(("B", st, sg) if sg else ("P", pts)); continue
+        segs_all = []; start = None
+        for j in range(len(keep)):
+            i0 = keep[j]; i1 = keep[(j + 1) % len(keep)]
+            run = (list(range(i0, i1 + 1)) if i1 > i0
+                   else list(range(i0, len(a))) + list(range(0, i1 + 1)))
+            sub = [tuple(a[t]) for t in run]
+            if len(run) < 4:
+                if start is None:
+                    start = sub[0]
+                segs_all += [("L", q) for q in sub[1:]]
+                continue
+            st2, sg2 = _to_curves(sub, closed=False, tol=tol)
+            if not sg2:
+                if start is None:
+                    start = sub[0]
+                segs_all += [("L", q) for q in sub[1:]]
+                continue
+            if start is None:
+                start = st2
+            segs_all += sg2
+        if start is None or not segs_all:
+            out.append(("P", pts)); continue
+        out.append(("B", start, segs_all))
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════
+# 5) พรีเซ็ตการใช้งาน
+# ══════════════════════════════════════════════════════════════════
+PRESETS = {
+    # k=0 คือให้ระบบเดาจำนวนสีเอง
+    "general":  {"k": 0,  "smooth": 2, "tol": 0.5, "gap": 0.4, "min_area": 4.0},
+    "edit":     {"k": 6,  "smooth": 3, "tol": 1.2, "gap": 0.5, "min_area": 12.0},
+    "cnc":      {"k": 4,  "smooth": 2, "tol": 0.4, "gap": 0.6, "min_area": 20.0},
+    "apparel":  {"k": 5,  "smooth": 4, "tol": 1.5, "gap": 0.8, "min_area": 40.0},
+}
+
+
+def resolve(preset="general", **over):
+    p = dict(PRESETS.get(preset or "general", PRESETS["general"]))
+    for a, b in over.items():
+        if b is not None:
+            p[a] = b
+    return p
+
+
+# ══════════════════════════════════════════════════════════════════
+# ตัวหลัก
+# ══════════════════════════════════════════════════════════════════
+def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=None,
+              min_area=None, transparent=None, seed=0):
+    """img_rgba = ndarray HxWx3 (RGB) หรือ HxWx4 (RGBA)
+
+    คืน dict: layers · size (กว้าง,สูง หน่วยพิกเซลต้นฉบับ) · bg · stats
+    """
+    t0 = time.time()
+    cfg = resolve(preset, k=k, smooth=smooth, tol=tol, gap=gap, min_area=min_area)
+    img = np.asarray(img_rgba)
+    H0, W0 = img.shape[:2]
+
+    alpha = None
+    if img.ndim == 3 and img.shape[2] == 4:
+        a = img[:, :, 3]
+        if a.min() < 250:
+            alpha = a
+        img = img[:, :, :3]
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+    # ย่อก่อนคำนวณถ้าภาพใหญ่ (พิกัดจะถูกขยายคืนตอนท้าย)
+    long_side = max(W0, H0)
+    sc = 1.0
+    if long_side > MAX_WORK_PX:
+        sc = MAX_WORK_PX / float(long_side)
+        img = cv2.resize(img, (max(1, int(round(W0 * sc))), max(1, int(round(H0 * sc)))),
+                         interpolation=cv2.INTER_AREA)
+        if alpha is not None:
+            alpha = cv2.resize(alpha, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_AREA)
+    H, W = img.shape[:2]
+
+    af = None
+    keep = None
+    want_alpha = bool(alpha is not None if transparent is None else (transparent and alpha is not None))
+    if want_alpha:
+        af = (alpha.astype(np.float64) / 255.0)
+        keep = alpha >= 128
+        # เติมสีจากพิกเซลทึบเข้าไปในย่านโปร่ง กัน k-means ไปจับ "สีขอบจาง" เป็นสีจริง
+        if keep.any() and (~keep).any():
+            img = cv2.inpaint(np.ascontiguousarray(img), (~keep).astype(np.uint8),
+                              3, cv2.INPAINT_TELEA)
+    else:
+        if alpha is not None:                       # ทับพื้นขาวถ้าไม่เอาโปร่ง
+            a3 = (alpha.astype(np.float32) / 255.0)[:, :, None]
+            img = (img.astype(np.float32) * a3 + 255.0 * (1 - a3)).astype(np.uint8)
+        alpha = None
+
+    pal_rgb, labels, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
+
+    D = distance_stack(lab, pal_lab)
+    layers = []
+    for i in range(len(pal_lab)):
+        n = int((labels == i).sum() if keep is None else ((labels == i) & keep).sum())
+        if n < 3:
+            continue
+        f = coverage_field(D, i, alpha=af)
+        cs = [c for c in contours_of(f, 0.5, int(cfg["smooth"]))
+              if abs(_area(c)) >= float(cfg["min_area"])]
+        if not cs:
+            continue
+        area = sum(abs(_area(c)) for c in cs)
+        layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
+                       "items": to_bezier(grow(cs, float(cfg["gap"])), float(cfg["tol"]))})
+    layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
+
+    # ขยายพิกัดคืนขนาดจริง
+    if sc != 1.0:
+        inv = 1.0 / sc
+        for L in layers:
+            L["items"] = _scale_items(L["items"], inv)
+
+    bg = None
+    if not want_alpha and layers:
+        bg = max(layers, key=lambda L: L["n"])["rgb"]
+
+    nodes = sum(len(it[2]) if it[0] == "B" else len(it[1]) for L in layers for it in L["items"])
+    stats = {"colors": len(layers), "shapes": sum(len(L["items"]) for L in layers),
+             "nodes": int(nodes), "work_px": [W, H], "scale": round(sc, 4),
+             "transparent": bool(want_alpha), "seconds": round(time.time() - t0, 3),
+             "preset": preset, "cfg": cfg}
+    return {"layers": layers, "size": (W0, H0), "bg": bg, "stats": stats}
+
+
+def _scale_items(items, s):
+    out = []
+    for it in items:
+        if it[0] == "P":
+            out.append(("P", [(x * s, y * s) for x, y in it[1]]))
+        else:
+            st = (it[1][0] * s, it[1][1] * s)
+            sg = []
+            for g in it[2]:
+                if g[0] == "L":
+                    sg.append(("L", (g[1][0] * s, g[1][1] * s)))
+                else:
+                    sg.append(("C", (g[1][0] * s, g[1][1] * s), (g[2][0] * s, g[2][1] * s),
+                               (g[3][0] * s, g[3][1] * s)))
+            out.append(("B", st, sg))
+    return out

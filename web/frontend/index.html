@@ -11457,5 +11457,465 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     </div>
   </div>
 </div>
+<!-- ═══════════════════════════════════════════════════════════════════
+     🎨 แปลงภาพเป็นเวกเตอร์ (Vectora) — เพิ่มเข้ามา 2026-08-07
+     กติกา: โค้ดเดิมของหน้าออกแบบป้ายห้ามถูกแตะ · ทุกอย่างของเมนูนี้อยู่ในบล็อกนี้บล็อกเดียว
+            ตัวแปร/ฟังก์ชันทั้งหมดอยู่ใน IIFE ไม่มีตัวไหนหลุดออกไปชนของเดิม
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="vecOverlay" style="display:none;position:fixed;inset:0;z-index:130;background:#EEF2F8;overflow:auto">
+  <div style="position:sticky;top:0;z-index:3;background:#0f172a;color:#fff;padding:11px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)">
+    <b style="font-size:15.5px">🎨 <span data-i18n="vec.title">แปลงภาพเป็นเวกเตอร์</span></b>
+    <span style="font-size:12px;color:#94a3b8" data-i18n="vec.sub">ภาพเบลอ/ความละเอียดต่ำ → เส้นเวกเตอร์คม ขยายได้ไม่จำกัด</span>
+    <span id="vecEng" style="margin-left:auto;font-size:11.5px;color:#64748b"></span>
+    <!-- 🌐 สวิตช์ภาษาในหน้านี้เอง — แถบเมนูด้านหลังถูกจอนี้บังอยู่ กดไม่ได้ -->
+    <span id="vecLang" style="display:inline-flex;border:1px solid #334155;border-radius:9px;overflow:hidden">
+      <button type="button" data-l="th" style="font-family:inherit;font-size:12px;font-weight:700;padding:6px 11px;border:0;cursor:pointer">ไทย</button>
+      <button type="button" data-l="en" style="font-family:inherit;font-size:12px;font-weight:700;padding:6px 11px;border:0;cursor:pointer">EN</button>
+    </span>
+    <button type="button" id="vecClose" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:7px 15px;font-family:inherit;font-weight:700;cursor:pointer">✕ <span data-i18n="vec.close">ปิด</span></button>
+  </div>
+
+  <div style="max-width:1080px;margin:0 auto;padding:20px 16px 70px">
+    <style>
+      #vecOverlay .vcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(30,58,95,.07);margin-bottom:16px}
+      #vecOverlay h4{font-size:16px;font-weight:700;color:var(--ink);margin:0 0 4px}
+      #vecOverlay .vsub{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+      #vecOverlay .vdrop{border:2px dashed var(--line2);border-radius:16px;background:#F8FAFD;padding:38px 20px;text-align:center;cursor:pointer;transition:.15s}
+      #vecOverlay .vdrop:hover,#vecOverlay .vdrop.hot{border-color:var(--brand);background:#F1F6FF}
+      #vecOverlay .vsteps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;margin-bottom:14px}
+      #vecOverlay .vst{display:flex;align-items:center;gap:6px;color:var(--dim)}
+      #vecOverlay .vst i{width:20px;height:20px;border-radius:99px;background:#E2E8F0;color:#64748B;display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:700}
+      #vecOverlay .vst.on{color:var(--ink);font-weight:600} #vecOverlay .vst.on i{background:var(--brand);color:#fff}
+      #vecOverlay .vst.ok i{background:var(--green);color:#fff}
+      #vecOverlay .vinfo{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+      #vecOverlay .vinfo div{padding:9px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+      #vecOverlay .vinfo div:nth-child(4n){border-right:0}
+      #vecOverlay .vinfo span{display:block;font-size:11px;color:var(--dim);margin-bottom:2px}
+      #vecOverlay .vinfo b{font-size:14px;color:var(--ink);font-weight:700}
+      #vecOverlay .vinfo b em{font-style:normal;font-size:11.5px;color:var(--muted);font-weight:500}
+      #vecOverlay .vnote{border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.6;margin-top:10px}
+      #vecOverlay .vnote.ok{background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46}
+      #vecOverlay .vnote.warn{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
+      #vecOverlay .vnote.bad{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B}
+      #vecOverlay .vcmp{position:relative;width:100%;max-width:720px;margin:0 auto;border-radius:12px;overflow:hidden;background:
+        linear-gradient(45deg,#eef1f6 25%,transparent 25%),linear-gradient(-45deg,#eef1f6 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#eef1f6 75%),linear-gradient(-45deg,transparent 75%,#eef1f6 75%);
+        background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;border:1px solid var(--line);user-select:none}
+      #vecOverlay .vcmp .va,#vecOverlay .vcmp .vb{position:absolute;inset:0;display:grid;place-items:center}
+      #vecOverlay .vcmp .va img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+      #vecOverlay .vcmp .vb{clip-path:inset(0 0 0 50%)}
+      #vecOverlay .vcmp .vb svg{width:100%;height:100%}
+      #vecOverlay .vbar{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(15,23,42,.25);cursor:ew-resize;z-index:5}
+      #vecOverlay .vbar::after{content:"⇄";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;border-radius:99px;background:#fff;box-shadow:0 4px 12px rgba(15,23,42,.25);display:grid;place-items:center;font-size:14px}
+      #vecOverlay .vtag{position:absolute;top:9px;font-size:10px;font-weight:700;letter-spacing:.4px;padding:3px 9px;border-radius:99px;z-index:6}
+      #vecOverlay .vtagL{left:9px;background:rgba(15,23,42,.7);color:#fff}
+      #vecOverlay .vtagR{right:9px;background:var(--brand);color:#fff}
+      #vecOverlay .vgrid{display:grid;gap:9px}
+      #vecOverlay .vg4{grid-template-columns:repeat(5,1fr)} #vecOverlay .vg2{grid-template-columns:repeat(4,1fr)}
+      #vecOverlay .vtile{border:1.6px solid var(--line);border-radius:12px;padding:11px;cursor:pointer;background:#fff;transition:.12s;position:relative;text-align:left}
+      #vecOverlay .vtile:hover{border-color:var(--line2)}
+      #vecOverlay .vtile.on{border-color:var(--brand);background:#F5F9FF;box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+      #vecOverlay .vtile.on::after{content:"✓";position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:99px;background:var(--brand);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:700}
+      #vecOverlay .vtile b{display:block;font-size:13px;color:var(--ink)}
+      #vecOverlay .vtile span{display:block;font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45}
+      #vecOverlay .vbtn{border:0;border-radius:11px;padding:11px 20px;font-family:inherit;font-weight:700;font-size:14px;cursor:pointer}
+      #vecOverlay .vbtn.go{background:var(--grad);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.24)}
+      #vecOverlay .vbtn.alt{background:#fff;border:1px solid var(--line2);color:var(--ink)}
+      #vecOverlay .vbtn:disabled{opacity:.5;cursor:default}
+      #vecOverlay .vadv{border:1px solid var(--line);border-radius:12px;margin-top:12px;overflow:hidden}
+      #vecOverlay .vadvh{padding:10px 14px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);background:#F8FAFD;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      #vecOverlay .vadvh em{font-style:normal;font-size:11px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:99px;padding:2px 9px}
+      #vecOverlay .vadvb{display:none;padding:14px;border-top:1px solid var(--line)}
+      #vecOverlay .vadvb.open{display:block}
+      #vecOverlay .vrow{display:flex;align-items:center;gap:10px;margin-bottom:11px;font-size:12.5px;flex-wrap:wrap}
+      #vecOverlay .vrow>label{width:150px;color:var(--muted)}
+      #vecOverlay .vseg button{font-family:inherit;font-size:12px;border:1px solid var(--line2);background:#fff;color:var(--muted);padding:5px 12px;cursor:pointer}
+      #vecOverlay .vseg button:first-child{border-radius:9px 0 0 9px} #vecOverlay .vseg button:last-child{border-radius:0 9px 9px 0}
+      #vecOverlay .vseg button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+      #vecOverlay .vpal{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+      #vecOverlay .vpal i{width:24px;height:24px;border-radius:7px;border:1px solid rgba(15,23,42,.12);display:block}
+      @media(max-width:820px){#vecOverlay .vinfo{grid-template-columns:repeat(2,1fr)}#vecOverlay .vinfo div:nth-child(4n){border-right:1px solid var(--line)}#vecOverlay .vinfo div:nth-child(2n){border-right:0}#vecOverlay .vg4,#vecOverlay .vg2{grid-template-columns:repeat(2,1fr)}}
+    </style>
+
+    <div class="vsteps">
+      <span class="vst on" id="vstep1"><i>1</i><span data-i18n="vec.s1">เลือกภาพ</span></span><span style="color:var(--line2)">—</span>
+      <span class="vst" id="vstep2"><i>2</i><span data-i18n="vec.s2">ตรวจข้อมูลภาพ</span></span><span style="color:var(--line2)">—</span>
+      <span class="vst" id="vstep3"><i>3</i><span data-i18n="vec.s3">แปลง + ดาวน์โหลด</span></span>
+    </div>
+
+    <!-- ── ขั้น 1: เลือกภาพ ── -->
+    <div class="vcard" id="vecP1">
+      <h4 data-i18n="vec.h1">เลือกภาพที่ต้องการแปลง</h4>
+      <div class="vsub" data-i18n="vec.h1s">โลโก้ · ลายเส้น · ภาพสแกน · ภาพแคปหน้าจอ — ยิ่งขอบภาพมีการเกลี่ยสี ผลลัพธ์ยิ่งคม</div>
+      <div class="vdrop" id="vecDrop">
+        <div style="font-size:32px;margin-bottom:6px">🖼️</div>
+        <b style="font-size:16px;color:var(--ink)" data-i18n="vec.drop">ลากไฟล์ภาพมาวางตรงนี้</b><br>
+        <span style="font-size:12.5px;color:var(--muted)" data-i18n="vec.drop2">หรือคลิกเพื่อเลือกไฟล์จากเครื่อง</span><br>
+        <span style="font-size:11.5px;color:var(--dim)" data-i18n="vec.drop3">JPG · PNG · GIF · BMP · WebP · TIFF — ไม่เกิน 30 MB</span>
+      </div>
+      <input type="file" id="vecFile" accept="image/*" hidden>
+    </div>
+
+    <!-- ── ขั้น 2: ข้อมูลภาพ ── -->
+    <div class="vcard" id="vecP2" style="display:none">
+      <h4 data-i18n="vec.h2">ข้อมูลภาพที่อ่านได้</h4>
+      <div class="vsub" data-i18n="vec.h2s">ดูให้แน่ใจว่าถูกไฟล์ก่อนกดแปลง</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="width:190px;flex:0 0 auto;border:1px solid var(--line);border-radius:12px;padding:9px;display:grid;place-items:center;background:#F8FAFD">
+          <img id="vecThumb" style="max-width:100%;max-height:150px;display:block">
+        </div>
+        <div style="flex:1;min-width:300px"><div class="vinfo" id="vecInfo"></div></div>
+      </div>
+      <div id="vecNotes"></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px">
+        <button class="vbtn go" id="vecGo">⚡ <span data-i18n="vec.convert">แปลงเป็นเวกเตอร์</span></button>
+        <button class="vbtn alt" id="vecBack1">← <span data-i18n="vec.change">เปลี่ยนไฟล์</span></button>
+      </div>
+    </div>
+
+    <!-- ── ขั้น 3: ผลลัพธ์ ── -->
+    <div class="vcard" id="vecP3" style="display:none">
+      <h4 data-i18n="vec.h3">ผลลัพธ์</h4>
+      <div class="vsub" id="vecSum"></div>
+      <div class="vcmp" id="vecCmp">
+        <div class="vtag vtagL" data-i18n="vec.px">พิกเซล</div><div class="vtag vtagR" data-i18n="vec.vec">เวกเตอร์</div>
+        <div class="va"><img id="vecOrig" alt=""></div>
+        <div class="vb" id="vecSide"></div>
+        <div class="vbar" id="vecBarH"></div>
+      </div>
+      <div class="vpal" id="vecPal"></div>
+
+      <div style="margin-top:18px;font-size:13px;font-weight:700;color:var(--ink)" data-i18n="vec.useas">ใช้งานแบบไหน</div>
+      <div class="vsub" style="margin-bottom:9px" data-i18n="vec.useas2">เลือกแล้วระบบแปลงใหม่ให้ทันที</div>
+      <div class="vgrid vg2" id="vecPreset">
+        <div class="vtile on" data-p="general"><b data-i18n="vec.p1">ใช้งานทั่วไป</b><span data-i18n="vec.p1s">รูปทึบสีตามต้นฉบับ ใช้ได้กับทุกโปรแกรม</span></div>
+        <div class="vtile" data-p="edit"><b data-i18n="vec.p2">แก้ไขง่าย</b><span data-i18n="vec.p2s">จัดกลุ่มตามสี จุดน้อย ลาก/เปลี่ยนสีสะดวก</span></div>
+        <div class="vtile" data-p="cnc"><b data-i18n="vec.p3">ตัด &amp; แกะสลัก</b><span data-i18n="vec.p3s">เส้นขอบปิดสนิท พร้อมเข้าเลเซอร์ · CNC</span></div>
+        <div class="vtile" data-p="apparel"><b data-i18n="vec.p4">เสื้อผ้า &amp; งานปัก</b><span data-i18n="vec.p4s">ตัดรายละเอียดจิ๊บจ๊อยทิ้ง สีน้อย เหมาะกับสกรีน</span></div>
+      </div>
+
+      <div class="vadv">
+        <div class="vadvh" id="vecAdvH"><b>▸ <span data-i18n="vec.adv">ตั้งค่าละเอียด</span></b>
+          <em id="vecCk">—</em><em id="vecCs">—</em><em id="vecCt">—</em><em id="vecCg">—</em></div>
+        <div class="vadvb" id="vecAdvB">
+          <div class="vrow"><label data-i18n="vec.ck">จำนวนสี</label>
+            <input type="range" id="vecK" min="0" max="24" step="1" value="0" style="flex:1;min-width:150px">
+            <b id="vecKv" style="width:64px;text-align:right;color:var(--brand)">อัตโนมัติ</b></div>
+          <div class="vrow"><label data-i18n="vec.cs">ความเนียนของเส้น</label>
+            <span class="vseg" id="vecS" style="display:inline-flex"><button data-v="1" data-i18n="vec.lo">น้อย</button><button data-v="2" class="on" data-i18n="vec.mid">กลาง</button><button data-v="4" data-i18n="vec.hi">มาก</button></span></div>
+          <div class="vrow"><label data-i18n="vec.ct">จำนวนจุดบนเส้น</label>
+            <span class="vseg" id="vecT" style="display:inline-flex"><button data-v="0.3" data-i18n="vec.detail">ละเอียด</button><button data-v="0.5" class="on" data-i18n="vec.balance">สมดุล</button><button data-v="1.2" data-i18n="vec.light">เบา</button></span></div>
+          <div class="vrow"><label data-i18n="vec.cg">เติมรอยต่อระหว่างสี</label>
+            <span class="vseg" id="vecG" style="display:inline-flex"><button data-v="0" data-i18n="vec.off">ปิด</button><button data-v="0.4" class="on" data-i18n="vec.on">เปิด</button><button data-v="0.7" data-i18n="vec.strong">เปิดแรง</button></span></div>
+          <div class="vrow"><label data-i18n="vec.cbg">พื้นหลัง</label>
+            <span class="vseg" id="vecTr" style="display:inline-flex"><button data-v="-1" class="on" data-i18n="vec.auto">อัตโนมัติ</button><button data-v="1" data-i18n="vec.clear">โปร่งใส</button><button data-v="0" data-i18n="vec.fill">ทึบตามภาพ</button></span></div>
+          <div style="text-align:right"><button class="vbtn go" id="vecRe" style="padding:9px 18px;font-size:13px">↻ <span data-i18n="vec.redo">แปลงใหม่</span></button></div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;font-size:13px;font-weight:700;color:var(--ink)" data-i18n="vec.fmt">เลือกนามสกุลไฟล์</div>
+      <div class="vsub" style="margin-bottom:9px" data-i18n="vec.fmt2">เลือกได้หลายแบบพร้อมกัน</div>
+      <div class="vgrid vg4" id="vecFmt">
+        <div class="vtile on" data-f="svg"><b>SVG</b><span data-i18n="vec.fsvg">เว็บ &amp; แก้ไขต่อ</span></div>
+        <div class="vtile" data-f="pdf"><b>PDF</b><span data-i18n="vec.fpdf">พร้อมส่งโรงพิมพ์</span></div>
+        <div class="vtile" data-f="dxf"><b>DXF</b><span data-i18n="vec.fdxf">CAD · CNC · เลเซอร์</span></div>
+        <div class="vtile" data-f="eps"><b>EPS</b><span data-i18n="vec.feps">งานพิมพ์แบบเดิม</span></div>
+        <div class="vtile" data-f="png"><b>PNG</b><span data-i18n="vec.fpng">ภาพคมความละเอียดสูง</span></div>
+      </div>
+      <div class="vrow" style="margin-top:12px" id="vecPngRow">
+        <label data-i18n="vec.pngx">ขนาด PNG</label>
+        <span class="vseg" id="vecSc" style="display:inline-flex"><button data-v="1" data-i18n="vec.x1">เท่าต้นฉบับ</button><button data-v="2" class="on">2×</button><button data-v="4">4×</button><button data-v="8">8×</button></span>
+        <span id="vecScPx" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="vrow" id="vecDxfRow">
+        <label data-i18n="vec.dxfmm">ขนาดจริงของ DXF</label>
+        <input type="number" id="vecMM" value="0" min="0" step="10" style="width:110px;padding:6px 9px;border:1px solid var(--line2);border-radius:8px;font-family:inherit;font-size:12.5px">
+        <span style="font-size:12px;color:var(--muted)" data-i18n="vec.dxfmm2">มม. (กว้าง) · ใส่ 0 = 1 พิกเซล เท่ากับ 1 มม.</span>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+        <button class="vbtn go" id="vecDl">⬇ <span data-i18n="vec.dl">ดาวน์โหลด</span></button>
+        <button class="vbtn alt" id="vecToApp">📐 <span data-i18n="vec.toapp">ส่งเข้าหน้าออกแบบป้าย</span></button>
+        <button class="vbtn alt" id="vecBack2">← <span data-i18n="vec.back">ย้อนกลับ</span></button>
+        <span id="vecDlMsg" style="font-size:12.5px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 🎨 Vectora — ตัวควบคุมเมนูแปลงภาพเป็นเวกเตอร์ (แยกขอบเขตด้วย IIFE ไม่ชนโค้ดเดิม) */
+(function(){
+  var TH={
+    'vec.nav':'🎨 ภาพ → เวกเตอร์','vec.title':'แปลงภาพเป็นเวกเตอร์',
+    'vec.sub':'ภาพเบลอ/ความละเอียดต่ำ → เส้นเวกเตอร์คม ขยายได้ไม่จำกัด','vec.close':'ปิด',
+    'vec.s1':'เลือกภาพ','vec.s2':'ตรวจข้อมูลภาพ','vec.s3':'แปลง + ดาวน์โหลด',
+    'vec.h1':'เลือกภาพที่ต้องการแปลง','vec.h1s':'โลโก้ · ลายเส้น · ภาพสแกน · ภาพแคปหน้าจอ — ยิ่งขอบภาพมีการเกลี่ยสี ผลลัพธ์ยิ่งคม',
+    'vec.drop':'ลากไฟล์ภาพมาวางตรงนี้','vec.drop2':'หรือคลิกเพื่อเลือกไฟล์จากเครื่อง',
+    'vec.drop3':'JPG · PNG · GIF · BMP · WebP · TIFF — ไม่เกิน 30 MB',
+    'vec.h2':'ข้อมูลภาพที่อ่านได้','vec.h2s':'ดูให้แน่ใจว่าถูกไฟล์ก่อนกดแปลง',
+    'vec.convert':'แปลงเป็นเวกเตอร์','vec.change':'เปลี่ยนไฟล์','vec.h3':'ผลลัพธ์',
+    'vec.px':'พิกเซล','vec.vec':'เวกเตอร์','vec.useas':'ใช้งานแบบไหน','vec.useas2':'เลือกแล้วระบบแปลงใหม่ให้ทันที',
+    'vec.p1':'ใช้งานทั่วไป','vec.p1s':'รูปทึบสีตามต้นฉบับ ใช้ได้กับทุกโปรแกรม',
+    'vec.p2':'แก้ไขง่าย','vec.p2s':'จัดกลุ่มตามสี จุดน้อย ลาก/เปลี่ยนสีสะดวก',
+    'vec.p3':'ตัด & แกะสลัก','vec.p3s':'เส้นขอบปิดสนิท พร้อมเข้าเลเซอร์ · CNC',
+    'vec.p4':'เสื้อผ้า & งานปัก','vec.p4s':'ตัดรายละเอียดจิ๊บจ๊อยทิ้ง สีน้อย เหมาะกับสกรีน',
+    'vec.adv':'ตั้งค่าละเอียด','vec.ck':'จำนวนสี','vec.cs':'ความเนียนของเส้น','vec.ct':'จำนวนจุดบนเส้น',
+    'vec.cg':'เติมรอยต่อระหว่างสี','vec.cbg':'พื้นหลัง','vec.redo':'แปลงใหม่',
+    'vec.lo':'น้อย','vec.mid':'กลาง','vec.hi':'มาก','vec.detail':'ละเอียด','vec.balance':'สมดุล','vec.light':'เบา',
+    'vec.off':'ปิด','vec.on':'เปิด','vec.strong':'เปิดแรง','vec.auto':'อัตโนมัติ','vec.clear':'โปร่งใส','vec.fill':'ทึบตามภาพ',
+    'vec.fmt':'เลือกนามสกุลไฟล์','vec.fmt2':'เลือกได้หลายแบบพร้อมกัน',
+    'vec.fsvg':'เว็บ & แก้ไขต่อ','vec.fpdf':'พร้อมส่งโรงพิมพ์','vec.fdxf':'CAD · CNC · เลเซอร์',
+    'vec.feps':'งานพิมพ์แบบเดิม','vec.fpng':'ภาพคมความละเอียดสูง',
+    'vec.pngx':'ขนาด PNG','vec.x1':'เท่าต้นฉบับ','vec.dxfmm':'ขนาดจริงของ DXF','vec.dxfmm2':'มม. (กว้าง) · ใส่ 0 = 1 พิกเซล เท่ากับ 1 มม.',
+    'vec.dl':'ดาวน์โหลด','vec.toapp':'ส่งเข้าหน้าออกแบบป้าย','vec.back':'ย้อนกลับ'
+  };
+  var EN={
+    'vec.nav':'🎨 Image → Vector','vec.title':'Image → Vector',
+    'vec.sub':'Blurry or low-res image → crisp vector paths that scale forever','vec.close':'Close',
+    'vec.s1':'Pick image','vec.s2':'Check details','vec.s3':'Convert + download',
+    'vec.h1':'Pick the image to convert','vec.h1s':'Logos · line art · scans · screenshots — the more anti-aliasing on the edges, the sharper the result',
+    'vec.drop':'Drop your image here','vec.drop2':'or click to browse from your device',
+    'vec.drop3':'JPG · PNG · GIF · BMP · WebP · TIFF — up to 30 MB',
+    'vec.h2':'What we read from the file','vec.h2s':'Make sure it is the right file before converting',
+    'vec.convert':'Convert to vector','vec.change':'Change file','vec.h3':'Result',
+    'vec.px':'Pixels','vec.vec':'Vector','vec.useas':'What is it for','vec.useas2':'Pick one and it re-converts right away',
+    'vec.p1':'General use','vec.p1s':'Solid shapes true to the source, opens anywhere',
+    'vec.p2':'Easy to edit','vec.p2s':'Grouped by colour, fewer nodes, simple to recolour',
+    'vec.p3':'Cut & engrave','vec.p3s':'Fully closed outlines, ready for laser and CNC',
+    'vec.p4':'Apparel & stitching','vec.p4s':'Drops tiny detail, fewer colours, good for screen print',
+    'vec.adv':'Advanced','vec.ck':'Colour count','vec.cs':'Line smoothing','vec.ct':'Nodes on path',
+    'vec.cg':'Fill seams between colours','vec.cbg':'Background','vec.redo':'Re-convert',
+    'vec.lo':'Low','vec.mid':'Medium','vec.hi':'High','vec.detail':'Detailed','vec.balance':'Balanced','vec.light':'Light',
+    'vec.off':'Off','vec.on':'On','vec.strong':'Strong','vec.auto':'Auto','vec.clear':'Transparent','vec.fill':'Keep solid',
+    'vec.fmt':'Choose file formats','vec.fmt2':'You can pick more than one',
+    'vec.fsvg':'Web & further editing','vec.fpdf':'Print ready','vec.fdxf':'CAD · CNC · laser',
+    'vec.feps':'Legacy print','vec.fpng':'High-res raster',
+    'vec.pngx':'PNG size','vec.x1':'Original','vec.dxfmm':'Real size of DXF','vec.dxfmm2':'mm wide · 0 means 1 pixel = 1 mm',
+    'vec.dl':'Download','vec.toapp':'Send to sign designer','vec.back':'Back'
+  };
+  try{ for(var k in TH){ I18N.th[k]=TH[k]; } for(var k2 in EN){ I18N.en[k2]=EN[k2]; } }catch(e){}
+  function L(k){ try{ return (LANG==='en'?EN:TH)[k]||TH[k]; }catch(e){ return TH[k]; } }
+
+  var $=function(i){return document.getElementById(i);};
+  var API=(typeof window.API!=='undefined'&&window.API)?window.API:'';
+  var F=null, TOKEN=null, INFO=null, SVG='', BUSY=false, LAST=null;
+  var CFG={preset:'general',k:0,smooth:2,tol:0.5,gap:0.4,tr:-1};
+  var FMT={svg:1}, SC=2;
+
+  function open_(){ $('vecOverlay').style.display='block'; document.body.style.overflow='hidden';
+    try{ if(window.vcTrack)vcTrack('แปลงภาพเป็นเวกเตอร์'); }catch(e){} }
+  function close_(){ $('vecOverlay').style.display='none'; document.body.style.overflow=''; }
+  function step(n){
+    $('vecP1').style.display=n===1?'':'none'; $('vecP2').style.display=n===2?'':'none'; $('vecP3').style.display=n===3?'':'none';
+    [1,2,3].forEach(function(i){ var e=$('vstep'+i); e.className='vst'+(i===n?' on':(i<n?' ok':''));
+      e.querySelector('i').textContent=(i<n?'✓':i); });
+    try{ $('vecOverlay').scrollTop=0; }catch(e){}
+  }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  function kb(n){ return n<1024?n+' B':(n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB'); }
+
+  /* ── ขั้น 1 → 2 : อ่านข้อมูลภาพจริงจากหลังบ้าน ── */
+  function take(f){
+    if(!f)return; F=f;
+    var r=new FileReader(); r.onload=function(){ $('vecThumb').src=r.result; $('vecOrig').src=r.result; }; r.readAsDataURL(f);
+    var fd=new FormData(); fd.append('file',f);
+    $('vecInfo').innerHTML='<div style="grid-column:1/-1;padding:22px;text-align:center;color:var(--muted)">⏳ กำลังอ่านไฟล์…</div>';
+    $('vecNotes').innerHTML=''; step(2);
+    fetch(API+'/api/vec/analyze',{method:'POST',body:fd}).then(function(r){
+      if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
+      return r.json();
+    }).then(function(j){
+      INFO=j; paintInfo(j);
+      try{ $('vecMM').value=0; }catch(e){}
+    }).catch(function(e){
+      $('vecInfo').innerHTML='<div style="grid-column:1/-1;padding:18px;color:#EF4444">อ่านไฟล์ไม่สำเร็จ — '+esc(e.message||e)+'</div>';
+    });
+  }
+  function paintInfo(j){
+    var en=(typeof LANG!=='undefined'&&LANG==='en');
+    var rows=[
+      [en?'File name':'ชื่อไฟล์', esc(j.name)],
+      [en?'File type':'ชนิดไฟล์', j.format+' <em>· '+(j.lossy?(en?'lossy':'บีบอัดแบบสูญเสีย'):(en?'lossless':'ไม่สูญเสีย'))+'</em>'],
+      [en?'Dimensions':'ขนาดภาพ', j.width+' × '+j.height+' <em>px</em>'],
+      [en?'Total pixels':'ความละเอียดรวม', j.mp+' <em>MP</em>'],
+      [en?'Aspect ratio':'สัดส่วน', j.ratio],
+      [en?'File size':'ขนาดไฟล์', kb(j.bytes)],
+      [en?'Colour mode':'โหมดสี', j.mode+' <em>· '+(j.alpha?(en?'has transparency':'มีพื้นโปร่ง'):(en?'no transparency':'ไม่มีพื้นโปร่ง'))+'</em>'],
+      [en?'Embedded DPI':'DPI ที่ฝังมา', j.dpi?(j.dpi+' <em>dpi</em>'):'— <em>'+(en?'not set':'ไม่ระบุ')+'</em>'],
+      [en?'Distinct colours':'จำนวนสีต่างกัน', Number(j.colors).toLocaleString()],
+      [en?'Soft edge pixels':'พิกเซลขอบเบลอ', j.blur_pct+' <em>%</em>'],
+      [en?'Real print size':'พิมพ์จริงได้ถึง', j.print_in[0]+' × '+j.print_in[1]+' <em>in @300dpi</em>'],
+      [en?'After converting':'หลังแปลงแล้ว', (en?'unlimited':'ไม่จำกัด')]
+    ];
+    $('vecInfo').innerHTML=rows.map(function(r){return '<div><span>'+r[0]+'</span><b>'+r[1]+'</b></div>';}).join('');
+    $('vecNotes').innerHTML=(j.notes||[]).map(function(n){
+      var ic=n.kind==='ok'?'✅':(n.kind==='bad'?'⛔':'⚠️');
+      return '<div class="vnote '+n.kind+'">'+ic+' '+esc(en?n.en:n.th)+'</div>';
+    }).join('');
+  }
+
+  /* ── แปลงจริง ── */
+  function convert(){
+    if(!F||BUSY)return; BUSY=true;
+    var b=$('vecGo'), b2=$('vecRe'), old=b.innerHTML;
+    b.disabled=b2.disabled=true; b.innerHTML='⏳ กำลังแปลง…';
+    var fd=new FormData();
+    fd.append('file',F); fd.append('preset',CFG.preset); fd.append('k',CFG.k);
+    fd.append('smooth',CFG.smooth); fd.append('tol',CFG.tol); fd.append('gap',CFG.gap);
+    fd.append('transparent',CFG.tr);
+    fetch(API+'/api/vec/convert',{method:'POST',body:fd}).then(function(r){
+      if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
+      return r.json();
+    }).then(function(j){
+      TOKEN=j.token; SVG=j.svg; LAST=j;
+      $('vecSide').innerHTML=j.svg.replace('<svg ','<svg preserveAspectRatio="xMidYMid meet" ');
+      $('vecPal').innerHTML=(j.palette||[]).map(function(c){
+        return '<i title="rgb('+c.join(',')+')" style="background:rgb('+c.join(',')+')"></i>';}).join('');
+      $('vecCmp').style.aspectRatio=j.size[0]+'/'+j.size[1];
+      $('vecEng').textContent='engine ok · '+j.stats.seconds+'s';
+      paintSum(); pngLbl(); step(3);
+    }).catch(function(e){
+      alert((typeof LANG!=='undefined'&&LANG==='en'?'Convert failed — ':'แปลงไม่สำเร็จ — ')+(e.message||e));
+    }).then(function(){ BUSY=false; b.disabled=b2.disabled=false; b.innerHTML=old; });
+  }
+
+  function paintSum(){
+    if(!LAST)return;
+    var j=LAST, s=j.stats, en=(typeof LANG!=='undefined'&&LANG==='en');
+    $('vecSum').textContent=(F?F.name:'')+' · '+j.size[0]+' × '+j.size[1]+' px → '+
+      (en?'unlimited':'ขยายได้ไม่จำกัด')+' · '+s.colors+(en?' colours · ':' สี · ')+s.shapes+
+      (en?' shapes · ':' รูป · ')+s.nodes+(en?' nodes · ':' จุด · ')+(s.svg_bytes/1024).toFixed(1)+
+      ' KB · '+s.seconds+(en?' s':' วินาที');
+    $('vecCk').textContent=(en?'colours ':'สี ')+(CFG.k>0?CFG.k:(en?'auto → ':'อัตโนมัติ → ')+s.colors);
+    $('vecCs').textContent=(en?'smooth ':'เนียน ')+CFG.smooth;
+    $('vecCt').textContent=(en?'nodes ':'จุด ')+CFG.tol;
+    $('vecCg').textContent=(en?'seam ':'รอยต่อ ')+CFG.gap;
+  }
+  function paintLangBtns(){
+    document.querySelectorAll('#vecLang button').forEach(function(b){
+      var on=(typeof LANG!=='undefined'&&b.dataset.l===LANG);
+      b.style.background=on?'var(--brand)':'#1e293b'; b.style.color=on?'#fff':'#94a3b8';
+    });
+  }
+  function pngLbl(){
+    if(!INFO)return;
+    $('vecScPx').textContent='→ '+Math.round(INFO.width*SC)+' × '+Math.round(INFO.height*SC)+' px';
+    $('vecPngRow').style.display=FMT.png?'':'none';
+    $('vecDxfRow').style.display=FMT.dxf?'':'none';
+  }
+
+  /* ── ดาวน์โหลดจริง ── */
+  function dl(){
+    if(!TOKEN)return;
+    var list=Object.keys(FMT).filter(function(f){return FMT[f];});
+    if(!list.length){ $('vecDlMsg').textContent=L('vec.fmt2'); return; }
+    var mm=parseFloat($('vecMM').value||'0')||0;
+    var mmpp=(mm>0&&INFO)?(mm/INFO.width):0;
+    $('vecDlMsg').textContent='⏳ '+list.length+' file(s)…';
+    list.forEach(function(f,i){
+      setTimeout(function(){
+        var u=API+'/api/vec/export?token='+encodeURIComponent(TOKEN)+'&fmt='+f+'&scale='+SC+'&mm_per_px='+mmpp;
+        var a=document.createElement('a'); a.href=u; a.download=''; document.body.appendChild(a); a.click(); a.remove();
+        if(i===list.length-1)setTimeout(function(){ $('vecDlMsg').textContent='✓ '+list.join(', ').toUpperCase(); },400);
+      }, i*450);
+    });
+  }
+
+  /* ── ส่งต่อเข้าหน้าออกแบบป้าย (SVG ที่ได้ = ไฟล์เวกเตอร์ต้นทางชั้นดี) ── */
+  function toApp(){
+    if(!SVG)return;
+    try{
+      var base=(F&&F.name?F.name.replace(/\.[^.]+$/,''):'vector');
+      var file=new File([SVG],base+'.svg',{type:'image/svg+xml'});
+      close_();
+      if(typeof window.pick==='function'){ window.pick(file); }
+      else{ var dt=new DataTransfer(); dt.items.add(file); var fi=$('fileInput'); fi.files=dt.files;
+            fi.dispatchEvent(new Event('change')); }
+    }catch(e){ alert('ส่งต่อไม่สำเร็จ — '+e); }
+  }
+
+  /* ── ต่อสาย ── */
+  function wire(){
+    var nav=document.createElement('button');
+    nav.className='nav-btn'; nav.id='btnVec'; nav.type='button';
+    nav.setAttribute('data-i18n','vec.nav'); nav.textContent=L('vec.nav');
+    nav.style.cssText='background:#7c3aed;color:#fff;font-weight:700;border-color:#7c3aed;white-space:nowrap';
+    var host=document.querySelector('nav .nav-right'), anchor=$('btnWall');
+    if(host){ host.insertBefore(nav, anchor||host.firstChild); }
+    nav.onclick=open_; $('vecClose').onclick=close_;
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&$('vecOverlay').style.display==='block')close_(); });
+
+    var d=$('vecDrop'), fi=$('vecFile');
+    d.onclick=function(){ fi.click(); };
+    d.addEventListener('dragover',function(e){e.preventDefault();d.classList.add('hot');});
+    d.addEventListener('dragleave',function(){d.classList.remove('hot');});
+    d.addEventListener('drop',function(e){e.preventDefault();d.classList.remove('hot');
+      if(e.dataTransfer.files[0])take(e.dataTransfer.files[0]);});
+    fi.onchange=function(){ if(fi.files[0])take(fi.files[0]); };
+
+    $('vecGo').onclick=convert; $('vecRe').onclick=convert;
+    $('vecBack1').onclick=function(){ step(1); }; $('vecBack2').onclick=function(){ step(2); };
+    $('vecDl').onclick=dl; $('vecToApp').onclick=toApp;
+
+    $('vecAdvH').onclick=function(){ var b=$('vecAdvB'); b.classList.toggle('open');
+      this.querySelector('b').innerHTML=(b.classList.contains('open')?'▾':'▸')+' <span data-i18n="vec.adv">'+L('vec.adv')+'</span>'; };
+
+    document.querySelectorAll('#vecPreset .vtile').forEach(function(t){ t.onclick=function(){
+      document.querySelectorAll('#vecPreset .vtile').forEach(function(x){x.classList.remove('on');});
+      t.classList.add('on'); CFG.preset=t.dataset.p;
+      var P={general:[0,2,0.5,0.4],edit:[6,3,1.2,0.5],cnc:[4,2,0.4,0.6],apparel:[5,4,1.5,0.8]}[CFG.preset];
+      CFG.k=P[0]; CFG.smooth=P[1]; CFG.tol=P[2]; CFG.gap=P[3];
+      $('vecK').value=CFG.k; $('vecKv').textContent=CFG.k>0?CFG.k:L('vec.auto');
+      seg('vecS',CFG.smooth); seg('vecT',CFG.tol); seg('vecG',CFG.gap);
+      convert(); }; });
+
+    document.querySelectorAll('#vecFmt .vtile').forEach(function(t){ t.onclick=function(){
+      t.classList.toggle('on'); FMT[t.dataset.f]=t.classList.contains('on'); pngLbl(); }; });
+
+    $('vecK').oninput=function(){ CFG.k=parseInt(this.value,10);
+      $('vecKv').textContent=CFG.k>0?CFG.k:L('vec.auto'); };
+    bindSeg('vecS',function(v){CFG.smooth=parseInt(v,10);});
+    bindSeg('vecT',function(v){CFG.tol=parseFloat(v);});
+    bindSeg('vecG',function(v){CFG.gap=parseFloat(v);});
+    bindSeg('vecTr',function(v){CFG.tr=parseInt(v,10);});
+    bindSeg('vecSc',function(v){ SC=parseFloat(v); pngLbl(); });
+
+    document.querySelectorAll('#vecLang button').forEach(function(b){
+      b.onclick=function(){
+        try{ window.setLang(b.dataset.l); }catch(e){}
+        paintLangBtns();
+        if(INFO)paintInfo(INFO);
+        paintSum();
+        $('vecKv').textContent=CFG.k>0?CFG.k:L('vec.auto');
+        var ab=$('vecAdvB');
+        $('vecAdvH').querySelector('b').innerHTML=(ab.classList.contains('open')?'▾':'▸')+' <span data-i18n="vec.adv">'+L('vec.adv')+'</span>';
+      };
+    });
+    slider($('vecCmp'),$('vecBarH'),$('vecSide'));
+    try{ applyLang(); }catch(e){}
+    paintLangBtns();
+    fetch(API+'/api/vec/ping').then(function(r){return r.json();}).then(function(j){
+      $('vecEng').textContent=j.ok?'engine ready':''; }).catch(function(){ $('vecEng').textContent=''; });
+  }
+  function bindSeg(id,cb){ document.querySelectorAll('#'+id+' button').forEach(function(b){
+    b.onclick=function(){ document.querySelectorAll('#'+id+' button').forEach(function(x){x.classList.remove('on');});
+      b.classList.add('on'); cb(b.dataset.v); }; }); }
+  function seg(id,v){ document.querySelectorAll('#'+id+' button').forEach(function(b){
+    b.classList.toggle('on', parseFloat(b.dataset.v)===parseFloat(v)); }); }
+  function slider(c,bar,side){
+    var down=false;
+    function set(x){ var r=c.getBoundingClientRect();
+      var p=Math.max(2,Math.min(98,(x-r.left)/r.width*100));
+      bar.style.left=p+'%'; side.style.clipPath='inset(0 0 0 '+p+'%)'; }
+    c.addEventListener('mousedown',function(e){down=true;set(e.clientX);});
+    window.addEventListener('mousemove',function(e){ if(down)set(e.clientX); });
+    window.addEventListener('mouseup',function(){down=false;});
+    c.addEventListener('touchmove',function(e){ set(e.touches[0].clientX); },{passive:true});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+</script>
+
 </body>
 </html>
