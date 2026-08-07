@@ -11794,7 +11794,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     $('vecCg').textContent=(en?'seam ':'รอยต่อ ')+CFG.gap;
     /* 🔍 ต้องบอกผู้ใช้เสมอว่าคำนวณที่ความละเอียดเท่าไหร่ — ห้ามย่อภาพเงียบ ๆ */
     var w=$('vecWarn');
-    if(s.downscaled){
+    if(s.upscaled && s.upscaled > 1.5){
+      w.innerHTML='<div class="vnote warn">🔎 '+(en
+        ? ('This file is '+j.size[0]+' × '+j.size[1]+' px, but its real detail is only about '
+           +s.true_px[0]+' × '+s.true_px[1]+' px — it was enlarged from a smaller image. '
+           +'The engine worked at '+s.work_px[0]+' × '+s.work_px[1]+' px to match the real detail, '
+           +'so the paths follow the artwork instead of the enlarged pixel blocks. '
+           +'For a sharper result, use the original file at its native size.')
+        : ('ไฟล์นี้ขนาด '+j.size[0]+' × '+j.size[1]+' px แต่เนื้อรายละเอียดจริงมีแค่ราว '
+           +s.true_px[0]+' × '+s.true_px[1]+' px — ถูกขยายมาจากภาพเล็ก '
+           +'ระบบจึงคำนวณที่ '+s.work_px[0]+' × '+s.work_px[1]+' px ให้ตรงกับเนื้อจริง '
+           +'เส้นจะได้เดินตามลายจริง ไม่ใช่ไต่ตามบล็อกพิกเซลที่ถูกขยาย '
+           +'ถ้าอยากได้คมกว่านี้ ใช้ไฟล์ต้นฉบับขนาดจริงจะดีที่สุด'))+'</div>';
+    } else if(s.downscaled){
       w.innerHTML='<div class="vnote warn">⚠️ '+(en
         ? ('Image is '+j.size[0]+' × '+j.size[1]+' px — larger than the '+s.work_px[0]+' × '+s.work_px[1]
            +' processing ceiling, so some detail was lost. Resize it below that and re-run for full detail.')

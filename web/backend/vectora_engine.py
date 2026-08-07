@@ -83,6 +83,9 @@ def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
 # 1) ลดจำนวนสี
 # ══════════════════════════════════════════════════════════════════
 def _kmeans_lab(X, k, seed=0, sample=60000):
+    # ⚠️ cv2.kmeans ใช้ RNG ของ OpenCV เอง ไม่เกี่ยวกับ numpy
+    #    ถ้าไม่ล็อกเมล็ด ภาพเดิมกดแปลงสองครั้งจะได้จานสีคนละชุด (เจอจริงตอนทดสอบ)
+    cv2.setRNGSeed(int(seed) + 12345)
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(X), size=min(sample, len(X)), replace=False)
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.5)
@@ -151,6 +154,96 @@ def merge_blends(cen, counts, max_share=0.08, t_lo=0.12, t_hi=0.88, dperp=13.0):
             alive.discard(i)
     keep = sorted(alive)
     return cen[keep]
+
+
+def detect_scale(img_rgb, thr=20.0, ladder=(2, 3, 4, 6, 8, 12), cap=10.0):
+    """🔎 หา 'ความละเอียดจริง' ของภาพ — ไม่ใช่ตัวเลขที่เขียนไว้ในไฟล์
+
+    ⚠️ เคสจริงจากผู้ใช้ (2026-08-07): ไฟล์บอก 2362 × 2362 px
+       แต่ย่อลง 8 เท่าแล้วขยายกลับ ภาพแทบไม่ต่างจากเดิม = เนื้อจริงมีแค่ราว 295 px
+       ที่เหลือคือการขยายเปล่า ๆ ทำให้ 'พิกเซลที่ตาเห็น' กว้างบล็อกละ 8 px
+       เครื่องแปลงจึงเดินเส้นไต่ขั้นบันไดของบล็อก ออกมาเป็นขอบหยักเป็นคลื่น
+
+    ⚠️ กับดักรอบสอง: วัดความคลาด 'เฉลี่ยทั้งภาพ' ใช้ไม่ได้
+       พื้นที่ว่างกินสัดส่วนเกือบทั้งภาพและไม่คลาดเลย ค่าเฉลี่ยจึงต่ำเสมอ
+       โลโก้ที่มีเส้นบางจริง (ขนตา · รูม่านตา) เลยถูกตัดสินว่า 'ขยายมา 10 เท่า'
+       แล้วโดนย่อจนรายละเอียดหาย (เจอจริงกับไฟล์ Baron's)
+    ✅ วัดเฉพาะ 'พิกเซลที่เป็นขอบ' — ที่เดียวที่มีข้อมูลจริงอยู่
+       วัดจริง 3 ไฟล์: ลายเส้นหมู ÷4 · Baron's ÷3 (เส้นบางเยอะ) · Ginger ÷8
+    """
+    H, W = img_rgb.shape[:2]
+    g = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    m = np.hypot(cv2.Sobel(g, cv2.CV_32F, 1, 0, 3), cv2.Sobel(g, cv2.CV_32F, 0, 1, 3))
+    if m.max() <= 0:
+        return 1.0
+    e = cv2.dilate((m > m.max() * 0.08).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    if int(e.sum()) < 200:
+        return 1.0
+    ok = 1.0
+    for f in ladder:
+        if min(W, H) // f < 64:
+            break
+        sm = cv2.resize(img_rgb, (W // f, H // f), interpolation=cv2.INTER_AREA)
+        bk = cv2.resize(sm, (W, H), interpolation=cv2.INTER_CUBIC)
+        d = np.abs(img_rgb.astype(np.float32) - bk.astype(np.float32)).mean(2)
+        if float(d[e].mean()) > float(thr):
+            break
+        ok = float(f)
+    return min(ok, float(cap))
+
+
+def stroke_px(img_rgb, pct=10):
+    """ความหนาของ 'เส้นที่บางที่สุด' ในภาพ (หน่วยพิกเซล)
+
+    ⚠️ บทเรียนสำคัญ: จะย่อภาพลงเท่าไหร่ ตัดสินจาก 'ความคลาดของภาพ' อย่างเดียวไม่ได้
+       โลโก้ Ginger ย่อได้ 8 เท่าโดยภาพแทบไม่เปลี่ยน — แต่ตัวอักษรมีเส้นบางสุด 6 px
+       ย่อ 8 เท่าแล้วเหลือไม่ถึง 1 px ตัวอักษรจึงแตกเป็นก้อน ๆ อ่านไม่ออก (เจอจริง)
+    ✅ วัดความหนาเส้นจริงจากแกนกลาง (distance transform ที่โครงกระดูก)
+       แล้วบังคับว่าหลังย่อแล้วเส้นบางสุดต้องเหลืออย่างน้อย ~8 px
+    """
+    try:
+        from skimage.morphology import skeletonize
+        g = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        th = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        if (th > 0).mean() > 0.5:
+            th = 255 - th
+        if (th > 0).sum() < 200:
+            return 999.0
+        d = cv2.distanceTransform(th, cv2.DIST_L2, 5)
+        sk = skeletonize(th > 0)
+        v = d[sk]
+        if v.size < 20:
+            return 999.0
+        return float(2.0 * np.percentile(v, pct))
+    except Exception:
+        return 999.0
+
+
+def noise_sigma(img_rgb):
+    """ประเมินระดับจุดรบกวนของภาพ (วิธี Immerkær) — เร็วมาก ใช้ตัดสินว่าต้องกรองก่อนไหม"""
+    g = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    K = np.array([[1, -2, 1], [-2, 4, -2], [1, -2, 1]], np.float32)
+    r = cv2.filter2D(g, -1, K)
+    H, W = g.shape
+    return float(np.abs(r).sum() * math.sqrt(0.5 * math.pi) / (6.0 * max((W - 2) * (H - 2), 1)))
+
+
+def prefilter(img_rgb, R, thr=2.2):
+    """🧽 กรองจุดรบกวนก่อนแยกสี — เฉพาะภาพที่มีจริงเท่านั้น
+
+    ⚠️ ทำไมต้องกรองก่อน ไม่ใช่กรองทีหลัง: จุดรบกวนทำให้ K-means มองเห็น 'สีปลอม'
+       เคสวัดจริง ลายเส้นขาวดำที่มีจุดรบกวน -> ระบบแยกได้ 4 สี แล้วแตกเป็น 1,788 ชิ้น
+       ต่อให้ไปเกลาเส้นทีหลังแค่ไหนก็แก้ไม่ได้ เพราะมันผิดตั้งแต่ขั้นแยกสีแล้ว
+    ✅ ใช้ bilateral — เกลาเนื้อในให้เรียบแต่ 'รักษาขอบ' ไว้ ไม่ทำให้ขอบเบลอเหมือนเบลอธรรมดา
+       ภาพสะอาด (ค่าประเมินต่ำกว่าเกณฑ์) จะไม่ถูกแตะเลย
+    """
+    n = noise_sigma(img_rgb)
+    if n <= thr:
+        return img_rgb, round(n, 2), 0
+    d = int(np.clip(round(3 + 2 * R), 5, 13)) | 1
+    out = cv2.bilateralFilter(img_rgb, d, float(np.clip(n * 3.0, 12, 90)),
+                              float(np.clip(1.2 * R, 2, 12)))
+    return out, round(n, 2), d
 
 
 def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000):
@@ -275,9 +368,85 @@ def _smooth(p, k, keep_corner=True, corner_deg=45.0):
     return sm
 
 
-def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2):
+def denoise_field(field, sigma):
+    """🪄 เกลา 'สนามความเป็นสี' ก่อนลากเส้น — หัวใจของความเนียน
+
+    ทำไมต้องเกลาที่สนาม ไม่ใช่เกลาที่เส้นทีหลัง:
+      • เบลอแบบเกาส์เซียนไม่ขยับ 'ระดับ 0.5' ของขอบตรง — ตำแหน่งขอบจึงอยู่ที่เดิมเป๊ะ
+        (ขอบเป็นทางลาดสมมาตร เบลอแล้วยังสมมาตร จุดกึ่งกลางไม่เลื่อน)
+      • แต่คลื่นหยึกหยักเล็ก ๆ จากรอยบีบอัด/สแกน จะถูกเฉลี่ยหายไป
+      • ถ้าไปเกลาที่เส้นทีหลังแทน จะได้เส้นหดและมุมมน = เสียรูป
+
+    ⚠️ บทเรียน 2026-08-07: ค่าเกลาเดิมเป็น 'จำนวนจุดคงที่' ซึ่งจูนไว้กับภาพ 250-500 px
+       พอเจอภาพ 2362 px มันอ่อนไป 10 เท่า -> ขอบที่หยาบนิดเดียวกลายเป็นขั้นบันไดเต็มรูป
+       เคสวัดจริง: ลายเส้นขอบหยาบ 2362 px ได้ 29,665 รูป / 215,121 จุด
+    ✅ ความแรงต้องโตตามความละเอียดภาพเสมอ
+    """
+    if sigma is None or sigma <= 0.05:
+        return field
+    return cv2.GaussianBlur(field, (0, 0), float(sigma), borderType=cv2.BORDER_REPLICATE)
+
+
+def kink_ratio(cs, look=6, deg=45.0):
+    """ความหยึกหยัก = จำนวน 'จุดหักศอก' ต่อความยาวเส้น 100 พิกเซล
+
+    ⚠️ อย่านับเป็นสัดส่วนของจำนวนจุด — รูปที่มีมุมจริง (สี่เหลี่ยมข้าวหลามตัด) จะถูกตัดสินว่าหยาบ
+       แล้วโดนเกลาทั้งที่ไม่ควร (วัดจริง: โลโก้สีสะอาดโดนเกลา σ0.96 ฟรี RMS แย่ลง 20.3 -> 25.3)
+    ✅ มุมจริงมี 'ไม่กี่จุดต่อความยาวมาก' · ขอบเป็นขั้นบันไดมี 'จุดหักถี่ตลอดเส้น'
+       นับเป็นจำนวนกระจุกมุมต่อระยะทางจึงแยกสองอย่างนี้ออกจากกันได้จริง
+    """
+    clusters = 0
+    length = 0.0
+    for c in cs:
+        a = np.asarray(c, float)
+        if len(a) < 4:
+            continue
+        length += float(np.hypot(*(np.diff(np.vstack([a, a[:1]]), axis=0).T)).sum())
+        if len(a) < 2 * look + 3:
+            clusters += 2                      # เส้นสั้นมาก = เศษจุดรบกวน นับเป็นความหยาบ
+            continue
+        idx = np.flatnonzero(corner_mask(a, deg, look))
+        prev = -99
+        for i in idx:                          # รวมจุดที่ติดกันให้เป็นมุมเดียว
+            if i - prev > 3:
+                clusters += 1
+            prev = i
+    return clusters / max(length / 100.0, 1e-6)
+
+
+def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
+                      target=1.5, grow_rate=1.7, max_round=5, max_pieces=250):
+    """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
+
+    ⚠️ บทเรียน 2026-08-07 (พลาดสองรอบกว่าจะได้): ความแรงการเกลาจะตั้ง 'ตายตัว' ไม่ได้
+       • ตั้งอ่อน  -> ภาพขอบหยาบ/ถูกขยายมา ออกมาเป็นขั้นบันได (เคสจริง 29,665 รูป)
+       • ตั้งแรง   -> ภาพลายเส้นสะอาด โดนเกลาจนเสียรูป (RMS แย่ลงจาก 9.1 เป็น 19.4)
+       • ตั้งตามขนาดภาพ -> ก็ยังผิด เพราะภาพ 2400 px ที่สะอาดกับที่หยาบต้องการคนละค่า
+    ✅ วัด 'ความหยึกหยักที่เกิดขึ้นจริง' แล้วเพิ่มความเกลาทีละขั้นจนกว่าจะเนียนพอ
+       ภาพสะอาดจึงจบตั้งแต่รอบแรกด้วยค่าเกลาน้อยสุด — ไม่โดนทำร้ายฟรี ๆ
+    """
+    # 🪜 ไล่ทีละขั้น เริ่มจาก 'ไม่เกลาเลย' — ภาพสะอาดจึงได้ผลดิบที่คมที่สุดตามเดิม
+    #    (เคยตั้งขั้นแรกไว้ 0.45 แล้วภาพสะอาดโดนเกลาฟรี ๆ RMS แย่ลง 9.1 -> 10.6)
+    ladder = [float(sigma0)] if float(sigma0) > 0.01 else [0.0]
+    v = max(0.45, float(sigma0)) * 1.7 if float(sigma0) > 0.01 else 0.45
+    while v < float(sigma_max) * 1.05:
+        ladder.append(round(v, 2)); v *= float(grow_rate)
+    ladder.append(round(float(sigma_max), 2))
+    cs = []; sig = 0.0
+    for sig in ladder[:int(max_round)]:
+        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig) if abs(_area(c)) >= min_area]
+        if not cs or sig >= sigma_max:
+            break
+        # ชั้นสีเดียวที่แตกเป็นร้อยชิ้น = จุดรบกวน ไม่ใช่ลวดลายจริง -> เกลาต่อ
+        if kink_ratio(cs) <= float(target) and len(cs) <= int(max_pieces):
+            break
+    return cs, sig
+
+
+def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2, sigma=0.0):
     """⚠️ ต้องเติมขอบค่า 0 รอบสนามก่อนเสมอ
     ย่านสีที่ชนขอบภาพ (เช่นพื้นหลัง) จะได้คอนทัวร์เปิด ปิดรูปไม่ได้ -> หายทั้งชั้น"""
+    field = denoise_field(field, sigma)
     f = np.pad(field, pad, mode="constant", constant_values=0.0)
     out = []
     for c in measure.find_contours(f, level):
@@ -409,7 +578,9 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     # ทำงานที่ความละเอียดเต็มเสมอ — ย่อเฉพาะภาพที่ใหญ่จนแรมไม่ไหวจริง ๆ (และต้องรายงาน)
     mp = W0 * H0 / 1e6
     sc = 1.0
+    mp_capped = False
     if mp > MAX_WORK_MP:
+        mp_capped = True
         sc = (MAX_WORK_MP / mp) ** 0.5
         img = cv2.resize(img, (max(1, int(round(W0 * sc))), max(1, int(round(H0 * sc)))),
                          interpolation=cv2.INTER_AREA)
@@ -433,28 +604,81 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             img = (img.astype(np.float32) * a3 + 255.0 * (1 - a3)).astype(np.uint8)
         alpha = None
 
+    # ══════════════════════════════════════════════════════════════
+    # 🔎 ความละเอียด "จริง" ของเนื้อภาพ — ต้องหาก่อนทำอย่างอื่นทั้งหมด
+    #    ไฟล์จากผู้ใช้จำนวนมากเป็นไอคอนเล็กที่ถูกขยายมาเปล่า ๆ
+    #    ถ้าไปเดินเส้นตามตัวเลขที่ไฟล์บอก จะได้เส้นที่ไต่ขั้นบันไดของ 'บล็อกพิกเซล'
+    #    ที่กว้างบล็อกละ 8-16 px ออกมาเป็นขอบหยักเป็นคลื่น (เคสจริงของผู้ใช้)
+    # ══════════════════════════════════════════════════════════════
+    F = detect_scale(img)
+    # 🛡️ เพดานที่สอง: ห้ามย่อจนเส้นบางที่สุดในภาพเหลือน้อยกว่า 8 px
+    _sw = stroke_px(img)
+    F = min(F, max(1.0, _sw / 8.0))
+    if F > 1.5:
+        _w = float(np.clip(F, 1.0, 8.0))               # เกณฑ์วัดขอบเข้มพออยู่แล้ว ไม่ต้องหารเผื่ออีก
+        nw, nh = max(32, int(round(W / _w))), max(32, int(round(H / _w)))
+        img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+        if af is not None:
+            af = cv2.resize(af, (nw, nh), interpolation=cv2.INTER_AREA)
+        if keep is not None:
+            keep = cv2.resize(keep.astype(np.uint8), (nw, nh), interpolation=cv2.INTER_NEAREST) > 0
+        sc *= float(nw) / float(W)
+        W, H = nw, nh
+
+    img, nz, nd = prefilter(img, max(1.0, max(W, H) / 500.0))
     pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
 
     b1, b2, l1, l2 = nearest2(lab, pal_lab)
     del lab                                            # ไม่ต้องใช้อีกแล้ว คืนแรมทันที
     labels = l1
-    # 🧹 เกณฑ์ 'เศษเล็กเกินกว่าจะเป็นของจริง' ต้องโตตามขนาดภาพ
-    #    ค่าคงที่ 4 px² ที่พอดีกับภาพ 250px จะกลายเป็นจุดฝุ่นนับพันในภาพ 2400px
-    #    (เคสจริงของพี่: ลายเส้นหมู ได้ 1,054 รูป ทั้งที่ควรมีไม่กี่สิบ)
-    min_a = max(float(cfg["min_area"]), (max(W, H) * 0.0025) ** 2)
+
+    # ══════════════════════════════════════════════════════════════
+    # 📏 ปรับค่าทุกตัวที่มีหน่วยเป็น "พิกเซล" ให้โตตามความละเอียดภาพ
+    #    ค่าตั้งต้นทั้งชุดจูนไว้กับภาพราว 500 px — ถ้าเอาไปใช้กับภาพ 2400 px ตรง ๆ
+    #    มันจะอ่อนลง 5 เท่าโดยอัตโนมัติ กลายเป็น "ตามรอยหยึกหยักของไฟล์" แทนที่จะเกลา
+    # ══════════════════════════════════════════════════════════════
+    R = max(1.0, max(W, H) / 500.0)                    # ตัวคูณตามความละเอียด
+    # ⚠️ ห้ามตั้งความเกลาขั้นต่ำตามขนาดภาพ — ภาพสะอาดจะโดนเกลาฟรี (RMS แย่ลง 9.1 -> 11.5)
+    #    แต่ถ้ารู้แน่ว่าภาพ 'ถูกขยายมา' ก็ไม่มีรายละเอียดย่อยพิกเซลให้รักษาอยู่แล้ว
+    #    ขอบที่เหลือเป็นทางลาดฟุ้ง ๆ ซึ่งแกว่งข้ามเกณฑ์ 0.5 ไปมา -> เกิดรอยแหว่งเว้าในเส้น
+    #    (เจอจริงกับไฟล์ลายเส้นหมูและ Ginger ของผู้ใช้) จึงตั้งพื้นความเกลาไว้เล็กน้อย
+    sig0 = 0.7 if F > 1.5 else 0.0
+    sigM = float(np.clip(cfg["smooth"] * 0.55 * R, 1.2, 9.0))   # เพดานเกลา (ภาพหยาบไต่ขึ้นไปได้ถึงนี่)
+    tgt = {1: 3.0, 2: 1.5, 3: 1.0, 4: 0.6}.get(int(cfg["smooth"]), 1.5)   # มุมหักต่อ 100 px ที่ยอมได้
+    tol_e = float(cfg["tol"])                          # ระยะยอมคลาดตอนฟิตเบซิเยร์
+    #      ⚠️ ห้ามคูณตามความละเอียด — คูณแล้วจุดน้อยลงจริง แต่ความตรงกับต้นฉบับแย่ลง
+    #         (วัดจริง: คูณ R^0.5 ได้ 892 จุด RMS 10.7 · ไม่คูณได้ 1175 จุด RMS 9.1)
+    #         ผู้ใช้ปรับเองได้ที่ "จำนวนจุดบนเส้น" ถ้าอยากได้ไฟล์เล็กกว่า
+    # ⚠️ 'เติมรอยต่อ' ห้ามคูณตามความละเอียด — มันคือการปิดรอยต่อระดับเศษพิกเซล
+    #    ซึ่งกว้างเท่าเดิมเสมอไม่ว่าภาพจะใหญ่แค่ไหน · เคยคูณ R แล้วภาพ 2362px
+    #    โดนดันขอบออก 1.9 px ทุกเส้น = ลายเส้นอ้วนขึ้น 3.8 px (RMS แย่ลงจาก 9.1 เป็น 18.5)
+    # ⚠️ การเกลาสนามสีทำให้รูปนูนหดเข้านิดหน่อย · สองสีที่ติดกันหดพร้อมกัน = เกิดเส้นขาวคั่น
+    #    (วัดจริง: โลโก้สีเปิดเกลา σ0.96 แล้วมีขาวแทรก 1,313 พิกเซล จาก 0)
+    #    จึงต้องชดเชยระยะดันขอบตามความแรงที่เกลาไปจริง ๆ ของแต่ละชั้น
+    gap_e = float(cfg["gap"])
+    # ภาพที่ถูกขยายมา ขอบจะฟุ้ง เกิดเศษเล็ก ๆ ง่าย -> ตัดเกณฑ์ให้สูงขึ้นตามส่วน
+    min_a = max(float(cfg["min_area"]) * R * R, (max(W, H) * (0.006 if F > 1.5 else 0.0035)) ** 2)
+    hole_mul = 8.0 if F > 1.5 else 1.0                 # ภาพถูกขยายมา = มีรอยด่างในเนื้อเส้นแน่
+    sig_used = []
     layers = []
     for i in range(len(pal_lab)):
         n = int((labels == i).sum() if keep is None else ((labels == i) & keep).sum())
         if n < 3:
             continue
         f = coverage_field(i, b1, b2, l1, l2, alpha=af)
-        cs = [c for c in contours_of(f, 0.5, int(cfg["smooth"]))
-              if abs(_area(c)) >= min_a]
+        cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
+                                   sigma_max=sigM, target=tgt)
+        # 🕳️ 'รู' ที่เล็กมาก ๆ ไม่ใช่ของที่ออกแบบมา — เป็นรอยด่างจากการบีบอัดในเนื้อเส้น
+        #    (เคสจริง: ลายเส้นหมูมีแถบจาง ๆ กลางเส้น กลายเป็นรอยแหว่งเว้าบนขอบ)
+        #    รูจริงในงานออกแบบ (ช่องตัวอักษร · เลนส์แว่น) ใหญ่กว่านี้หลายเท่าเสมอ
+        if hole_mul > 1.0:
+            cs = [c for c in cs if _area(c) >= 0 or abs(_area(c)) >= min_a * hole_mul]
         if not cs:
             continue
+        sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
         layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
-                       "items": to_bezier(grow(cs, float(cfg["gap"])), float(cfg["tol"]))})
+                       "items": to_bezier(grow(cs, gap_e + 0.6 * sg), tol_e)})
     layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
 
     # ขยายพิกัดคืนขนาดจริง
@@ -470,11 +694,17 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     nodes = sum(len(it[2]) if it[0] == "B" else len(it[1]) for L in layers for it in L["items"])
     stats = {"colors": len(layers), "shapes": sum(len(L["items"]) for L in layers),
              "nodes": int(nodes), "work_px": [W, H], "scale": round(sc, 4),
-             "full_res": bool(sc == 1.0),          # 👈 ต้องเป็น true เสมอสำหรับภาพขนาดปกติ
-             "downscaled": (None if sc == 1.0 else
+             "full_res": bool(sc == 1.0),
+             # ⚠️ ต้องแยก 'ย่อเพราะภาพใหญ่เกินเครื่องรับไหว' ออกจาก 'คำนวณตามความละเอียดจริง'
+             #    สองอย่างนี้คนละเรื่องกัน ถ้ารวมเป็นข้อความเดียวผู้ใช้จะเข้าใจผิดว่ารายละเอียดหาย
+             "downscaled": (None if not mp_capped else
                             "ภาพใหญ่ %.1f ล้านพิกเซล เกินเพดาน %.0f — คำนวณที่ %d × %d "
                             "(รายละเอียดบางส่วนหายไป)" % (mp, MAX_WORK_MP, W, H)),
-             "min_area_px": round(min_a, 1),
+             "min_area_px": round(min_a, 1), "res_mul": round(R, 2),
+             "noise": nz, "denoise_d": nd, "upscaled": round(F, 1), "stroke_px": round(_sw, 1),
+             "true_px": [int(round(W0 / F)), int(round(H0 / F))] if F > 1.5 else [W0, H0],
+             "sigma": round(float(np.mean(sig_used)), 2) if sig_used else 0.0,
+             "sigma_max": round(sigM, 2), "tol_px": round(tol_e, 2), "gap_px": round(gap_e, 2),
              "transparent": bool(want_alpha), "seconds": round(time.time() - t0, 3),
              "preset": preset, "cfg": cfg}
     return {"layers": layers, "size": (W0, H0), "bg": bg, "stats": stats}
