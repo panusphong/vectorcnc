@@ -20,7 +20,13 @@ import cv2
 import numpy as np
 from skimage import measure
 
-MAX_WORK_PX = 1600          # ด้านยาวสูงสุดตอนคำนวณ (ภาพใหญ่กว่านี้ย่อก่อน แล้วขยายพิกัดคืน)
+# 🚨 กติกาข้อแรกของโมดูลนี้: **ห้ามย่อภาพของผู้ใช้เงียบ ๆ**
+#    จุดขายของเครื่องมือคือ 'คมกว่าต้นฉบับ' — ถ้าแอบย่อก่อนคำนวณก็ขัดกันเองตั้งแต่ต้น
+#    (เคยตั้งไว้ 1600 px เพื่อประหยัดแรม ทำให้ภาพ 2362 px ของผู้ใช้โดนทิ้งรายละเอียด 32%)
+#    ตอนนี้คำนวณที่ความละเอียดเต็มเสมอ · ตัวเลขข้างล่างเป็นแค่กันแรมแตกเท่านั้น
+#    และถ้าถึงเพดานจริง ต้องรายงานออกไปที่ stats["downscaled"] ให้ผู้ใช้เห็น ห้ามเงียบ
+MAX_WORK_MP = 16.0          # ล้านพิกเซล (≈ 4000 × 4000) — วัดแล้วใช้แรมราว 300 MB
+#                             เกินนี้ค่อยย่อ **และต้องแจ้งผู้ใช้** ที่ stats['downscaled']
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -147,49 +153,87 @@ def merge_blends(cen, counts, max_share=0.08, t_lo=0.12, t_hi=0.88, dperp=13.0):
     return cen[keep]
 
 
-def quantize(img_rgb, k=8, seed=0, keep=None):
-    """คืน (palette RGB uint8, label map, ภาพ Lab, palette Lab)"""
-    lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
-    H, W = lab.shape[:2]
+def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000):
+    """คืน (palette RGB uint8, ภาพ Lab, palette Lab)
+
+    ⚡ ไม่คำนวณป้ายสีของ 'ทุกพิกเซล' ที่นี่แล้ว
+       เดิมกาง (พิกเซลทั้งหมด × จำนวนสี × 3) เป็นอาร์เรย์เดียว — ภาพ 2362px กิน 134 MB
+       และเป็นคอขวดที่ช้าที่สุด (2.9 จาก 7.9 วินาที) ทั้งที่ nearest2 ก็คำนวณซ้ำอยู่ดี
+       ตรงนี้ต้องการแค่ 'สัดส่วนพิกเซลของแต่ละสี' -> สุ่มตัวอย่างก็พอ
+    """
+    # 💾 เก็บภาพ Lab เป็น uint8 (ตามที่ OpenCV คืนมา) ไม่แปลงเป็น float32 ทั้งภาพ
+    #    ภาพ 36 ล้านพิกเซล: uint8 = 108 MB · float32 = 432 MB — ต่างกัน 4 เท่า
+    #    การแปลงเป็น float ทำทีละแถบตอนคำนวณระยะพอ
+    lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
     X = lab.reshape(-1, 3)
-    Xf = X[keep.reshape(-1)] if keep is not None and keep.any() else X
+    rng = np.random.default_rng(seed)
+    if keep is not None and keep.any():
+        idx = np.flatnonzero(keep.reshape(-1))
+    else:
+        idx = np.arange(len(X))
+    take = idx if len(idx) <= 400000 else idx[rng.choice(len(idx), size=400000, replace=False)]
+    Xf = X[take].astype(np.float32)
     if len(Xf) < 8:
-        Xf = X
+        Xf = X[:8].astype(np.float32)
     kk = max(2, min(32, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
     cen, _ = _kmeans_lab(Xf, kk, seed=seed)
-    lb0 = ((Xf[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
+    S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
+    lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
     cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
-    d = ((X[:, None, :] - cen[None, :, :]) ** 2).sum(2)
-    labels = d.argmin(1).reshape(H, W)
     pal_rgb = cv2.cvtColor(cen.reshape(1, -1, 3).astype(np.uint8), cv2.COLOR_LAB2RGB).reshape(-1, 3)
-    return pal_rgb, labels, lab, cen
+    return pal_rgb, lab, cen
 
 
 # ══════════════════════════════════════════════════════════════════
 # 2) สนามความเป็นสี (ย่อยพิกเซล)
 # ══════════════════════════════════════════════════════════════════
-def distance_stack(lab, pal_lab):
-    """ระยะจากทุกพิกเซลถึงทุกสีในจาน — คิดครั้งเดียวใช้ทุกชั้น
+def nearest2(lab, pal_lab, chunk_rows=256):
+    """หา 'ระยะถึงสีที่ใกล้ที่สุด' และ 'ใกล้รองลงมา' + ป้ายสีที่ใกล้ที่สุด
 
-    เดิมคำนวณใหม่ทุกชั้น (k ชั้น × k สี) = ช้าเป็นกำลังสอง
-    ภาพ 4000 px เคยใช้ 3.4 วินาที — คิดครั้งเดียวแล้วเร็วขึ้นชัดเจน
+    ⚠️ บทเรียนสำคัญ (แก้ 2026-08-07): เดิมเก็บระยะถึง **ทุกสี** ไว้ทั้งก้อน
+       = k × สูง × กว้าง × 4 ไบต์ · ภาพ 4000px 12 สี กินแรม 768 MB
+       เลยต้องไปย่อภาพเหลือ 1600 px ก่อนคำนวณ -> **ทิ้งรายละเอียดต้นฉบับ**
+       ซึ่งขัดกับจุดขายของเครื่องมือนี้ตรง ๆ
+    ✅ ที่จริงสูตรต้องการแค่ 'ระยะถึงสีคู่แข่งที่ใกล้ที่สุด' เท่านั้น
+       ซึ่งคำนวณจากอันดับ 1 กับ 2 ได้ครบ -> เก็บแค่ 3 ก้อน ไม่ว่าจะกี่สี
+       แรมคงที่ ทำงานที่ความละเอียดเต็มของภาพได้เลย
     """
     H, W = lab.shape[:2]
-    out = np.empty((len(pal_lab), H, W), np.float32)
-    for j in range(len(pal_lab)):
-        out[j] = np.sqrt(((lab - pal_lab[j][None, None, :]) ** 2).sum(2))
-    return out
+    b1 = np.full((H, W), np.inf, np.float32)
+    b2 = np.full((H, W), np.inf, np.float32)
+    l1 = np.zeros((H, W), np.int16)
+    l2 = np.zeros((H, W), np.int16)
+    P = np.asarray(pal_lab, np.float32)
+    for y0 in range(0, H, chunk_rows):
+        y1 = min(H, y0 + chunk_rows)
+        c = lab[y0:y1].astype(np.float32)
+        B1 = b1[y0:y1]; B2 = b2[y0:y1]; L1 = l1[y0:y1]; L2 = l2[y0:y1]
+        for j in range(len(P)):                       # ทีละสี — ไม่กองอาร์เรย์ k ก้อน
+            d = np.sqrt(((c - P[j][None, None, :]) ** 2).sum(2))
+            m1 = d < B1
+            B2[m1] = B1[m1]; L2[m1] = L1[m1]
+            B1[m1] = d[m1];  L1[m1] = j
+            m2 = (~m1) & (d < B2)
+            B2[m2] = d[m2];  L2[m2] = j
+    b2[~np.isfinite(b2)] = 1e6                        # กรณีมีสีเดียวจริง ๆ
+    return b1, b2, l1, l2
 
 
-def coverage_field(D, k, alpha=None):
-    """สัดส่วนที่พิกเซลนั้น 'เป็นสี k' — 0.5 พอดี = ขอบจริง (สีผสม 50:50)"""
-    d = D[k]
-    other = np.min(np.delete(D, k, axis=0), axis=0)
+def coverage_field(k, b1, b2, l1, l2, alpha=None):
+    """สัดส่วนที่พิกเซลนั้น 'เป็นสี k' — 0.5 พอดี = ขอบจริง (สีผสม 50:50)
+
+    ⚡ ใช้แค่อันดับ 1-2 ไม่ต้องวนคำนวณระยะใหม่ทุกชั้น
+       พิกเซลที่สี k ไม่ติดอันดับ 1 หรือ 2 ค่าจะ < 0.5 เสมออยู่แล้ว
+       (เพราะระยะถึง k ยาวกว่าอันดับ 2) เส้นคอนทัวร์ระดับ 0.5 จึงไม่เคยผ่านย่านนั้น
+    """
+    is1 = (l1 == k); is2 = (l2 == k)
+    d = np.where(is1, b1, np.where(is2, b2, 1e6)).astype(np.float32)
+    other = np.where(is1, b2, b1).astype(np.float32)
     f = other / np.maximum(other + d, 1e-6)
     if alpha is not None:
         # 🪟 ภาพพื้นโปร่ง: คูณด้วยความทึบ -> คอนทัวร์ 0.5 จะไปเกาะขอบความโปร่งพอดี
-        f = f * alpha
-    return f.astype(np.float64)
+        f = f * alpha.astype(np.float32)
+    return f.astype(np.float32)      # float32 พอ — float64 กินแรมสองเท่าโดยไม่ได้อะไรเพิ่ม
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -362,11 +406,11 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
-    # ย่อก่อนคำนวณถ้าภาพใหญ่ (พิกัดจะถูกขยายคืนตอนท้าย)
-    long_side = max(W0, H0)
+    # ทำงานที่ความละเอียดเต็มเสมอ — ย่อเฉพาะภาพที่ใหญ่จนแรมไม่ไหวจริง ๆ (และต้องรายงาน)
+    mp = W0 * H0 / 1e6
     sc = 1.0
-    if long_side > MAX_WORK_PX:
-        sc = MAX_WORK_PX / float(long_side)
+    if mp > MAX_WORK_MP:
+        sc = (MAX_WORK_MP / mp) ** 0.5
         img = cv2.resize(img, (max(1, int(round(W0 * sc))), max(1, int(round(H0 * sc)))),
                          interpolation=cv2.INTER_AREA)
         if alpha is not None:
@@ -377,7 +421,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     keep = None
     want_alpha = bool(alpha is not None if transparent is None else (transparent and alpha is not None))
     if want_alpha:
-        af = (alpha.astype(np.float64) / 255.0)
+        af = (alpha.astype(np.float32) / 255.0)
         keep = alpha >= 128
         # เติมสีจากพิกเซลทึบเข้าไปในย่านโปร่ง กัน k-means ไปจับ "สีขอบจาง" เป็นสีจริง
         if keep.any() and (~keep).any():
@@ -389,17 +433,23 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             img = (img.astype(np.float32) * a3 + 255.0 * (1 - a3)).astype(np.uint8)
         alpha = None
 
-    pal_rgb, labels, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
+    pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
 
-    D = distance_stack(lab, pal_lab)
+    b1, b2, l1, l2 = nearest2(lab, pal_lab)
+    del lab                                            # ไม่ต้องใช้อีกแล้ว คืนแรมทันที
+    labels = l1
+    # 🧹 เกณฑ์ 'เศษเล็กเกินกว่าจะเป็นของจริง' ต้องโตตามขนาดภาพ
+    #    ค่าคงที่ 4 px² ที่พอดีกับภาพ 250px จะกลายเป็นจุดฝุ่นนับพันในภาพ 2400px
+    #    (เคสจริงของพี่: ลายเส้นหมู ได้ 1,054 รูป ทั้งที่ควรมีไม่กี่สิบ)
+    min_a = max(float(cfg["min_area"]), (max(W, H) * 0.0025) ** 2)
     layers = []
     for i in range(len(pal_lab)):
         n = int((labels == i).sum() if keep is None else ((labels == i) & keep).sum())
         if n < 3:
             continue
-        f = coverage_field(D, i, alpha=af)
+        f = coverage_field(i, b1, b2, l1, l2, alpha=af)
         cs = [c for c in contours_of(f, 0.5, int(cfg["smooth"]))
-              if abs(_area(c)) >= float(cfg["min_area"])]
+              if abs(_area(c)) >= min_a]
         if not cs:
             continue
         area = sum(abs(_area(c)) for c in cs)
@@ -420,6 +470,11 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     nodes = sum(len(it[2]) if it[0] == "B" else len(it[1]) for L in layers for it in L["items"])
     stats = {"colors": len(layers), "shapes": sum(len(L["items"]) for L in layers),
              "nodes": int(nodes), "work_px": [W, H], "scale": round(sc, 4),
+             "full_res": bool(sc == 1.0),          # 👈 ต้องเป็น true เสมอสำหรับภาพขนาดปกติ
+             "downscaled": (None if sc == 1.0 else
+                            "ภาพใหญ่ %.1f ล้านพิกเซล เกินเพดาน %.0f — คำนวณที่ %d × %d "
+                            "(รายละเอียดบางส่วนหายไป)" % (mp, MAX_WORK_MP, W, H)),
+             "min_area_px": round(min_a, 1),
              "transparent": bool(want_alpha), "seconds": round(time.time() - t0, 3),
              "preset": preset, "cfg": cfg}
     return {"layers": layers, "size": (W0, H0), "bg": bg, "stats": stats}

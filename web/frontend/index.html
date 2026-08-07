@@ -11577,6 +11577,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     <div class="vcard" id="vecP3" style="display:none">
       <h4 data-i18n="vec.h3">ผลลัพธ์</h4>
       <div class="vsub" id="vecSum"></div>
+      <div id="vecWarn"></div>
       <div class="vcmp" id="vecCmp">
         <div class="vtag vtagL" data-i18n="vec.px">พิกเซล</div><div class="vtag vtagR" data-i18n="vec.vec">เวกเตอร์</div>
         <div class="va"><img id="vecOrig" alt=""></div>
@@ -11791,6 +11792,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     $('vecCs').textContent=(en?'smooth ':'เนียน ')+CFG.smooth;
     $('vecCt').textContent=(en?'nodes ':'จุด ')+CFG.tol;
     $('vecCg').textContent=(en?'seam ':'รอยต่อ ')+CFG.gap;
+    /* 🔍 ต้องบอกผู้ใช้เสมอว่าคำนวณที่ความละเอียดเท่าไหร่ — ห้ามย่อภาพเงียบ ๆ */
+    var w=$('vecWarn');
+    if(s.downscaled){
+      w.innerHTML='<div class="vnote warn">⚠️ '+(en
+        ? ('Image is '+j.size[0]+' × '+j.size[1]+' px — larger than the '+s.work_px[0]+' × '+s.work_px[1]
+           +' processing ceiling, so some detail was lost. Resize it below that and re-run for full detail.')
+        : ('ภาพ '+j.size[0]+' × '+j.size[1]+' px ใหญ่เกินเพดานคำนวณ ระบบคำนวณที่ '+s.work_px[0]+' × '+s.work_px[1]
+           +' รายละเอียดบางส่วนหายไป ถ้าอยากได้ครบให้ย่อภาพลงต่ำกว่านี้แล้วแปลงใหม่'))+'</div>';
+    } else {
+      w.innerHTML='<div class="vnote ok">✅ '+(en
+        ? ('Processed at the file\u2019s full resolution '+s.work_px[0]+' × '+s.work_px[1]+' px — nothing was downscaled.')
+        : ('คำนวณที่ความละเอียดเต็มของไฟล์ '+s.work_px[0]+' × '+s.work_px[1]+' px — ไม่มีการย่อภาพ'))+'</div>';
+    }
   }
   function paintLangBtns(){
     document.querySelectorAll('#vecLang button').forEach(function(b){
