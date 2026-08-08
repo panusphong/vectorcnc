@@ -414,6 +414,42 @@ def kink_ratio(cs, look=6, deg=45.0):
     return clusters / max(length / 100.0, 1e-6)
 
 
+def drop_fake_holes(field, cs, ambiguous=0.34):
+    """🕳️ ตัด 'รูปลอม' ทิ้ง โดยดูความมั่นใจ ไม่ใช่ขนาด
+
+    ⚠️ บทเรียนราคาแพง (2026-08-07): เคยตัดรูด้วยเกณฑ์ 'เล็กกว่า X ตัดทิ้ง'
+       ผลคือ **ช่องในตัวอักษร A ของโลโก้ถูกถมเป็นสีทึบ** — รูจริงของแบบหายไปเลย
+       ขนาดบอกไม่ได้ว่ารูไหนจริง เพราะตัวอักษรเล็ก ๆ ก็มีช่องเล็กเป็นเรื่องปกติ
+
+    ✅ ดูที่ 'ข้างในรูเป็นสีอื่นจริงไหม' แทน
+       รูจริง (ช่องตัวอักษร · เลนส์แว่น) ข้างในเป็นพื้นหลังเต็ม ๆ -> ค่าสนามใกล้ 0
+       รูปลอมจากรอยด่างบีบอัด ข้างในยังเกือบเป็นสีเดิม -> ค่าสนามค้างอยู่แถว 0.4-0.5
+       ตัดเฉพาะอันที่ค้างอยู่ในย่านก้ำกึ่งเท่านั้น · รูจริงไม่มีทางโดน
+    """
+    if not cs:
+        return cs
+    H, W = field.shape[:2]
+    out = []
+    for c in cs:
+        a = np.asarray(c, float)
+        if _area(a) >= 0 or len(a) < 4:
+            out.append(c); continue                    # ไม่ใช่รู -> เก็บไว้
+        x0 = max(0, int(np.floor(a[:, 0].min())) - 1); x1 = min(W, int(np.ceil(a[:, 0].max())) + 2)
+        y0 = max(0, int(np.floor(a[:, 1].min())) - 1); y1 = min(H, int(np.ceil(a[:, 1].max())) + 2)
+        if x1 - x0 < 3 or y1 - y0 < 3:
+            out.append(c); continue
+        m = np.zeros((y1 - y0, x1 - x0), np.uint8)
+        cv2.fillPoly(m, [np.round(a - [x0, y0]).astype(np.int32)], 1)
+        if m.sum() > 12:                               # กันขอบรูออกไป 1 px ค่อยวัดข้างใน
+            m = cv2.erode(m, np.ones((3, 3), np.uint8))
+        if m.sum() < 3:
+            out.append(c); continue
+        inside = float(field[y0:y1, x0:x1][m > 0].mean())
+        if inside < float(ambiguous):                  # ข้างในเป็นสีอื่นจริง = รูจริง
+            out.append(c)
+    return out
+
+
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
                       target=1.5, grow_rate=1.7, max_round=5, max_pieces=250):
     """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
@@ -610,20 +646,21 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    ถ้าไปเดินเส้นตามตัวเลขที่ไฟล์บอก จะได้เส้นที่ไต่ขั้นบันไดของ 'บล็อกพิกเซล'
     #    ที่กว้างบล็อกละ 8-16 px ออกมาเป็นขอบหยักเป็นคลื่น (เคสจริงของผู้ใช้)
     # ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # 🔎 วัด "ขนาดบล็อกพิกเซลจริง" ของภาพ — แต่ **ไม่ย่อภาพเด็ดขาด**
+    #
+    # 🚨 กฎเหล็กของโมดูลนี้ (ผู้ใช้ย้ำสองครั้ง): ห้ามลดความละเอียดของภาพต้นฉบับ
+    #    อลิซเคยพลาดสองรอบ — รอบแรกย่อเพื่อประหยัดแรม รอบสองย่อโดยอ้างว่า
+    #    "เนื้อจริงเล็กกว่าที่ไฟล์บอก" ซึ่งก็คือการย่อภาพผู้ใช้อยู่ดี
+    #    ค่าที่วัดได้ต้องเอาไปใช้ 'ตั้งความแรงของการเกลา' เท่านั้น ไม่ใช่ไปย่อภาพ
+    #
+    # ไฟล์ที่ถูกขยายมาจากไอคอนเล็ก จะมีบล็อกพิกเซลกว้าง 4-8 px
+    # ถ้าเกลาด้วยค่าที่พอดีกับบล็อกขนาดนั้น เส้นก็เนียนได้ที่ความละเอียดเต็ม
+    # ══════════════════════════════════════════════════════════════
     F = detect_scale(img)
-    # 🛡️ เพดานที่สอง: ห้ามย่อจนเส้นบางที่สุดในภาพเหลือน้อยกว่า 8 px
     _sw = stroke_px(img)
-    F = min(F, max(1.0, _sw / 8.0))
-    if F > 1.5:
-        _w = float(np.clip(F, 1.0, 8.0))               # เกณฑ์วัดขอบเข้มพออยู่แล้ว ไม่ต้องหารเผื่ออีก
-        nw, nh = max(32, int(round(W / _w))), max(32, int(round(H / _w)))
-        img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
-        if af is not None:
-            af = cv2.resize(af, (nw, nh), interpolation=cv2.INTER_AREA)
-        if keep is not None:
-            keep = cv2.resize(keep.astype(np.uint8), (nw, nh), interpolation=cv2.INTER_NEAREST) > 0
-        sc *= float(nw) / float(W)
-        W, H = nw, nh
+    # ห้ามเกลาแรงจนเส้นบางสุดในภาพเสียรูป (เส้นบาง 10 px เกลาแรง ๆ ตัวอักษรแตก)
+    F = float(np.clip(min(F, max(1.0, _sw / 8.0)), 1.0, 10.0))
 
     img, nz, nd = prefilter(img, max(1.0, max(W, H) / 500.0))
     pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
@@ -637,15 +674,16 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    ค่าตั้งต้นทั้งชุดจูนไว้กับภาพราว 500 px — ถ้าเอาไปใช้กับภาพ 2400 px ตรง ๆ
     #    มันจะอ่อนลง 5 เท่าโดยอัตโนมัติ กลายเป็น "ตามรอยหยึกหยักของไฟล์" แทนที่จะเกลา
     # ══════════════════════════════════════════════════════════════
-    R = max(1.0, max(W, H) / 500.0)                    # ตัวคูณตามความละเอียด
+    # ทุกค่าที่มีหน่วยพิกเซล อิงกับ 'ขนาดบล็อกจริง' F ไม่ใช่ขนาดไฟล์
+    R = max(1.0, max(W, H) / 500.0) / max(1.0, F)      # ตัวคูณตามความละเอียดที่ 'มีข้อมูลจริง'
     # ⚠️ ห้ามตั้งความเกลาขั้นต่ำตามขนาดภาพ — ภาพสะอาดจะโดนเกลาฟรี (RMS แย่ลง 9.1 -> 11.5)
     #    แต่ถ้ารู้แน่ว่าภาพ 'ถูกขยายมา' ก็ไม่มีรายละเอียดย่อยพิกเซลให้รักษาอยู่แล้ว
     #    ขอบที่เหลือเป็นทางลาดฟุ้ง ๆ ซึ่งแกว่งข้ามเกณฑ์ 0.5 ไปมา -> เกิดรอยแหว่งเว้าในเส้น
     #    (เจอจริงกับไฟล์ลายเส้นหมูและ Ginger ของผู้ใช้) จึงตั้งพื้นความเกลาไว้เล็กน้อย
-    sig0 = 0.7 if F > 1.5 else 0.0
-    sigM = float(np.clip(cfg["smooth"] * 0.55 * R, 1.2, 9.0))   # เพดานเกลา (ภาพหยาบไต่ขึ้นไปได้ถึงนี่)
+    sig0 = (0.55 * F) if F > 1.5 else 0.0            # บล็อกกว้าง F px -> เกลาให้พอกลบขั้นบันได
+    sigM = float(np.clip(cfg["smooth"] * 0.55 * R * F, max(1.2, 0.9 * F), 12.0))   # เพดานเกลา (ภาพหยาบไต่ขึ้นไปได้ถึงนี่)
     tgt = {1: 3.0, 2: 1.5, 3: 1.0, 4: 0.6}.get(int(cfg["smooth"]), 1.5)   # มุมหักต่อ 100 px ที่ยอมได้
-    tol_e = float(cfg["tol"])                          # ระยะยอมคลาดตอนฟิตเบซิเยร์
+    tol_e = float(cfg["tol"]) * max(1.0, F * 0.8)      # ระยะยอมคลาดตอนฟิตเบซิเยร์
     #      ⚠️ ห้ามคูณตามความละเอียด — คูณแล้วจุดน้อยลงจริง แต่ความตรงกับต้นฉบับแย่ลง
     #         (วัดจริง: คูณ R^0.5 ได้ 892 จุด RMS 10.7 · ไม่คูณได้ 1175 จุด RMS 9.1)
     #         ผู้ใช้ปรับเองได้ที่ "จำนวนจุดบนเส้น" ถ้าอยากได้ไฟล์เล็กกว่า
@@ -657,8 +695,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    จึงต้องชดเชยระยะดันขอบตามความแรงที่เกลาไปจริง ๆ ของแต่ละชั้น
     gap_e = float(cfg["gap"])
     # ภาพที่ถูกขยายมา ขอบจะฟุ้ง เกิดเศษเล็ก ๆ ง่าย -> ตัดเกณฑ์ให้สูงขึ้นตามส่วน
-    min_a = max(float(cfg["min_area"]) * R * R, (max(W, H) * (0.006 if F > 1.5 else 0.0035)) ** 2)
-    hole_mul = 8.0 if F > 1.5 else 1.0                 # ภาพถูกขยายมา = มีรอยด่างในเนื้อเส้นแน่
+    min_a = max(float(cfg["min_area"]) * R * R * F * F, (max(W, H) * 0.0035) ** 2)
     sig_used = []
     layers = []
     for i in range(len(pal_lab)):
@@ -668,17 +705,14 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         f = coverage_field(i, b1, b2, l1, l2, alpha=af)
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
                                    sigma_max=sigM, target=tgt)
-        # 🕳️ 'รู' ที่เล็กมาก ๆ ไม่ใช่ของที่ออกแบบมา — เป็นรอยด่างจากการบีบอัดในเนื้อเส้น
-        #    (เคสจริง: ลายเส้นหมูมีแถบจาง ๆ กลางเส้น กลายเป็นรอยแหว่งเว้าบนขอบ)
-        #    รูจริงในงานออกแบบ (ช่องตัวอักษร · เลนส์แว่น) ใหญ่กว่านี้หลายเท่าเสมอ
-        if hole_mul > 1.0:
-            cs = [c for c in cs if _area(c) >= 0 or abs(_area(c)) >= min_a * hole_mul]
+        # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
+        cs = drop_fake_holes(denoise_field(f, sg), cs)
         if not cs:
             continue
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
         layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
-                       "items": to_bezier(grow(cs, gap_e + 0.6 * sg), tol_e)})
+                       "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e)})
     layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
 
     # ขยายพิกัดคืนขนาดจริง
@@ -701,8 +735,9 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                             "ภาพใหญ่ %.1f ล้านพิกเซล เกินเพดาน %.0f — คำนวณที่ %d × %d "
                             "(รายละเอียดบางส่วนหายไป)" % (mp, MAX_WORK_MP, W, H)),
              "min_area_px": round(min_a, 1), "res_mul": round(R, 2),
-             "noise": nz, "denoise_d": nd, "upscaled": round(F, 1), "stroke_px": round(_sw, 1),
+             "noise": nz, "denoise_d": nd, "block_px": round(F, 1), "stroke_px": round(_sw, 1),
              "true_px": [int(round(W0 / F)), int(round(H0 / F))] if F > 1.5 else [W0, H0],
+             "resized": False,                     # 👈 ต้องเป็น false เสมอ (นอกจากเกินเพดานแรม)
              "sigma": round(float(np.mean(sig_used)), 2) if sig_used else 0.0,
              "sigma_max": round(sigM, 2), "tol_px": round(tol_e, 2), "gap_px": round(gap_e, 2),
              "transparent": bool(want_alpha), "seconds": round(time.time() - t0, 3),
