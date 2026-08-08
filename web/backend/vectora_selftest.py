@@ -98,12 +98,19 @@ def check(path, verbose=True, tol_px=3):
                 pts.append(p)
     kink = VE.kink_ratio(pts) if pts else 0.0
 
+    # ⚠️ ภาพที่มีแต่เส้นบาง ๆ พื้นที่เนื้อสีน้อยมาก ตัวหารเล็ก เปอร์เซ็นต์เลยพุ่งง่าย
+    #    ปลายเส้นยื่นเกินไปครึ่งพิกเซลก็กลายเป็น 2% ทั้งที่ตาดูไม่ออก
+    #    จึงต้องเกินทั้ง 'สัดส่วนต่อเนื้อสี' และ 'สัดส่วนต่อทั้งภาพ' ถึงจะนับว่าพัง
+    px_all = float(ms.size)
+    fill_abs = float((mo & ~ms_d).sum()) / px_all * 100.0
+    eat_abs = float((ms & ~mo_d).sum()) / px_all * 100.0
     hole_ok = ho >= hs - max(1, int(hs * 0.15))
-    ok = (fill <= 1.5) and (eat <= 1.5) and hole_ok and (kink <= 3.0)
+    ok = (fill <= 1.5 or fill_abs <= 0.05) and (eat <= 1.5 or eat_abs <= 0.05) \
+        and hole_ok and (kink <= 3.0)
     if verbose:
         flags = []
-        if fill > 1.5: flags.append("ถมทับเกิน")
-        if eat > 1.5: flags.append("กินเนื้อหาย")
+        if fill > 1.5 and fill_abs > 0.05: flags.append("ถมทับเกิน")
+        if eat > 1.5 and eat_abs > 0.05: flags.append("กินเนื้อหาย")
         if not hole_ok: flags.append("รูหาย")
         if kink > 3.0: flags.append("เส้นหยึกหยัก")
         print("%-24s %s ถมทับ %5.2f%% · กินหาย %5.2f%% · รู %2d/%2d · หยัก %.2f · %d สี %3d รูป · %.1f วิ%s"

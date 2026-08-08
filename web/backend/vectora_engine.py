@@ -25,8 +25,21 @@ from skimage import measure
 #    (เคยตั้งไว้ 1600 px เพื่อประหยัดแรม ทำให้ภาพ 2362 px ของผู้ใช้โดนทิ้งรายละเอียด 32%)
 #    ตอนนี้คำนวณที่ความละเอียดเต็มเสมอ · ตัวเลขข้างล่างเป็นแค่กันแรมแตกเท่านั้น
 #    และถ้าถึงเพดานจริง ต้องรายงานออกไปที่ stats["downscaled"] ให้ผู้ใช้เห็น ห้ามเงียบ
-MAX_WORK_MP = 16.0          # ล้านพิกเซล (≈ 4000 × 4000) — วัดแล้วใช้แรมราว 300 MB
-#                             เกินนี้ค่อยย่อ **และต้องแจ้งผู้ใช้** ที่ stats['downscaled']
+# ══════════════════════════════════════════════════════════════════
+# 📐 มาตรฐานขาเข้า — ประกาศชัดเจน ใช้เหมือนกันทุกไฟล์ ไม่มีการปรับตามไฟล์
+#
+#   รับไฟล์         : JPG · PNG · GIF · BMP · WebP · TIFF
+#   ขนาดไฟล์สูงสุด   : 30 MB
+#   ความละเอียด     : 64 × 64 px  ถึง  4000 × 4000 px (16 ล้านพิกเซล)
+#   การปรับขนาด     : ❌ ไม่มี — แปลงที่ความละเอียดเดิมของไฟล์ 100%
+#   ถ้าเกินเพดาน    : ❌ ไม่แปลง · แจ้งให้ผู้ใช้ย่อเองก่อน (ไม่แอบย่อให้)
+#
+# ทำไมถึงเลือกแบบนี้: การแอบย่อภาพให้ผู้ใช้คือการตัดสินใจแทนเขาโดยไม่บอก
+# ซึ่งขัดกับจุดขายของเครื่องมือ ('คมกว่าต้นฉบับ') ถ้าไฟล์ใหญ่เกินเครื่องรับไหว
+# ต้องบอกไปตรง ๆ ให้เขาเลือกเองว่าจะย่อเท่าไหร่
+# ══════════════════════════════════════════════════════════════════
+MIN_PX = 64                 # ด้านสั้นสุดที่ยอมรับ
+MAX_MP = 16.0               # ล้านพิกเซล (≈ 4000 × 4000) — วัดแล้วใช้แรมราว 300 MB
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -190,6 +203,26 @@ def detect_scale(img_rgb, thr=20.0, ladder=(2, 3, 4, 6, 8, 12), cap=10.0):
             break
         ok = float(f)
     return min(ok, float(cap))
+
+
+def edge_ramp_px(img_rgb):
+    """ความกว้างของ 'ทางลาดขอบ' — ขอบคมจริงกว้าง 1-2 px · ขอบที่ถูกขยายมากว้างตามตัวคูณ
+
+    ⚠️ ทำไมต้องมี: การวัดด้วยวิธีย่อ-ขยายกลับอย่างเดียวหลอกได้
+       ภาพเวกเตอร์สะอาดที่มีพื้นที่สีเรียบใหญ่ ๆ ก็ย่อได้ 3 เท่าโดยแทบไม่คลาด
+       ระบบเลยนึกว่า 'ถูกขยายมา' แล้วเกลาให้ทั้งที่ไม่ควรเกลา
+       ผลคือรูปที่มีปลายแหลม (ข้าวหลามตัด) โดนเบลอจนด้านตรงโป่งออกเป็นส่วนโค้ง 3.2%
+    ✅ ขอบที่ถูกขยายมาจริงจะ 'ฟุ้ง' กว้างหลายพิกเซลเสมอ วัดตรงนั้นแทน หลอกไม่ได้
+    """
+    g = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    m = np.hypot(cv2.Sobel(g, cv2.CV_32F, 1, 0, 3), cv2.Sobel(g, cv2.CV_32F, 0, 1, 3))
+    if m.max() <= 1e-6:
+        return 1.0
+    strong = m > m.max() * 0.45          # แกนกลางของขอบ
+    soft = m > m.max() * 0.08            # รวมทางลาดทั้งหมด
+    if int(strong.sum()) < 50:
+        return 1.0
+    return float(np.clip(soft.sum() / max(int(strong.sum()), 1), 1.0, 16.0))
 
 
 def stroke_px(img_rgb, pct=10):
@@ -451,7 +484,7 @@ def drop_fake_holes(field, cs, ambiguous=0.34):
 
 
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
-                      target=1.5, grow_rate=1.7, max_round=5, max_pieces=250):
+                      target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0):
     """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
 
     ⚠️ บทเรียน 2026-08-07 (พลาดสองรอบกว่าจะได้): ความแรงการเกลาจะตั้ง 'ตายตัว' ไม่ได้
@@ -470,7 +503,13 @@ def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
     ladder.append(round(float(sigma_max), 2))
     cs = []; sig = 0.0
     for sig in ladder[:int(max_round)]:
-        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig) if abs(_area(c)) >= min_area]
+        # ⚠️ เกณฑ์พื้นที่ใช้กับ 'ชิ้นทึบ' เท่านั้น ห้ามใช้กับ 'รู'
+        #    รูจริงในงานออกแบบเล็กได้มาก (ช่องในตัว & % 8 ขนาดแค่ 27 px²)
+        #    เคยใช้เกณฑ์เดียวกันทั้งคู่แล้วช่องพวกนี้หายไปเงียบ ๆ (ชุดตรวจจับได้)
+        #    รูปลอมมี drop_fake_holes คัดด้วยความมั่นใจอยู่แล้ว ไม่ต้องพึ่งขนาด
+        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig)
+              if (_area(c) >= 0 and abs(_area(c)) >= min_area)
+              or (_area(c) < 0 and abs(_area(c)) >= min_hole)]
         if not cs or sig >= sigma_max:
             break
         # ชั้นสีเดียวที่แตกเป็นร้อยชิ้น = จุดรบกวน ไม่ใช่ลวดลายจริง -> เกลาต่อ
@@ -512,7 +551,10 @@ def grow(polys, px=0.4):
                 g = _P(p).buffer(0)
                 if g.is_empty:
                     out.append(p); continue
-                g = g.buffer(px if sa >= 0 else -px, join_style=2, mitre_limit=2.0, resolution=6)
+                # ⚠️ join_style=2 (มุมแหลม) จะยืดปลายแหลมออกไปได้ไกลถึง 2 เท่าของระยะดัน
+                #    รูปที่มีมุมคม ๆ จึงบวมออกตรงปลาย (ชุดตรวจจับได้ที่ corners: ถมทับ 3.2%)
+                #    ใช้มุมมนแทน — เสียความคมแค่ระดับเศษพิกเซล แต่ไม่มีเงี่ยงยื่น
+                g = g.buffer(px if sa >= 0 else -px, join_style=1, resolution=8)
                 if g.is_empty:
                     out.append(p); continue
                 if g.geom_type == "MultiPolygon":
@@ -525,7 +567,49 @@ def grow(polys, px=0.4):
         return polys
 
 
-def to_bezier(polys, tol=0.5, corner_deg=45.0):
+def _flat_seg(start, segs, n=8):
+    pts = [tuple(start)]
+    for g in segs:
+        if g[0] == "L":
+            pts.append(tuple(g[1])); continue
+        p0 = pts[-1]; c1, c2, p3 = g[1], g[2], g[3]
+        for i in range(1, n + 1):
+            t = i / n; m = 1.0 - t
+            pts.append((m**3 * p0[0] + 3 * m * m * t * c1[0] + 3 * m * t * t * c2[0] + t**3 * p3[0],
+                        m**3 * p0[1] + 3 * m * m * t * c1[1] + 3 * m * t * t * c2[1] + t**3 * p3[1]))
+    return pts
+
+
+def fit_bounded(sub, tol, depth=0, max_depth=5):
+    """ฟิตเบซิเยร์ **พร้อมรับประกันความคลาด** — เส้นที่ได้ห้ามเบี่ยงจากขอบจริงเกิน tol
+
+    ⚠️ ต้นเหตุที่พิสูจน์ด้วยการวัด (ชุดตรวจ corners): ตัวฟิตเดิมทำงานแบบ
+       'ลดจุดด้วย simplify แล้วร้อยเส้นโค้งผ่านจุดที่เหลือ' ซึ่ง **ไม่มีใครตรวจว่าโค้งที่ได้
+       ยังทาบขอบเดิมอยู่ไหม** ด้านตรงยาว ๆ ที่ถูกลดเหลือ 2 จุด จึงถูกแขนโค้งดันให้โป่งออก
+       วัดจริง: ตั้ง tol 0.5 โป่งออก 6,678 px · ตั้ง tol 0.01 โป่ง 0 px = ยืนยันว่ามาจากขั้นนี้
+    ✅ ฟิตแล้ววัดกลับ ถ้าเบี่ยงเกิน tol ให้ผ่าครึ่งแล้วฟิตใหม่ ทำซ้ำจนอยู่ในเกณฑ์
+       ผลคือได้ 'คำรับประกัน' ที่บอกผู้ใช้ได้ว่าเส้นเวกเตอร์ไม่เพี้ยนจากขอบเกินกี่พิกเซล
+    """
+    st, sg = _to_curves(sub, closed=False, tol=tol)
+    if not sg:
+        return sub[0], [("L", q) for q in sub[1:]]
+    if depth >= max_depth or len(sub) < 8:
+        return st, sg
+    try:
+        from shapely.geometry import LineString, Point
+        src = LineString(sub)
+        worst = max(src.distance(Point(q)) for q in _flat_seg(st, sg, 6))
+        if worst <= float(tol):
+            return st, sg
+    except Exception:
+        return st, sg
+    m = len(sub) // 2
+    s1, g1 = fit_bounded(sub[:m + 1], tol, depth + 1, max_depth)
+    s2, g2 = fit_bounded(sub[m:], tol, depth + 1, max_depth)
+    return s1, (g1 + g2)
+
+
+def to_bezier(polys, tol=0.5, corner_deg=45.0, look=6):
     """ฟิตเบซิเยร์ — ตัดเส้นที่มุมคมก่อน แล้วฟิตทีละช่วงแบบเส้นเปิด
     ถ้าโยนวงปิดเข้าไปรวดเดียว ตรงมุมแหลมจะลากโค้งเลยจุดมุม เกิดเงี่ยงยื่นพ้นรูป"""
     out = []
@@ -534,13 +618,13 @@ def to_bezier(polys, tol=0.5, corner_deg=45.0):
         pts = [tuple(v) for v in a]
         if len(pts) < 10:
             out.append(("P", pts)); continue
-        cm = corner_mask(a, corner_deg)
+        cm = corner_mask(a, corner_deg, look)
         keep = []
         for i in np.flatnonzero(cm):
             if not keep or i - keep[-1] > 3:
                 keep.append(int(i))
         if len(keep) < 2:
-            st, sg = _to_curves(pts, closed=True, tol=tol)
+            st, sg = fit_bounded(pts + [pts[0]], tol)
             out.append(("B", st, sg) if sg else ("P", pts)); continue
         segs_all = []; start = None
         for j in range(len(keep)):
@@ -553,7 +637,7 @@ def to_bezier(polys, tol=0.5, corner_deg=45.0):
                     start = sub[0]
                 segs_all += [("L", q) for q in sub[1:]]
                 continue
-            st2, sg2 = _to_curves(sub, closed=False, tol=tol)
+            st2, sg2 = fit_bounded(sub, tol)
             if not sg2:
                 if start is None:
                     start = sub[0]
@@ -611,17 +695,18 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
-    # ทำงานที่ความละเอียดเต็มเสมอ — ย่อเฉพาะภาพที่ใหญ่จนแรมไม่ไหวจริง ๆ (และต้องรายงาน)
+    # 📐 ตรวจตามมาตรฐานขาเข้า — ผ่านก็แปลงที่ความละเอียดเดิม 100% · ไม่ผ่านก็ไม่แปลง
     mp = W0 * H0 / 1e6
+    if min(W0, H0) < MIN_PX:
+        raise ValueError("ภาพเล็กเกินไป %d × %d px — ต่ำสุดที่รับคือ %d px"
+                         % (W0, H0, MIN_PX))
+    if mp > MAX_MP:
+        raise ValueError("ภาพใหญ่เกินมาตรฐาน %d × %d px (%.1f ล้านพิกเซล) — เพดานคือ %.0f ล้านพิกเซล "
+                         "หรือราว 4000 × 4000 px · กรุณาย่อภาพเองก่อนแล้วอัปโหลดใหม่ "
+                         "(ระบบไม่ย่อภาพให้เอง เพราะไม่อยากตัดสินใจแทนโดยไม่บอก)"
+                         % (W0, H0, mp, MAX_MP))
     sc = 1.0
     mp_capped = False
-    if mp > MAX_WORK_MP:
-        mp_capped = True
-        sc = (MAX_WORK_MP / mp) ** 0.5
-        img = cv2.resize(img, (max(1, int(round(W0 * sc))), max(1, int(round(H0 * sc)))),
-                         interpolation=cv2.INTER_AREA)
-        if alpha is not None:
-            alpha = cv2.resize(alpha, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_AREA)
     H, W = img.shape[:2]
 
     af = None
@@ -658,6 +743,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     # ถ้าเกลาด้วยค่าที่พอดีกับบล็อกขนาดนั้น เส้นก็เนียนได้ที่ความละเอียดเต็ม
     # ══════════════════════════════════════════════════════════════
     F = detect_scale(img)
+    # 🛡️ ด่านที่สอง: ขอบคมจริง = ไม่ได้ถูกขยายมา ห้ามเกลา ไม่ว่าตัวเลขย่อ-ขยายจะบอกว่าอะไร
+    # ⚠️ ภาพเวกเตอร์สะอาดที่เรนเดอร์แบบเกลี่ยขอบ (anti-alias) ก็มีทางลาดกว้าง ~2 px เป็นปกติ
+    #    จึงต้องหักฐานนี้ออกก่อน ไม่งั้นงานสะอาดจะถูกตัดสินว่า 'ถูกขยายมา' แล้วโดนเกลาฟรี
+    F = min(F, max(1.0, edge_ramp_px(img) / 2.0))
     _sw = stroke_px(img)
     # ห้ามเกลาแรงจนเส้นบางสุดในภาพเสียรูป (เส้นบาง 10 px เกลาแรง ๆ ตัวอักษรแตก)
     F = float(np.clip(min(F, max(1.0, _sw / 8.0)), 1.0, 10.0))
@@ -712,7 +801,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
         layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
-                       "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e)})
+                       "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e,
+                                          look=int(max(6, round(2.5 * sg) + 5)))})
     layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
 
     # ขยายพิกัดคืนขนาดจริง
@@ -736,6 +826,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                             "(รายละเอียดบางส่วนหายไป)" % (mp, MAX_WORK_MP, W, H)),
              "min_area_px": round(min_a, 1), "res_mul": round(R, 2),
              "noise": nz, "denoise_d": nd, "block_px": round(F, 1), "stroke_px": round(_sw, 1),
+             "edge_ramp_px": round(edge_ramp_px(img), 2),
              "true_px": [int(round(W0 / F)), int(round(H0 / F))] if F > 1.5 else [W0, H0],
              "resized": False,                     # 👈 ต้องเป็น false เสมอ (นอกจากเกินเพดานแรม)
              "sigma": round(float(np.mean(sig_used)), 2) if sig_used else 0.0,

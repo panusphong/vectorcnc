@@ -127,6 +127,18 @@ async def analyze(file: UploadFile = File(...)):
                                             "ถ้ามี PNG ต้นฉบับจะได้ผลสะอาดกว่า" % fmt,
                       "en": "%s file — compression can leave halos around edges. The engine filters some of it; "
                             "an original PNG will come out cleaner." % fmt})
+    if mp > VE.MAX_MP:
+        notes.insert(0, {"kind": "bad",
+            "th": "ภาพใหญ่เกินมาตรฐาน %d × %d px (%.1f ล้านพิกเซล) — เพดานคือ %.0f ล้านพิกเซล "
+                  "หรือราว 4000 × 4000 px · กรุณาย่อภาพเองก่อนแล้วอัปโหลดใหม่ "
+                  "ระบบไม่ย่อภาพให้เอง เพราะไม่อยากลดความละเอียดต้นฉบับโดยไม่บอก" % (W, H, mp, VE.MAX_MP),
+            "en": "Over the standard: %d × %d px (%.1f MP). The ceiling is %.0f MP (about 4000 × 4000 px). "
+                  "Please resize it yourself and upload again — the engine will not downscale your "
+                  "original without asking." % (W, H, mp, VE.MAX_MP)})
+    if min(W, H) < VE.MIN_PX:
+        notes.insert(0, {"kind": "bad",
+            "th": "ภาพเล็กเกินมาตรฐาน %d × %d px — ต่ำสุดที่รับคือ %d px" % (W, H, VE.MIN_PX),
+            "en": "Below the standard: %d × %d px — the minimum is %d px" % (W, H, VE.MIN_PX)})
     if uniq > 200:
         notes.append({"kind": "warn", "th": "ภาพนี้สีเยอะมาก (%s สี) เหมือนภาพถ่าย — งานเวกเตอร์เหมาะกับโลโก้/ลายเส้น "
                                             "ถ้าเป็นภาพถ่ายควรเพิ่มจำนวนสีหรือใช้พรีเซ็ต 'ใช้งานทั่วไป'" % format(uniq, ","),
@@ -167,6 +179,8 @@ async def convert(file: UploadFile = File(...),
                            tol=(float(tol) if float(tol) >= 0 else None),
                            gap=(float(gap) if float(gap) >= 0 else None),
                            transparent=(None if int(transparent) < 0 else bool(int(transparent))))
+    except ValueError as e:                     # ผิดมาตรฐานขาเข้า -> บอกผู้ใช้ตรง ๆ
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, "แปลงไม่สำเร็จ: %s" % e)
 
