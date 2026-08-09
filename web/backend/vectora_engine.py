@@ -95,6 +95,40 @@ def _to_curves(pts, closed=False, tol=0.12, corner_deg=48.0):
 # ══════════════════════════════════════════════════════════════════
 # 1) ลดจำนวนสี
 # ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════
+# 🎨 ปริภูมิสีที่ใช้วัดระยะ — ต้องเป็น Lab "จริง" เท่านั้น
+#
+# ⚠️ ข้อผิดพลาดที่ซ่อนอยู่ตั้งแต่ต้น: OpenCV เก็บภาพ Lab แบบ 8 บิตโดย
+#      L ถูกคูณ 255/100 (= 2.55 เท่า) · a,b ถูกบวก 128
+#    ถ้าเอาตัวเลขนั้นไปวัดระยะตรง ๆ เท่ากับ **ให้น้ำหนักความสว่างมากเกินจริง 2.55 เท่า**
+#    ผลที่ตามมาซึ่งเห็นได้จริง:
+#      • จานสีถูกเลือกตาม 'ความสว่าง' มากกว่า 'เนื้อสี' — สีสดที่สว่างพอ ๆ กัน
+#        (แดง/ส้ม · เขียว/น้ำเงินเข้ม) ถูกยุบรวมเป็นสีเดียว
+#      • สีที่ได้จึงเพี้ยนจากต้นฉบับ และเกณฑ์ 'สีขอบผสม' ก็ตัดสินผิดตามไปด้วย
+# ✅ แปลงกลับเป็นสเกลจริง (L 0-100 · a,b -128..127) ก่อนวัดระยะทุกครั้ง
+#    ค่า ΔE ที่ได้จึงตรงกับที่ตาคนรับรู้จริง และตรงกับที่เอกสารในไฟล์นี้อ้างไว้ตั้งแต่แรก
+# ══════════════════════════════════════════════════════════════════
+_L_SCALE = 100.0 / 255.0
+
+
+def labf(lab_u8):
+    """ภาพ/แถว Lab แบบ uint8 ของ OpenCV -> Lab จริงเป็น float32"""
+    z = np.asarray(lab_u8, np.float32).copy()
+    z[..., 0] *= _L_SCALE
+    z[..., 1] -= 128.0
+    z[..., 2] -= 128.0
+    return z
+
+
+def unlabf(z):
+    """Lab จริง -> uint8 แบบที่ OpenCV รับ (ใช้ตอนแปลงจานสีกลับเป็น RGB)"""
+    o = np.asarray(z, np.float32).copy()
+    o[..., 0] /= _L_SCALE
+    o[..., 1] += 128.0
+    o[..., 2] += 128.0
+    return np.clip(o, 0, 255).astype(np.uint8)
+
+
 def _kmeans_lab(X, k, seed=0, sample=60000):
     # ⚠️ cv2.kmeans ใช้ RNG ของ OpenCV เอง ไม่เกี่ยวกับ numpy
     #    ถ้าไม่ล็อกเมล็ด ภาพเดิมกดแปลงสองครั้งจะได้จานสีคนละชุด (เจอจริงตอนทดสอบ)
@@ -298,15 +332,15 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000):
     else:
         idx = np.arange(len(X))
     take = idx if len(idx) <= 400000 else idx[rng.choice(len(idx), size=400000, replace=False)]
-    Xf = X[take].astype(np.float32)
+    Xf = labf(X[take])                                 # 🎨 วัดระยะในสเกล Lab จริงเสมอ
     if len(Xf) < 8:
-        Xf = X[:8].astype(np.float32)
+        Xf = labf(X[:8])
     kk = max(2, min(32, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
     cen, _ = _kmeans_lab(Xf, kk, seed=seed)
     S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
     lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
     cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
-    pal_rgb = cv2.cvtColor(cen.reshape(1, -1, 3).astype(np.uint8), cv2.COLOR_LAB2RGB).reshape(-1, 3)
+    pal_rgb = cv2.cvtColor(unlabf(cen).reshape(1, -1, 3), cv2.COLOR_LAB2RGB).reshape(-1, 3)
     return pal_rgb, lab, cen
 
 
@@ -332,7 +366,7 @@ def nearest2(lab, pal_lab, chunk_rows=256):
     P = np.asarray(pal_lab, np.float32)
     for y0 in range(0, H, chunk_rows):
         y1 = min(H, y0 + chunk_rows)
-        c = lab[y0:y1].astype(np.float32)
+        c = labf(lab[y0:y1])                          # 🎨 สเกล Lab จริง (ดู labf)
         B1 = b1[y0:y1]; B2 = b2[y0:y1]; L1 = l1[y0:y1]; L2 = l2[y0:y1]
         for j in range(len(P)):                       # ทีละสี — ไม่กองอาร์เรย์ k ก้อน
             d = np.sqrt(((c - P[j][None, None, :]) ** 2).sum(2))
@@ -609,43 +643,306 @@ def fit_bounded(sub, tol, depth=0, max_depth=5):
     return s1, (g1 + g2)
 
 
-def to_bezier(polys, tol=0.5, corner_deg=45.0, look=6):
-    """ฟิตเบซิเยร์ — ตัดเส้นที่มุมคมก่อน แล้วฟิตทีละช่วงแบบเส้นเปิด
-    ถ้าโยนวงปิดเข้าไปรวดเดียว ตรงมุมแหลมจะลากโค้งเลยจุดมุม เกิดเงี่ยงยื่นพ้นรูป"""
+# ══════════════════════════════════════════════════════════════════
+# 🎯 ตัวฟิตเส้นโค้งแบบ "หากำลังสองน้อยที่สุด + ผ่าที่จุดคลาดมากสุด" (Schneider)
+#
+# ⚠️ ของเดิมทำแบบ: ลดจุดด้วย Douglas-Peucker แล้วร้อยเส้นโค้ง Catmull-Rom ผ่านจุดที่เหลือ
+#    ปัญหาที่ตามมา (วัดได้ชัดเจน):
+#      • ได้ 1 ท่อนโค้งต่อ 1 ช่วงจุด — คอนทัวร์ที่มีคลื่นเล็ก ๆ จึงได้จุดถี่มาก
+#        (ไฟล์จริงของผู้ใช้ test03: 48 รูป แต่ 8,662 จุด)
+#      • ทิศทางปลายท่อนมาจาก 'จุดข้างเคียง' ไม่ใช่จาก 'รูปทรงจริงของช่วงนั้น'
+#        เส้นเลยส่ายไปมา — วัดเป็นจำนวนครั้งที่เลี้ยวสลับทิศ ได้สูงถึง 9.8 ครั้ง/100 px
+#      • เส้นโค้งที่ได้ไม่เคยถูกตรวจว่ายังทาบขอบจริงอยู่ไหม (ต้องมี fit_bounded มาคุมทีหลัง)
+#
+# ✅ วิธีที่ถูก (โปรแกรมแปลงภาพเป็นเวกเตอร์ระดับดีใช้กันทั้งนั้น):
+#      1. กำหนดทิศทางที่ปลายทั้งสองข้างจากรูปทรงจริง
+#      2. หา 'ความยาวแขน' สองค่าที่ทำให้เส้นโค้งเดียวทาบแนวจุดได้ดีที่สุด (least squares)
+#      3. วัดจุดที่คลาดมากสุด · ถ้ายังเกินเกณฑ์ให้ขยับพารามิเตอร์ (Newton) แล้วฟิตซ้ำ
+#      4. ถ้ายังไม่ผ่านค่อยผ่า **ตรงจุดที่คลาดมากสุด** (ไม่ใช่ผ่าครึ่งมั่ว ๆ)
+#         แล้วต่อทิศทางที่รอยผ่าให้ต่อเนื่อง = ไม่มีรอยหักโผล่ที่รอยต่อ
+#    ผลลัพธ์: โค้งเดียวกินทางยาวได้ · จุดน้อยลงมาก · ไม่ส่าย · และ **รับประกันความคลาด**
+#             ในตัวเองอยู่แล้ว (ไม่ต้องพึ่ง fit_bounded อีก)
+# ══════════════════════════════════════════════════════════════════
+def _bez_at(C, t):
+    t = np.asarray(t, float)[:, None]; m = 1.0 - t
+    return (m**3) * C[0] + 3 * m * m * t * C[1] + 3 * m * t * t * C[2] + (t**3) * C[3]
+
+
+def _bez_d1(C, t):
+    t = np.asarray(t, float)[:, None]; m = 1.0 - t
+    return 3 * m * m * (C[1] - C[0]) + 6 * m * t * (C[2] - C[1]) + 3 * t * t * (C[3] - C[2])
+
+
+def _bez_d2(C, t):
+    t = np.asarray(t, float)[:, None]; m = 1.0 - t
+    return 6 * m * (C[2] - 2 * C[1] + C[0]) + 6 * t * (C[3] - 2 * C[2] + C[1])
+
+
+def _unit(v):
+    n = float(np.hypot(v[0], v[1]))
+    return np.array([0.0, 0.0]) if n < 1e-12 else np.asarray(v, float) / n
+
+
+def _chord_u(pts):
+    d = np.hypot(*np.diff(pts, axis=0).T)
+    u = np.concatenate([[0.0], np.cumsum(d)])
+    return u / u[-1] if u[-1] > 1e-12 else np.linspace(0.0, 1.0, len(pts))
+
+
+def _fit_cubic(pts, u, t1, t2):
+    """หาความยาวแขนคุมสองค่าที่ทาบแนวจุดได้ดีที่สุด (ปลายและทิศปลายถูกล็อกไว้)"""
+    P0, P3 = pts[0], pts[-1]
+    m = 1.0 - u
+    B0 = m**3; B1 = 3 * m * m * u; B2 = 3 * m * u * u; B3 = u**3
+    A1 = B1[:, None] * t1[None, :]
+    A2 = B2[:, None] * t2[None, :]
+    c11 = float((A1 * A1).sum()); c12 = float((A1 * A2).sum()); c22 = float((A2 * A2).sum())
+    T = pts - (P0[None, :] * (B0 + B1)[:, None] + P3[None, :] * (B2 + B3)[:, None])
+    x1 = float((A1 * T).sum()); x2 = float((A2 * T).sum())
+    det = c11 * c22 - c12 * c12
+    # ⚠️ ห้ามอิงความยาวคอร์ด |P3-P0| อย่างเดียว — ช่วงที่ปลายสองข้างมาบรรจบกัน (วงปิด)
+    #    คอร์ดยาว 0 แขนคุมเลยกลายเป็น 0 เส้นโค้งยุบเป็นจุด แล้วผ่าซ้ำไม่รู้จบ
+    #    (เจอจริง: วงกลมได้ 8,344 จุด จากที่ควรได้ไม่กี่สิบ) ต้องอิง 'ความยาวแนวจุด' ด้วย
+    arc = float(np.hypot(*np.diff(pts, axis=0).T).sum())
+    base = max(float(np.hypot(*(P3 - P0))), arc * 0.33) / 3.0
+    a1 = a2 = base
+    if abs(det) > 1e-12:
+        b1 = (x1 * c22 - x2 * c12) / det
+        b2 = (c11 * x2 - c12 * x1) / det
+        if 1e-6 < b1 < arc and 1e-6 < b2 < arc:
+            a1, a2 = b1, b2
+    return np.array([P0, P0 + t1 * a1, P3 - t2 * a2, P3])
+
+
+def _dev(pts, C, m=24):
+    """ระยะห่างจริงสูงสุดจาก 'เส้นโค้งที่ฟิตได้' ไปยัง 'แนวจุดต้นฉบับ'
+
+    ⚠️ ต้องมีตัวนี้ เพราะการขยับพารามิเตอร์ (Newton) อาจดันค่า u ไปกองที่ปลาย
+       แล้วตัววัดความคลาดแบบเทียบทีละจุดจะรายงานว่า 'คลาดน้อย' ทั้งที่เส้นโค้งบานออกนอกรูป
+       (เจอจริง: เส้นบาง 2 px กลายเป็นลิ่มบานปลาย กว้างพลาดไป 40 px)
+    """
+    q = _bez_at(C, np.linspace(0.0, 1.0, int(m)))
+    # ⚠️ ต้องวัดถึง 'ท่อนเส้น' ไม่ใช่ 'จุด' — จุดบนคอนทัวร์ห่างกันราว 0.7 px
+    #    ถ้าวัดถึงจุดจะติดค่าคลาดปลอมถึงครึ่งหนึ่งของระยะห่างจุด แล้วผ่าเส้นทิ้งฟรี ๆ
+    #    (วัดจริง: วงแหวนพุ่งจาก 885 เป็น 3,790 จุด เพราะเหตุนี้)
+    A = pts[:-1]; B = pts[1:]
+    AB = B - A
+    L2 = np.maximum((AB * AB).sum(1), 1e-12)
+    t = np.clip(((q[:, None, :] - A[None, :, :]) * AB[None, :, :]).sum(2) / L2[None, :], 0.0, 1.0)
+    proj = A[None, :, :] + t[:, :, None] * AB[None, :, :]
+    d = np.sqrt(((q[:, None, :] - proj) ** 2).sum(2)).min(1)
+    return float(d.max())
+
+
+def _worst(pts, u, C):
+    q = _bez_at(C, u)
+    d = ((q - pts) ** 2).sum(1)
+    i = int(d.argmax())
+    return float(np.sqrt(d[i])), i
+
+
+def _reparam(pts, u, C):
+    """ขยับค่าพารามิเตอร์ของแต่ละจุดให้ไปตกที่จุดใกล้สุดบนเส้นโค้ง (Newton หนึ่งก้าว)"""
+    q = _bez_at(C, u); d1 = _bez_d1(C, u); d2 = _bez_d2(C, u)
+    r = q - pts
+    num = (r * d1).sum(1)
+    den = (d1 * d1).sum(1) + (r * d2).sum(1)
+    out = np.where(np.abs(den) < 1e-12, u, u - num / np.where(np.abs(den) < 1e-12, 1.0, den))
+    out = np.clip(out, 0.0, 1.0)
+    # ⚠️ ถ้าลำดับพารามิเตอร์ไม่เรียงขึ้นแล้ว = จุดไขว้กัน ผลที่ได้เชื่อไม่ได้ ให้ทิ้ง
+    if np.any(np.diff(out) <= 0):
+        return u
+    return out
+
+
+def _seg_of(C):
+    return ("C", (float(C[1][0]), float(C[1][1])), (float(C[2][0]), float(C[2][1])),
+            (float(C[3][0]), float(C[3][1])))
+
+
+def _schneider(pts, t1, t2, tol, depth=0, max_depth=14):
+    """ฟิตแนวจุดหนึ่งช่วงให้เป็นเส้นโค้งเบซิเยร์ ความคลาดไม่เกิน tol"""
+    n = len(pts)
+    if n < 2:
+        return []
+    if n == 2:
+        return [("L", (float(pts[1][0]), float(pts[1][1])))]
+    u = _chord_u(pts)
+    C = _fit_cubic(pts, u, t1, t2)
+    err, i = _worst(pts, u, C)
+    if err <= tol and _dev(pts, C, 24) <= tol:
+        return [_seg_of(C)]
+    if depth < max_depth:
+        ub, Cb = u.copy(), C
+        for _ in range(6):                       # ขยับพารามิเตอร์แล้วฟิตใหม่ก่อนคิดจะผ่า
+            ub = _reparam(pts, ub, Cb)
+            Cb = _fit_cubic(pts, ub, t1, t2)
+            e2, i2 = _worst(pts, ub, Cb)
+            if e2 < err:
+                C, err, i, u = Cb, e2, i2, ub.copy()
+                if err <= tol and _dev(pts, C, 24) <= tol:
+                    return [_seg_of(C)]
+    if depth >= max_depth or n < 6:
+        return [_seg_of(C)] if _dev(pts, C, 16) <= max(tol * 3.0, 1.0) else \
+               [("L", (float(q[0]), float(q[1]))) for q in pts[1:]]
+    i = int(min(max(i, 1), n - 2))               # ผ่าตรงจุดที่คลาดมากสุด
+    tc = _unit(pts[i + 1] - pts[i - 1])          # ทิศที่รอยผ่า — ใช้ร่วมกันสองฝั่ง = ต่อเนื่อง
+    left = _schneider(pts[:i + 1], t1, tc, tol, depth + 1, max_depth)
+    right = _schneider(pts[i:], tc, t2, tol, depth + 1, max_depth)
+    return left + right
+
+
+def _end_tan(pts, k=4, at_start=True):
+    """ทิศทางที่ปลายช่วง — เฉลี่ยหลายจุดกันสะดุดจุดเดียวแล้วทิศเพี้ยน"""
+    a = np.asarray(pts, float)
+    k = int(min(max(2, k), len(a) - 1))
+    # ⚠️ ทั้งสองปลายต้องเป็น 'ทิศเดินหน้า' เหมือนกัน (สูตรใช้ C2 = P3 - t2·a2)
+    #    ถ้าปลายท้ายส่งทิศย้อนกลับมา เส้นโค้งจะพับกลับตัวเอง คลาดถึง 48 px แล้วผ่าซ้ำไม่รู้จบ
+    return _unit(a[k] - a[0]) if at_start else _unit(a[-1] - a[-1 - k])
+
+
+def _taubin(p, passes=2, lam=0.55, mu=-0.58):
+    """🪄 เกลาแนวจุดแบบ 'ไม่หด' (Taubin)
+
+    ⚠️ เกลาด้วยค่าเฉลี่ยธรรมดา (ของเดิม) ทำให้รูปหดเข้าทุกครั้งที่เกลา
+       ต้องไปชดเชยด้วยการดันขอบออกทีหลัง ซึ่งทำให้มุมมนและขนาดเพี้ยน
+    ✅ Taubin สลับ 'หด' กับ 'คลาย' ที่ค่าต่างกันนิดเดียว
+       คลื่นถี่ ๆ (รอยบีบอัด · ขั้นบันไดจากตารางพิกเซล) ถูกลบ
+       แต่รูปทรงโดยรวมอยู่ที่เดิม — ขนาดไม่หด ตำแหน่งขอบไม่เลื่อน
+    """
+    a = np.asarray(p, float)
+    if len(a) < 7 or passes <= 0:
+        return a
+    for _ in range(int(passes)):
+        for f in (lam, mu):
+            prv = np.roll(a, 1, axis=0); nxt = np.roll(a, -1, axis=0)
+            a = a + f * (0.5 * (prv + nxt) - a)
+    return a
+
+
+def wave_ratio(a, closed=True):
+    """ความ 'ส่าย' ของแนวจุด = จำนวนครั้งที่เลี้ยวสลับทิศ ต่อความยาว 100 px
+
+    เส้นที่ควรจะเนียน (ขอบตัวอักษร · วงกลม) เลี้ยวไปทางเดียวยาว ๆ ค่านี้จะต่ำ
+    ขอบที่มีคลื่นจากรอยบีบอัด/ตารางพิกเซล จะเลี้ยวซ้าย-ขวาสลับถี่ ค่านี้จะสูง
+    ⚠️ ต่างจาก kink_ratio: อันนั้นนับ 'มุมหัก' อันนี้นับ 'การกลับทิศ' ซึ่งจับคลื่นเนียน ๆ ได้ด้วย
+    """
+    a = np.asarray(a, float)
+    if len(a) < 6:
+        return 0.0
+    v = np.diff(np.vstack([a, a[:1]]) if closed else a, axis=0)
+    L = float(np.hypot(v[:, 0], v[:, 1]).sum())
+    th = np.arctan2(v[:, 1], v[:, 0])
+    d = np.diff(th); d = (d + np.pi) % (2 * np.pi) - np.pi
+    sg = np.sign(d)
+    sg = sg[sg != 0]
+    if len(sg) < 2:
+        return 0.0
+    return float((np.abs(np.diff(sg)) > 1).sum()) / max(L / 100.0, 1e-6)
+
+
+def denoise_poly(a, budget, corner_w=None, target=1.2, max_pass=60):
+    """🪄 ลบคลื่นถี่ออกจากแนวจุด **ภายในงบความคลาดที่สัญญาไว้กับผู้ใช้**
+
+    ทำไมต้องมี: ตัวฟิตเส้นโค้งรับประกันว่าเส้นจะไม่เบี่ยงจากแนวจุดเกิน tol
+    ถ้าแนวจุดเองเป็นคลื่น ตัวฟิตก็ต้อง 'ตามคลื่น' ให้ครบ = จุดเยอะและเส้นส่าย
+    (ไฟล์จริง test03: 48 รูป แต่ 8,301 จุด · ส่าย 10.5 ครั้ง/100 px)
+
+    ✅ เกลาแนวจุดก่อนฟิต โดยมี **เพดานระยะขยับ** ชัดเจน — ขยับได้ไม่เกินงบที่ให้
+       จึงยังรับประกันความตรงกับขอบจริงได้เท่าเดิม แต่เส้นเนียนขึ้นมาก
+       หยุดทันทีที่เนียนพอ (ภาพสะอาดจึงแทบไม่ถูกแตะ)
+    """
+    a = np.asarray(a, float)
+    if len(a) < 9 or budget <= 1e-6:
+        return a
+    cur = a.copy()
+    if wave_ratio(cur) <= target:
+        return a
+    w = None if corner_w is None else corner_w[:, None]
+    for _ in range(int(max_pass)):
+        nxt = _taubin(cur, passes=1)
+        if w is not None:
+            nxt = nxt * (1 - w) + a * w
+        if float(np.hypot(*(nxt - a).T).max()) > budget:
+            break
+        cur = nxt
+        if wave_ratio(cur) <= target:
+            break
+    # ⚠️ ต้องคืนขนาดให้เท่าเดิมเป๊ะ — การเกลาถึงจะ 'ไม่หด' โดยเฉลี่ย แต่ตรงที่ถูกตรึงไว้ (มุม)
+    #    กับตรงที่ชนเพดานงบ ทำให้เหลือการหดเล็กน้อย · สองชั้นสีที่ติดกันหดพร้อมกัน
+    #    = เกิดรอยขาวบางคั่นระหว่างสี (วัดจริงกับวงแหวน: ขาวแทรก 4 -> 135 px)
+    # ✅ ขยายกลับรอบจุดศูนย์ถ่วงให้พื้นที่เท่าเดิม — ไม่ต้องไปดันขอบทุกชั้นให้อ้วนขึ้น
+    a0 = _area(a); a1 = _area(cur)
+    if a0 * a1 > 0 and abs(a1) > 1e-9:
+        r = float(np.sqrt(abs(a0) / abs(a1)))
+        if 0.5 < r < 2.0:
+            c0 = cur.mean(0)
+            fix = c0 + (cur - c0) * r
+            if float(np.hypot(*(fix - cur).T).max()) <= budget:
+                cur = fix
+    return cur
+
+
+def to_bezier(polys, tol=0.5, corner_deg=45.0, look=6, budget=0.25):
+    """แนวจุด -> เส้นโค้งเบซิเยร์ · ตัดที่มุมคมก่อน แล้วฟิตทีละช่วงแบบเส้นเปิด
+
+    ทำไมต้องตัดที่มุมก่อน: ถ้าโยนวงปิดเข้าไปรวดเดียว ตรงมุมแหลมจะถูกลากโค้งเลยจุดมุม
+    เกิดเงี่ยงยื่นพ้นรูป · ตัดก่อนแล้วฟิตทีละช่วง มุมจึงคมเป๊ะตามต้นฉบับ
+    """
     out = []
     for p in polys:
         a = np.asarray(p, float)
+        if len(a) > 3 and float(np.hypot(*(a[0] - a[-1]))) < 1e-9:
+            a = a[:-1]                                   # ตัดจุดซ้ำที่ปลายวง
         pts = [tuple(v) for v in a]
-        if len(pts) < 10:
+        if len(a) < 10:
             out.append(("P", pts)); continue
         cm = corner_mask(a, corner_deg, look)
+        # 🪄 เกลาคลื่นถี่แบบไม่หด ภายในงบความคลาด — ทำ **หลัง** หามุมแล้ว มุมจริงจึงไม่ถูกกลืน
+        w = None
+        if cm.any():
+            w = cm.astype(float)
+            for _ in range(3):                           # ปล่อยรัศมีคุ้มครองรอบมุมไว้ 3 จุด
+                w = np.maximum.reduce([w, np.roll(w, 1), np.roll(w, -1)])
+        # ⚠️ งบขยับต้องมาจาก 'ความไม่แน่นอนของตำแหน่งขอบที่วัดได้จริง' เท่านั้น
+        #    ไม่ใช่ตั้งมั่ว ๆ · เคยตั้ง 0.6·tol แล้วเส้นบาง 2 px เสียรูป ค่าคลาดสีพุ่ง 5.9 -> 21.6
+        b = denoise_poly(a, float(budget), corner_w=w)
         keep = []
         for i in np.flatnonzero(cm):
             if not keep or i - keep[-1] > 3:
                 keep.append(int(i))
         if len(keep) < 2:
-            st, sg = fit_bounded(pts + [pts[0]], tol)
-            out.append(("B", st, sg) if sg else ("P", pts)); continue
+            # ไม่มีมุม -> วงโค้งล้วน · ต้องหั่นเป็น 4 ส่วนก่อน
+            # ⚠️ ฟิตวงปิดรวดเดียวไม่ได้ ปลายทั้งสองข้างเป็นจุดเดียวกัน เส้นโค้งเดียวยุบตัว
+            n = len(b)
+            cut = [0, n // 4, n // 2, (3 * n) // 4]
+            segs_all = []
+            for j in range(4):
+                i0 = cut[j]; i1 = cut[(j + 1) % 4]
+                run = list(range(i0, i1 + 1)) if i1 > i0 else list(range(i0, n)) + [0]
+                sub = b[run]
+                t_in = _unit(b[(i0 + 1) % n] - b[i0 - 1])
+                t_out = _unit(b[(i1 + 1) % n] - b[i1 - 1])
+                segs_all += _schneider(sub, t_in, t_out, float(tol))
+            out.append(("B", (float(b[0][0]), float(b[0][1])), segs_all) if segs_all
+                       else ("P", pts))
+            continue
         segs_all = []; start = None
         for j in range(len(keep)):
             i0 = keep[j]; i1 = keep[(j + 1) % len(keep)]
             run = (list(range(i0, i1 + 1)) if i1 > i0
-                   else list(range(i0, len(a))) + list(range(0, i1 + 1)))
-            sub = [tuple(a[t]) for t in run]
-            if len(run) < 4:
-                if start is None:
-                    start = sub[0]
-                segs_all += [("L", q) for q in sub[1:]]
-                continue
-            st2, sg2 = fit_bounded(sub, tol)
-            if not sg2:
-                if start is None:
-                    start = sub[0]
-                segs_all += [("L", q) for q in sub[1:]]
-                continue
+                   else list(range(i0, len(b))) + list(range(0, i1 + 1)))
+            sub = b[run]
             if start is None:
-                start = st2
-            segs_all += sg2
+                start = (float(sub[0][0]), float(sub[0][1]))
+            if len(run) < 4:
+                segs_all += [("L", (float(q[0]), float(q[1]))) for q in sub[1:]]
+                continue
+            sg = _schneider(sub, _end_tan(sub, 4, True), _end_tan(sub, 4, False), float(tol))
+            if sg:
+                segs_all += sg
+            else:
+                segs_all += [("L", (float(q[0]), float(q[1]))) for q in sub[1:]]
         if start is None or not segs_all:
             out.append(("P", pts)); continue
         out.append(("B", start, segs_all))
@@ -769,10 +1066,38 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    แต่ถ้ารู้แน่ว่าภาพ 'ถูกขยายมา' ก็ไม่มีรายละเอียดย่อยพิกเซลให้รักษาอยู่แล้ว
     #    ขอบที่เหลือเป็นทางลาดฟุ้ง ๆ ซึ่งแกว่งข้ามเกณฑ์ 0.5 ไปมา -> เกิดรอยแหว่งเว้าในเส้น
     #    (เจอจริงกับไฟล์ลายเส้นหมูและ Ginger ของผู้ใช้) จึงตั้งพื้นความเกลาไว้เล็กน้อย
-    sig0 = (0.55 * F) if F > 1.5 else 0.0            # บล็อกกว้าง F px -> เกลาให้พอกลบขั้นบันได
+    # 🚫 ไม่เกลาโดยอัตโนมัติ — เริ่มที่ 0 เสมอ
+    #    ผู้ใช้ทักซ้ำ ๆ ว่า "รายละเอียดหาย" ทุกครั้งที่ระบบตัดสินใจเกลาให้เอง
+    #    (ที่จริงไม่ได้ย่อภาพ แต่การเกลาก็ทำให้รายละเอียดเล็กหายเหมือนกัน — ผลเหมือนกันในสายตาผู้ใช้)
+    #    ✅ ความเที่ยงตรงต่อไฟล์ต้นฉบับมาก่อน · จะเกลาก็ต่อเมื่อ **วัดได้ว่าเส้นหยาบจริง** เท่านั้น
+    #       (contours_adaptive จะไล่เพิ่มความเกลาเองถ้าจำเป็น) · ผู้ใช้ปรับเองได้ที่ "ความเนียนของเส้น"
+    sig0 = 0.0
     sigM = float(np.clip(cfg["smooth"] * 0.55 * R * F, max(1.2, 0.9 * F), 12.0))   # เพดานเกลา (ภาพหยาบไต่ขึ้นไปได้ถึงนี่)
     tgt = {1: 3.0, 2: 1.5, 3: 1.0, 4: 0.6}.get(int(cfg["smooth"]), 1.5)   # มุมหักต่อ 100 px ที่ยอมได้
     tol_e = float(cfg["tol"]) * max(1.0, F * 0.8)      # ระยะยอมคลาดตอนฟิตเบซิเยร์
+    # ══════════════════════════════════════════════════════════════
+    # 🎯 ความละเอียดของ 'ตำแหน่งขอบ' ถูกจำกัดด้วยความฟุ้งของขอบเอง
+    #    ขอบคม (ทางลาด 1-2 px) รู้ตำแหน่งได้แม่นระดับเศษพิกเซล -> ไล่ตามได้เต็มที่
+    #    ขอบฟุ้ง (ทางลาด 16 px แบบไฟล์ที่ถูกขยาย/เบลอมา) ตำแหน่งขอบ 'สั่น' ตามรอยบีบอัด
+    #    ถ้าตั้งเกณฑ์แน่นกว่าความแม่นที่มีจริง = ไปไล่จับคลื่นรบกวน ได้เส้นส่ายและจุดเป็นหมื่น
+    #    (ไฟล์จริง test03 ทางลาด 16 px: 48 รูป แต่ 8,263 จุด ส่าย 10.9 ครั้ง/100 px)
+    # ✅ ผ่อนเกณฑ์ตามความฟุ้งที่วัดได้ แต่มีเพดานไม่เกิน 2.5 เท่าของค่าที่ผู้ใช้เลือก
+    # ══════════════════════════════════════════════════════════════
+    ramp = edge_ramp_px(img)
+    # 📏 ขนาดคลื่นรบกวนที่ต้องลบ ขึ้นกับสองอย่างที่วัดได้จริง
+    #    (ก) ความฟุ้งของขอบ — ขอบยิ่งฟุ้ง ตำแหน่งขอบยิ่งไม่แน่นอน
+    #    (ข) ความหนาของเส้นในงาน — รอยบีบอัดบนเส้นหนา 40 px ทำให้ขอบเป็นคลื่นสูงหลายพิกเซล
+    #        ถ้าจำกัดงบไว้แค่เศษพิกเซล คลื่นพวกนี้จะติดมาในเวกเตอร์เสมอ (เห็นชัดในไฟล์ test06)
+    #    เพดานคือ 6% ของความหนาเส้น — มากกว่านี้เริ่มกินรูปทรง
+    _swp = _sw if _sw < 900 else 12.0
+    #    ค่าคงที่สามตัวนี้ไม่ได้ตั้งเอาเอง — กวาดหาจากชุดตรวจทั้งชุด 11 ไฟล์
+    #    (ค่าคลาดสี · ความส่ายของเส้น · จำนวนจุด) แล้วเลือกจุดที่สมดุลที่สุด
+    budget_e = float(np.clip(max(0.18 * ramp, 0.06 * _swp), 0.12, 2.5))
+    # ⚠️ อย่าผ่อน 'เกณฑ์ความคลาดตอนฟิต' ตามงบเกลา — คนละหน้าที่กัน
+    #    เกลาแล้วแนวจุดเรียบขึ้น ฟิตแน่น ๆ ก็ได้จุดน้อยอยู่ดี
+    #    เคยผูกไว้ที่ 2 เท่าของงบ แล้วภาพแถบสีตรง ๆ ยอมคลาดได้ถึง 5 px = ขอบเลื่อน
+    #    (ชุดตรวจจับได้: many_colors ΔE 6.2 -> 11.1)
+    tol_e = float(np.clip(max(tol_e, 0.6 * budget_e), 0.25, 1.5))
     #      ⚠️ ห้ามคูณตามความละเอียด — คูณแล้วจุดน้อยลงจริง แต่ความตรงกับต้นฉบับแย่ลง
     #         (วัดจริง: คูณ R^0.5 ได้ 892 จุด RMS 10.7 · ไม่คูณได้ 1175 จุด RMS 9.1)
     #         ผู้ใช้ปรับเองได้ที่ "จำนวนจุดบนเส้น" ถ้าอยากได้ไฟล์เล็กกว่า
@@ -802,7 +1127,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         area = sum(abs(_area(c)) for c in cs)
         layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
                        "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e,
-                                          look=int(max(6, round(2.5 * sg) + 5)))})
+                                          look=int(max(6, round(2.5 * sg) + 5)),
+                                          budget=budget_e)})
     layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
 
     # ขยายพิกัดคืนขนาดจริง
@@ -831,6 +1157,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
              "resized": False,                     # 👈 ต้องเป็น false เสมอ (นอกจากเกินเพดานแรม)
              "sigma": round(float(np.mean(sig_used)), 2) if sig_used else 0.0,
              "sigma_max": round(sigM, 2), "tol_px": round(tol_e, 2), "gap_px": round(gap_e, 2),
+             "smooth_budget_px": round(budget_e, 2),
              "transparent": bool(want_alpha), "seconds": round(time.time() - t0, 3),
              "preset": preset, "cfg": cfg}
     return {"layers": layers, "size": (W0, H0), "bg": bg, "stats": stats}

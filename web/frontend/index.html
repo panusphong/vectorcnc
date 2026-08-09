@@ -11501,10 +11501,18 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         linear-gradient(45deg,#eef1f6 25%,transparent 25%),linear-gradient(-45deg,#eef1f6 25%,transparent 25%),
         linear-gradient(45deg,transparent 75%,#eef1f6 75%),linear-gradient(-45deg,transparent 75%,#eef1f6 75%);
         background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;border:1px solid var(--line);user-select:none}
-      #vecOverlay .vcmp .va,#vecOverlay .vcmp .vb{position:absolute;inset:0;display:grid;place-items:center}
-      #vecOverlay .vcmp .va img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+      #vecOverlay .vcmp .va,#vecOverlay .vcmp .vb{position:absolute;inset:0;overflow:hidden}
+      /* 🔍 ชั้นซูม — ต้นฉบับกับเวกเตอร์ใช้ค่าเดียวกันเสมอ จะได้เทียบจุดต่อจุดได้จริง */
+      #vecOverlay .vcmp .vz{position:absolute;inset:0;transform-origin:0 0;will-change:transform}
+      /* ⚠️ ต้นฉบับต้องแสดง "หยาบอย่างที่มันเป็น" — ห้ามให้เบราว์เซอร์เกลี่ยพิกเซลให้เนียนเอง */
+      #vecOverlay .vcmp .va img{display:block;width:100%;height:100%;object-fit:fill;
+        image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:-moz-crisp-edges;
+        -ms-interpolation-mode:nearest-neighbor}
       #vecOverlay .vcmp .vb{clip-path:inset(0 0 0 50%)}
-      #vecOverlay .vcmp .vb svg{width:100%;height:100%}
+      #vecOverlay .vcmp .vb #vecSide{position:absolute;inset:0}
+      #vecOverlay .vcmp .vb svg{display:block;width:100%;height:100%}
+      #vecOverlay .vcmp.grab{cursor:grab} #vecOverlay .vcmp.grabbing{cursor:grabbing}
+      #vecOverlay .vzoom{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--muted)}
       #vecOverlay .vbar{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(15,23,42,.25);cursor:ew-resize;z-index:5}
       #vecOverlay .vbar::after{content:"⇄";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;border-radius:99px;background:#fff;box-shadow:0 4px 12px rgba(15,23,42,.25);display:grid;place-items:center;font-size:14px}
       #vecOverlay .vtag{position:absolute;top:9px;font-size:10px;font-weight:700;letter-spacing:.4px;padding:3px 9px;border-radius:99px;z-index:6}
@@ -11580,9 +11588,15 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       <div id="vecWarn"></div>
       <div class="vcmp" id="vecCmp">
         <div class="vtag vtagL" data-i18n="vec.px">พิกเซล</div><div class="vtag vtagR" data-i18n="vec.vec">เวกเตอร์</div>
-        <div class="va"><img id="vecOrig" alt=""></div>
-        <div class="vb" id="vecSide"></div>
+        <div class="va"><div class="vz" id="vecZa"><img id="vecOrig" alt=""></div></div>
+        <div class="vb" id="vecSideBox"><div class="vz" id="vecZb"><div id="vecSide"></div></div></div>
         <div class="vbar" id="vecBarH"></div>
+      </div>
+      <div class="vzoom">
+        <span data-i18n="vec.zoom">ซูมดูของจริง</span>
+        <span class="vseg" id="vecZ" style="display:inline-flex">
+          <button data-v="0" data-i18n="vec.zfit">พอดีจอ</button><button data-v="1" class="on">1:1</button><button data-v="2">2×</button><button data-v="4">4×</button><button data-v="8">8×</button></span>
+        <span data-i18n="vec.zhint" style="font-size:11.5px">ลากในภาพเพื่อเลื่อนดู · ลากแถบสีขาวเพื่อเทียบก่อน/หลัง</span>
       </div>
       <div class="vpal" id="vecPal"></div>
 
@@ -11602,8 +11616,8 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
           <div class="vrow"><label data-i18n="vec.ck">จำนวนสี</label>
             <input type="range" id="vecK" min="0" max="24" step="1" value="0" style="flex:1;min-width:150px">
             <b id="vecKv" style="width:64px;text-align:right;color:var(--brand)">อัตโนมัติ</b></div>
-          <div class="vrow"><label data-i18n="vec.cs">ความเนียนของเส้น</label>
-            <span class="vseg" id="vecS" style="display:inline-flex"><button data-v="1" data-i18n="vec.lo">น้อย</button><button data-v="2" class="on" data-i18n="vec.mid">กลาง</button><button data-v="4" data-i18n="vec.hi">มาก</button></span></div>
+          <div class="vrow"><label data-i18n="vec.cs">ความเนียน (แลกกับความตรงตามไฟล์)</label>
+            <span class="vseg" id="vecS" style="display:inline-flex"><button data-v="1" data-i18n="vec.lo">ตรงตามไฟล์</button><button data-v="2" class="on" data-i18n="vec.mid">สมดุล</button><button data-v="4" data-i18n="vec.hi">เนียนมาก</button></span></div>
           <div class="vrow"><label data-i18n="vec.ct">จำนวนจุดบนเส้น</label>
             <span class="vseg" id="vecT" style="display:inline-flex"><button data-v="0.3" data-i18n="vec.detail">ละเอียด</button><button data-v="0.5" class="on" data-i18n="vec.balance">สมดุล</button><button data-v="1.2" data-i18n="vec.light">เบา</button></span></div>
           <div class="vrow"><label data-i18n="vec.cg">เติมรอยต่อระหว่างสี</label>
@@ -11656,14 +11670,16 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     'vec.drop3':'JPG · PNG · GIF · BMP · WebP · TIFF — ไม่เกิน 30 MB',
     'vec.h2':'ข้อมูลภาพที่อ่านได้','vec.h2s':'ดูให้แน่ใจว่าถูกไฟล์ก่อนกดแปลง',
     'vec.convert':'แปลงเป็นเวกเตอร์','vec.change':'เปลี่ยนไฟล์','vec.h3':'ผลลัพธ์',
-    'vec.px':'พิกเซล','vec.vec':'เวกเตอร์','vec.useas':'ใช้งานแบบไหน','vec.useas2':'เลือกแล้วระบบแปลงใหม่ให้ทันที',
+    'vec.px':'ไฟล์ต้นฉบับ (พิกเซล)','vec.vec':'ผลลัพธ์ (เวกเตอร์)','vec.useas':'ใช้งานแบบไหน','vec.useas2':'เลือกแล้วระบบแปลงใหม่ให้ทันที',
+    'vec.zoom':'ซูมดูของจริง','vec.zfit':'พอดีจอ',
+    'vec.zhint':'ลากในภาพเพื่อเลื่อนดู · ลากแถบสีขาวเพื่อเทียบก่อน/หลัง',
     'vec.p1':'ใช้งานทั่วไป','vec.p1s':'รูปทึบสีตามต้นฉบับ ใช้ได้กับทุกโปรแกรม',
     'vec.p2':'แก้ไขง่าย','vec.p2s':'จัดกลุ่มตามสี จุดน้อย ลาก/เปลี่ยนสีสะดวก',
     'vec.p3':'ตัด & แกะสลัก','vec.p3s':'เส้นขอบปิดสนิท พร้อมเข้าเลเซอร์ · CNC',
     'vec.p4':'เสื้อผ้า & งานปัก','vec.p4s':'ตัดรายละเอียดจิ๊บจ๊อยทิ้ง สีน้อย เหมาะกับสกรีน',
-    'vec.adv':'ตั้งค่าละเอียด','vec.ck':'จำนวนสี','vec.cs':'ความเนียนของเส้น','vec.ct':'จำนวนจุดบนเส้น',
+    'vec.adv':'ตั้งค่าละเอียด','vec.ck':'จำนวนสี','vec.cs':'ความเนียน (แลกกับความตรงตามไฟล์)','vec.ct':'จำนวนจุดบนเส้น',
     'vec.cg':'เติมรอยต่อระหว่างสี','vec.cbg':'พื้นหลัง','vec.redo':'แปลงใหม่',
-    'vec.lo':'น้อย','vec.mid':'กลาง','vec.hi':'มาก','vec.detail':'ละเอียด','vec.balance':'สมดุล','vec.light':'เบา',
+    'vec.lo':'ตรงตามไฟล์','vec.mid':'สมดุล','vec.hi':'เนียนมาก','vec.detail':'ละเอียด','vec.balance':'สมดุล','vec.light':'เบา',
     'vec.off':'ปิด','vec.on':'เปิด','vec.strong':'เปิดแรง','vec.auto':'อัตโนมัติ','vec.clear':'โปร่งใส','vec.fill':'ทึบตามภาพ',
     'vec.fmt':'เลือกนามสกุลไฟล์','vec.fmt2':'เลือกได้หลายแบบพร้อมกัน',
     'vec.fsvg':'เว็บ & แก้ไขต่อ','vec.fpdf':'พร้อมส่งโรงพิมพ์','vec.fdxf':'CAD · CNC · เลเซอร์',
@@ -11680,14 +11696,16 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     'vec.drop3':'JPG · PNG · GIF · BMP · WebP · TIFF — up to 30 MB',
     'vec.h2':'What we read from the file','vec.h2s':'Make sure it is the right file before converting',
     'vec.convert':'Convert to vector','vec.change':'Change file','vec.h3':'Result',
-    'vec.px':'Pixels','vec.vec':'Vector','vec.useas':'What is it for','vec.useas2':'Pick one and it re-converts right away',
+    'vec.px':'Source file (pixels)','vec.vec':'Result (vector)','vec.useas':'What is it for','vec.useas2':'Pick one and it re-converts right away',
+    'vec.zoom':'Zoom to real pixels','vec.zfit':'Fit',
+    'vec.zhint':'Drag inside the image to pan · drag the white bar to compare before/after',
     'vec.p1':'General use','vec.p1s':'Solid shapes true to the source, opens anywhere',
     'vec.p2':'Easy to edit','vec.p2s':'Grouped by colour, fewer nodes, simple to recolour',
     'vec.p3':'Cut & engrave','vec.p3s':'Fully closed outlines, ready for laser and CNC',
     'vec.p4':'Apparel & stitching','vec.p4s':'Drops tiny detail, fewer colours, good for screen print',
-    'vec.adv':'Advanced','vec.ck':'Colour count','vec.cs':'Line smoothing','vec.ct':'Nodes on path',
+    'vec.adv':'Advanced','vec.ck':'Colour count','vec.cs':'Smoothing (trades against fidelity)','vec.ct':'Nodes on path',
     'vec.cg':'Fill seams between colours','vec.cbg':'Background','vec.redo':'Re-convert',
-    'vec.lo':'Low','vec.mid':'Medium','vec.hi':'High','vec.detail':'Detailed','vec.balance':'Balanced','vec.light':'Light',
+    'vec.lo':'True to file','vec.mid':'Balanced','vec.hi':'Very smooth','vec.detail':'Detailed','vec.balance':'Balanced','vec.light':'Light',
     'vec.off':'Off','vec.on':'On','vec.strong':'Strong','vec.auto':'Auto','vec.clear':'Transparent','vec.fill':'Keep solid',
     'vec.fmt':'Choose file formats','vec.fmt2':'You can pick more than one',
     'vec.fsvg':'Web & further editing','vec.fpdf':'Print ready','vec.fdxf':'CAD · CNC · laser',
@@ -11776,6 +11794,8 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       $('vecCmp').style.aspectRatio=j.size[0]+'/'+j.size[1];
       $('vecEng').textContent='engine ok · '+j.stats.seconds+'s';
       paintSum(); pngLbl(); step(3);
+      // ตั้งซูมหลังวางกล่องเสร็จ (ต้องรอให้ aspect-ratio มีผลก่อน ถึงจะวัดขนาดกล่องได้ถูก)
+      requestAnimationFrame(resetZoom);
     }).catch(function(e){
       alert((typeof LANG!=='undefined'&&LANG==='en'?'Convert failed — ':'แปลงไม่สำเร็จ — ')+(e.message||e));
     }).then(function(){ BUSY=false; b.disabled=b2.disabled=false; b.innerHTML=old; });
@@ -11799,12 +11819,10 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     } else {
       var msg = (en ? ('Processed at the file\u2019s full resolution '+s.work_px[0]+' × '+s.work_px[1]+' px — nothing was downscaled.')
                     : ('คำนวณที่ความละเอียดเต็มของไฟล์ '+s.work_px[0]+' × '+s.work_px[1]+' px — ไม่มีการย่อภาพ'));
-      if(s.block_px && s.block_px > 1.5){
-        msg += (en ? ('  This file was enlarged from a smaller image (pixel blocks about '+s.block_px
-                      +' px wide), so smoothing was matched to that — the paths follow the artwork, not the enlarged blocks.')
-                   : ('  ไฟล์นี้ถูกขยายมาจากภาพเล็ก (บล็อกพิกเซลกว้างราว '+s.block_px
-                      +' px) ระบบตั้งความเกลาให้พอดีกับบล็อกขนาดนั้น เส้นจึงเดินตามลายจริง ไม่ไต่ตามบล็อก'));
-      }
+      msg += (en ? ('  Smoothing applied: ' + (s.sigma > 0.05 ? s.sigma + ' px (only because the traced edge measured rough)'
+                                              : 'none — the outline follows the file exactly.'))
+                 : ('  การเกลา: ' + (s.sigma > 0.05 ? s.sigma + ' px (เกลาเพราะวัดแล้วเส้นหยาบจริง)'
+                                                    : 'ไม่มี — เส้นเดินตามไฟล์ทุกจุด')));
       w.innerHTML='<div class="vnote ok">✅ '+msg+'</div>';
     }
   }
@@ -11908,7 +11926,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         $('vecAdvH').querySelector('b').innerHTML=(ab.classList.contains('open')?'▾':'▸')+' <span data-i18n="vec.adv">'+L('vec.adv')+'</span>';
       };
     });
-    slider($('vecCmp'),$('vecBarH'),$('vecSide'));
+    slider($('vecCmp'),$('vecBarH'),$('vecSideBox'));
+    panDrag($('vecCmp'));
+    bindSeg('vecZ',function(v){ setZoom(parseFloat(v)); });
     try{ applyLang(); }catch(e){}
     paintLangBtns();
     fetch(API+'/api/vec/ping').then(function(r){return r.json();}).then(function(j){
@@ -11924,10 +11944,63 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     function set(x){ var r=c.getBoundingClientRect();
       var p=Math.max(2,Math.min(98,(x-r.left)/r.width*100));
       bar.style.left=p+'%'; side.style.clipPath='inset(0 0 0 '+p+'%)'; }
-    c.addEventListener('mousedown',function(e){down=true;set(e.clientX);});
+    // ⚠️ ลากที่ "แถบ" = เลื่อนเส้นเทียบ · ลากใน "ภาพ" = เลื่อนดู (ซูม) — คนละอย่างกัน
+    bar.addEventListener('mousedown',function(e){down=true;set(e.clientX);e.preventDefault();e.stopPropagation();});
     window.addEventListener('mousemove',function(e){ if(down)set(e.clientX); });
     window.addEventListener('mouseup',function(){down=false;});
-    c.addEventListener('touchmove',function(e){ set(e.touches[0].clientX); },{passive:true});
+    bar.addEventListener('touchmove',function(e){ set(e.touches[0].clientX); },{passive:true});
+  }
+
+  /* ── 🔍 ซูมเทียบของจริง ─────────────────────────────────────────────
+     ทำไมต้องมี: กล่องเทียบกว้างราว 720 จุด แต่ไฟล์ผู้ใช้มักกว้าง 2000-4000 พิกเซล
+     เบราว์เซอร์จะย่อภาพลงมาแสดง แล้ว "เกลี่ยพิกเซลให้เนียนเอง" — ความหยาบของไฟล์เดิม
+     เลยหายไปจากจอ ทั้งสองฝั่งดูเหมือนกันหมด มองไม่ออกว่าระบบทำอะไรให้บ้าง
+     ✅ ซูมที่ 1:1 ขึ้นไป + บังคับ nearest-neighbor = เห็นบล็อกพิกเซลจริงของไฟล์ต้นฉบับ
+        เทียบกับเส้นเวกเตอร์ที่คมทุกระดับการซูม */
+  var ZR=1, PX=0, PY=0;   // เริ่มที่ 1:1 = 1 พิกเซลในไฟล์ ต่อ 1 จุดบนจอ (เห็นเนื้อไฟล์จริง)
+  function zoomScale(){
+    var c=$('vecCmp'); if(!c)return 1;
+    var w=c.clientWidth||1;
+    if(!ZR)return 1;                                   // พอดีจอ
+    var nw=(LAST&&LAST.size&&LAST.size[0])||w;
+    return Math.max(1, ZR*nw/w);                       // 1:1 = 1 พิกเซลไฟล์ ต่อ 1 จุดจอ
+  }
+  function applyZoom(){
+    var c=$('vecCmp'), za=$('vecZa'), zb=$('vecZb'); if(!c||!za||!zb)return;
+    var s=zoomScale(), w=c.clientWidth||1, h=c.clientHeight||1;
+    function lim(v,ext){ if(s<=1.0001)return 0; return Math.max(-ext*(s-1),Math.min(0,v)); }
+    PX=lim(PX,w); PY=lim(PY,h);
+    var t='translate('+PX.toFixed(2)+'px,'+PY.toFixed(2)+'px) scale('+s.toFixed(4)+')';
+    za.style.transform=t; zb.style.transform=t;
+    c.classList.toggle('grab', s>1.0001);
+  }
+  function setZoom(r){
+    var c=$('vecCmp'); if(!c){ZR=r;return;}
+    var s0=zoomScale(), w=c.clientWidth||1, h=c.clientHeight||1;
+    var cx=(w/2-PX)/s0, cy=(h/2-PY)/s0;                // จุดกึ่งกลางที่มองอยู่ ในพิกัดภาพ
+    ZR=r; var s1=zoomScale();
+    PX=w/2-cx*s1; PY=h/2-cy*s1;
+    applyZoom();
+  }
+  function resetZoom(){                                 // เริ่มที่ใจกลางภาพเสมอ
+    var c=$('vecCmp'); if(!c)return;
+    var s=zoomScale(), w=c.clientWidth||1, h=c.clientHeight||1;
+    PX=w*(1-s)/2; PY=h*(1-s)/2; applyZoom();
+  }
+  function panDrag(c){
+    var on=false,lx=0,ly=0;
+    c.addEventListener('mousedown',function(e){
+      if(zoomScale()<=1.0001)return;
+      on=true; lx=e.clientX; ly=e.clientY; c.classList.add('grabbing'); e.preventDefault(); });
+    window.addEventListener('mousemove',function(e){
+      if(!on)return; PX+=e.clientX-lx; PY+=e.clientY-ly; lx=e.clientX; ly=e.clientY; applyZoom(); });
+    window.addEventListener('mouseup',function(){ on=false; c.classList.remove('grabbing'); });
+    var tx=0,ty=0;
+    c.addEventListener('touchstart',function(e){ tx=e.touches[0].clientX; ty=e.touches[0].clientY; },{passive:true});
+    c.addEventListener('touchmove',function(e){
+      if(zoomScale()<=1.0001)return;
+      var t=e.touches[0]; PX+=t.clientX-tx; PY+=t.clientY-ty; tx=t.clientX; ty=t.clientY; applyZoom(); },{passive:true});
+    window.addEventListener('resize',applyZoom);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
 })();
