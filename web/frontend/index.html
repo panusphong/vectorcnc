@@ -3658,10 +3658,15 @@ window.setLang=setLang; window.t=t;
       device:device(),browser:browser(),dur:Math.round((Date.now()-T0)/1000)});
     var url=(typeof API!=='undefined'?API:'')+'/api/track';
     try{
-      if(beacon&&navigator.sendBeacon){
+      /* 🎫 แนบตั๋ว SSO ที่ gate() เก็บไว้ใน localStorage — เซิร์ฟเวอร์จะได้เติมชื่อจริงให้
+         (sendBeacon แนบ header ไม่ได้ ถ้ามีตั๋วจึงต้องใช้ fetch แทน) */
+      var _tk=''; try{ _tk=localStorage.getItem('vc_token')||''; }catch(e){}
+      var _hd={'Content-Type':'application/json'};
+      if(_tk)_hd['X-User-Token']=_tk;
+      if(beacon&&navigator.sendBeacon&&!_tk){
         navigator.sendBeacon(url,new Blob([body],{type:'application/json'})); return;
       }
-      fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
+      fetch(url,{method:'POST',headers:_hd,body:body,keepalive:true}).catch(function(){});
     }catch(e){}
   }
   window.vcTrack=function(menu){ send('menu',menu); };
