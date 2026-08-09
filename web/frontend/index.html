@@ -12225,7 +12225,12 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         for(var _i=0;_i<_pf.length;_i++){ if(fs.some(function(f){return f.file===_pf[_i];})){
           ov.querySelector('#lgFont').value=_pf[_i]; break; } } }catch(_e){}
 
-      var LAST=null, DIRTY=true, T=null, BUSY=false;
+      var LAST=null, DIRTY=true, T=null, BUSY=false, WAIT=[];
+      /* 🚑 คิวของ 'สิ่งที่ต้องทำเมื่อสร้างเสร็จ'
+         ⚠️ บั๊กที่ผู้ใช้เจอจริง (2026-08-09): กดปุ่มวางลงกระดาน ตอนที่ตัวอย่างยังสร้างค้างอยู่
+            โค้ดเดิม render() จะ return ทิ้ง cb ไปเฉย ๆ -> ปุ่มค้างที่ "กำลังสร้าง…" ตลอดไป
+            (ฝั่งเซิร์ฟเวอร์เร็วมาก 0.06 วินาที ไม่ได้ช้าเลย — ค้างเพราะ callback หายไป) */
+      function _flush(){ var w=WAIT; WAIT=[]; w.forEach(function(f){ try{ f(); }catch(_e){} }); }
       function cfg(){
         return {text:ov.querySelector('#lgTxt').value,
                 font:ov.querySelector('#lgFont').value,
@@ -12239,6 +12244,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
                 outline_color:ov.querySelector('#lgOutC').value};
       }
       function render(cb){
+        if(cb)WAIT.push(cb);                 // ห้ามทิ้ง cb เด็ดขาด (ดูหมายเหตุด้านบน)
         if(BUSY){ DIRTY=true; return; }
         BUSY=true; DIRTY=false;
         var pv=ov.querySelector('#lgPv');
@@ -12253,9 +12259,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
             pv.innerHTML='<img src="'+j.png+'" alt="">';
             ov.querySelector('#lgInfo').textContent='ขนาดจริง '+(j.w_mm/10).toFixed(1)+' × '+(j.h_mm/10).toFixed(1)+' ซม.';
           }
-          if(DIRTY)render(); else if(cb)cb();
+          if(DIRTY)render(); else _flush();
         }).catch(function(e){ BUSY=false; LAST=null;
-          pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; if(cb)cb(); });
+          pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; _flush(); });
       }
       function bump(){ DIRTY=true; clearTimeout(T); T=setTimeout(function(){ render(); },380); }
 
@@ -12270,12 +12276,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       else render();
 
       ov.querySelector('#lgAdd').onclick=function(){
-        var b=this;
-        var go=function(){ if(LAST&&pushPiece(LAST,false)) ov.remove();
+        var b=this, done=false;
+        var reset=function(){ b.disabled=false; b.textContent='➕ วางลงกระดาน'; };
+        var go=function(){ if(done)return; done=true;
+                           if(LAST&&pushPiece(LAST,false)) ov.remove();
                            else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — แก้ข้อความ/ฟอนต์แล้วลองใหม่นะคะ');
-                           b.disabled=false; b.textContent='➕ วางลงกระดาน'; };
-        if(DIRTY||BUSY||!LAST){ b.disabled=true; b.textContent='⏳ กำลังสร้าง…'; render(go); }
-        else go();
+                           reset(); };
+        if(DIRTY||BUSY||!LAST){
+          b.disabled=true; b.textContent='⏳ กำลังสร้าง…';
+          /* 🛟 กันค้างซ้ำซ้อน: ต่อให้เน็ตหลุดจนคำตอบไม่กลับมาเลย ปุ่มก็ต้องกลับมากดได้ */
+          setTimeout(function(){ if(!done){ done=true; reset();
+            alert('สร้างตัวอย่างไม่ทันภายใน 30 วินาที — กด "วางลงกระดาน" อีกครั้งได้เลยค่ะ'); } },30000);
+          render(go);
+        } else go();
       };
     });
   }
@@ -12321,7 +12334,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       +'<button id="bgAdd" class="lgGo">➕ วางเป็นพื้นหลัง (ล่างสุด)</button></div>';
     var ov=modal('🎨 ใส่พื้นหลัง / แผ่นรอง',body,860);
 
-    var LAST=null, DIRTY=true, BUSY=false, T=null;
+    var LAST=null, DIRTY=true, BUSY=false, T=null, WAIT=[];
+    /* 🚑 คิวเดียวกับแผงข้อความ — ห้ามทิ้ง callback ไม่งั้นปุ่มค้างถาวร */
+    function _flush(){ var w=WAIT; WAIT=[]; w.forEach(function(f){ try{ f(); }catch(_e){} }); }
     function fd(){
       var f=new FormData();
       var sh=segVal(ov,'bgShape')||'rect';
@@ -12341,6 +12356,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       return f;
     }
     function render(cb){
+      if(cb)WAIT.push(cb);
       if(BUSY){ DIRTY=true; return; }
       BUSY=true; DIRTY=false;
       var pv=ov.querySelector('#bgPv');
@@ -12349,9 +12365,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         if(!j||!j.ok){ pv.innerHTML='<span style="color:#dc2626;font-size:12px;text-align:center">⛔ '+esc((j&&j.error)||'สร้างไม่สำเร็จ')+'</span>'; LAST=null; }
         else { LAST=j; pv.innerHTML='<img src="'+j.png+'" alt="">';
                ov.querySelector('#bgInfo').textContent='ขนาดจริง '+(j.w_mm/10).toFixed(1)+' × '+(j.h_mm/10).toFixed(1)+' ซม.'; }
-        if(DIRTY)render(); else if(cb)cb();
+        if(DIRTY)render(); else _flush();
       }).catch(function(e){ BUSY=false; LAST=null;
-        pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; if(cb)cb(); });
+        pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; _flush(); });
     }
     function bump(){ DIRTY=true; clearTimeout(T); T=setTimeout(function(){ render(); },380); }
 
@@ -12375,12 +12391,18 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     render();
 
     ov.querySelector('#bgAdd').onclick=function(){
-      var b=this;
-      var go=function(){ if(LAST&&pushPiece(LAST,true)) ov.remove();
+      var b=this, done=false;
+      var reset=function(){ b.disabled=false; b.textContent='➕ วางเป็นพื้นหลัง (ล่างสุด)'; };
+      var go=function(){ if(done)return; done=true;
+                         if(LAST&&pushPiece(LAST,true)) ov.remove();
                          else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — ตรวจค่าที่กรอกแล้วลองใหม่นะคะ');
-                         b.disabled=false; b.textContent='➕ วางเป็นพื้นหลัง (ล่างสุด)'; };
-      if(DIRTY||BUSY||!LAST){ b.disabled=true; b.textContent='⏳ กำลังสร้าง…'; render(go); }
-      else go();
+                         reset(); };
+      if(DIRTY||BUSY||!LAST){
+        b.disabled=true; b.textContent='⏳ กำลังสร้าง…';
+        setTimeout(function(){ if(!done){ done=true; reset();
+          alert('สร้างตัวอย่างไม่ทันภายใน 30 วินาที — กด "วางเป็นพื้นหลัง" อีกครั้งได้เลยค่ะ'); } },30000);
+        render(go);
+      } else go();
     };
   }
 
