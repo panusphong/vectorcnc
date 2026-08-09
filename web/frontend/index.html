@@ -3793,9 +3793,12 @@ window.setLang=setLang; window.t=t;
         '<td class="n">'+(x.dur?fmtSec(x.dur):'')+'</td></tr>';
     }).join('') : '<tr><td style="color:#cbd5e1">— ยังไม่มีข้อมูล —</td></tr>';
     var isSheet=(j.source==='sheet');
+    var H=j.health||{}, onDisk=!!H.persist_disk, safe=(isSheet||onDisk);
     var src=isSheet
       ? '<b style="color:#16a34a">📗 Google Sheet (ถาวร)</b>'
-      : '<b style="color:#f59e0b">💾 ในเครื่อง (รีเซ็ตตอน deploy)</b>';
+      : (onDisk ? '<b style="color:#16a34a">💾 ดิสก์ถาวรบนเซิร์ฟเวอร์ (ไม่หายตอน deploy)</b>'
+                : '<b style="color:#f59e0b">💾 ในเครื่อง (รีเซ็ตตอน deploy)</b>');
+    if(H.pending) src+=' <span style="color:#b45309">· ค้างส่งเข้าชีต '+H.pending+' รายการ</span>';
     q('swWhen').innerHTML='อัปเดต '+new Date().toLocaleTimeString('th-TH')+' · แหล่งข้อมูล: '+src;
     // ⚠️ แบนเนอร์เตือนเมื่อยังไม่เชื่อม Google Sheet -> สถิติจะรีเซ็ตทุก deploy
     var wb=q('swWarn');
@@ -3803,7 +3806,9 @@ window.setLang=setLang; window.t=t;
       var hdr=q('swWhen'), host=(hdr&&hdr.closest)?hdr.closest('.sw-h'):null;
       if(host&&host.parentNode){ host.parentNode.insertBefore(wb, host.nextSibling); }
       else if(q('statsWidget')){ q('statsWidget').insertBefore(wb, q('statsWidget').firstChild); } }
-    if(wb){ if(isSheet){ wb.style.display='none'; }
+    if(wb){ if(safe&&!H.pending){ wb.style.display='none'; }
+      else if(safe&&H.pending){ wb.style.cssText='display:block;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#065f46;line-height:1.75';
+        wb.innerHTML='✅ <b>สถิติเก็บถาวรแล้ว</b> — '+(H.note||'')+'<br>ระบบจะลองส่งรายการที่ค้างเข้า Google Sheet ให้เองอัตโนมัติ ไม่ต้องทำอะไร'; }
       else { wb.style.cssText='display:block;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#92400e;line-height:1.75';
         wb.innerHTML='⚠️ <b>สถิติยังไม่สะสมถาวร — ข้อมูลจะรีเซ็ตทุกครั้งที่ deploy</b><br>ตอนนี้เก็บ "ในเครื่อง" (ชั่วคราว). ให้สะสมถาวร: Deploy สคริปต์ <code>apps_script/Analytics.gs</code> เป็น Web App (Execute as: Me · Who has access: <b>Anyone</b>) แล้วตั้ง env <code>ANALYTICS_WEBHOOK</code> = URL /exec บน Render → หัวข้อจะเปลี่ยนเป็น 📗 Google Sheet (ถาวร)'; } }
   }
@@ -12042,8 +12047,9 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
           L.push('ที่เก็บสถิติ: '+(h.disk_persist?'ดิสก์ถาวร ✅':'ชั่วคราว /tmp ⚠️')+'  '+(h.data_dir||''));
           if(h.declared) L.push('render.yaml เขียนไว้: '+h.declared);
           if(h.warn) L.push('',''+h.warn);
-          if(!h.api) L.push('','หมายเหตุ: ยังไม่ได้ตั้ง RENDER_API_KEY — ตัวเลขแพลนเป็นการประมาณจากแรม/ซีพียู'
-                            +' ตั้งคีย์แล้วจะดึงแพลนจริงจาก Render มาแสดงแทน');
+          if(!h.api&&!h.env_plan) L.push('','หมายเหตุ: ตัวเลขแพลนเป็นการประมาณจากแรม/ซีพียู'
+                            +' — ตั้ง env PLAN_NAME=pro บน Render แล้วจะแสดงชื่อแพลนที่ถูกต้องเป๊ะ'
+                            +' (หรือตั้ง RENDER_API_KEY ถ้าอยากให้ดึงจาก Render เองอัตโนมัติ)');
         }
         alert(L.join('\n'));
       };
