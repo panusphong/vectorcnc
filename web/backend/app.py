@@ -9766,7 +9766,7 @@ async def compose_vector(request: Request):
                     continue
                 # 🧩 รองรับชิ้นจาก 'หลายไฟล์' — แต่ละชิ้นพก token ของไฟล์ตัวเอง (ไม่มีก็ใช้ token กลาง)
                 _tk = str(it.get("token") or tok)
-                path = _ASSET_STORE.get(_tk)
+                path = _asset_path(_tk)
                 if not path or not os.path.exists(path):
                     fails.append("ไฟล์ต้นทางหมดอายุ (เซิร์ฟเวอร์รีสตาร์ต) — ลากไฟล์เข้ามาใหม่")
                     continue
@@ -9780,7 +9780,13 @@ async def compose_vector(request: Request):
                 r = fitz.Rect(float(it["x_mm"]) * MMPT, float(it["y_mm"]) * MMPT,
                               (float(it["x_mm"]) + float(it["w_mm"])) * MMPT,
                               (float(it["y_mm"]) + float(it["h_mm"])) * MMPT)
-                pg.show_pdf_page(r, pdoc, 0)             # ✅ ฝังเวกเตอร์สะอาดเฉพาะชิ้น (ไม่ raster)
+                # ✅ ฝังเวกเตอร์สะอาดเฉพาะชิ้น (ไม่ raster)
+                # 🎨 fill=1 -> ชิ้นนี้คือ "แผ่นพื้นหลัง" ที่ผู้ใช้ยืด/หดอิสระบนกระดาน
+                #    ต้องยืดให้เต็มกรอบตามที่เห็นบนจอเป๊ะ ๆ (ไม่รักษาสัดส่วน)
+                # ⚠️ ชิ้นอื่นต้องรักษาสัดส่วนไว้เหมือนเดิม — ชิ้นที่ครอปมาจะเผื่อขอบไว้ 1 pt
+                #    ถ้าบังคับยืดเต็มกรอบ ชิ้นเล็ก ๆ จะบิดผิดสัดส่วนไปหลายเปอร์เซ็นต์
+                pg.show_pdf_page(r, pdoc, 0,
+                                 keep_proportion=(not bool(it.get("fill"))))
                 pdoc.close()
                 n_ok += 1
             except Exception as _e2:
@@ -9804,7 +9810,7 @@ async def compose_assets(request: Request):
        -> {png_base64, width_mm, height_mm}  (เอาไปสร้างแบบตามประเภทป้ายต่อ)"""
     body = await request.json()
     tok = str(body.get("token", ""))
-    path = _ASSET_STORE.get(tok)
+    path = _asset_path(tok)
     if not path or not os.path.exists(path):
         return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาลากไฟล์ใหม่"}, status_code=400)
     items = body.get("items", []) or []
@@ -9846,7 +9852,7 @@ async def extract_asset(request: Request):
        body JSON: {token, page, bbox:[x0,y0,x1,y1], kind, xref}"""
     body = await request.json()
     tok = str(body.get("token", ""))
-    path = _ASSET_STORE.get(tok)
+    path = _asset_path(tok)
     if not path or not os.path.exists(path):
         return JSONResponse({"error": "ไฟล์หมดอายุ กรุณาอัปโหลดใหม่"}, status_code=400)
     try:
@@ -9882,25 +9888,519 @@ async def extract_asset(request: Request):
 #     ลากวาง · ย่อขยาย · จัดตำแหน่ง · วัดระยะ · รวมเป็นเวกเตอร์แท้ — ไม่ต้องแก้อะไรเลย
 #  ⚠️ ข้อความไทยผ่านตัวจัดวาง HarfBuzz ตัวเดียวกับที่เบราว์เซอร์ใช้
 #     สระบน/สระล่าง/วรรณยุกต์จึงอยู่ถูกตำแหน่ง (ถ้าเดินตามความกว้างเฉย ๆ สระจะหลุด)
+# ──────────────────────────────────────────────────────────────────
+#  ✍️🎨 เครื่องมือทำ "ข้อความ" และ "พื้นหลัง" ให้เป็นเวกเตอร์แท้
+#  (เดิมแยกเป็นไฟล์ text_vec.py — ยุบเข้ามาไว้ที่นี่ตามที่ผู้ใช้สั่ง 2026-08-09
+#   "ไม่ต้องแยกไฟล์ ไปแก้ไฟล์เดิมเลย" -> อัปขึ้น Render น้อยไฟล์ลง)
+#
+#  ⚠️ กติกาที่ห้ามพลาด — ข้อความไทย
+#     ตัวอักษรไทยวาง 'สระบน/สระล่าง/วรรณยุกต์' ซ้อนบนพยัญชนะ ไม่ใช่เรียงต่อกันแบบอังกฤษ
+#     ถ้าเดินตัวอักษรด้วยความกว้าง (advance) ตรง ๆ สระกับวรรณยุกต์จะหลุดไปอยู่ผิดที่
+#     จึงต้องผ่าน HarfBuzz (uharfbuzz) ตัวจัดวางเดียวกับที่เบราว์เซอร์ใช้
+#     และปฏิเสธทันทีถ้าเลือกฟอนต์ที่ไม่มีตัวอักษรไทย
+#     (ยอมให้ผู้ใช้เห็นข้อความเตือน ดีกว่าปล่อยไฟล์ตัดที่สระลอยผิดที่ออกไปโรงงาน)
+#  ⚠️ ความคมของเส้น
+#     เส้นตัวอักษรดึงจาก 'เส้นโค้งเบซิเยร์ในไฟล์ฟอนต์' ตรง ๆ (fontTools) ไม่ผ่านภาพเลยสักขั้น
+#     -> ขยายกี่เท่าก็คม ไม่มีบันไดพิกเซล ไม่ต้องเทรซกลับ
+# ──────────────────────────────────────────────────────────────────
+_TV_FONT_DIR = None
+_TV_CAT = None
+_TV_FACE_CACHE = {}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  คลังฟอนต์
+# ══════════════════════════════════════════════════════════════════
+def _tv_font_dir():
+    global _TV_FONT_DIR
+    if _TV_FONT_DIR:
+        return _TV_FONT_DIR
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands = [
+        os.path.join(here, "..", "frontend", "fonts"),
+        os.path.join(here, "fonts"),
+        os.path.join(here, "..", "..", "web", "frontend", "fonts"),
+    ]
+    for c in cands:
+        c = os.path.abspath(c)
+        if os.path.isdir(c):
+            _TV_FONT_DIR = c
+            return c
+    _TV_FONT_DIR = os.path.abspath(cands[0])
+    return _TV_FONT_DIR
+
+
+def _tv_pretty(fname):
+    """Prompt-Bold.ttf -> 'Prompt Bold' · Oswald-Variable.ttf -> 'Oswald'"""
+    n = re.sub(r"\.(ttf|otf)$", "", fname, flags=re.I)
+    n = re.sub(r"-(Variable|Regular)$", "", n, flags=re.I)
+    n = n.replace("-", " ")
+    n = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", n)
+    return re.sub(r"\s+", " ", n).strip()
+
+
+def _tv_catalog(refresh=False):
+    """คืนรายการฟอนต์ที่มีในเครื่อง + บอกว่าตัวไหน 'พิมพ์ไทยได้จริง'
+
+    ตรวจไทยจากตาราง cmap ของไฟล์ฟอนต์เอง (ต้องมีทั้งพยัญชนะ ก · สระอิ · วรรณยุกต์เอก)
+    ไม่ใช่เดาจากชื่อไฟล์ — ฟอนต์อังกฤษหลายตัวชื่อดูไทยแต่ไม่มีตัวอักษรไทยอยู่จริง
+    """
+    global _TV_CAT
+    if _TV_CAT is not None and not refresh:
+        return _TV_CAT
+    from fontTools.ttLib import TTFont
+    d = _tv_font_dir()
+    out = []
+    try:
+        names = sorted(os.listdir(d))
+    except Exception:
+        names = []
+    for fn in names:
+        if not fn.lower().endswith((".ttf", ".otf")):
+            continue
+        p = os.path.join(d, fn)
+        try:
+            f = TTFont(p, fontNumber=0, lazy=True)
+            cm = f.getBestCmap() or {}
+            thai = all(ord(c) in cm for c in ("ก", "ิ", "่"))
+            latin = all(ord(c) in cm for c in ("A", "a", "1"))
+            f.close()
+        except Exception:
+            continue
+        out.append({"file": fn, "name": _tv_pretty(fn), "thai": bool(thai),
+                    "latin": bool(latin), "cat": "th" if thai else "en"})
+    # ไทยขึ้นก่อนเสมอ (ลูกค้าส่วนใหญ่พิมพ์ไทย) แล้วเรียงตามชื่อ
+    out.sort(key=lambda a: (0 if a["thai"] else 1, a["name"].lower()))
+    _TV_CAT = out
+    return out
+
+
+def _tv_resolve_font(name_or_file):
+    """รับได้ทั้งชื่อไฟล์ ('Prompt-Bold.ttf') และชื่อที่คนเรียก ('Prompt Bold')"""
+    d = _tv_font_dir()
+    s = os.path.basename(str(name_or_file or "").strip())
+    if s and os.path.exists(os.path.join(d, s)):
+        return os.path.join(d, s)
+    low = re.sub(r"\s+", "", str(name_or_file or "")).lower()
+    for it in _tv_catalog():
+        if re.sub(r"\s+", "", it["name"]).lower() == low or it["file"].lower() == low:
+            return os.path.join(d, it["file"])
+    return None
+
+
+def _tv_face(path):
+    """เปิดฟอนต์ครั้งเดียวแล้วจำไว้ (เปิดใหม่ทุกครั้งช้ามาก เพราะไฟล์ไทยตัวละ 100-400 KB)"""
+    st = _TV_FACE_CACHE.get(path)
+    if st:
+        return st
+    import uharfbuzz as hb
+    from fontTools.ttLib import TTFont
+    blob = hb.Blob.from_file_path(path)
+    face = hb.Face(blob)
+    hbf = hb.Font(face)
+    upem = int(face.upem or 1000)
+    hbf.scale = (upem, upem)
+    tt = TTFont(path, fontNumber=0, lazy=True)
+    gs = tt.getGlyphSet()
+    order = tt.getGlyphOrder()
+    try:
+        hh = tt["hhea"]
+        asc, desc = float(hh.ascent), float(hh.descent)
+    except Exception:
+        asc, desc = upem * 0.8, -upem * 0.2
+    st = {"hb": hbf, "gs": gs, "order": order, "upem": upem,
+          "asc": asc, "desc": desc, "tt": tt, "cmap": tt.getBestCmap() or {}}
+    _TV_FACE_CACHE[path] = st
+    return st
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ข้อความ -> เส้นโค้งจริง
+# ══════════════════════════════════════════════════════════════════
+def _tv_glyph_d(gs, gname):
+    from fontTools.pens.svgPathPen import SVGPathPen
+    try:
+        pen = SVGPathPen(gs)
+        gs[gname].draw(pen)
+        return pen.getCommands() or ""
+    except Exception:
+        return ""
+
+
+_TV_TH_RE = re.compile(r"[฀-๿]")
+
+
+def _tv_has_thai(s):
+    return bool(_TV_TH_RE.search(str(s or "")))
+
+
+def _tv_shape_line(st, line, track_em):
+    """คืน (glyphs, width) — glyphs = [(gname, x, y)] ในหน่วยของฟอนต์ (y ชี้ขึ้น)
+
+    ⚠️ ใช้ HarfBuzz เท่านั้น: สระ/วรรณยุกต์ไทยมี advance = 0 แต่มี offset
+       ถ้าไม่ผ่านตัวจัดวางนี้ สระจะไปกองอยู่หลังพยัญชนะแทนที่จะซ้อนอยู่ข้างบน
+    """
+    import uharfbuzz as hb
+    buf = hb.Buffer()
+    buf.add_str(line)
+    buf.guess_segment_properties()
+    hb.shape(st["hb"], buf, {"kern": True, "liga": True})
+    order = st["order"]
+    upem = st["upem"]
+    tr = float(track_em) * upem
+    gl = []
+    x = 0.0
+    for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
+        gid = int(info.codepoint)
+        gname = order[gid] if 0 <= gid < len(order) else None
+        if gname:
+            gl.append((gname, x + float(pos.x_offset), float(pos.y_offset)))
+        adv = float(pos.x_advance)
+        x += adv
+        if adv > 0:                      # ระยะห่างเพิ่มเฉพาะตัวที่กินความกว้างจริง
+            x += tr                      # (สระ/วรรณยุกต์ advance=0 ห้ามบวก ไม่งั้นหลุดตำแหน่ง)
+    if gl and tr:
+        x -= tr
+    return gl, x
+
+
+def _tv_text_svg(text, font_file, size_mm=100.0, color="#111111", tracking=0.0,
+             line_gap=1.00, align="center", italic=0.0,
+             outline_mm=0.0, outline_color="#ffffff"):
+    """คืน (svg_str, mm_per_unit) — ข้อความเป็น <path> เส้นโค้งจริงจากไฟล์ฟอนต์
+
+    size_mm  = ความสูงของ 'ตัวอักษรเต็มบรรทัด' (em) เป็นมิลลิเมตร — คงที่ไม่ว่าจะพิมพ์อะไร
+    outline_mm = ขอบรอบตัวอักษร (วาดเป็นเส้นหนารองข้างหลัง แล้วทับด้วยตัวจริง)
+    """
+    p = _tv_resolve_font(font_file)
+    if not p:
+        raise ValueError("ไม่พบฟอนต์ '%s' ในเครื่อง" % font_file)
+    st = _tv_face(p)
+    upem = st["upem"]
+    if _tv_has_thai(text) and not st["cmap"].get(ord("ก")):
+        raise ValueError("ฟอนต์ '%s' ไม่มีตัวอักษรไทย — เลือกฟอนต์ในกลุ่ม 'ไทย' นะคะ" % _tv_pretty(os.path.basename(p)))
+
+    lines = [l for l in str(text or "").replace("\r", "").split("\n")]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        raise ValueError("ยังไม่ได้พิมพ์ข้อความ")
+
+    # ระยะบรรทัด = ระยะที่ไฟล์ฟอนต์กำหนดไว้เอง (asc-desc) คูณตัวปรับของผู้ใช้
+    #   ฟอนต์ไทยเผื่อที่ให้สระบน/ล่างไว้แล้ว (1.2-1.6 เท่าของตัวอักษร) -> 1.00 = ระยะเดียวกับที่เห็นในเบราว์เซอร์
+    lh = (st["asc"] - st["desc"]) * float(line_gap)
+    laid, maxw = [], 1.0
+    for ln in lines:
+        gl, w = _tv_shape_line(st, ln, tracking)
+        laid.append((gl, w))
+        maxw = max(maxw, w)
+
+    body = []
+    for i, (gl, w) in enumerate(laid):
+        dx = (maxw - w) * (0.5 if align == "center" else (1.0 if align == "right" else 0.0))
+        base = st["asc"] + i * lh
+        for gname, gx, gy in gl:
+            d = _tv_glyph_d(st["gs"], gname)
+            if not d:
+                continue
+            body.append('<g transform="translate(%.3f,%.3f) scale(1,-1)"><path d="%s"/></g>'
+                        % (gx + dx, base - gy, d))
+    if not body:
+        raise ValueError("ฟอนต์นี้ไม่มีตัวอักษรที่พิมพ์มาเลย")
+    inner = "".join(body)
+
+    mmu = float(size_mm) / float(upem)          # มม. ต่อ 1 หน่วยฟอนต์
+    W = maxw + upem * 1.0                       # เผื่อขอบกันเส้นโดนตัด (วัดกรอบจริงทีหลัง)
+    H = st["asc"] + lh * (len(laid) - 1) - st["desc"] + upem * 1.0
+    ox = upem * 0.5
+    oy = upem * 0.5
+
+    layers = []
+    if float(outline_mm) > 0:
+        sw = float(outline_mm) / mmu * 2.0      # stroke วาดคร่อมเส้น -> ครึ่งเดียวโผล่ออกนอก
+        layers.append('<g fill="none" stroke="%s" stroke-width="%.3f" stroke-linejoin="round" '
+                      'stroke-linecap="round">%s</g>' % (_tv_hex(outline_color), sw, inner))
+    layers.append('<g fill="%s">%s</g>' % (_tv_hex(color), inner))
+
+    skew = (' transform="skewX(%.2f)"' % (-abs(float(italic)))) if float(italic or 0) else ""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="%.4fmm" height="%.4fmm" '
+           'viewBox="0 0 %.3f %.3f">'
+           '<g transform="translate(%.3f,%.3f)"><g%s>%s</g></g></svg>'
+           % (W * mmu, H * mmu, W, H, ox, oy, skew, "".join(layers)))
+    return svg, mmu
+
+
+# ══════════════════════════════════════════════════════════════════
+#  พื้นหลัง (สีพื้น · ไล่สี · ไฟล์ artwork)
+# ══════════════════════════════════════════════════════════════════
+def _tv_hex(c, dflt="#000000"):
+    s = str(c or "").strip()
+    if re.match(r"^#[0-9a-fA-F]{6}$", s) or re.match(r"^#[0-9a-fA-F]{3}$", s):
+        return s
+    if re.match(r"^[0-9a-fA-F]{6}$", s):
+        return "#" + s
+    return dflt
+
+
+def _tv_bg_svg(w_mm=200.0, h_mm=100.0, shape="rect", radius_mm=0.0,
+           fill="solid", color1="#2563eb", color2="#7c3aed", angle=90.0,
+           art_bytes=None, art_mime="image/png", art_fit="cover",
+           border_mm=0.0, border_color="#0f172a", opacity=1.0):
+    """คืน svg_str ของแผ่นพื้นหลังขนาดจริง (1 หน่วย = 1 มม.)
+
+    art_fit: cover = เต็มแผ่นแบบไม่บิดสัดส่วน (ส่วนเกินถูกตัด) · contain = เห็นทั้งรูป · stretch = ยืดเต็ม
+    """
+    W = max(1.0, float(w_mm))
+    H = max(1.0, float(h_mm))
+    r = max(0.0, min(float(radius_mm or 0), min(W, H) / 2.0))
+    defs, paint = [], ""
+
+    if fill == "grad":
+        a = float(angle or 0) * 3.141592653589793 / 180.0
+        import math
+        dx, dy = math.cos(a), math.sin(a)
+        x1, y1 = 0.5 - dx / 2, 0.5 - dy / 2
+        x2, y2 = 0.5 + dx / 2, 0.5 + dy / 2
+        defs.append('<linearGradient id="vgg" x1="%.4f" y1="%.4f" x2="%.4f" y2="%.4f">'
+                    '<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></linearGradient>'
+                    % (x1, y1, x2, y2, _tv_hex(color1), _tv_hex(color2)))
+        paint = "url(#vgg)"
+    else:
+        paint = _tv_hex(color1)
+
+    if shape == "ellipse":
+        body = '<ellipse cx="%.3f" cy="%.3f" rx="%.3f" ry="%.3f"' % (W / 2, H / 2, W / 2, H / 2)
+        shape_attr = body
+        clip = '<ellipse cx="%.3f" cy="%.3f" rx="%.3f" ry="%.3f"/>' % (W / 2, H / 2, W / 2, H / 2)
+    else:
+        shape_attr = '<rect x="0" y="0" width="%.3f" height="%.3f" rx="%.3f" ry="%.3f"' % (W, H, r, r)
+        clip = '<rect x="0" y="0" width="%.3f" height="%.3f" rx="%.3f" ry="%.3f"/>' % (W, H, r, r)
+
+    parts = ['%s fill="%s" fill-opacity="%.3f"/>' % (shape_attr, paint, max(0.0, min(1.0, float(opacity or 1))))]
+
+    if fill == "art" and art_bytes:
+        # 🖼️ ไฟล์ artwork ฝังลงไปในแผ่นเลย (ตัดขอบตามรูปทรงแผ่น) — ผู้ใช้ออกแบบหน้ากล่องไฟเองได้
+        b64 = base64.b64encode(art_bytes).decode()
+        par = {"cover": 'xMidYMid slice', "contain": 'xMidYMid meet',
+               "stretch": 'none'}.get(str(art_fit), 'xMidYMid slice')
+        defs.append('<clipPath id="vgc">%s</clipPath>' % clip)
+        parts.append('<g clip-path="url(#vgc)"><image x="0" y="0" width="%.3f" height="%.3f" '
+                     'preserveAspectRatio="%s" xlink:href="data:%s;base64,%s"/></g>'
+                     % (W, H, par, art_mime or "image/png", b64))
+
+    if float(border_mm or 0) > 0:
+        bw = float(border_mm)
+        parts.append('%s fill="none" stroke="%s" stroke-width="%.3f"/>'
+                     % (shape_attr, _tv_hex(border_color), bw))
+
+    return ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'width="%.4fmm" height="%.4fmm" viewBox="0 0 %.3f %.3f">%s%s</svg>'
+            % (W, H, W, H, ("<defs>%s</defs>" % "".join(defs)) if defs else "", "".join(parts)))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SVG -> PDF เวกเตอร์ + วัดกรอบเนื้อจริง + รูปพรีวิว
+# ══════════════════════════════════════════════════════════════════
+def _tv_svg2pdf(svg_str):
+    import cairosvg
+    return cairosvg.svg2pdf(bytestring=svg_str.encode("utf-8"))
+
+
+def _tv_ink_rect(pdf_bytes, pad_pt=0.35):
+    """หา 'กรอบเนื้อจริง' ของหน้า PDF (ตัดที่ว่างรอบ ๆ ทิ้ง)
+
+    ทำไมต้องวัดจากไฟล์: ความกว้างจริงของข้อความขึ้นกับตัวอักษรที่พิมพ์
+    คำนวณจากตารางฟอนต์ล้วน ๆ จะพลาดที่หางตัวอักษรที่ยื่นเกิน advance (ฟอนต์คัดลายมือยื่นเยอะมาก)
+    """
+    import fitz
+    d = fitz.open("pdf", pdf_bytes)
+    try:
+        pg = d[0]
+        R = None
+        try:
+            for g in pg.get_drawings():
+                r = g.get("rect")
+                if r is None or r.is_empty:
+                    continue
+                R = r if R is None else (R | r)
+        except Exception:
+            R = None
+        try:
+            for im in pg.get_image_info():
+                r = fitz.Rect(im["bbox"])
+                if not r.is_empty:
+                    R = r if R is None else (R | r)
+        except Exception:
+            pass
+        if R is None or R.is_empty:
+            return tuple(pg.rect)
+        R = fitz.Rect(R.x0 - pad_pt, R.y0 - pad_pt, R.x1 + pad_pt, R.y1 + pad_pt) & pg.rect
+        if R.is_empty or R.width < 0.2 or R.height < 0.2:
+            return tuple(pg.rect)
+        return (R.x0, R.y0, R.x1, R.y1)
+    finally:
+        d.close()
+
+
+def _tv_crop_pdf(pdf_bytes, rect):
+    """ตัดหน้าให้เหลือแค่กรอบเนื้อ — ยังเป็นเวกเตอร์ 100% (ไม่ raster ไม่แตะเส้นสักเส้น)
+
+    ⚠️ ตั้งใจ 'สร้างหน้าใหม่แล้ววางของเข้าไป' แทนการตั้ง CropBox
+       เพราะหน้าที่มี CropBox เลื่อนออกจากศูนย์ ทำให้พิกัด bbox ที่ส่งต่อไปให้
+       ขั้นตอนรวมเวกเตอร์ (ซึ่งครอปด้วย redaction) เพี้ยนไปทั้งชิ้น
+       หน้าใหม่มีมุมซ้ายบนที่ (0,0) เสมอ -> พิกัดที่ส่งต่อจึงตรงเสมอ
+    """
+    import fitz
+    src = fitz.open("pdf", pdf_bytes)
+    try:
+        r = fitz.Rect(*rect)
+        out = fitz.open()
+        pg = out.new_page(width=r.width, height=r.height)
+        pg.show_pdf_page(fitz.Rect(0, 0, r.width, r.height), src, 0, clip=r)
+        data = out.tobytes(garbage=4, deflate=True, clean=True)
+        out.close()
+        return data
+    finally:
+        src.close()
+
+
+def _tv_preview_png(pdf_bytes, max_px=620):
+    """รูปพรีวิวพื้นโปร่ง — ใช้ทั้งบนแถบชิ้นงานและบนกระดานจัดวาง"""
+    import fitz
+    d = fitz.open("pdf", pdf_bytes)
+    try:
+        pg = d[0]
+        r = pg.rect
+        z = max(0.4, min(9.0, float(max_px) / max(1.0, max(r.width, r.height))))
+        pix = pg.get_pixmap(matrix=fitz.Matrix(z, z), alpha=True)
+        return pix.tobytes("png")
+    finally:
+        d.close()
+
+
+_TV_PT2MM = 25.4 / 72.0
+
+
+def _tv_make_asset(pdf_bytes, tmpdir, name="asset.pdf", crop=True):
+    """แปลง PDF ที่สร้างขึ้น -> 'ชิ้นงาน' หน้าตาเดียวกับที่ /api/extract-assets คืนออกมา
+       (เก็บไฟล์ไว้บนดิสก์ให้ token ใช้ครอปตอนรวมเวกเตอร์ได้จริง)"""
+    import fitz
+    if crop:
+        pdf_bytes = _tv_crop_pdf(pdf_bytes, _tv_ink_rect(pdf_bytes))
+    path = os.path.join(tmpdir, name)
+    with open(path, "wb") as f:
+        f.write(pdf_bytes)
+    d = fitz.open(path)
+    try:
+        r = d[0].rect
+        bbox = [r.x0, r.y0, r.x1, r.y1]
+        w_mm = round(r.width * _TV_PT2MM, 2)
+        h_mm = round(r.height * _TV_PT2MM, 2)
+    finally:
+        d.close()
+    png = _tv_preview_png(pdf_bytes)
+    return {"path": path, "page": 0, "bbox": bbox, "w_mm": w_mm, "h_mm": h_mm,
+            "png": "data:image/png;base64," + base64.b64encode(png).decode()}
+
+
+# ── ตรวจตัวเองแบบเร็ว (รันไฟล์นี้ตรง ๆ) ───────────────────────────
+
+
 _MADE_DIR = None
 
 
 def _made_dir():
-    """ที่เก็บไฟล์ที่ 'เราสร้างเอง' — ต้องอยู่ยาวเท่าอายุเซิร์ฟเวอร์ เพราะ token ชี้มาที่นี่"""
+    """ที่เก็บ 'ชิ้นที่เราสร้างเอง' (ข้อความ · พื้นหลัง) — ตั้งชื่อไฟล์ตาม token
+
+    ⚠️ ปัญหาที่ผู้ใช้เจอจริง (2026-08-09): กำลังจัดวางอยู่ดี ๆ กดรวมแล้วขึ้นว่า
+       "ไฟล์ต้นทางหมดอายุ (เซิร์ฟเวอร์รีสตาร์ต)" แล้วชิ้นข้อความหายไปดื้อ ๆ
+       ต้นเหตุ: (1) เดิมสร้างโฟลเดอร์ใหม่ทุกครั้งที่เซิร์ฟเวอร์เริ่ม (mkdtemp)
+                (2) จำ token ไว้ในหน่วยความจำอย่างเดียว
+                (3) ชิ้นที่มาจากไฟล์ลูกค้ากู้เองได้ (อัปไฟล์เดิมใหม่) แต่ชิ้นข้อความ/พื้นหลัง
+                    ไม่มีไฟล์ต้นทางให้อัป -> ตายถาวร
+       ✅ ใช้โฟลเดอร์ตายตัว + ชื่อไฟล์ = token -> เซิร์ฟเวอร์รีสตาร์ตก็ยังหาไฟล์เจอ
+          และถ้าต่อดิสก์ถาวรไว้ ก็รอดข้ามการ deploy ไปด้วยเลย
+    """
     global _MADE_DIR
-    if not _MADE_DIR or not os.path.isdir(_MADE_DIR):
-        _MADE_DIR = tempfile.mkdtemp(prefix="vc_made_")
+    if _MADE_DIR and os.path.isdir(_MADE_DIR):
+        return _MADE_DIR
+    for base in (os.environ.get("DATA_DIR", "").strip(), "/var/data", "/data",
+                 tempfile.gettempdir()):
+        if not base:
+            continue
+        d = os.path.join(base, "vc_made")
+        try:
+            os.makedirs(d, exist_ok=True)
+            _t = os.path.join(d, ".wtest")
+            with open(_t, "w") as _f:
+                _f.write("1")
+            os.remove(_t)
+            _MADE_DIR = d
+            return d
+        except Exception:
+            continue
+    _MADE_DIR = tempfile.mkdtemp(prefix="vc_made_")
     return _MADE_DIR
+
+
+def _made_prune(days=14, keep=4000):
+    """ลบชิ้นเก่าที่ไม่มีใครใช้แล้ว กันโฟลเดอร์บวมไม่มีที่สิ้นสุด"""
+    try:
+        import time as _t
+        d = _made_dir()
+        cut = _t.time() - days * 86400
+        fs = []
+        for n in os.listdir(d):
+            q = os.path.join(d, n)
+            try:
+                fs.append((os.path.getmtime(q), q))
+            except Exception:
+                pass
+        for m, q in fs:
+            if m < cut:
+                try:
+                    os.remove(q)
+                except Exception:
+                    pass
+        if len(fs) > keep:
+            for m, q in sorted(fs)[:len(fs) - keep]:
+                try:
+                    os.remove(q)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _asset_path(tok):
+    """หาไฟล์ต้นทางของ token — เผื่อกรณีเซิร์ฟเวอร์รีสตาร์ตจนความจำหาย
+
+    ชิ้นที่ 'เราสร้างเอง' ตั้งชื่อไฟล์ตาม token ไว้ จึงหาเจอจากดิสก์ได้ตรง ๆ
+    ชิ้นที่มาจากไฟล์ลูกค้ายังต้องอัปไฟล์ใหม่เหมือนเดิม (หน้าเว็บทำให้เองอยู่แล้ว)
+    """
+    p = _ASSET_STORE.get(tok)
+    if p and os.path.exists(p):
+        return p
+    t = str(tok or "")
+    if re.fullmatch(r"[0-9a-fA-F]{8,32}", t):
+        q = os.path.join(_made_dir(), t + ".pdf")
+        if os.path.exists(q):
+            _ASSET_STORE[t] = q
+            return q
+    return None
 
 
 def _reg_asset(a, label, kind):
     """จดไฟล์ที่สร้างไว้ใน _ASSET_STORE แล้วคืนชิ้นงานในรูปแบบที่หน้าเว็บใช้อยู่แล้ว"""
-    import uuid
-    tok = uuid.uuid4().hex[:16]
-    _ASSET_STORE[tok] = a["path"]
+    _ASSET_STORE[a["token"]] = a["path"]
     return {"ok": True, "kind": kind, "label": label,
-            "token": tok, "page": 0, "bbox": a["bbox"],
+            "token": a["token"], "page": 0, "bbox": a["bbox"],
             "w_mm": a["w_mm"], "h_mm": a["h_mm"], "png": a["png"]}
+
+
+def _new_token():
+    import uuid
+    return uuid.uuid4().hex[:16]
 
 
 @app.get("/api/text-fonts")
@@ -9911,8 +10411,7 @@ def text_fonts():
        ฟอนต์บนจอไม่มีไฟล์ในเครื่อง ทำเวกเตอร์แท้ไม่ได้ จะกลายเป็นเลือกได้แต่ใช้ไม่ได้
     """
     try:
-        import text_vec as _tv
-        c = _tv.catalog()
+        c = _tv_catalog()
         return {"ok": True, "fonts": c,
                 "thai": sum(1 for x in c if x["thai"]), "total": len(c)}
     except Exception as e:
@@ -9925,7 +10424,6 @@ async def text_asset(request: Request):
        body: {text, font, size_cm, color, tracking, line_gap, align, italic,
               outline_mm, outline_color}"""
     try:
-        import text_vec as _tv
         b = await request.json()
         txt = str(b.get("text") or "")
         if not txt.strip():
@@ -9933,7 +10431,7 @@ async def text_asset(request: Request):
         if len(txt) > 400:
             txt = txt[:400]
         size_mm = max(3.0, min(4000.0, float(b.get("size_cm") or 10.0) * 10.0))
-        svg, _mmu = _tv.text_svg(
+        svg, _mmu = _tv_text_svg(
             txt, str(b.get("font") or "Prompt-Bold.ttf"),
             size_mm=size_mm,
             color=str(b.get("color") or "#111111"),
@@ -9943,8 +10441,10 @@ async def text_asset(request: Request):
             italic=max(0.0, min(25.0, float(b.get("italic") or 0.0))),
             outline_mm=max(0.0, min(size_mm * 0.25, float(b.get("outline_mm") or 0.0))),
             outline_color=str(b.get("outline_color") or "#ffffff"))
-        a = _tv.make_asset(_tv.svg_to_pdf(svg), _made_dir(),
-                           "text_%d.pdf" % (len(_ASSET_STORE) + 1), crop=True)
+        _tok = _new_token()
+        _made_prune()
+        a = _tv_make_asset(_tv_svg2pdf(svg), _made_dir(), _tok + ".pdf", crop=True)
+        a["token"] = _tok
         lb = txt.replace("\n", " ")[:24]
         return _reg_asset(a, "ข้อความ: " + lb, "text")
     except Exception as e:
@@ -9964,7 +10464,6 @@ async def bg_asset(w_cm: float = Form(20.0), h_cm: float = Form(10.0),
     """🎨 สร้าง 'แผ่นพื้นหลัง' -> ชิ้นงานเวกเตอร์ (สีพื้น · ไล่สี · ไฟล์ artwork)
        ใช้เป็นหน้ากล่องไฟพิมพ์ UV / แผ่นรองโลโก้ — เปลี่ยนสีหรือเปลี่ยนรูปทีหลังได้อิสระ"""
     try:
-        import text_vec as _tv
         art = None
         mime = "image/png"
         if fill == "art":
@@ -9984,7 +10483,7 @@ async def bg_asset(w_cm: float = Form(20.0), h_cm: float = Form(10.0),
                 mime = "image/png"
             if len(art) > 40 * 1024 * 1024:
                 return JSONResponse({"ok": False, "error": "ไฟล์ artwork ใหญ่เกิน 40 MB"}, status_code=400)
-        svg = _tv.bg_svg(
+        svg = _tv_bg_svg(
             w_mm=max(5.0, min(6000.0, float(w_cm) * 10.0)),
             h_mm=max(5.0, min(6000.0, float(h_cm) * 10.0)),
             shape=str(shape or "rect"),
@@ -9994,8 +10493,10 @@ async def bg_asset(w_cm: float = Form(20.0), h_cm: float = Form(10.0),
             border_mm=max(0.0, float(border_cm or 0) * 10.0), border_color=border_color,
             opacity=float(opacity if opacity is not None else 1.0))
         # ⚠️ พื้นหลัง 'ห้ามครอปตามเนื้อ' — ขนาดที่ผู้ใช้กรอกคือขนาดจริงของแผ่น
-        a = _tv.make_asset(_tv.svg_to_pdf(svg), _made_dir(),
-                           "bg_%d.pdf" % (len(_ASSET_STORE) + 1), crop=False)
+        _tok = _new_token()
+        _made_prune()
+        a = _tv_make_asset(_tv_svg2pdf(svg), _made_dir(), _tok + ".pdf", crop=False)
+        a["token"] = _tok
         return _reg_asset(a, "พื้นหลัง %.0f×%.0f ซม." % (float(w_cm), float(h_cm)), "bg")
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e),
@@ -10647,8 +11148,45 @@ def _an_dbpath():
     return "/tmp/vectorcnc_stats.db"
 
 
+def _on_real_disk(path):
+    """ที่อยู่นี้อยู่บน 'ดิสก์ถาวรที่ต่อไว้จริง' หรือแค่พื้นที่ในตัวคอนเทนเนอร์
+
+    ⚠️ บั๊กที่ผู้ใช้เจอจริง (2026-08-09): ป้ายขึ้นว่า 'ดิสก์ถาวรบนเซิร์ฟเวอร์ (ไม่หายตอน deploy)'
+       ทั้งที่ไฟล์ไปอยู่ที่ /data ซึ่ง **ไม่ใช่ดิสก์** — เป็นแค่โฟลเดอร์ในคอนเทนเนอร์
+       ที่บังเอิญเขียนได้ พอ deploy ใหม่ก็หายเกลี้ยง ประวัติเก่าจึงหายไปหมด
+       ต้นเหตุ: โค้ดเดิมตัดสินแค่ว่า 'ไม่ใช่ /tmp ก็ถือว่าถาวร' ซึ่งไม่จริงเลย
+    ✅ ตัดสินจากของจริง: ดิสก์ที่ต่อไว้จะโผล่เป็น 'จุดเมานต์' ใน /proc/mounts
+       ถ้าไล่ขึ้นไปแล้วไม่เจอจุดเมานต์ไหนเลยนอกจาก / = ยังไม่ได้ต่อดิสก์ = ไม่ถาวร
+       (ยอมขึ้นเตือนเกินจริงไม่ได้ — ผู้ใช้จะนึกว่าข้อมูลปลอดภัยแล้วทั้งที่กำลังหาย)
+    """
+    try:
+        # ⚠️ ต้องคัดชนิดระบบไฟล์ด้วย ไม่ใช่นับทุกจุดเมานต์
+        #    tmpfs = แรม (หายแน่นอน) · proc/sysfs/cgroup = ระบบภายใน ไม่ใช่ที่เก็บข้อมูล
+        #    overlay = ชั้นไฟล์ของคอนเทนเนอร์เอง ซึ่งก็หายตอน deploy
+        _fake = {"proc", "sysfs", "devtmpfs", "tmpfs", "devpts", "cgroup", "cgroup2",
+                 "mqueue", "overlay", "squashfs", "ramfs", "fusectl", "debugfs",
+                 "tracefs", "securityfs", "pstore", "bpf", "configfs", "hugetlbfs"}
+        mps = set()
+        with open("/proc/mounts") as f:
+            for ln in f:
+                p = ln.split()
+                if len(p) >= 3 and p[2] not in _fake:
+                    mps.add(os.path.normpath(p[1]))
+        d = os.path.normpath(os.path.dirname(os.path.abspath(path)))
+        while True:
+            if d in mps and d != "/":
+                return True
+            nd = os.path.dirname(d)
+            if nd == d:
+                return False
+            d = nd
+    except Exception:
+        return False
+
+
 _AN_DB = _an_dbpath()
-_AN_PERSIST = not _AN_DB.startswith("/tmp")     # True = รอด deploy · False = อาศัย Google Sheet + สมุด .jsonl
+# True = รอด deploy จริง (ดิสก์ถาวรที่ต่อไว้) · False = อาศัย Google Sheet + สมุด .jsonl
+_AN_PERSIST = (not _AN_DB.startswith("/tmp")) and _on_real_disk(_AN_DB)
 TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
 # ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
@@ -10828,12 +11366,16 @@ def _an_health():
         else:
             lv, note = "ok", "✅ ถาวรสองชั้น — ดิสก์ถาวร (%s) + Google Sheet" % _AN_DB
     elif not hook:
-        lv, note = "danger", ("❌ ยังไม่ถาวร — ไม่ได้ตั้งปลายทาง Google Sheet และดิสก์เป็นแบบชั่วคราว "
-                              "สถิติจะหายทุกครั้งที่ deploy")
+        lv, note = "danger", ("❌ ยังไม่ถาวร — ตอนนี้เขียนไว้ที่ %s ซึ่งเป็นแค่พื้นที่ในตัวเครื่องที่รันอยู่ "
+                              "ไม่ใช่ดิสก์ถาวร (หายทุกครั้งที่ deploy) และยังไม่ได้ต่อ Google Sheet ด้วย "
+                              "▸ วิธีแก้: deploy render.yaml ที่ประกาศ disk vectorcnc-data ไว้ที่ /var/data "
+                              "แล้ว Render จะสร้างดิสก์ถาวรให้เอง" % _AN_DB)
     elif _AN_HEALTH["fail_n"] and not _AN_HEALTH["ok_n"]:
-        lv, note = "danger", ("❌ ยิงเข้า Google Sheet ไม่สำเร็จเลยสักครั้ง (%s) "
-                              "— ตอนนี้สถิติยังไม่ถาวร กด ตรวจระบบสถิติ เพื่อดูสาเหตุ"
-                              % (_AN_HEALTH["last_err"][:80] or "ไม่ทราบสาเหตุ"))
+        lv, note = "danger", ("❌ **สถิติยังไม่ถาวร** — ที่เก็บตอนนี้คือ %s ซึ่งเป็นพื้นที่ในตัวเครื่องที่รันอยู่ "
+                              "ไม่ใช่ดิสก์ถาวร หายทุกครั้งที่ deploy · และยิงเข้า Google Sheet ก็ไม่สำเร็จเลยสักครั้ง (%s) "
+                              "▸ ต้องทำ 2 อย่าง: (1) deploy render.yaml เพื่อให้ Render สร้างดิสก์ถาวรที่ /var/data "
+                              "(2) deploy apps_script/Analytics.gs ใหม่ ให้รับคำสั่ง hit ได้"
+                              % (_AN_DB, (_AN_HEALTH["last_err"][:70] or "ไม่ทราบสาเหตุ")))
     elif pend:
         lv, note = "warn", ("⚠️ ถาวรผ่าน Google Sheet แต่มีค้างส่งอยู่ %d รายการ "
                             "(ระบบจะลองส่งใหม่ให้เอง)" % pend)
