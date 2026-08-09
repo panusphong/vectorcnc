@@ -518,7 +518,8 @@ def drop_fake_holes(field, cs, ambiguous=0.34):
 
 
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
-                      target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0):
+                      target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0,
+                      wave_target=99.0):
     """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
 
     ⚠️ บทเรียน 2026-08-07 (พลาดสองรอบกว่าจะได้): ความแรงการเกลาจะตั้ง 'ตายตัว' ไม่ได้
@@ -547,6 +548,10 @@ def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
         if not cs or sig >= sigma_max:
             break
         # ชั้นสีเดียวที่แตกเป็นร้อยชิ้น = จุดรบกวน ไม่ใช่ลวดลายจริง -> เกลาต่อ
+        # ⚠️ เคยลองเพิ่มเกณฑ์ 'ลอน' (การกลับทิศ) ตรงนี้ เพื่อให้เกลาสนามสีต่อเมื่อขอบเป็นลอน
+        #    แต่วัดแล้ว **ภาพสะอาดพังหนัก**: counters ΔE 3.27 -> 4.90 · corners 2.53 -> 4.26
+        #    เพราะรูปทรงสั้น ๆ ที่สะอาดอยู่แล้วให้ค่าลอนสูงหลอก ๆ (จุดน้อยเกินไป)
+        #    -> ถอยออก · การลบลอนไปทำที่ 'แนวจุด' แทน (denoise_poly) ซึ่งคุมงบได้แม่นกว่า
         if kink_ratio(cs) <= float(target) and len(cs) <= int(max_pieces):
             break
     return cs, sig
@@ -1074,6 +1079,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     sig0 = 0.0
     sigM = float(np.clip(cfg["smooth"] * 0.55 * R * F, max(1.2, 0.9 * F), 12.0))   # เพดานเกลา (ภาพหยาบไต่ขึ้นไปได้ถึงนี่)
     tgt = {1: 3.0, 2: 1.5, 3: 1.0, 4: 0.6}.get(int(cfg["smooth"]), 1.5)   # มุมหักต่อ 100 px ที่ยอมได้
+    # ลอน (การกลับทิศต่อ 100 px) ที่ยอมได้ — ผูกกับปุ่มความเนียนเหมือนกัน
+    wtgt = {1: 99.0, 2: 9.0, 3: 6.0, 4: 4.0}.get(int(cfg["smooth"]), 9.0)
     tol_e = float(cfg["tol"]) * max(1.0, F * 0.8)      # ระยะยอมคลาดตอนฟิตเบซิเยร์
     # ══════════════════════════════════════════════════════════════
     # 🎯 ความละเอียดของ 'ตำแหน่งขอบ' ถูกจำกัดด้วยความฟุ้งของขอบเอง
@@ -1092,7 +1099,15 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     _swp = _sw if _sw < 900 else 12.0
     #    ค่าคงที่สามตัวนี้ไม่ได้ตั้งเอาเอง — กวาดหาจากชุดตรวจทั้งชุด 11 ไฟล์
     #    (ค่าคลาดสี · ความส่ายของเส้น · จำนวนจุด) แล้วเลือกจุดที่สมดุลที่สุด
-    budget_e = float(np.clip(max(0.18 * ramp, 0.06 * _swp), 0.12, 2.5))
+    # ⚠️ บั๊กที่ผู้ใช้เจอ (2026-08-09): ปรับปุ่ม "ความเนียนของเส้น" แล้วขอบยังเป็นคลื่นเหมือนเดิม
+    #    เพราะปุ่มนั้นไปคุมแค่ 'การเกลาสนามสี' (sigM/tgt) เท่านั้น
+    #    แต่คลื่นที่ตาเห็นเกิดที่ 'แนวจุดคอนทัวร์' ซึ่งคุมด้วยงบเกลาแนวจุด (budget) คนละตัวกัน
+    #    -> ปุ่มเลยแทบไม่มีผลกับสิ่งที่ผู้ใช้เห็นจริง
+    # ✅ ให้ปุ่มคุมงบเกลาแนวจุดด้วย · "เนียนมาก" ต้องยอมขยับขอบได้ไกลขึ้นจริง
+    _sm = int(cfg["smooth"])
+    _mul = {1: 0.45, 2: 1.0, 3: 2.0, 4: 3.4}.get(_sm, 1.0)     # ตรงตามไฟล์ / สมดุล / เนียน / เนียนมาก
+    _cap = {1: 1.0, 2: 2.5, 3: 5.0, 4: 8.0}.get(_sm, 2.5)
+    budget_e = float(np.clip(max(0.18 * ramp, 0.06 * _swp) * _mul, 0.12, _cap))
     # ⚠️ อย่าผ่อน 'เกณฑ์ความคลาดตอนฟิต' ตามงบเกลา — คนละหน้าที่กัน
     #    เกลาแล้วแนวจุดเรียบขึ้น ฟิตแน่น ๆ ก็ได้จุดน้อยอยู่ดี
     #    เคยผูกไว้ที่ 2 เท่าของงบ แล้วภาพแถบสีตรง ๆ ยอมคลาดได้ถึง 5 px = ขอบเลื่อน
@@ -1118,7 +1133,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             continue
         f = coverage_field(i, b1, b2, l1, l2, alpha=af)
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
-                                   sigma_max=sigM, target=tgt)
+                                   sigma_max=sigM, target=tgt, wave_target=wtgt)
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
         cs = drop_fake_holes(denoise_field(f, sg), cs)
         if not cs:
