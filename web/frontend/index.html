@@ -8930,10 +8930,13 @@ function _wallPickPieces(pieces, f){
     ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:14px;font-family:Prompt,sans-serif';
     ov.style.padding='8px';
     ov.innerHTML='<div id="asmCard" style="background:#fff;border-radius:14px;max-width:1680px;width:99vw;max-height:96vh;overflow:auto;padding:14px;box-shadow:0 12px 44px rgba(0,0,0,.4)">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><b style="font-size:15px">🧩 <span id="asmCnt">'+_pieces.length+'</span> ชิ้น — คลิกเพิ่มลงพื้นที่จัดวาง (เพิ่มได้หลายไฟล์)</b>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap"><b style="font-size:15px">🧩 <span id="asmCnt">'+_pieces.length+'</span> ชิ้น — สร้างโลโก้แบรนด์ให้จบที่นี่: หยิบชิ้นจากไฟล์ + ✍️ ข้อความ + 🎨 พื้นหลัง → รวมเป็นแบบ → เลือกประเภทป้าย</b>'
       +'<span style="display:flex;gap:8px;margin-left:auto">'
       +'<button id="asmAdd" style="border:none;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">➕ เพิ่มไฟล์</button>'
       +'<button id="asmLib" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">📁 คลังชิ้นงาน</button>'
+      /* ✍️🎨 สองปุ่มนี้ทำให้หน้านี้ "จบงานโลโก้แบรนด์ได้ในที่เดียว" ไม่ต้องออกไปโปรแกรมอื่น */
+      +'<button id="asmText" title="พิมพ์ข้อความเอง เลือกฟอนต์ ปรับขนาด/สี/ขอบ — ได้เส้นโค้งจริงจากไฟล์ฟอนต์ (เวกเตอร์แท้)" style="border:none;background:linear-gradient(135deg,#4f46e5,#0ea5e9);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">✍️ ใส่ข้อความ</button>'
+      +'<button id="asmBg" title="สร้างแผ่นพื้นหลัง — สีพื้น / ไล่สี / ไฟล์ artwork (ใช้เป็นหน้ากล่องไฟพิมพ์ UV ได้)" style="border:none;background:linear-gradient(135deg,#db2777,#f59e0b);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-weight:700">🎨 ใส่พื้นหลัง</button>'
       +'<button id="asmFiner" title="แยกชิ้นให้ละเอียดขึ้น (แยกคำ/ตัวอักษรออกจากกัน) แล้วแตกไฟล์ใหม่" style="border:none;background:#f59e0b;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-weight:700">✂️ แยกละเอียดขึ้น</button>'
       +'<button id="asmCoarser" title="รวมชิ้นเข้าด้วยกันมากขึ้น" style="border:none;background:#94a3b8;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-weight:700">🧲 รวมมากขึ้น</button>'
       +'<input type="file" id="asmAddF" accept=".ai,.pdf,.eps,.ps,.psd,.psb,.svg,image/*" multiple style="display:none">'
@@ -8993,7 +8996,7 @@ function _wallPickPieces(pieces, f){
         c.onmouseover=function(){c.style.borderColor='#7c3aed';};c.onmouseout=function(){c.style.borderColor='#e2e8f0';};
         var b=document.createElement('button'); b.type='button';
         b.style.cssText='border:none;background:none;padding:0;width:100%;cursor:pointer;font-family:inherit';
-        b.innerHTML='<div style="height:78px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px;border-radius:6px"><img src="'+p.png+'" style="max-width:100%;max-height:100%;object-fit:contain"></div>'
+        b.innerHTML='<div style="height:78px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px;border-radius:6px"><img src="'+(p.thumb||p.png)+'" style="max-width:100%;max-height:100%;object-fit:contain"></div>'
           +'<div style="font-size:10.5px;color:#64748b;margin-top:2px">'
           +(p.whole?'<b style="color:#0d9488">📄 ทั้งแผ่น (ครบ 100%)</b>':('ชิ้น '+(i+1)+' '+(p.meta?'<span style="color:#15803d;font-weight:700">· เวกเตอร์</span>':'<span style="color:#b45309">· ภาพ</span>')))+'</div>';
         if(p.whole)c.style.cssText+=';border:2px solid #0d9488;background:#f0fdfa';
@@ -9030,6 +9033,9 @@ function _wallPickPieces(pieces, f){
       });
     }
     renderGrid();
+    /* 🌉 ประตูบานเดียวให้ปุ่ม "ใส่ข้อความ / ใส่พื้นหลัง" ส่งชิ้นที่สร้างใหม่เข้ากระดาน
+       back=true -> ชิ้นนั้นเป็นพื้นหลัง ต้องไปอยู่ชั้นล่างสุด */
+    window._asmPush=function(p,back){ _pieces.push(p); renderGrid(); addItem(p,canv,!!back); };
     // ➕ เพิ่มไฟล์เข้ากระดานเดิม (กี่รอบก็ได้ · หลายไฟล์พร้อมกันได้)
     var addBtn=ov.querySelector('#asmAdd'), addF=ov.querySelector('#asmAddF');
     if(addBtn&&addF){
@@ -9294,11 +9300,12 @@ function _wallPickPieces(pieces, f){
     _DIMS.innerHTML=S.join('');
   }
   window._asmDrawDims=_drawDims;
-  function addItem(p,canv){
+  function addItem(p,canv,back){
     var ar=(p.h||160)/(p.w||160);
     var w,h;
     if(p.meta){                                        // 🎯 เวกเตอร์: ขนาดชิ้นสัมพันธ์กันตามขนาดจริง (มม.)
-      if(!_K)_K=(p.meta.w_mm||100)/220.0;              // ชิ้นแรกกว้าง ~220px -> ล็อกสเกล มม./px ให้ทั้งกระดาน
+      // แผ่นพื้นหลัง = เปิดมากว้าง ~62% ของกระดาน · ชิ้นอื่น = 220px เหมือนเดิม
+      if(!_K)_K=(p.meta.w_mm||100)/(back?Math.max(220,(((canv&&canv.clientWidth)||900)*0.62)):220.0);
       w=(p.meta.w_mm||100)/_K;
       // 📌 ชิ้นเดิมบนกระดาน 'ไม่ขยับ ไม่ย่อ' — แค่คุมชิ้นใหม่ให้อยู่ในช่วงที่ลากง่าย (ปรับต่อด้วยจุดมุมได้)
       var _bw=(canv&&canv.clientWidth)||900, _bh=(canv&&canv.clientHeight)||460;
@@ -9310,8 +9317,34 @@ function _wallPickPieces(pieces, f){
     el.innerHTML='<img src="'+p.png+'" style="width:100%;height:100%;object-fit:contain;pointer-events:none" draggable="false">'
       +'<span class="asmR" style="position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;background:#0891b2;border:2px solid #fff;border-radius:50%;cursor:nwse-resize"></span>'
       +'<span class="asmDel" style="position:absolute;right:-9px;top:-9px;width:18px;height:18px;background:#ef4444;color:#fff;border-radius:50%;font-size:12px;line-height:15px;text-align:center;cursor:pointer">×</span>';
-    canv.appendChild(el);
-    var it={png:p.png,el:el,meta:p.meta||null}; _items.push(it);
+    var it={png:p.png,el:el,meta:p.meta||null,bg:!!back};
+    if(back){                                        // 🎨 พื้นหลัง -> ชั้นล่างสุด + วางกลางกระดาน
+      canv.insertBefore(el, canv.firstChild); _items.unshift(it);
+      el.style.left=Math.max(0,(((canv&&canv.clientWidth)||900)-w)/2)+'px';
+      el.style.top =Math.max(0,(((canv&&canv.clientHeight)||460)-h)/2)+'px';
+    } else {
+      canv.appendChild(el); _items.push(it);
+      /* 📌 ถ้ามีแผ่นพื้นหลังอยู่แล้ว วางชิ้นใหม่ 'กลางแผ่น' ให้เลย แล้วไล่ลงทีละชั้น
+         (เดิมชิ้นใหม่ไปกองมุมซ้ายบนทับกันหมด ต้องลากออกมาทีละชิ้นก่อนถึงจะเห็นว่ามีอะไรบ้าง) */
+      try{
+        var _bgIt=null; for(var _q=0;_q<_items.length;_q++){ if(_items[_q].bg&&_items[_q].el){_bgIt=_items[_q];break;} }
+        if(_bgIt){
+          var _be=_bgIt.el, _bot=null;
+          /* ⚠️ ไล่ชั้นด้วยสูตรคงที่ไม่ได้ — ข้อความแต่ละบรรทัดสูงไม่เท่ากัน
+             (หัวเรื่อง 9 ซม. กับเบอร์โทร 3 ซม.) เดี๋ยวก็ทับกัน
+             -> วางต่อ 'ใต้ชิ้นที่อยู่ล่างสุด' ที่มีอยู่จริงบนแผ่น เว้นช่องไฟนิดหน่อย */
+          for(var _q2=0;_q2<_items.length;_q2++){ var _o=_items[_q2];
+            if(_o.bg||_o===it||!_o.el)continue;
+            var _b2=_o.el.offsetTop+_o.el.offsetHeight;
+            if(_bot===null||_b2>_bot)_bot=_b2; }
+          var _L=_be.offsetLeft+(_be.offsetWidth-w)/2;
+          var _T=(_bot===null)? (_be.offsetTop+_be.offsetHeight*0.12)
+                              : (_bot+Math.max(6,_be.offsetHeight*0.045));
+          el.style.left=Math.max(0,_L)+'px';
+          el.style.top =Math.max(0,Math.min(_T,_be.offsetTop+_be.offsetHeight-h))+'px';
+        }
+      }catch(_e){}
+    }
     var drag=null;
     // 🧲 เส้นไกด์ + ดูดเข้ากึ่งกลาง/ขอบชิ้นอื่น (กะระยะไม่ต้องเล็งเอง)
     var _gv=null,_gh=null;
@@ -12020,6 +12053,345 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     window.addEventListener('resize',applyZoom);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ✍️🎨 สร้างโลโก้แบรนด์ให้จบในหน้าเดิม — ปุ่ม "ข้อความ" กับ "พื้นหลัง"
+     เพิ่มเข้ามา 2026-08-09 ตามที่ผู้ใช้ขอ:
+       "ในหน้านี้ ให้มองว่าเป็นการสร้าง logo brand ก่อนที่จะนำไปวางกับประเภทป้าย
+        ขอให้มีการเพิ่ม font text ข้อความพิมพ์ได้อิสระ ปรับรูปแบบได้ด้วย
+        รวมถึงการสร้างพื้นหลังให้จบจากตรงนี้ เพื่อโยนเข้าไปสร้างประเภทป้ายต่อได้"
+
+     🚫 ไม่สร้างหน้าจอใหม่ — ผู้ใช้สั่งไว้ว่า "อย่าทำหลายจุด user งงหมดแล้ว"
+        ทั้งสองปุ่มอยู่ในแถบเดิมของหน้าแตกชิ้น และของที่ได้ก็เป็น "ชิ้นงาน" แบบเดียวกับ
+        ชิ้นที่แตกจากไฟล์ลูกค้า -> ลากวาง/ย่อขยาย/จัดตำแหน่ง/รวมเป็นเวกเตอร์ ใช้ของเดิมทั้งหมด
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  var API_=(typeof window.API!=='undefined'&&window.API)?window.API:'';
+  var FONTS=null, FONTS_ERR='';
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+  function el(html){ var d=document.createElement('div'); d.innerHTML=html; return d.firstElementChild; }
+
+  /* ── ฟอนต์: เอาเฉพาะตัวที่ "มีไฟล์อยู่ในเครื่องเราจริง" ──────────────
+     ⚠️ ห้ามใช้รายชื่อฟอนต์ Google CDN ที่หน้าเว็บใช้แสดงผลบนจอ
+        ฟอนต์พวกนั้นไม่มีไฟล์ในเครื่อง ทำเวกเตอร์แท้ไม่ได้ — เลือกได้แต่ใช้จริงไม่ได้ */
+  function loadFonts(cb){
+    if(FONTS){ cb(FONTS); return; }
+    fetch(API_+'/api/text-fonts').then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok&&j.fonts&&j.fonts.length){ FONTS=j.fonts; }
+      else { FONTS=[]; FONTS_ERR=(j&&j.error)||'อ่านรายชื่อฟอนต์ไม่ได้'; }
+      cb(FONTS);
+    }).catch(function(e){ FONTS=[]; FONTS_ERR=String(e); cb(FONTS); });
+  }
+
+  /* ── กล่องเครื่องมือกลาง (ใช้ร่วมกันทั้งข้อความและพื้นหลัง) ── */
+  function modal(title,bodyHTML,wide){
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;z-index:100003;background:rgba(15,23,42,.55);'
+      +'display:flex;align-items:center;justify-content:center;padding:14px;font-family:Prompt,sans-serif';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:'+(wide||760)+'px;width:100%;'
+      +'max-height:92vh;overflow:auto;padding:16px;box-shadow:0 12px 44px rgba(0,0,0,.35)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+      +'<b style="font-size:15px">'+title+'</b>'
+      +'<button data-x style="border:none;background:#e2e8f0;border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit">✕ ปิด</button>'
+      +'</div>'+bodyHTML+'</div>';
+    document.body.appendChild(ov);
+    ov.querySelector('[data-x]').onclick=function(){ ov.remove(); };
+    ov.addEventListener('click',function(e){ if(e.target===ov)ov.remove(); });
+    return ov;
+  }
+
+  var CSS='<style>'
+    +'.lgRow{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:12.5px;flex-wrap:wrap}'
+    +'.lgRow>label{width:132px;color:#64748b;flex:0 0 auto}'
+    +'.lgIn{font-family:inherit;font-size:12.5px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:7px}'
+    +'.lgSeg button{font-family:inherit;font-size:12px;border:1px solid #cbd5e1;background:#fff;color:#64748b;padding:5px 11px;cursor:pointer}'
+    +'.lgSeg button:first-child{border-radius:8px 0 0 8px}.lgSeg button:last-child{border-radius:0 8px 8px 0}'
+    +'.lgSeg button.on{background:#2563eb;color:#fff;border-color:#2563eb}'
+    /* ⚠️ ตารางหมากรุกสีอ่อนแบบเดิม ทำให้ "ตัวหนังสือสีขาว" หายไปทั้งดุ้น มองไม่เห็นว่าพิมพ์อะไรอยู่
+       -> ใช้เทากลาง เห็นได้ทั้งตัวขาวและตัวดำ (ยังบอกความโปร่งใสได้เหมือนเดิม) */
+    +'.lgPv{background:repeating-conic-gradient(#aab6c6 0% 25%,#ccd6e2 0% 50%) 0/16px 16px;border:1px solid #94a3b8;'
+    +'border-radius:10px;min-height:150px;display:flex;align-items:center;justify-content:center;padding:8px;overflow:hidden}'
+    +'.lgPv img{max-width:100%;max-height:230px;object-fit:contain}'
+    +'.lgGo{border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:9px;'
+    +'padding:9px 20px;cursor:pointer;font-weight:700;font-family:inherit;font-size:13.5px}'
+    +'.lgGo:disabled{opacity:.5;cursor:default}'
+    +'.lgHint{font-size:11.5px;color:#64748b;line-height:1.65}'
+    +'</style>';
+
+  function seg(id,opts,cur){
+    return '<span class="lgSeg" id="'+id+'" style="display:inline-flex">'
+      +opts.map(function(o){ return '<button type="button" data-v="'+esc(o[0])+'"'
+        +(String(o[0])===String(cur)?' class="on"':'')+'>'+o[1]+'</button>'; }).join('')+'</span>';
+  }
+  function bindSeg(ov,id,cb){
+    Array.prototype.forEach.call(ov.querySelectorAll('#'+id+' button'),function(b){
+      b.onclick=function(){
+        Array.prototype.forEach.call(ov.querySelectorAll('#'+id+' button'),function(x){x.classList.remove('on');});
+        b.classList.add('on'); cb(b.getAttribute('data-v'));
+      };
+    });
+  }
+  function segVal(ov,id){ var b=ov.querySelector('#'+id+' button.on'); return b?b.getAttribute('data-v'):''; }
+
+  /* ชิ้นงานที่ได้ = หน้าตาเดียวกับชิ้นที่แตกจากไฟล์ -> สายงานเดิมรับได้ทันที */
+  function toPiece(a){
+    return {png:a.png, w:a.w_mm, h:a.h_mm,
+            meta:{token:a.token, page:0, bbox:a.bbox, w_mm:a.w_mm, h_mm:a.h_mm}};
+  }
+  /* 🖼️ รูปย่อสำหรับ "แถวชิ้นงานด้านบน" ต้องมีพื้นรอง
+     ⚠️ ตัวหนังสือสีขาวบนพื้นโปร่ง = ช่องนั้นดูเหมือนว่างเปล่า ผู้ใช้นึกว่าสร้างไม่สำเร็จ
+        (รูปที่ใช้วางบนกระดานยังโปร่งเหมือนเดิม เพราะต้องเห็นพื้นหลังที่อยู่ข้างล่าง) */
+  function withBackdrop(png,cb){
+    try{
+      var im=new Image();
+      im.onload=function(){
+        try{
+          var c=document.createElement('canvas');
+          c.width=im.naturalWidth||1; c.height=im.naturalHeight||1;
+          var g=c.getContext('2d');
+          g.fillStyle='#c3ccd9'; g.fillRect(0,0,c.width,c.height);
+          g.drawImage(im,0,0);
+          cb(c.toDataURL('image/png'));
+        }catch(_e){ cb(png); }
+      };
+      im.onerror=function(){ cb(png); };
+      im.src=png;
+    }catch(_e){ cb(png); }
+  }
+  function pushPiece(a,back){
+    if(typeof window._asmPush!=='function'){
+      alert('เปิดหน้า "แตกชิ้น + เลือก + จัดวาง" ก่อนนะคะ'); return false;
+    }
+    var p=toPiece(a);
+    withBackdrop(a.png,function(t){ p.thumb=t; window._asmPush(p,!!back); });
+    return true;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     ✍️  ปุ่ม "ข้อความ"
+     ══════════════════════════════════════════════════════════════ */
+  function openText(){
+    loadFonts(function(fs){
+      var th=fs.filter(function(f){return f.thai;}), en=fs.filter(function(f){return !f.thai;});
+      var opt=function(a){ return a.map(function(f){
+        return '<option value="'+esc(f.file)+'">'+esc(f.name)+'</option>'; }).join(''); };
+      var sel='<select id="lgFont" class="lgIn" style="min-width:230px">'
+        +(th.length?'<optgroup label="ไทย (พิมพ์ไทยได้)">'+opt(th)+'</optgroup>':'')
+        +(en.length?'<optgroup label="อังกฤษ / ตัวเลข เท่านั้น">'+opt(en)+'</optgroup>':'')
+        +'</select>';
+      var body=CSS
+        +'<div style="display:flex;gap:16px;flex-wrap:wrap">'
+        +'<div style="flex:1;min-width:320px">'
+        +'<div class="lgRow" style="align-items:flex-start"><label>ข้อความ</label>'
+        +'<textarea id="lgTxt" class="lgIn" rows="3" style="flex:1;min-width:200px;resize:vertical" '
+        +'placeholder="พิมพ์ได้อิสระ · ขึ้นบรรทัดใหม่ได้">คลินิกทำฟัน ยิ้มสวย</textarea></div>'
+        +'<div class="lgRow"><label>ฟอนต์</label>'+sel+'</div>'
+        +'<div class="lgRow"><label>ความสูงตัวอักษร</label>'
+        +'<input id="lgSize" type="number" class="lgIn" value="10" min="0.5" max="400" step="0.5" style="width:80px"> ซม.'
+        +'<span class="lgHint">· ปรับขนาดจริงบนกระดานได้อีกทีด้วยจุดมุม</span></div>'
+        +'<div class="lgRow"><label>สีตัวอักษร</label>'
+        +'<input id="lgCol" type="color" value="#0f172a" style="width:46px;height:30px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer">'
+        +'<label style="width:auto;margin-left:10px">ขอบรอบตัว</label>'
+        +'<input id="lgOut" type="number" class="lgIn" value="0" min="0" max="60" step="0.5" style="width:64px"> มม.'
+        +'<input id="lgOutC" type="color" value="#ffffff" style="width:46px;height:30px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer"></div>'
+        +'<div class="lgRow"><label>จัดชิด</label>'+seg('lgAlign',[['left','⬅ ซ้าย'],['center','↔ กลาง'],['right','➡ ขวา']],'center')
+        +'<label style="width:auto;margin-left:10px;display:inline-flex;align-items:center;gap:5px">'
+        +'<input id="lgIt" type="checkbox"> เอียง</label></div>'
+        +'<div class="lgRow"><label>ระยะห่างตัวอักษร</label>'
+        +'<input id="lgTrk" type="range" min="-4" max="30" step="1" value="0" style="flex:1;min-width:130px">'
+        +'<b id="lgTrkV" style="width:46px;text-align:right;color:#2563eb">0%</b></div>'
+        +'<div class="lgRow"><label>ระยะห่างบรรทัด</label>'
+        +'<input id="lgLh" type="range" min="70" max="220" step="5" value="100" style="flex:1;min-width:130px">'
+        +'<b id="lgLhV" style="width:46px;text-align:right;color:#2563eb">100%</b></div>'
+        +'</div>'
+        +'<div style="width:300px;flex:0 0 auto">'
+        +'<div class="lgPv" id="lgPv"><span style="color:#94a3b8;font-size:12px">⏳ กำลังสร้างตัวอย่าง…</span></div>'
+        +'<div id="lgInfo" class="lgHint" style="margin-top:6px">&nbsp;</div>'
+        +'</div></div>'
+        +'<div class="lgHint" style="margin-top:8px;background:#F0FDFA;border:1px solid #99f6e4;border-radius:9px;padding:9px 12px">'
+        +'✅ ตัวอักษรถูกดึงเป็น <b>เส้นโค้งจริงจากไฟล์ฟอนต์</b> ไม่ผ่านภาพเลยสักขั้น — ขยายกี่เท่าก็คม '
+        +'และตัดจริงได้ทันทีโดยไม่ต้องแปลงเป็นเวกเตอร์ซ้ำ<br>'
+        +'ตัวอย่างทางขวาคือ<b>ของจริงที่เซิร์ฟเวอร์สร้างให้แล้ว</b> ไม่ใช่การจำลองบนจอ สระ/วรรณยุกต์ไทยจึงตรงตามที่จะได้จริง'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+        +'<button id="lgAdd" class="lgGo">➕ วางลงกระดาน</button></div>';
+      var ov=modal('✍️ ใส่ข้อความ (ฟอนต์จริง · เวกเตอร์แท้)',body,860);
+      /* ตั้งค่าเริ่มต้นเป็นฟอนต์ประจำแอป ไม่ใช่ตัวแรกตามลำดับตัวอักษร (คนไทยใช้ตัวนี้บ่อยสุด) */
+      try{ var _pf=['Prompt-Bold.ttf','Kanit-Bold.ttf','Sarabun-Bold.ttf'];
+        for(var _i=0;_i<_pf.length;_i++){ if(fs.some(function(f){return f.file===_pf[_i];})){
+          ov.querySelector('#lgFont').value=_pf[_i]; break; } } }catch(_e){}
+
+      var LAST=null, DIRTY=true, T=null, BUSY=false;
+      function cfg(){
+        return {text:ov.querySelector('#lgTxt').value,
+                font:ov.querySelector('#lgFont').value,
+                size_cm:parseFloat(ov.querySelector('#lgSize').value)||10,
+                color:ov.querySelector('#lgCol').value,
+                align:segVal(ov,'lgAlign')||'center',
+                italic:ov.querySelector('#lgIt').checked?12:0,
+                tracking:(parseFloat(ov.querySelector('#lgTrk').value)||0)/100,
+                line_gap:(parseFloat(ov.querySelector('#lgLh').value)||100)/100,
+                outline_mm:parseFloat(ov.querySelector('#lgOut').value)||0,
+                outline_color:ov.querySelector('#lgOutC').value};
+      }
+      function render(cb){
+        if(BUSY){ DIRTY=true; return; }
+        BUSY=true; DIRTY=false;
+        var pv=ov.querySelector('#lgPv');
+        fetch(API_+'/api/text-asset',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(cfg())}).then(function(r){return r.json();}).then(function(j){
+          BUSY=false;
+          if(!j||!j.ok){
+            pv.innerHTML='<span style="color:#dc2626;font-size:12px;text-align:center">⛔ '+esc((j&&j.error)||'สร้างไม่สำเร็จ')+'</span>';
+            LAST=null;
+          } else {
+            LAST=j;
+            pv.innerHTML='<img src="'+j.png+'" alt="">';
+            ov.querySelector('#lgInfo').textContent='ขนาดจริง '+(j.w_mm/10).toFixed(1)+' × '+(j.h_mm/10).toFixed(1)+' ซม.';
+          }
+          if(DIRTY)render(); else if(cb)cb();
+        }).catch(function(e){ BUSY=false; LAST=null;
+          pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; if(cb)cb(); });
+      }
+      function bump(){ DIRTY=true; clearTimeout(T); T=setTimeout(function(){ render(); },380); }
+
+      ['lgTxt','lgFont','lgSize','lgCol','lgOut','lgOutC','lgIt','lgTrk','lgLh'].forEach(function(id){
+        var e=ov.querySelector('#'+id); if(!e)return;
+        e.addEventListener('input',bump); e.addEventListener('change',bump);
+      });
+      ov.querySelector('#lgTrk').addEventListener('input',function(){ ov.querySelector('#lgTrkV').textContent=this.value+'%'; });
+      ov.querySelector('#lgLh').addEventListener('input',function(){ ov.querySelector('#lgLhV').textContent=this.value+'%'; });
+      bindSeg(ov,'lgAlign',bump);
+      if(!fs.length){ ov.querySelector('#lgPv').innerHTML='<span style="color:#dc2626;font-size:12px">⛔ ไม่พบไฟล์ฟอนต์ในเครื่อง '+esc(FONTS_ERR)+'</span>'; }
+      else render();
+
+      ov.querySelector('#lgAdd').onclick=function(){
+        var b=this;
+        var go=function(){ if(LAST&&pushPiece(LAST,false)) ov.remove();
+                           else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — แก้ข้อความ/ฟอนต์แล้วลองใหม่นะคะ');
+                           b.disabled=false; b.textContent='➕ วางลงกระดาน'; };
+        if(DIRTY||BUSY||!LAST){ b.disabled=true; b.textContent='⏳ กำลังสร้าง…'; render(go); }
+        else go();
+      };
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     🎨  ปุ่ม "พื้นหลัง"  (สีพื้น · ไล่สี · ไฟล์ artwork)
+     ══════════════════════════════════════════════════════════════ */
+  function openBg(){
+    var body=CSS
+      +'<div style="display:flex;gap:16px;flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:330px">'
+      +'<div class="lgRow"><label>ขนาดแผ่น</label>'
+      +'<input id="bgW" type="number" class="lgIn" value="60" min="1" max="600" step="1" style="width:78px"> ×'
+      +'<input id="bgH" type="number" class="lgIn" value="30" min="1" max="600" step="1" style="width:78px"> ซม.</div>'
+      +'<div class="lgRow"><label>รูปทรง</label>'
+      +seg('bgShape',[['rect','▭ สี่เหลี่ยม'],['round','▢ มุมมน'],['ellipse','⬭ วงรี']],'rect')
+      +'<span id="bgRadWrap" style="display:none;align-items:center;gap:6px">มุมมน '
+      +'<input id="bgRad" type="number" class="lgIn" value="2" min="0" max="60" step="0.5" style="width:64px"> ซม.</span></div>'
+      +'<div class="lgRow"><label>แบบพื้น</label>'
+      +seg('bgFill',[['solid','สีเดียว'],['grad','ไล่สี'],['art','ไฟล์ artwork']],'solid')+'</div>'
+      +'<div class="lgRow" id="bgColRow"><label>สี</label>'
+      +'<input id="bgC1" type="color" value="#2563eb" style="width:46px;height:30px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer">'
+      +'<span id="bgC2Wrap" style="display:none;align-items:center;gap:6px">→ '
+      +'<input id="bgC2" type="color" value="#0f172a" style="width:46px;height:30px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer">'
+      +' องศา <input id="bgAng" type="number" class="lgIn" value="90" min="0" max="360" step="15" style="width:66px"></span></div>'
+      +'<div class="lgRow" id="bgArtRow" style="display:none"><label>ไฟล์ artwork</label>'
+      +'<input id="bgArt" type="file" accept="image/*,.svg" class="lgIn" style="max-width:230px">'
+      +seg('bgFit',[['cover','เต็มแผ่น'],['contain','เห็นทั้งรูป'],['stretch','ยืดเต็ม']],'cover')+'</div>'
+      +'<div class="lgRow"><label>เส้นขอบ</label>'
+      +'<input id="bgB" type="number" class="lgIn" value="0" min="0" max="20" step="0.1" style="width:70px"> ซม.'
+      +'<input id="bgBC" type="color" value="#0f172a" style="width:46px;height:30px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer"></div>'
+      +'</div>'
+      +'<div style="width:300px;flex:0 0 auto">'
+      +'<div class="lgPv" id="bgPv"><span style="color:#94a3b8;font-size:12px">⏳ กำลังสร้างตัวอย่าง…</span></div>'
+      +'<div id="bgInfo" class="lgHint" style="margin-top:6px">&nbsp;</div>'
+      +'</div></div>'
+      +'<div class="lgHint" style="margin-top:8px;background:#EFF6FF;border:1px solid #bfdbfe;border-radius:9px;padding:9px 12px">'
+      +'🎨 แผ่นนี้ใช้เป็น<b>หน้ากล่องไฟพิมพ์ UV</b> หรือ<b>แผ่นรองโลโก้</b>ได้เลย — เปลี่ยนสี/เปลี่ยนรูปทีหลังได้อิสระ '
+      +'โดยลบแผ่นเดิมทิ้งแล้วใส่ใหม่<br>'
+      +'📌 เมื่อวางแล้วแผ่นนี้จะไปอยู่<b>ชั้นล่างสุดเสมอ</b> ทั้งบนกระดานและในไฟล์ที่รวมออกไป โลโก้กับข้อความจึงไม่โดนบัง'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+      +'<button id="bgAdd" class="lgGo">➕ วางเป็นพื้นหลัง (ล่างสุด)</button></div>';
+    var ov=modal('🎨 ใส่พื้นหลัง / แผ่นรอง',body,860);
+
+    var LAST=null, DIRTY=true, BUSY=false, T=null;
+    function fd(){
+      var f=new FormData();
+      var sh=segVal(ov,'bgShape')||'rect';
+      f.append('w_cm',ov.querySelector('#bgW').value||'60');
+      f.append('h_cm',ov.querySelector('#bgH').value||'30');
+      f.append('shape',(sh==='ellipse')?'ellipse':'rect');
+      f.append('radius_cm',(sh==='round')?(ov.querySelector('#bgRad').value||'2'):'0');
+      f.append('fill',segVal(ov,'bgFill')||'solid');
+      f.append('color1',ov.querySelector('#bgC1').value);
+      f.append('color2',ov.querySelector('#bgC2').value);
+      f.append('angle',ov.querySelector('#bgAng').value||'90');
+      f.append('art_fit',segVal(ov,'bgFit')||'cover');
+      f.append('border_cm',ov.querySelector('#bgB').value||'0');
+      f.append('border_color',ov.querySelector('#bgBC').value);
+      var fi=ov.querySelector('#bgArt');
+      if(fi&&fi.files&&fi.files[0]) f.append('file',fi.files[0]);
+      return f;
+    }
+    function render(cb){
+      if(BUSY){ DIRTY=true; return; }
+      BUSY=true; DIRTY=false;
+      var pv=ov.querySelector('#bgPv');
+      fetch(API_+'/api/bg-asset',{method:'POST',body:fd()}).then(function(r){return r.json();}).then(function(j){
+        BUSY=false;
+        if(!j||!j.ok){ pv.innerHTML='<span style="color:#dc2626;font-size:12px;text-align:center">⛔ '+esc((j&&j.error)||'สร้างไม่สำเร็จ')+'</span>'; LAST=null; }
+        else { LAST=j; pv.innerHTML='<img src="'+j.png+'" alt="">';
+               ov.querySelector('#bgInfo').textContent='ขนาดจริง '+(j.w_mm/10).toFixed(1)+' × '+(j.h_mm/10).toFixed(1)+' ซม.'; }
+        if(DIRTY)render(); else if(cb)cb();
+      }).catch(function(e){ BUSY=false; LAST=null;
+        pv.innerHTML='<span style="color:#dc2626;font-size:12px">⛔ '+esc(e)+'</span>'; if(cb)cb(); });
+    }
+    function bump(){ DIRTY=true; clearTimeout(T); T=setTimeout(function(){ render(); },380); }
+
+    ['bgW','bgH','bgRad','bgC1','bgC2','bgAng','bgB','bgBC','bgArt'].forEach(function(id){
+      var e=ov.querySelector('#'+id); if(!e)return;
+      e.addEventListener('input',bump); e.addEventListener('change',bump);
+    });
+    bindSeg(ov,'bgShape',function(v){
+      ov.querySelector('#bgRadWrap').style.display=(v==='round')?'inline-flex':'none'; bump(); });
+    bindSeg(ov,'bgFill',function(v){
+      ov.querySelector('#bgC2Wrap').style.display=(v==='grad')?'inline-flex':'none';
+      ov.querySelector('#bgArtRow').style.display=(v==='art')?'flex':'none';
+      ov.querySelector('#bgColRow').style.display=(v==='art')?'none':'flex';
+      // เลือก artwork แล้วยังไม่ได้เลือกไฟล์ -> ยังไม่ต้องยิงไปให้ขึ้น error ฟรี
+      if(v==='art'){ var fi=ov.querySelector('#bgArt'); if(!(fi&&fi.files&&fi.files[0])){
+        ov.querySelector('#bgPv').innerHTML='<span style="color:#64748b;font-size:12px">เลือกไฟล์ artwork ก่อนนะคะ</span>';
+        LAST=null; DIRTY=true; return; } }
+      bump();
+    });
+    bindSeg(ov,'bgFit',bump);
+    render();
+
+    ov.querySelector('#bgAdd').onclick=function(){
+      var b=this;
+      var go=function(){ if(LAST&&pushPiece(LAST,true)) ov.remove();
+                         else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — ตรวจค่าที่กรอกแล้วลองใหม่นะคะ');
+                         b.disabled=false; b.textContent='➕ วางเป็นพื้นหลัง (ล่างสุด)'; };
+      if(DIRTY||BUSY||!LAST){ b.disabled=true; b.textContent='⏳ กำลังสร้าง…'; render(go); }
+      else go();
+    };
+  }
+
+  /* ── ต่อสายปุ่ม: หน้าแตกชิ้นถูกสร้างใหม่ทุกครั้งที่เปิด จึงดักที่ document ── */
+  document.addEventListener('click',function(e){
+    var t=e.target; if(!t||!t.id)return;
+    if(t.id==='asmText'){ e.preventDefault(); openText(); }
+    else if(t.id==='asmBg'){ e.preventDefault(); openBg(); }
+  },true);
+  window._logoOpenText=openText;
+  window._logoOpenBg=openBg;
 })();
 </script>
 
