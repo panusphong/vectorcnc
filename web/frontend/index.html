@@ -12006,5 +12006,392 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
 })();
 </script>
 
+<!-- ═══════════════════════════════════════════════════════════════════
+     🧩 ออกแบบป้ายจากไฟล์เวกเตอร์ (VecSign) — เพิ่มเข้ามา 2026-08-09
+     โจทย์จากงานจริง: ลูกค้าส่ง .svg มา มีพื้นหลังสี่เหลี่ยม + โลโก้ขาวบนขาว
+     ระบบเดิมหาขอบจาก 'ความต่างของสี' เลยจับไม่ได้ทั้งสองอย่าง
+     ที่นี่อ่าน path จริงจากไฟล์ -> แยกเป็นชิ้น -> ให้ผู้ใช้จิ้มเลือก -> ประกอบร่างใหม่
+     กติกา: โค้ดเดิมห้ามถูกแตะ · ทุกอย่างอยู่ในบล็อกนี้บล็อกเดียว · ตัวแปรอยู่ใน IIFE
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="vsOverlay" style="display:none;position:fixed;inset:0;z-index:131;background:#EEF2F8;overflow:auto">
+  <div style="position:sticky;top:0;z-index:3;background:#0f172a;color:#fff;padding:11px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.2)">
+    <b style="font-size:15.5px">🧩 ออกแบบป้ายจากไฟล์เวกเตอร์</b>
+    <span style="font-size:12px;color:#94a3b8">เลือกเฉพาะชิ้นที่จะตัด · ประกอบร่างใหม่ · ออกไฟล์ตัด + ไฟล์พิมพ์ UV</span>
+    <span id="vsEng" style="margin-left:auto;font-size:11.5px;color:#64748b"></span>
+    <button type="button" id="vsClose" style="background:#ef4444;color:#fff;border:none;border-radius:8px;padding:7px 15px;font-family:inherit;font-weight:700;cursor:pointer">✕ ปิด</button>
+  </div>
+
+  <div style="max-width:1500px;margin:0 auto;padding:16px 14px 70px">
+    <style>
+      #vsOverlay .vsc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(30,58,95,.06);margin-bottom:12px}
+      #vsOverlay h4{font-size:15px;font-weight:700;color:var(--ink);margin:0 0 3px}
+      #vsOverlay .vss{font-size:12px;color:var(--muted);margin-bottom:10px}
+      #vsOverlay .vsdrop{border:2px dashed var(--line2);border-radius:14px;background:#F8FAFD;padding:30px 18px;text-align:center;cursor:pointer}
+      #vsOverlay .vsdrop:hover,#vsOverlay .vsdrop.hot{border-color:var(--brand);background:#F1F6FF}
+      #vsOverlay .vsrow{display:grid;grid-template-columns:1fr 330px;gap:12px;align-items:start}
+      @media(max-width:1100px){#vsOverlay .vsrow{grid-template-columns:1fr}}
+      #vsOverlay .vsstage{position:relative;background:
+        linear-gradient(45deg,#eef1f6 25%,transparent 25%),linear-gradient(-45deg,#eef1f6 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#eef1f6 75%),linear-gradient(-45deg,transparent 75%,#eef1f6 75%);
+        background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
+        border:1px solid var(--line);border-radius:12px;overflow:hidden;user-select:none}
+      /* ⚠️ ต้องคุมความสูง — งานจริงกว้าง 230 ซม. ถ้าปล่อยตามสัดส่วนจะล้นจอจนกดปุ่มไม่ถึง */
+      #vsOverlay .vsstage{display:grid;place-items:center;min-height:220px;max-height:58vh}
+      #vsOverlay .vsstage svg,#vsOverlay .vsstage img{display:block;max-width:100%;
+        max-height:58vh;width:auto;height:auto;margin:0 auto}
+      #vsOverlay .vspc{cursor:pointer;transition:fill-opacity .1s}
+      #vsOverlay .vsbtn{border:0;border-radius:10px;padding:9px 16px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer}
+      #vsOverlay .vsbtn.go{background:var(--grad);color:#fff;box-shadow:0 5px 14px rgba(37,99,235,.22)}
+      #vsOverlay .vsbtn.alt{background:#fff;border:1px solid var(--line2);color:var(--ink)}
+      #vsOverlay .vsbtn.sm{padding:6px 11px;font-size:12px;font-weight:600}
+      #vsOverlay .vsbtn:disabled{opacity:.45;cursor:default}
+      #vsOverlay .vsseg{display:inline-flex;border-radius:9px;overflow:hidden;border:1px solid var(--line2)}
+      #vsOverlay .vsseg button{font-family:inherit;font-size:12px;border:0;border-right:1px solid var(--line2);background:#fff;color:var(--muted);padding:6px 12px;cursor:pointer}
+      #vsOverlay .vsseg button:last-child{border-right:0}
+      #vsOverlay .vsseg button.on{background:var(--brand);color:#fff}
+      #vsOverlay .vsf{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-bottom:7px;flex-wrap:wrap}
+      #vsOverlay .vsf input[type=number],#vsOverlay .vsf input[type=text]{font-family:inherit;font-size:12.5px;border:1px solid var(--line2);border-radius:8px;padding:6px 8px;width:82px}
+      #vsOverlay .vsf input[type=text]{width:150px}
+      #vsOverlay .vsf input[type=color]{width:34px;height:28px;border:1px solid var(--line2);border-radius:7px;padding:1px;background:#fff}
+      #vsOverlay .vsl{border:1px solid var(--line);border-radius:10px;max-height:270px;overflow:auto}
+      #vsOverlay .vsl div.it{display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer}
+      #vsOverlay .vsl div.it:last-child{border-bottom:0}
+      #vsOverlay .vsl div.it.sel{background:#EFF6FF}
+      #vsOverlay .vsl i.sw{width:16px;height:16px;border-radius:5px;border:1px solid rgba(15,23,42,.15);display:block;flex:none}
+      #vsOverlay .vsl b{font-weight:600;color:var(--ink)}
+      #vsOverlay .vsl span.dim{color:var(--dim);margin-left:auto;font-size:11px}
+      #vsOverlay .vstag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#E2E8F0;color:#475569}
+      #vsOverlay .vstag.o{background:#DBEAFE;color:#1D4ED8}
+      #vsOverlay .vstag.f{background:#DCFCE7;color:#15803D}
+      #vsOverlay .vsnote{border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.55;margin-top:8px;background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46}
+      #vsOverlay .vsnote.warn{background:#FFFBEB;border-color:#FDE68A;color:#92400E}
+      #vsOverlay .vsh{font-size:12px;font-weight:700;color:var(--ink);margin:12px 0 6px}
+      #vsOverlay .vsk{font-size:11.5px;color:var(--dim)}
+    </style>
+
+    <!-- ── ขั้น 1: ไฟล์ ── -->
+    <div class="vsc" id="vsP1">
+      <h4>1 · ไฟล์เวกเตอร์จากลูกค้า</h4>
+      <div class="vss">.svg · .ai · .pdf · .eps — อ่านเส้นจริงจากไฟล์ ไม่ไล่เส้นใหม่ จึงไม่เสียความคม และ<b>โลโก้สีขาวบนพื้นขาวก็จับได้</b></div>
+      <div class="vsdrop" id="vsDrop">
+        <div style="font-size:26px">📐</div>
+        <div style="font-weight:700;color:var(--ink);margin-top:5px">ลากไฟล์มาวางตรงนี้ หรือคลิกเพื่อเลือก</div>
+        <div class="vsk" style="margin-top:3px">ไม่เกิน 30 MB</div>
+      </div>
+      <input type="file" id="vsFile" accept=".svg,.ai,.pdf,.eps,.ps,image/svg+xml,application/pdf" hidden>
+      <div id="vsInfo" style="margin-top:10px"></div>
+    </div>
+
+    <!-- ── ขั้น 2: เลือกชิ้น + ประกอบร่าง ── -->
+    <div class="vsc" id="vsP2" style="display:none">
+      <div class="vsf" style="margin-bottom:10px">
+        <b style="color:var(--ink);font-size:14px">2 · เลือกชิ้น แล้วประกอบร่าง</b>
+        <span class="vsseg" id="vsMode" style="margin-left:6px">
+          <button data-v="dicut" class="on">ไดคัทแยกชิ้น</button><button data-v="box">กล่องไฟล้อมทรง</button></span>
+        <span style="margin-left:auto"></span>
+        <span>กว้างงานจริง</span><input type="number" id="vsW" value="1300" step="10"><span>มม.</span>
+        <button class="vsbtn alt sm" id="vsAll">เลือกทั้งหมด</button>
+        <button class="vsbtn alt sm" id="vsNone">ไม่เอาเลย</button>
+      </div>
+
+      <div class="vsrow">
+        <div>
+          <div class="vsstage" id="vsStage"></div>
+          <div class="vsf" style="margin-top:8px">
+            <span id="vsSum" class="vsk"></span>
+            <span style="margin-left:auto"></span>
+            <button class="vsbtn go" id="vsBuild">ประกอบร่าง / อัปเดตพรีวิว</button>
+          </div>
+          <div id="vsMsg"></div>
+        </div>
+
+        <div>
+          <div class="vsh">ชิ้นในไฟล์ <span class="vsk" id="vsCount"></span></div>
+          <div class="vsl" id="vsList"></div>
+
+          <div id="vsBoxOnly" style="display:none">
+            <div class="vsh">หน้าป้าย (อะคริลิคพิมพ์ UV)</div>
+            <div class="vsf">
+              <span>ขอบซิงค์</span><input type="number" id="vsMar" value="0" step="5"><span>มม.</span>
+              <label style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="vsBleed" checked> พื้นขาวรองพิมพ์</label>
+            </div>
+            <div class="vsf">
+              <button class="vsbtn alt sm" id="vsAddRect">+ แถบสี</button>
+              <button class="vsbtn alt sm" id="vsAddText">+ ข้อความ</button>
+              <button class="vsbtn alt sm" id="vsArtBtn">+ พื้นหลัง artwork</button>
+              <input type="file" id="vsArt" accept="image/*,.svg,.pdf,.ai" hidden>
+            </div>
+            <div class="vsl" id="vsElems" style="max-height:230px"></div>
+            <div id="vsEdit" style="display:none;border:1px solid var(--line);border-radius:10px;padding:9px;margin-top:8px">
+              <div class="vsf"><b style="color:var(--ink)" id="vsEdName">—</b>
+                <button class="vsbtn alt sm" id="vsDel" style="margin-left:auto">ลบ</button></div>
+              <div class="vsf" id="vsEdTxtRow" style="display:none">
+                <span>ข้อความ</span><input type="text" id="vsEdTxt">
+              </div>
+              <div class="vsf">
+                <span>x</span><input type="number" id="vsEdX" step="5">
+                <span>y</span><input type="number" id="vsEdY" step="5">
+              </div>
+              <div class="vsf">
+                <span id="vsEdWL">กว้าง</span><input type="number" id="vsEdW" step="5">
+                <span id="vsEdHL">สูง</span><input type="number" id="vsEdH" step="5">
+              </div>
+              <div class="vsf">
+                <span>สี</span><input type="color" id="vsEdC">
+                <span>บทบาท</span>
+                <span class="vsseg" id="vsEdRole">
+                  <button data-v="outline">ทรงกล่อง</button><button data-v="face">หน้าป้าย</button><button data-v="both">ทั้งสอง</button></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="vsh">ดาวน์โหลด</div>
+          <div class="vsf" id="vsDl">
+            <button class="vsbtn alt sm" data-k="cut" data-f="svg">ตัด SVG</button>
+            <button class="vsbtn alt sm" data-k="cut" data-f="dxf">ตัด DXF</button>
+            <button class="vsbtn alt sm" data-k="cut" data-f="pdf">ตัด PDF</button>
+            <button class="vsbtn alt sm" data-k="face" data-f="svg">พิมพ์ SVG</button>
+            <button class="vsbtn alt sm" data-k="face" data-f="pdf">พิมพ์ PDF</button>
+          </div>
+          <div class="vsk" id="vsStats"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var API = location.origin;
+  var TOK=null, PCS=[], MMU=1, SIZE=[0,0], SEL={}, MODE='dicut', ELEMS=[], EDIT=null, SEQ=0, BUSY=false, LAST=null;
+  function $(i){return document.getElementById(i);}
+  function esc(t){return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function hex(c){return '#'+c.map(function(v){return ('0'+(v|0).toString(16)).slice(-2);}).join('');}
+  function unhex(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+  var PAL=['#2563EB','#16A34A','#DC2626','#D97706','#7C3AED','#0891B2','#DB2777','#65A30D'];
+
+  /* ── อัปไฟล์ ── */
+  function load(f){
+    if(!f||BUSY)return; BUSY=true;
+    $('vsInfo').innerHTML='<div class="vsnote">⏳ กำลังอ่านไฟล์…</div>';
+    var fd=new FormData(); fd.append('file',f); fd.append('width_mm',$('vsW').value||0);
+    fetch(API+'/api/vec/pieces',{method:'POST',body:fd}).then(function(r){
+      if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
+      return r.json();
+    }).then(function(j){
+      TOK=j.token; PCS=j.pieces; MMU=j.mm_per_unit; SIZE=j.size; SEL={}; ELEMS=[]; EDIT=null;
+      PCS.forEach(function(p){ SEL[p.id]= (p.kind!=='bg'); });   // ตัดพื้นหลังออกให้เลย
+      $('vsW').value=Math.round(j.mm_size[0]);
+      $('vsInfo').innerHTML='<div class="vsnote">✅ อ่านได้ '+j.stats.pieces+' ชิ้น · ขนาดไฟล์ '
+        +j.mm_size[0]+' × '+j.mm_size[1]+' มม. · เส้นทึบ '+j.stats.fills+' · เส้นขอบ '+j.stats.strokes
+        +(j.stats.bg_pieces?' · <b>พบพื้นหลัง '+j.stats.bg_pieces+' ชิ้น ปิดให้อัตโนมัติแล้ว</b>':'')+'</div>';
+      $('vsP2').style.display=''; paint(); list(); sum();
+    }).catch(function(e){
+      $('vsInfo').innerHTML='<div class="vsnote warn">❌ '+esc(e.message||e)+'</div>';
+    }).then(function(){ BUSY=false; });
+  }
+
+  /* ── แผนที่ชิ้น (จิ้มเลือก) ── */
+  function paint(){
+    var W=SIZE[0],H=SIZE[1],b=[],k=0;
+    b.push('<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">');
+    b.push('<rect width="'+W+'" height="'+H+'" fill="#fff"/>');
+    PCS.forEach(function(p){
+      var on=!!SEL[p.id], c=(p.kind==='bg')?'#94a3b8':PAL[(k++)%PAL.length];
+      b.push('<path class="vspc" data-id="'+p.id+'" d="'+p.d+'" fill="'+c+'" fill-rule="evenodd" fill-opacity="'+(on?.32:.05)
+        +'" stroke="'+c+'" stroke-width="'+(on?2.6:1.4)+'"'+(p.kind==='bg'?' stroke-dasharray="14 10"':'')+'/>');
+    });
+    b.push('</svg>');
+    $('vsStage').innerHTML=b.join('');
+    $('vsStage').querySelectorAll('.vspc').forEach(function(n){
+      n.onclick=function(){ var id=n.dataset.id; SEL[id]=!SEL[id]; paint(); list(); sum(); };
+    });
+  }
+  function list(){
+    var b=[],k=0;
+    PCS.forEach(function(p){
+      var on=!!SEL[p.id];
+      b.push('<div class="it'+(on?' sel':'')+'" data-id="'+p.id+'"><input type="checkbox" '+(on?'checked':'')
+        +'><i class="sw" style="background:'+hex(p.rgb)+'"></i><b>'+p.id+'</b>'
+        +(p.kind==='bg'?' <span class="vstag">พื้นหลัง</span>':'')
+        +(p.holes?' <span class="vstag">รู '+p.holes+'</span>':'')
+        +'<span class="dim">'+p.w_mm+'×'+p.h_mm+' มม.</span></div>');
+    });
+    $('vsList').innerHTML=b.join('');
+    $('vsCount').textContent='('+PCS.length+' ชิ้น · เลือก '+Object.keys(SEL).filter(function(i){return SEL[i];}).length+')';
+    $('vsList').querySelectorAll('.it').forEach(function(n){
+      n.onclick=function(){ SEL[n.dataset.id]=!SEL[n.dataset.id]; paint(); list(); sum(); };
+    });
+  }
+  function sum(){
+    var n=Object.keys(SEL).filter(function(i){return SEL[i];}).length;
+    $('vsSum').textContent='เลือกไว้ '+n+' ชิ้น'+(MODE==='dicut'?' — จะได้ '+n+' ชิ้นตัด':'');
+  }
+
+  /* ── ผังงานสำหรับโหมดกล่องไฟ ── */
+  function elemsPaint(){
+    var b=[];
+    ELEMS.forEach(function(e){
+      var nm = e.text!=null?('“'+esc(e.text.slice(0,14))+'”') : e.art?('พื้นหลัง artwork') : e.shape==='rect'?'แถบสี':('ชิ้น '+e.id);
+      var rl = e.role==='outline'?'<span class="vstag o">ทรงกล่อง</span>':e.role==='both'?'<span class="vstag o">ทั้งสอง</span>':'<span class="vstag f">หน้าป้าย</span>';
+      b.push('<div class="it'+(EDIT===e.key?' sel':'')+'" data-k="'+e.key+'">'
+        +(e.rgb?'<i class="sw" style="background:'+hex(e.rgb)+'"></i>':'<i class="sw" style="background:#e2e8f0"></i>')
+        +'<b>'+nm+'</b>'+rl+'<span class="dim">'+(e.x_mm|0)+','+(e.y_mm|0)+'</span></div>');
+    });
+    $('vsElems').innerHTML=b.join('')||'<div class="it" style="color:#94a3b8">ยังไม่มีอะไรบนหน้าป้าย</div>';
+    $('vsElems').querySelectorAll('.it').forEach(function(n){
+      if(!n.dataset.k)return;
+      n.onclick=function(){ EDIT=n.dataset.k; elemsPaint(); editPaint(); };
+    });
+  }
+  function cur(){ return ELEMS.filter(function(e){return e.key===EDIT;})[0]; }
+  function editPaint(){
+    var e=cur();
+    $('vsEdit').style.display=e?'':'none'; if(!e)return;
+    $('vsEdName').textContent = e.text!=null?'ข้อความ':e.art?'พื้นหลัง artwork':e.shape==='rect'?'แถบสี':('ชิ้น '+e.id);
+    $('vsEdTxtRow').style.display = e.text!=null?'':'none';
+    if(e.text!=null)$('vsEdTxt').value=e.text;
+    $('vsEdX').value=(e.x_mm==null?'':e.x_mm); $('vsEdY').value=(e.y_mm==null?'':e.y_mm);
+    $('vsEdWL').textContent = e.text!=null?'ขนาดตัว':'กว้าง';
+    $('vsEdW').value = e.text!=null?(e.size_mm||100):(e.w_mm==null?(e._w||''):e.w_mm);
+    $('vsEdH').value = (e.h_mm==null?(e._h||''):e.h_mm); $('vsEdHL').style.opacity = e.text!=null?'.35':'1';
+    $('vsEdC').value = hex(e.rgb||[0,0,0]);
+    document.querySelectorAll('#vsEdRole button').forEach(function(b){ b.classList.toggle('on', b.dataset.v===e.role); });
+  }
+  function bindEd(){
+    function set(id,f){ $(id).oninput=function(){ var e=cur(); if(!e)return; f(e,this.value); elemsPaint(); build(); }; }
+    set('vsEdTxt',function(e,v){e.text=v;});
+    set('vsEdX',function(e,v){e.x_mm=(v===''?null:parseFloat(v)||0);});
+    set('vsEdY',function(e,v){e.y_mm=(v===''?null:parseFloat(v)||0);});
+    set('vsEdW',function(e,v){ if(e.text!=null)e.size_mm=parseFloat(v)||100; else e.w_mm=(v===''?null:parseFloat(v)||0); });
+    set('vsEdH',function(e,v){ e.h_mm=(v===''?null:parseFloat(v)||0); });
+    set('vsEdC',function(e,v){ e.rgb=unhex(v); });
+    document.querySelectorAll('#vsEdRole button').forEach(function(b){
+      b.onclick=function(){ var e=cur(); if(!e)return; e.role=b.dataset.v; editPaint(); elemsPaint(); build(); };
+    });
+    $('vsDel').onclick=function(){ ELEMS=ELEMS.filter(function(e){return e.key!==EDIT;}); EDIT=null; elemsPaint(); editPaint(); build(); };
+  }
+
+  /* ⚠️ พอเข้าโหมดกล่องไฟ ต้องยกชิ้นที่เลือกไว้ขึ้นมาเป็น 'ของที่จัดวางได้'
+     ไม่งั้นผู้ใช้ตั้งบทบาทให้รูปฟันเป็น 'ทรงกล่อง' ไม่ได้ ขอบกล่องเลยไม่อ้อมฟัน
+     (เจอตอนทดสอบจริง: กล่องออกมา 174 cm แทนที่จะเป็น 230 cm เพราะฟันไม่ได้นับเป็นทรงกล่อง) */
+  function liftPieces(){
+    PCS.forEach(function(p){
+      if(!SEL[p.id])return;
+      if(ELEMS.some(function(e){return e.id===p.id;}))return;
+      ELEMS.push({key:p.id,id:p.id,role:'face',rgb:p.rgb,
+                  x_mm:null,y_mm:null,w_mm:null,h_mm:null,_w:p.w_mm,_h:p.h_mm});
+    });
+  }
+
+  function layout(){
+    if(MODE==='dicut'){
+      return PCS.filter(function(p){return SEL[p.id];}).map(function(p){
+        return {key:p.id,id:p.id,role:'outline'};});
+    }
+    liftPieces();
+    return ELEMS.filter(function(e){ return !e.id || SEL[e.id]; }).map(function(e){
+      var o={}; for(var k in e){ if(k[0]!=='_'&&e[k]!==null&&e[k]!==undefined)o[k]=e[k]; }
+      return o;
+    });
+  }
+
+  function build(){
+    if(!TOK||BUSY)return; BUSY=true;
+    var fd=new FormData();
+    fd.append('token',TOK); fd.append('layout',JSON.stringify(layout()));
+    fd.append('margin_mm',$('vsMar').value||0);
+    fd.append('bleed',$('vsBleed').checked?1:0);
+    fd.append('width_mm',$('vsW').value||0); fd.append('mode',MODE);
+    fetch(API+'/api/vec/compose',{method:'POST',body:fd}).then(function(r){
+      if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
+      return r.json();
+    }).then(function(j){
+      LAST=j;
+      var W=j.size_mm[0],H=j.size_mm[1],ox=j.origin_mm[0],oy=j.origin_mm[1];
+      // ⚠️ ต้องแสดงผ่าน <img> ไม่ใช่ยัด markup ตรง ๆ
+      //    SVG ที่ฝังเข้าไปดื้อ ๆ จะไม่ยอมย่อตามกรอบ (งาน 230 ซม. ล้นจอจนกดปุ่มไม่ถึง)
+      //    <img> ย่อตามสัดส่วนให้เองเสมอ ไม่ว่าไฟล์จะใหญ่แค่ไหน
+      var body = (MODE==='dicut')
+        ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+ox+' '+oy+' '+W+' '+H+'"><rect x="'+ox+'" y="'+oy+'" width="'+W+'" height="'+H+'" fill="#fff"/><path d="'+j.outline_d+'" fill="none" stroke="#DC2626" stroke-width="'+(W/500)+'"/></svg>'
+        : j.face_svg.replace('</svg>','<path d="'+j.outline_d+'" fill="none" stroke="#2563EB" stroke-width="'+(W/400)+'" stroke-dasharray="'+(W/90)+' '+(W/150)+'"/></svg>');
+      $('vsStage').innerHTML='<img alt="" src="data:image/svg+xml;base64,'
+        + btoa(unescape(encodeURIComponent(body))) + '">';
+      $('vsStats').innerHTML='ขนาดรวม <b>'+(j.stats.w_mm/10).toFixed(1)+' × '+(j.stats.h_mm/10).toFixed(1)+' ซม.</b>'
+        +(MODE==='dicut'?(' · <b>'+j.stats.parts+' ชิ้นตัด</b> · รู '+j.stats.holes)
+                        :(' · เส้นรอบรูป '+(j.stats.perimeter_mm/10).toFixed(0)+' ซม.'))
+        +(MODE==='box'&&j.stats.detached?' · <b style="color:#B45309">⚠️ ชิ้นไม่ติดกัน '+j.stats.detached+' ก้อน — เลื่อนให้ชนกันก่อน</b>':'');
+      $('vsMsg').innerHTML='';
+    }).catch(function(e){
+      $('vsMsg').innerHTML='<div class="vsnote warn">❌ '+esc(e.message||e)+'</div>';
+    }).then(function(){ BUSY=false; });
+  }
+
+  function wire(){
+    // ปุ่มบนแถบเมนู — วางไว้ข้าง ๆ ปุ่มแปลงภาพเป็นเวกเตอร์
+    var nav=document.createElement('button');
+    nav.className='nav-btn'; nav.id='btnVecSign'; nav.type='button';
+    nav.textContent='🧩 ป้ายจากไฟล์เวกเตอร์';
+    nav.style.cssText='background:#0891b2;color:#fff;font-weight:700;border-color:#0891b2;white-space:nowrap';
+    var host=document.querySelector('nav .nav-right'), anchor=$('btnVec');
+    if(host){ host.insertBefore(nav, anchor||host.firstChild); }
+    nav.onclick=function(){ $('vsOverlay').style.display='block'; };
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Escape'&&$('vsOverlay').style.display==='block')$('vsOverlay').style.display='none'; });
+
+    var d=$('vsDrop'), fi=$('vsFile');
+    d.onclick=function(){fi.click();};
+    fi.onchange=function(){ if(fi.files[0])load(fi.files[0]); };
+    ['dragenter','dragover'].forEach(function(t){ d.addEventListener(t,function(e){e.preventDefault();d.classList.add('hot');}); });
+    ['dragleave','drop'].forEach(function(t){ d.addEventListener(t,function(e){e.preventDefault();d.classList.remove('hot');}); });
+    d.addEventListener('drop',function(e){ if(e.dataTransfer.files[0])load(e.dataTransfer.files[0]); });
+
+    document.querySelectorAll('#vsMode button').forEach(function(b){
+      b.onclick=function(){
+        document.querySelectorAll('#vsMode button').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); MODE=b.dataset.v;
+        $('vsBoxOnly').style.display = MODE==='box'?'':'none';
+        if(MODE==='box')liftPieces();
+        sum(); paint(); elemsPaint(); editPaint();
+      };
+    });
+    $('vsAll').onclick=function(){ PCS.forEach(function(p){SEL[p.id]=true;}); paint(); list(); sum(); };
+    $('vsNone').onclick=function(){ PCS.forEach(function(p){SEL[p.id]=false;}); paint(); list(); sum(); };
+    $('vsBuild').onclick=build;
+    $('vsAddRect').onclick=function(){
+      ELEMS.push({key:'e'+(++SEQ),shape:'rect',role:'both',x_mm:0,y_mm:0,w_mm:600,h_mm:200,rgb:[162,170,150]});
+      EDIT='e'+SEQ; elemsPaint(); editPaint(); build();
+    };
+    $('vsAddText').onclick=function(){
+      ELEMS.push({key:'e'+(++SEQ),text:'ข้อความใหม่',role:'face',x_mm:100,y_mm:100,size_mm:120,rgb:[26,26,26],bold:true,align:'left'});
+      EDIT='e'+SEQ; elemsPaint(); editPaint(); build();
+    };
+    $('vsArtBtn').onclick=function(){ $('vsArt').click(); };
+    $('vsArt').onchange=function(){
+      var f=$('vsArt').files[0]; if(!f||!TOK)return;
+      var fd=new FormData(); fd.append('token',TOK); fd.append('key','bg1'); fd.append('file',f);
+      fetch(API+'/api/vec/art',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(){
+        if(!ELEMS.some(function(e){return e.art;}))
+          ELEMS.unshift({key:'e'+(++SEQ),art:'bg1',role:'face',fit:'cover'});
+        elemsPaint(); build();
+      });
+    };
+    $('vsW').onchange=build; $('vsMar').onchange=build; $('vsBleed').onchange=build;
+    document.querySelectorAll('#vsDl button').forEach(function(b){
+      b.onclick=function(){
+        if(!TOK||!LAST){ alert('กดประกอบร่างก่อนค่ะ'); return; }
+        window.open(API+'/api/vec/vexport?token='+TOK+'&kind='+b.dataset.k+'&fmt='+b.dataset.f,'_blank');
+      };
+    });
+    $('vsClose').onclick=function(){ $('vsOverlay').style.display='none'; };
+    bindEd();
+    fetch(API+'/api/vec/ping').then(function(r){return r.json();}).then(function(j){
+      $('vsEng').textContent=j.ok?'engine ready':''; }).catch(function(){});
+  }
+  window.openVecSign=function(){ $('vsOverlay').style.display='block'; };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+</script>
+
 </body>
 </html>
