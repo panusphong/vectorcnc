@@ -1,9 +1,29 @@
 # Render Blueprint — deploy VectorCNC ด้วยคลิกเดียว (อ่าน Dockerfile ให้เอง)
+#
+# ⚠️ สำคัญ: บริการนี้เป็น "Blueprint managed" = ไฟล์นี้คือตัวจริงที่คุมค่าทั้งหมด
+#    ของเดิมเขียน plan: free ไว้ ทั้งที่หน้าเว็บ Render ใช้ Pro อยู่จริง
+#    ถ้าปล่อยไว้แล้ววันหนึ่ง blueprint ถูก sync ระบบจะ "ลดแพลนกลับเป็น free" ให้เอง
+#    (ดิสก์ถาวรหลุด · แรมเหลือ 512 MB · เครื่องสลีป) — จึงต้องแก้ให้ตรงกับของจริง
 services:
   - type: web
     name: vectorcnc
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free            # ฟรี (สลีปเมื่อไม่มีคนใช้ ~50 วิ cold start) · โปรดักชันเปลี่ยนเป็น starter ~$7/เดือน
+    plan: pro                 # 4 GB RAM · 2 CPU — ตรงกับที่ใช้จริงบน Render
     healthCheckPath: /api/health
     autoDeploy: true
+
+    # 💾 ดิสก์ถาวร — ที่เก็บ "สถิติการเข้าเว็บ" ให้อยู่ถาวรจริง
+    #    ⚠️ ถ้าไม่มีดิสก์ ไฟล์สถิติจะไปอยู่ /tmp ซึ่ง **หายทุกครั้งที่ deploy**
+    #       (ที่ผ่านมาเหลือ Google Sheet เป็นที่ถาวรที่เดียว ถ้าชีตล่มก็หายหมด)
+    #    ✅ มีดิสก์แล้วสถิติถาวรสองชั้น: ฐานข้อมูลในดิสก์ + Google Sheet เป็นตัวสำรอง
+    #    แพลนที่จ่ายเงิน (Starter ขึ้นไป) ต่อดิสก์ได้ · ขนาด 5 GB เก็บสถิติได้หลายสิบล้าน event
+    disk:
+      name: vectorcnc-data
+      mountPath: /var/data
+      sizeGB: 5
+
+    envVars:
+      # ที่เก็บข้อมูลถาวร — โค้ดจะหาที่เขียนได้เองอยู่แล้ว แต่ระบุให้ชัดกันพลาด
+      - key: DATA_DIR
+        value: /var/data
