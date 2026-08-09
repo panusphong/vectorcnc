@@ -506,6 +506,11 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10px;color:#92700a">ลึก</label><input class="numin" id="bxD" type="number" placeholder="ลึก" min="1" style="padding:5px;width:100%"></div>
             </div>
             <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
+            <!-- 🎯 เฉพาะกล่องไฟล้อมตามทรง (type 8/9) — ขอบกล่องเดินตามชิ้นงานจริงเป๊ะ ไม่เว้นขอบ ไม่เกลา -->
+            <label id="bxTightRow" style="display:none;align-items:flex-start;gap:6px;margin-top:7px;padding:7px 8px;border:1px dashed #f59e0b;border-radius:8px;background:#fffdf3;cursor:pointer">
+              <input type="checkbox" id="bxTight" style="margin-top:2px">
+              <span style="font-size:10.5px;color:#92700a;line-height:1.55">🎯 <b>โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)</b><br>ขอบกล่อง = เส้นขอบชิ้นงานจริงรวมกันเป๊ะ ๆ — ได้ <b>ขนาดตามที่กรอก</b> ร่อง/ซี่ครบ มุมฉากคม (ไม่เว้นขอบ ไม่เกลาขอบ)</span>
+            </label>
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
               <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
@@ -3259,7 +3264,8 @@ function _apiJson(r){
       var fd=new FormData(); fd.append('file',f);
       fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
       if(W3.type){ fd.append('sign_type',W3.type);
-        fd.append('trim_width_cm',String(W3.tw)); fd.append('trim_dir','out'); }
+        fd.append('trim_width_cm',String(W3.tw)); fd.append('trim_dir','out');
+        fd.append('wrap_tight',($('bxTight')&&$('bxTight').checked)?'1':'0'); }
       fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
       .then(_apiJson).then(function(j){
         W3.busy=false;
@@ -6357,12 +6363,16 @@ var TRIMW=1, TRIMDIR='out';
     if($('frameAdjPanel'))$('frameAdjPanel').style.display=(v==='16')?'block':'none';   // ปรับโครงแขวน = เฉพาะอักษร+โครง (type16)
     if($('neonPanel'))$('neonPanel').style.display=(v==='17')?'block':'none';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
+    // 🎯 ตัวเลือก 'โลโก้เต็มพื้นที่กล่อง' มีเฉพาะกล่องไฟล้อมตามทรง 1/2 หน้า
+    if($('bxTightRow'))$('bxTightRow').style.display=(v==='8'||v==='9')?'flex':'none';
     if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
     // 🖨️ งานพิมพ์เปิดไว้ทุกประเภท — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว หรือพิมพ์สติ๊กเกอร์ไปติด
     if($('facePrintRow')) $('facePrintRow').style.display=(v&&v!=='')?'block':'none';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0; if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
+  // 🎯 สลับ 'โลโก้เต็มพื้นที่กล่อง' = ทรงกล่องเปลี่ยน -> ล้างค่าชดเชยความกว้างที่จำไว้
+  if($('bxTight'))$('bxTight').onchange=function(){ window._bxFit=0; };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
   sel.addEventListener('change',function(){ window._bxFit=0; toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
@@ -6637,6 +6647,8 @@ $('goLayer').onclick=function(){
   // 🏭 กดปุ่มสร้างไฟล์ = ดึงค่าที่คำนวณไว้มาประกอบไฟล์ทันที (ไม่ปั้นภาพ 3 มิติใหม่ · ไม่วาดจอใหม่)
   fd.append('only_ai', window._PRODAI ? '1' : '0');
   fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');   // 🖨️ UV / สติ๊กเกอร์
+  // 🎯 กล่องไฟล้อมตามทรง: ติ๊ก 'โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)'
+  fd.append('wrap_tight',($('bxTight')&&$('bxTight').checked)?'1':'0');
   try{ fd.append('material_groups',JSON.stringify(window._matGroups||[])); }catch(_e){}   // 🧱 ป้ายเดียว หลายวัสดุ
   fd.append('logo_w_cm',($('laWcm')&&$('laWcm').value)||'0');   // 📏 ขนาดจริงของ logo บนหน้ากล่อง
   fd.append('logo_h_cm',($('laHcm')&&$('laHcm').value)||'0');
@@ -6940,6 +6952,8 @@ $('goLayer').onclick=function(){
       fd.append('sticker_idx',(window._stickerIdx||[]).join(','));
       fd.append('cut_smooth_mm',String(window.CUTSM!=null?window.CUTSM:'0'));
       fd.append('face_print',($('facePrint')&&$('facePrint').value)||'uv');
+    // 🎯 กล่องไฟล้อมตามทรง: ติ๊ก 'โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)'
+      fd.append('wrap_tight',($('bxTight')&&$('bxTight').checked)?'1':'0');
       try{ fd.append('material_groups',JSON.stringify(window._matGroups||[])); }catch(_e){}
       fd.append('logo_w_cm',($('laWcm')&&$('laWcm').value)||'0');
       fd.append('logo_h_cm',($('laHcm')&&$('laHcm').value)||'0');
