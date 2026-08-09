@@ -81,6 +81,88 @@ def _thumb(page, rect, max_px=260):
         return ""
 
 
+def _d_from_items(items):
+    """ชิ้นส่วนเส้นจาก PyMuPDF -> เส้น d ของ SVG"""
+    d = []
+    cur = None
+    for it in items:
+        op = it[0]
+        if op == "l":
+            a, b = it[1], it[2]
+            if cur is None or abs(cur[0] - a.x) > 1e-6 or abs(cur[1] - a.y) > 1e-6:
+                d.append("M %.2f %.2f" % (a.x, a.y))
+            d.append("L %.2f %.2f" % (b.x, b.y)); cur = (b.x, b.y)
+        elif op == "c":
+            a, c1, c2, e = it[1], it[2], it[3], it[4]
+            if cur is None or abs(cur[0] - a.x) > 1e-6 or abs(cur[1] - a.y) > 1e-6:
+                d.append("M %.2f %.2f" % (a.x, a.y))
+            d.append("C %.2f %.2f %.2f %.2f %.2f %.2f" % (c1.x, c1.y, c2.x, c2.y, e.x, e.y))
+            cur = (e.x, e.y)
+        elif op == "re":
+            r = it[1]
+            d.append("M %.2f %.2f H %.2f V %.2f H %.2f Z" % (r.x0, r.y0, r.x1, r.y1, r.x0))
+            cur = None
+        elif op == "qu":
+            q = it[1]
+            d.append("M %.2f %.2f L %.2f %.2f L %.2f %.2f L %.2f %.2f Z"
+                     % (q.ul.x, q.ul.y, q.ur.x, q.ur.y, q.lr.x, q.lr.y, q.ll.x, q.ll.y))
+            cur = None
+    return " ".join(d)
+
+
+def _hexc(v):
+    if not v:
+        return None
+    try:
+        return "#%02x%02x%02x" % tuple(int(round(max(0.0, min(1.0, float(c))) * 255))
+                                       for c in tuple(v)[:3])
+    except Exception:
+        return None
+
+
+def _thumb_vec(page, rect, draws, pr, max_px=260, bg_cover=0.72):
+    """🖼️ รูปย่อของ 'ชิ้นนั้นชิ้นเดียว' บนพื้นโปร่ง — ไม่ติดพื้นหลังมาด้วย
+
+    ⚠️ ของเดิมใช้วิธี 'เรนเดอร์หน้ากระดาษแล้วครอบกรอบ' ซึ่งได้พื้นหลังติดมาเสมอ
+       ไฟล์ที่มีสี่เหลี่ยมพื้นหลัง (เจอบ่อยมากในไฟล์ลูกค้า) ทุกชิ้นจะกลายเป็น
+       'ตัวอักษรบนแผ่นสีเขียว' ทั้งที่ตัวชิ้นจริงไม่มีพื้นหลัง — ผู้ใช้ต้องไปไล่ลบเอง
+    ✅ วาดเฉพาะเส้นของชิ้นนั้นลงบนพื้นโปร่ง และข้ามรูปที่คลุมเกือบทั้งหน้า (= พื้นหลัง) ทิ้งเลย
+       ผู้ใช้จึงได้ชิ้นที่ 'ตัดพื้นหลังออกให้แล้ว' ตั้งแต่แรก ไม่ต้องคิดเอง
+    """
+    x0, y0, x1, y1 = rect
+    W = max(x1 - x0, 0.1); H = max(y1 - y0, 0.1)
+    parea = float(pr.width) * float(pr.height)
+    body = []
+    for dr in draws or []:
+        r = dr.get("rect")
+        if r is None:
+            continue
+        if parea > 0 and (float(r.width) * float(r.height)) >= parea * float(bg_cover):
+            continue                                   # พื้นหลัง -> ไม่เอา
+        if r.x1 < x0 - 0.5 or r.x0 > x1 + 0.5 or r.y1 < y0 - 0.5 or r.y0 > y1 + 0.5:
+            continue                                   # อยู่นอกกรอบชิ้นนี้
+        d = _d_from_items(dr.get("items", []))
+        if not d:
+            continue
+        f = _hexc(dr.get("fill")); st = _hexc(dr.get("color"))
+        wid = float(dr.get("width") or 0) or 0.6
+        body.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.2f"/>'
+                    % (d, f or "none", st or "none", (wid if st else 0)))
+    if not body:
+        return _thumb(page, rect, max_px)              # ไม่มีเส้นให้วาด -> ถอยไปวิธีเดิม
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="%.2f %.2f %.2f %.2f">%s</svg>'
+           % (x0, y0, W, H, "".join(body)))
+    try:
+        import cairosvg
+        z = min(max_px / W, max_px / H, 8.0)
+        png = cairosvg.svg2png(bytestring=svg.encode("utf-8"),
+                               output_width=max(16, int(W * z)),
+                               output_height=max(16, int(H * z)))
+        return _b64png(png)
+    except Exception:
+        return _thumb(page, rect, max_px)
+
+
 # ---------------------------------------------------------------- main
 def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120, split_gap=0.0):
     """
@@ -199,7 +281,7 @@ def list_assets(path, max_pages=6, min_mm=1.5, max_assets=120, split_gap=0.0):
                     "id": aid, "kind": "vector", "page": pno,
                     "bbox": [x0, y0, x1, y1],
                     "w_mm": round(wmm, 1), "h_mm": round(hmm, 1),
-                    "thumb": _thumb(page, (x0, y0, x1, y1)),
+                    "thumb": _thumb_vec(page, (x0, y0, x1, y1), draws, pr),
                     "label": "เวกเตอร์ · %d เส้น" % len(cb[4]),
                     "vector": True,
                     "info": {"paths": len(cb[4])},
