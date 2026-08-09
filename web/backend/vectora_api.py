@@ -249,9 +249,10 @@ async def vec_pieces(file: UploadFile = File(...), width_mm: float = Form(0.0)):
     _vsweep()
     tok = uuid.uuid4().hex[:16]
     VCACHE[tok] = {"pieces": P, "t": time.time(), "name": name, "art": {}}
+    G = VV.group_pieces(P)
     return JSONResponse({"ok": True, "token": tok, "size": P["size"],
                          "mm_size": P["mm_size"], "mm_per_unit": P["mm_per_unit"],
-                         "pieces": P["pieces"], "stats": P["stats"]})
+                         "pieces": P["pieces"], "groups": G, "stats": P["stats"]})
 
 
 @router.post("/art")

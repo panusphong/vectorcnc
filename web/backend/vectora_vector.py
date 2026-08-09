@@ -581,15 +581,20 @@ def assemble(pieces_res, layout, margin_mm=0.0, simplify_mm=0.0, canvas=None,
         if it.get("shape") == "rect":
             g = _rect(it); rgb = tuple(it.get("rgb") or (230, 230, 230))
         else:
-            p = src.get(it.get("id"))
-            if p is None:
+            # 🧩 รับได้ทั้ง 'ชิ้นเดียว' และ 'ทั้งกลุ่ม' — หน้าจอให้ผู้ใช้ลากทีละกลุ่ม
+            #    (คนมองงานเป็น 'คำว่า DENTAL CLINIC' ไม่ใช่ 'พาธ 6 เส้น')
+            ids = it.get("ids") or ([it.get("id")] if it.get("id") else [])
+            gs = [_from_d(src[i]["d"]) for i in ids if i in src]
+            gs = [q for q in gs if q is not None and not q.is_empty]
+            if not gs:
                 continue
-            g0 = _from_d(p["d"])
-            if g0 is None:
+            p = src.get(ids[0]) if ids and ids[0] in src else {"rgb": (0, 0, 0)}
+            g0 = gs[0] if len(gs) == 1 else unary_union(gs)
+            if g0 is None or g0.is_empty:
                 continue
             g = _place(g0, mmpu, it.get("x_mm"), it.get("y_mm"), it.get("w_mm"), it.get("h_mm"),
                        bool(it.get("flipx")), bool(it.get("flipy")), float(it.get("rot") or 0))
-            rgb = tuple(it.get("rgb") or p["rgb"])
+            rgb = tuple(it.get("rgb") or p.get("rgb") or (0, 0, 0))
         if g is None or g.is_empty:
             continue
         if role in ("outline", "both"):
@@ -733,3 +738,78 @@ def compose(pieces_res, layout, margin_mm=0.0, art=None, bleed_mm=0.0,
                "bleed_mm": float(bleed_mm)})
     return {"cut_svg": cut, "face_svg": face, "outline_d": d, "boxes": A.get("boxes", []),
             "size_mm": [W, H], "origin_mm": [ox, oy], "stats": st}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 👀 จัดชิ้นเป็น "กลุ่มที่คนมองออก"
+#
+# ⚠️ บทเรียนจากผู้ใช้จริง (2026-08-09): หน้าจอรอบแรกโชว์ชิ้นเป็น s1 s2 s3 … 58 บรรทัด
+#    ผู้ใช้บอกตรง ๆ ว่า "ใช้ยาก" — ถูกแล้ว เพราะ s7 ไม่ได้บอกอะไรเลยว่าคืออะไร
+#    คนไม่ได้มองงานเป็น 'พาธ 58 เส้น' แต่มองเป็น 'รูปฟัน + คำว่า YN smile + คำว่า DENTAL CLINIC'
+# ✅ จับชิ้นที่อยู่ใกล้กันให้เป็นก้อนเดียว (แบบเดียวกับที่ตาคนจับกลุ่มเอง)
+#    แล้วโชว์เป็น 'การ์ดรูปย่อ' ให้ลากไปวางได้ทั้งก้อน — ไม่ต้องเลือกทีละตัวอักษร
+# ══════════════════════════════════════════════════════════════════
+def group_pieces(P, gx=1.05, gy=0.30):
+    """รวมชิ้นที่อยู่ติดกันเป็นกลุ่ม -> คืนรายการกลุ่มพร้อมรูปย่อ
+
+    ระยะที่ถือว่า 'ติดกัน' = สัดส่วนของความสูงกลาง ๆ ของชิ้นในงาน
+    (ตัวอักษรในคำเดียวกันห่างกันไม่เกินราวครึ่งตัว · คนละคำห่างกว่านั้นมาก)
+    """
+    ps = [p for p in P["pieces"] if p["kind"] != "bg"]
+    bgs = [p for p in P["pieces"] if p["kind"] == "bg"]
+    out = []
+    if ps:
+        hs = sorted((p["bbox"][3] - p["bbox"][1]) for p in ps)
+        med = hs[len(hs) // 2] or 1.0
+        # ⚠️ ระยะแนวนอนกับแนวตั้งต้องคนละค่า — ข้อความจัดเรียงเป็นแถวนอน
+        #    ตัวอักษรที่จัดระยะห่าง ๆ อย่าง D E N T A L  C L I N I C ห่างกันเกือบเท่าตัวอักษร
+        #    ถ้าใช้ค่าเดียวกันทั้งสองแกน จะได้ 13 กลุ่ม กลุ่มละตัว (ผู้ใช้เจอจริง: 19 กลุ่ม อ่านไม่รู้เรื่อง)
+        #    ส่วนแนวตั้งต้องแคบ ไม่งั้นคนละบรรทัดจะถูกยุบรวมกัน
+        gapx = med * float(gx); gapy = med * float(gy)
+        par = list(range(len(ps)))
+
+        def find(a):
+            while par[a] != a:
+                par[a] = par[par[a]]; a = par[a]
+            return a
+
+        def near(a, b):
+            ax0, ay0, ax1, ay1 = a["bbox"]; bx0, by0, bx1, by1 = b["bbox"]
+            dx = max(0.0, max(bx0 - ax1, ax0 - bx1))
+            dy = max(0.0, max(by0 - ay1, ay0 - by1))
+            return dx <= gapx and dy <= gapy
+
+        for i in range(len(ps)):
+            for j in range(i + 1, len(ps)):
+                if near(ps[i], ps[j]):
+                    a, b = find(i), find(j)
+                    if a != b:
+                        par[a] = b
+        buckets = {}
+        for i in range(len(ps)):
+            buckets.setdefault(find(i), []).append(ps[i])
+        for mem in buckets.values():
+            out.append(_grp(mem, "shape"))
+    for b in bgs:
+        out.append(_grp([b], "bg"))
+    # เรียงจากซ้ายไปขวา บนลงล่าง แบบที่คนอ่านงาน
+    out.sort(key=lambda g: (round(g["bbox"][1] / max(1.0, g["bbox"][3] - g["bbox"][1]), 0),
+                            g["bbox"][0]))
+    for i, g in enumerate(out):
+        g["gid"] = "g%d" % (i + 1)
+    return out
+
+
+def _grp(mem, kind):
+    x0 = min(p["bbox"][0] for p in mem); y0 = min(p["bbox"][1] for p in mem)
+    x1 = max(p["bbox"][2] for p in mem); y1 = max(p["bbox"][3] for p in mem)
+    cols = {}
+    for p in mem:
+        cols[tuple(p["rgb"])] = cols.get(tuple(p["rgb"]), 0) + p["area_mm2"]
+    main = max(cols, key=lambda c: cols[c])
+    return {"kind": kind, "ids": [p["id"] for p in mem], "n": len(mem),
+            "rgb": list(main), "colors": [list(c) for c in cols],
+            "bbox": [round(v, 2) for v in (x0, y0, x1, y1)],
+            "w_mm": round(sum(p["w_mm"] for p in mem) / len(mem), 2) if False else None,
+            "d": " ".join(p["d"] for p in mem),
+            "holes": sum(p["holes"] for p in mem)}
