@@ -1392,11 +1392,12 @@ def _punch_min_stroke(logo, min_w_mm=1.2):
         return logo, 0
 
 
-def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
+def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False, tight=False):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
        - เก็บเฉพาะขอบนอก (ไม่เอารูใน) = ทรงกล่องเรียบต่อเนื่อง
-       - simplify นิดหน่อย = ขอบเนียน เครื่องตัด/ดัดวิ่งนุ่ม"""
+       - simplify นิดหน่อย = ขอบเนียน เครื่องตัด/ดัดวิ่งนุ่ม
+       tight=True -> โหมด 'โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)' ดูคำอธิบายด้านล่าง"""
     try:
         from shapely.geometry import Polygon, MultiPolygon
         from shapely.ops import unary_union
@@ -1411,6 +1412,37 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
             if isinstance(u, MultiPolygon):
                 u = max(u.geoms, key=lambda a: a.area)
             return u
+
+        # ══════════════════════════════════════════════════════════════════
+        # 🎯 โหมด TIGHT — "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)"
+        #
+        # ⚠️ ผู้ใช้เจอจริง (2026-08-09): กรอกกล่อง 230×85 ซม. แต่ได้ 254.7×110 ซม.
+        #    ร่องฟันถูกถมหาย · ขอบเป็นคลื่นลอน · กล่องบวมทุกด้าน
+        #    ต้นเหตุ: ขั้นตอนทั้งหมดข้างล่างนี้ (CLOSE/OPEN/SMOOTH/pad/เกลาไหลลื่น)
+        #    ออกแบบมาสำหรับงาน 'ไล่เส้นจากภาพ' ซึ่งเส้นหยัก มีเศษ ต้องเกลา
+        # ✅ แต่งานหน้าแตกชิ้นเป็น 'เวกเตอร์แท้' อยู่แล้วทุกชิ้น:
+        #      รูปฟัน = path จากไฟล์ลูกค้า · สี่เหลี่ยม = bg-asset · ข้อความ = path ฟอนต์
+        #    เงารวมจึงเป็นแค่ 'union ทางเรขาคณิต' ตรง ๆ — ไม่ต้องเดา ไม่ต้องเกลา
+        #    ชิ้นงานซ้อนทับกันอยู่แล้ว union จึงติดเป็นก้อนเดียวเอง ไม่ต้องเชื่อมสะพาน
+        #
+        #    ทำแค่: รวมขอบนอกของทุกชิ้น (อุดรูใน = หน้ากล่องทึบ) แล้วจบ
+        #    ไม่เว้นขอบ · ไม่เกลา · ไม่ simplify -> ขนาด = ที่กรอกเป๊ะ · ร่องฟันครบ · มุมฉากคม
+        #    ⛔ ห้ามให้ path นี้ไปแตะงานนีออน (จุดเรียกที่ไม่ส่ง tight เข้ามาทำงานเหมือนเดิมทุกประการ)
+        # ══════════════════════════════════════════════════════════════════
+        if tight:
+            _pt = [Polygon(p.exterior) for p in
+                   (full.geoms if full.geom_type == "MultiPolygon" else [full])
+                   if p and not p.is_empty and len(p.exterior.coords) > 3]
+            if not _pt:
+                return full
+            _u = unary_union(_pt)
+            if _u is None or _u.is_empty:
+                return full
+            if not _u.is_valid:
+                _u = _u.buffer(0)
+            # ถ้าชิ้นงานไม่ได้ซ้อนกันจริงจะได้หลายก้อน -> คืนตามจริง ไม่ลากสะพานเชื่อม
+            # (ขนาดรวมยังเท่าที่กรอกเป๊ะ · ผู้ใช้เห็นทันทีว่าชิ้นไหนยังไม่ติดกัน)
+            return _u if (_u and not _u.is_empty) else full
 
         b = full.bounds
         size = max(b[2] - b[0], b[3] - b[1], 1.0)
@@ -1492,8 +1524,11 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
         #    ไม่ต้องเกลาหนัก -> ลดเพดานเหลือ 0.6% ของด้านยาว ทรงจึงเดินตามงานจริง
         #    งานไล่เส้นจากภาพ (นีออน ฯลฯ) ยังใช้ค่าเดิมทุกประการ ไม่ถูกแตะ
         # ══════════════════════════════════════════════════════════════════
-        _cap = (size * 0.006) if sharp else (size * 0.035)
-        _cap2 = (size * 0.008) if sharp else (size * 0.045)
+        # ↩️ 2026-08-09: เคยลองลดแรงเกลาลงเพื่อกันทรงโดนกิน แต่ผลคือขอบกลายเป็น
+        #    'คลื่นหยักเป็นลอน' ตลอดแนว ซึ่งแย่กว่าเดิม -> ถอยกลับมาใช้ค่าเดิมทั้งหมด
+        #    คงไว้เฉพาะ 'มุมตัดตรง' (mitre) ที่ผู้ใช้ขอ ซึ่งทดสอบแล้วได้มุมฉากเป๊ะ 0.0 มม.
+        _cap = size * 0.035
+        _cap2 = size * 0.045
 
         # 2) OPEN — กลืน "แขน/ก้านบาง" ที่ยื่นออกมา (เช่น ปลายตะเกียบ) ให้ envelope เรียบ
         solid = _open_safe(solid, min(_cap, _t * 0.35), min(_cap, _t * 0.35) * 1.15)
@@ -1536,8 +1571,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
         # ⚠️ ระยะเว้นนี่แหละที่ 'ถมร่องฟันหาย' — เว้น 5% ของงานยาว 2.5 ม. = 13 ซม.
         #    ร่องไหนแคบกว่า 26 ซม. จะถูกถมเต็มหมด (ร่องฟันจริงกว้างแค่ ~10 ซม.)
         #    โหมดกล่องไฟล้อมตามทรง -> เว้นแค่ 1.2% และไม่เกิน 4.5 ซม. ทรงจึงแนบงานจริง
-        pad = (min(30.0, max(12.0, size * 0.010)) if sharp else max(15.0, size * 0.05)) \
-            if pad_mm is None else max(0.0, float(pad_mm))
+        pad = max(15.0, size * 0.05) if pad_mm is None else max(0.0, float(pad_mm))
         if pad > 0.05:
             solid = solid.buffer(pad, join_style=RND, mitre_limit=_ML, resolution=24)
             solid = _outer(solid) or solid
@@ -1555,7 +1589,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
         if pad > 0.05:
             try:
                 # ⚠️ ขั้นเกลาให้ 'ไหลลื่น' นี่แหละที่กัดร่องฟันหาย ถ้ารัศมีใหญ่เกิน
-                _rf = min(pad * (0.35 if sharp else 1.4), size * (0.02 if sharp else 0.22))
+                _rf = min(pad * 1.4, size * 0.22)
                 _c = _outer(solid.buffer(_rf, join_style=RND, mitre_limit=_ML, resolution=32)
                                  .buffer(-_rf, join_style=RND, mitre_limit=_ML, resolution=32)) or solid
                 if _c.area <= solid.area * 1.15:
@@ -1602,6 +1636,47 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
             solid = solid.buffer(0)
             solid = _outer(solid) or solid
         return solid if (solid and not solid.is_empty) else full
+    except Exception:
+        return full
+
+
+def _wrap_trim_grow(rec, trim_width_cm, trim_dir):
+    """ระยะที่ 'คิ้วล้อมทรง' ยื่นออกนอกตัวกล่อง (มม.)
+
+    📏 ขนาดที่ผู้ใช้กรอก = 'ขนาดนอกสุดของกล่องที่ผลิตจริง' ซึ่งรวมคิ้วแล้ว (พี่ยืนยัน 2026-08-09)
+       ถ้าเอาไปตั้งให้ตัวกล่องตรง ๆ คิ้วจะบวกออกไปอีกข้างละ 1 ความกว้างคิ้ว
+       (กรอก 230×85 คิ้ว 1 ซม. -> ได้ 232×87) จึงต้องหักส่วนที่คิ้วยื่นออกก่อนสร้างทรง
+       ⚠️ คิดแบบเดียวกับกล่องทรงเรขาคณิต (_box_grow) เป๊ะ ๆ: นับเฉพาะชั้น kind='frame'
+          แผ่นพื้นหลังที่ยื่นเกิน 1 มม. ไม่นับ (มองไม่เห็นจากด้านหน้า ไม่ใช่ขนาดป้าย)
+       คิ้วเข้าใน (trim_dir='in') ไม่ทำให้กล่องโตขึ้น -> ไม่ต้องหัก
+    """
+    try:
+        if str(trim_dir or "out").lower() == "in":
+            return 0.0
+        _tw = max(0.0, float(trim_width_cm or 0.0)) * 10.0
+        g = 0.0
+        for L in (rec.get("layers") or []):
+            if L.get("kind") != "frame":
+                continue
+            # off/band ในตาราง SIGN_TYPES เป็นมิลลิเมตรอยู่แล้ว ห้ามคูณ 10 ซ้ำ
+            g = max(g, float(L.get("off", 0.0)) + (_tw if _tw > 0 else float(L.get("band", 10.0))))
+        return max(0.0, g)
+    except Exception:
+        return 0.0
+
+
+def _wrap_fit_outer(full, rec, trim_width_cm, trim_dir):
+    """หดทรงกล่องเข้ามาเท่าความกว้างคิ้ว -> พอใส่คิ้วกลับเข้าไป ขนาดนอกสุด = ที่กรอกเป๊ะ
+       ใช้ join_style=2 (mitre) แบบเดียวกับ _mbuf ที่สร้างคิ้วจริง มุมฉากจึงยังเป็นมุมฉาก
+       🔒 เรียกเฉพาะโหมด 'โลโก้เต็มพื้นที่กล่อง (tight)' เท่านั้น — ทางเดินเดิมไม่ถูกแตะ"""
+    g = _wrap_trim_grow(rec, trim_width_cm, trim_dir)
+    if g <= 0.05 or full is None or full.is_empty:
+        return full
+    try:
+        s = full.buffer(-g, join_style=2, mitre_limit=4.0, resolution=12)
+        if s is None or s.is_empty or s.area < full.area * 0.25:
+            return full          # หดแล้วเหลือน้อยผิดปกติ (งานเส้นบางมาก) -> ไม่หักดีกว่า
+        return s
     except Exception:
         return full
 
@@ -6035,6 +6110,9 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     material_groups: str = Form(""),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0),
                     ts_spec: str = Form(""),
+                    # 🎯 กล่องไฟล้อมตามทรง: "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)"
+                    #    "1" = ขอบกล่องคือ union ของชิ้นงานจริงเป๊ะ ๆ (ดู _wrap_silhouette โหมด tight)
+                    wrap_tight: str = Form("0"),
                     safe_mode: str = Form("0")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
@@ -6060,7 +6138,7 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                 str(metal_tex_img), str(metal_tex_scope), float(box_h_cm), str(sticker_idx),
                 float(cut_smooth_mm), str(face_print), str(material_groups),
                 float(logo_w_cm), float(logo_h_cm), str(spot_colors), str(sticker_color), str(sticker_code), str(sticker_brand),
-                str(safe_mode), str(make_ai), str(only_ai))
+                str(safe_mode), str(make_ai), str(only_ai), str(wrap_tight))
         _pk = _rck[:-2]                       # 🧺 กุญแจ 'ชุดค่าที่คำนวณไว้' (ไม่รวม 2 ช่องโหมดท้ายสุด)
         _rhit = _LAYERSET_CACHE["map"].get(_rck)
         if _rhit is not None:
@@ -6143,8 +6221,18 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             #       ทั้งก้อนให้ได้ขนาดป้ายจริงอีกที ถ้าเก็บพิกัดดิบไว้ ลายพิมพ์จะใหญ่เกินกล่อง (หาง N ล้น)
             _pb0 = full.bounds
             # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
+            # 🎯 ติ๊ก "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" -> ขอบกล่อง = union ชิ้นงานจริง ขนาดเป๊ะตามที่กรอก
+            _tight9 = (str(wrap_tight) == "1")
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True,
+                                    tight=_tight9)
+            if _tight9:
+                # 📏 หักความกว้างคิ้วออกก่อน -> ขนาดนอกสุด (รวมคิ้ว) = ที่กรอกเป๊ะ
+                full = _wrap_fit_outer(full, rec, trim_width_cm, trim_dir)
             try:
+                # 🖨️ สูตรเดิม: ทาบงานพิมพ์ตาม 'ตำแหน่งจริงของงาน' เทียบกรอบทรงกล่อง
+                #    โหมด tight: ทรงกล่องถูกหักความกว้างคิ้วเข้ามา -> ค่าที่ได้จะเกิน 1 เล็กน้อย
+                #    = งานพิมพ์เลยขอบหน้ากล่องเท่าความกว้างคิ้ว ซึ่งถูกต้อง (เผื่อตัดใต้คิ้ว)
+                #    และทำให้ลายพิมพ์ยังตรงกับ 'ขอบนอกที่ผลิตจริง' 230×85 เป๊ะ ไม่บิดสัดส่วน
                 _qb0 = full.bounds
                 _qw = max(1e-6, _qb0[2] - _qb0[0]); _qh = max(1e-6, _qb0[3] - _qb0[1])
                 _ART_B0 = ((_pb0[0] - _qb0[0]) / _qw, (_pb0[1] - _qb0[1]) / _qh,
@@ -8047,6 +8135,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     design_notes: str = Form(""), box_h_cm: float = Form(0.0), sticker_idx: str = Form(""),
                     cut_smooth_mm: float = Form(0.0), face_print: str = Form("uv"),
                     material_groups: str = Form(""),
+                    # 🎯 กล่องไฟล้อมตามทรง: "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" — ต้องตรงกับหน้าออกแบบ
+                    wrap_tight: str = Form("0"),
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
@@ -8078,7 +8168,12 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
         full = _letter_full_mm(inp, float(real_width_mm), 0.0, int(n_colors))
         if rec.get("wrap"):
             # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
+            # 🎯 ติ๊ก "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" -> ขอบกล่อง = union ชิ้นงานจริง ขนาดเป๊ะตามที่กรอก
+            _tight9 = (str(wrap_tight) == "1")
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True,
+                                    tight=_tight9)
+            if _tight9:
+                full = _wrap_fit_outer(full, rec, trim_width_cm, trim_dir)
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm),
@@ -11910,7 +12005,9 @@ async def api_geom3d(file: UploadFile = File(...),
                      max_pts: int = Form(6000),
                      sign_type: str = Form(""),
                      trim_width_cm: float = Form(1.0),
-                     trim_dir: str = Form("out")):
+                     trim_dir: str = Form("out"),
+                     # 🎯 กล่องไฟล้อมตามทรง: "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" — 3 มิติต้องตรงกับหน้าออกแบบ
+                     wrap_tight: str = Form("0")):
     """ส่ง 'รูปทรงจริง' (วงนอก+รูใน หน่วย มม.) ให้ frontend เรนเดอร์ 3 มิติแบบหมุนได้สด ๆ
        ถ้าระบุ sign_type (1-7) จะส่ง 'ชั้นโครงสร้าง' (คิ้ว / หน้า / แผ่นพื้น) มาด้วย
        -> จำลองผนังจะเห็นป้ายจริงตามแบบ (มีคิ้ว / ไม่มีคิ้ว / กล่องไฟ ฯลฯ)"""
@@ -11926,7 +12023,12 @@ async def api_geom3d(file: UploadFile = File(...),
         # 🆕 กล่องไฟล้อมตามทรง -> เชื่อมเป็นเงารวมก้อนเดียวก่อนสร้างโครง 3 มิติ
         if rec and rec.get("wrap"):
             # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
+            # 🎯 ติ๊ก "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" -> ขอบกล่อง = union ชิ้นงานจริง ขนาดเป๊ะตามที่กรอก
+            _tight9 = (str(wrap_tight) == "1")
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True,
+                                    tight=_tight9)
+            if _tight9:
+                full = _wrap_fit_outer(full, rec, trim_width_cm, trim_dir)
         # 🆕 กล่องไฟทรงเรขาคณิต (กลม/สี่เหลี่ยม/วงรี · type 10-15,18) -> ใช้ 'กล่องทึบ' เป็นรูปทรง (กันหน้าโบ๋ตอนทำ 3D)
         elif rec and rec.get("box_shape"):
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
