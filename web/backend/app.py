@@ -1392,7 +1392,7 @@ def _punch_min_stroke(logo, min_w_mm=1.2):
         return logo, 0
 
 
-def _wrap_silhouette(full, bridge_mm, pad_mm=None):
+def _wrap_silhouette(full, bridge_mm, pad_mm=None, sharp=False):
     """เชื่อมองค์ประกอบทั้งหมดให้เป็น 'เงารวมก้อนเดียว' สำหรับกล่องไฟล้อมตามทรง
        - buffer ออก แล้วหดกลับ = สะพานเชื่อมช่องว่างระหว่างตัวอักษร/ชิ้นส่วน
        - เก็บเฉพาะขอบนอก (ไม่เอารูใน) = ทรงกล่องเรียบต่อเนื่อง
@@ -1414,7 +1414,19 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
 
         b = full.bounds
         size = max(b[2] - b[0], b[3] - b[1], 1.0)
-        RND = 1                                      # join_style=1 = โค้งมน (กันเดือยแหลม)
+        # ══════════════════════════════════════════════════════════════════
+        # 📐 มุมของทรงกล่อง — โค้งมน หรือ ตัดตรง
+        #
+        # ⚠️ ผู้ใช้เจอจริง (2026-08-09): งาน YN smile ทรงคือ "ฟันทางซ้าย + สี่เหลี่ยมทางขวา"
+        #    แต่มุมสี่เหลี่ยมออกมาโค้งมนใหญ่มาก (รัศมี ~12 ซม.) จนดูเป็นก้อนกลม ๆ
+        #    ต้นเหตุ: ทุกขั้นตอนใช้ join_style=1 (โค้งมน) — พอเว้นระยะรอบงาน
+        #    มุมฉากทุกมุมจะกลายเป็นส่วนโค้งรัศมีเท่ากับระยะที่เว้น
+        # ✅ sharp=True -> ใช้มุมแบบ mitre (ต่อเส้นตรงชนกัน) มุมฉากจึงยังเป็นมุมฉาก
+        #    ส่วนที่เป็นเส้นโค้งอยู่แล้ว (รูปฟัน) ยังโค้งเหมือนเดิมทุกประการ
+        #    mitre_limit กันเดือยแหลมยาวตรงมุมที่แหลมจัด (เกินลิมิตจะตัดเป็นมุมตัด)
+        # ══════════════════════════════════════════════════════════════════
+        RND = 2 if sharp else 1      # 1 = โค้งมน · 2 = ตัดตรง (mitre)
+        _ML = 2.2                    # เพดานเดือยมุม mitre
         # ══════════════════════════════════════════════════════════════════
         # 📏 วัด 'ความหนาลายเส้นจริง' ของงานก่อน แล้วค่อยตั้งรัศมีเกลาทุกขั้นจากค่านี้
         #
@@ -1440,7 +1452,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
         r = max(2.0, min(float(bridge_mm or 0.0) or size, _t * 1.5))
         g = full
         for _ in range(14):
-            g = full.buffer(r, join_style=RND).buffer(-r, join_style=RND)
+            g = full.buffer(r, join_style=RND, mitre_limit=_ML).buffer(-r, join_style=RND, mitre_limit=_ML)
             if g.geom_type != "MultiPolygon":
                 break
             r *= 1.35
@@ -1459,7 +1471,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
             if not rad or rad <= 0.2:
                 return sol
             try:
-                c = sol.buffer(-rad, join_style=RND, resolution=24).buffer(float(grow or rad), join_style=RND, resolution=24)
+                c = sol.buffer(-rad, join_style=RND, mitre_limit=_ML, resolution=24).buffer(float(grow or rad), join_style=RND, mitre_limit=_ML, resolution=24)
                 if c is None or c.is_empty or c.geom_type == "MultiPolygon":
                     return sol
                 if c.area < sol.area * 0.88:
@@ -1468,13 +1480,28 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
             except Exception:
                 return sol
 
+        # ══════════════════════════════════════════════════════════════════
+        # 🔧 แรงเกลา — งาน "จัดวางเอง" ต้องเบามาก งาน "ไล่เส้นจากภาพ" ต้องหนัก
+        #
+        # ⚠️ ผู้ใช้เจอจริง (2026-08-09): ทรงฟันออกมา 'เบี้ยว/แหว่ง' เหมือนโดนกัดหายไป
+        #    ต้นตอ: ความแรงเกลาผูกกับ _t (ความหนาลายเส้น = 2*พื้นที่/เส้นรอบรูป)
+        #    พองานมี 'แผ่นพื้นหลังทึบ' ใหญ่ ๆ อยู่ด้วย พื้นที่พุ่งขึ้นมหาศาล -> _t ใหญ่ตาม
+        #    เพดานเลยถูกปลดล็อกไปใช้ค่าสูงสุด size*0.045 = 11 ซม. บนงานยาว 2.5 เมตร
+        #    รัศมีเกลา 11 ซม. กลืนร่องฟัน (ลึกแค่ ~8 ซม.) หายเกลี้ยง + กัดมุมแหว่ง
+        # ✅ โหมดมุมตัดตรง (กล่องไฟล้อมตามทรง) = งานที่ผู้ใช้จัดวางเองมาแล้ว เส้นสะอาดอยู่แล้ว
+        #    ไม่ต้องเกลาหนัก -> ลดเพดานเหลือ 0.6% ของด้านยาว ทรงจึงเดินตามงานจริง
+        #    งานไล่เส้นจากภาพ (นีออน ฯลฯ) ยังใช้ค่าเดิมทุกประการ ไม่ถูกแตะ
+        # ══════════════════════════════════════════════════════════════════
+        _cap = (size * 0.006) if sharp else (size * 0.035)
+        _cap2 = (size * 0.008) if sharp else (size * 0.045)
+
         # 2) OPEN — กลืน "แขน/ก้านบาง" ที่ยื่นออกมา (เช่น ปลายตะเกียบ) ให้ envelope เรียบ
-        solid = _open_safe(solid, min(size * 0.035, _t * 0.35), min(size * 0.035, _t * 0.35) * 1.15)
+        solid = _open_safe(solid, min(_cap, _t * 0.35), min(_cap, _t * 0.35) * 1.15)
 
         # 3) SMOOTH รอบสุดท้าย — โค้งมนทั้งเข้า-ออก ลบรอยหยัก/เดือย/เส้นไขว้
-        s = min(size * 0.045, _t * 1.0)
+        s = min(_cap2, _t * 1.0)
         if s > 0.2:
-            solid = solid.buffer(s, join_style=RND, resolution=24).buffer(-s, join_style=RND, resolution=24)
+            solid = solid.buffer(s, join_style=RND, mitre_limit=_ML, resolution=24).buffer(-s, join_style=RND, mitre_limit=_ML, resolution=24)
             solid = _outer(solid) or solid
             solid = _open_safe(solid, s * 0.6)
 
@@ -1491,7 +1518,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
             if isinstance(_u0, MultiPolygon):
                 _rr = r
                 for _ in range(7):
-                    _u1 = _u0.buffer(_rr, join_style=RND).buffer(-_rr, join_style=RND)
+                    _u1 = _u0.buffer(_rr, join_style=RND, mitre_limit=_ML).buffer(-_rr, join_style=RND, mitre_limit=_ML)
                     if not isinstance(_u1, MultiPolygon):
                         _u0 = _u1
                         break
@@ -1506,9 +1533,13 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
         # 4) 🫧 ระยะเว้นรอบงาน — กล่องต้องไม่ชนตัวโลโก้ ไม่งั้นดูอึดอัดและงานพิมพ์เลยขอบ
         #    pad_mm=0 -> ผู้เรียกจะเว้นระยะเอง (นีออนเฟล็กซ์ใช้ค่า 'เผื่อขอบ' ที่ผู้ใช้กรอก)
         #    ⚠️ เดิมนีออนโดนเว้นระยะ 2 ชั้น (ในนี้ 5% + ของผู้ใช้อีก 5 ซม.) แผ่นเลยบวมเกินขนาดป้าย
-        pad = max(15.0, size * 0.05) if pad_mm is None else max(0.0, float(pad_mm))
+        # ⚠️ ระยะเว้นนี่แหละที่ 'ถมร่องฟันหาย' — เว้น 5% ของงานยาว 2.5 ม. = 13 ซม.
+        #    ร่องไหนแคบกว่า 26 ซม. จะถูกถมเต็มหมด (ร่องฟันจริงกว้างแค่ ~10 ซม.)
+        #    โหมดกล่องไฟล้อมตามทรง -> เว้นแค่ 1.2% และไม่เกิน 4.5 ซม. ทรงจึงแนบงานจริง
+        pad = (min(30.0, max(12.0, size * 0.010)) if sharp else max(15.0, size * 0.05)) \
+            if pad_mm is None else max(0.0, float(pad_mm))
         if pad > 0.05:
-            solid = solid.buffer(pad, join_style=RND, resolution=24)
+            solid = solid.buffer(pad, join_style=RND, mitre_limit=_ML, resolution=24)
             solid = _outer(solid) or solid
         # ══════════════════════════════════════════════════════════════════
         # 5) 🌊 เกลาขอบให้ 'ไหลลื่น' — ปิดร่องแล้วเกลาปุ่มด้วยรัศมีเท่ากัน
@@ -1523,14 +1554,15 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
         # ══════════════════════════════════════════════════════════════════
         if pad > 0.05:
             try:
-                _rf = min(pad * 1.4, size * 0.22)
-                _c = _outer(solid.buffer(_rf, join_style=RND, resolution=32)
-                                 .buffer(-_rf, join_style=RND, resolution=32)) or solid
+                # ⚠️ ขั้นเกลาให้ 'ไหลลื่น' นี่แหละที่กัดร่องฟันหาย ถ้ารัศมีใหญ่เกิน
+                _rf = min(pad * (0.35 if sharp else 1.4), size * (0.02 if sharp else 0.22))
+                _c = _outer(solid.buffer(_rf, join_style=RND, mitre_limit=_ML, resolution=32)
+                                 .buffer(-_rf, join_style=RND, mitre_limit=_ML, resolution=32)) or solid
                 if _c.area <= solid.area * 1.15:
-                    _o = _c.buffer(-_rf, join_style=RND, resolution=32).buffer(_rf, join_style=RND, resolution=32)
+                    _o = _c.buffer(-_rf, join_style=RND, mitre_limit=_ML, resolution=32).buffer(_rf, join_style=RND, mitre_limit=_ML, resolution=32)
                     # ✅ เกลาได้ แต่ห้ามกินระยะเผื่อจนเหลือน้อยกว่า 55% ของที่ตั้งไว้
                     if (_o is not None and not _o.is_empty and _o.geom_type != "MultiPolygon"
-                            and _o.buffer(0.01).contains(full.buffer(pad * 0.55, join_style=RND))):
+                            and _o.buffer(0.01).contains(full.buffer(pad * 0.55, join_style=RND, mitre_limit=_ML))):
                         _c = _outer(_o) or _c
                     if _c.buffer(0.01).contains(full):
                         solid = _c
@@ -1538,7 +1570,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
                 pass
         _s3 = min(size * 0.025, _t * 0.6)             # ไล่คลื่นเล็ก ๆ ที่เหลือตามจังหวะตัวอักษร
         if _s3 > 0.2:
-            solid = solid.buffer(_s3, join_style=RND, resolution=24).buffer(-_s3, join_style=RND, resolution=24)
+            solid = solid.buffer(_s3, join_style=RND, mitre_limit=_ML, resolution=24).buffer(-_s3, join_style=RND, mitre_limit=_ML, resolution=24)
             solid = _outer(solid) or solid
 
         # 6) 🔒 ตาข่ายกันตกรอบสุดท้าย — ถ้าขั้นเกลาไหนยังกินงานหาย ให้รวมกลับเข้ามา
@@ -1551,7 +1583,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
                 _u9 = unary_union([solid] + _p9)
                 _r9 = max(r, _t * 1.5)
                 for _ in range(8):
-                    _v9 = _u9.buffer(_r9, join_style=RND).buffer(-_r9, join_style=RND)
+                    _v9 = _u9.buffer(_r9, join_style=RND, mitre_limit=_ML).buffer(-_r9, join_style=RND, mitre_limit=_ML)
                     _u9 = _v9
                     if _v9.geom_type != "MultiPolygon":
                         break
@@ -1560,7 +1592,7 @@ def _wrap_silhouette(full, bridge_mm, pad_mm=None):
                         break
                 solid = _outer(_u9) or solid
                 if pad > 0.05:
-                    solid = _outer(solid.buffer(pad * 0.35, join_style=RND, resolution=24)) or solid
+                    solid = _outer(solid.buffer(pad * 0.35, join_style=RND, mitre_limit=_ML, resolution=24)) or solid
         except Exception:
             pass
 
@@ -6110,7 +6142,8 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             #    ⚠️ ต้องเก็บเป็น 'สัดส่วนเทียบกล่อง' ไม่ใช่พิกัดดิบ — เพราะหลังจากนี้ระบบยังย่อ/ขยาย
             #       ทั้งก้อนให้ได้ขนาดป้ายจริงอีกที ถ้าเก็บพิกัดดิบไว้ ลายพิมพ์จะใหญ่เกินกล่อง (หาง N ล้น)
             _pb0 = full.bounds
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+            # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
             try:
                 _qb0 = full.bounds
                 _qw = max(1e-6, _qb0[2] - _qb0[0]); _qh = max(1e-6, _qb0[3] - _qb0[1])
@@ -8044,7 +8077,8 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     _w["h"] = _rd
         full = _letter_full_mm(inp, float(real_width_mm), 0.0, int(n_colors))
         if rec.get("wrap"):
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+            # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
         elif rec.get("box_shape"):
             _punch_logo = full if rec.get("punch_face") else None   # 🔦 เก็บรูป logo ไว้ฉลุโบ๋หน้ากล่อง
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm),
@@ -11891,7 +11925,8 @@ async def api_geom3d(file: UploadFile = File(...),
         rec = SIGN_TYPES.get(str(sign_type)) if sign_type else None
         # 🆕 กล่องไฟล้อมตามทรง -> เชื่อมเป็นเงารวมก้อนเดียวก่อนสร้างโครง 3 มิติ
         if rec and rec.get("wrap"):
-            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0)
+            # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
+            full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True)
         # 🆕 กล่องไฟทรงเรขาคณิต (กลม/สี่เหลี่ยม/วงรี · type 10-15,18) -> ใช้ 'กล่องทึบ' เป็นรูปทรง (กันหน้าโบ๋ตอนทำ 3D)
         elif rec and rec.get("box_shape"):
             full = _geom_box_fit(full, rec["box_shape"], float(rec.get("box_pad_cm", 3.0)) * 10.0, float(real_width_mm))
