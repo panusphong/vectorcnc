@@ -8967,7 +8967,12 @@ function _wallPickPieces(pieces, f){
       +'.asmSel{outline:2px solid #0891b2;outline-offset:1px}</style>'
       /* 📐 พื้นที่จัดวาง: ลากมุมขวาล่างขยายเองได้ (resize) หรือกดปุ่มขยาย/เต็มจอ */
       +'<div id="asmCanvas" style="position:relative;height:560px;min-height:260px;background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/20px 20px;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;touch-action:none;resize:vertical"></div>'
-      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px;flex-wrap:wrap">'
+      /* 🔁 กล่องไฟ 2 หน้า: หน้าหลังต้องสลับซ้าย-ขวา ไม่ใช่พลิกกระจก
+         ⚠️ ต้องทำที่หน้านี้เท่านั้น เพราะยังรู้ว่าชิ้นไหนอยู่ตรงไหน
+            ถ้าไปทำตอนเป็นไฟล์แบนแล้ว จะพลิกได้แค่ทั้งแผ่น = ตัวหนังสืออ่านไม่ออก */
+      +'<label id="asm2fWrap" title="กล่องไฟ 2 หน้า — ด้านหลังต้องสลับซ้ายขวา (โลโก้ย้ายไปอีกฝั่ง) แต่ตัวหนังสือยังอ่านออกปกติ" style="display:inline-flex;align-items:center;gap:6px;margin-right:auto;font-size:12.5px;background:#fdf2f8;border:1px solid #f9a8d4;border-radius:9px;padding:7px 12px;cursor:pointer">'
+      +'<input type="checkbox" id="asm2f"> 🔁 <b>กล่องไฟ 2 หน้า</b> — สร้างไฟล์<b>หน้า 2</b> ให้ด้วย (สลับซ้าย-ขวา)</label>'
       +'<button id="asmClear" style="border:1px solid #cbd5e1;background:#f8fafc;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:inherit">🧹 ล้าง</button>'
       +'<button id="asmDone" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:9px;padding:9px 20px;cursor:pointer;font-weight:700;font-family:inherit">✅ รวมเป็นแบบ → เลือกประเภทป้าย</button></div></div>';
     document.body.appendChild(ov);
@@ -9317,6 +9322,7 @@ function _wallPickPieces(pieces, f){
     el.innerHTML='<img src="'+p.png+'" style="width:100%;height:100%;object-fit:contain;pointer-events:none" draggable="false">'
       +'<span class="asmR" style="position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;background:#0891b2;border:2px solid #fff;border-radius:50%;cursor:nwse-resize"></span>'
       +'<span class="asmDel" style="position:absolute;right:-9px;top:-9px;width:18px;height:18px;background:#ef4444;color:#fff;border-radius:50%;font-size:12px;line-height:15px;text-align:center;cursor:pointer">×</span>';
+    if(p.recipe&&p.meta)p.meta.recipe=p.recipe;   // 🧾 สูตรสร้างชิ้นใหม่ (ข้อความ/พื้นหลัง) ไว้กู้ตอน token หมดอายุ
     var it={png:p.png,el:el,meta:p.meta||null,bg:!!back};
     if(back){                                        // 🎨 พื้นหลัง -> ชั้นล่างสุด + วางกลางกระดาน
       canv.insertBefore(el, canv.firstChild); _items.unshift(it);
@@ -9380,18 +9386,74 @@ function _wallPickPieces(pieces, f){
       el.style.left=p[0]+'px'; el.style.top=p[1]+'px'; _drawDims(); });
     el.addEventListener('pointerup',function(e){ drag=null; _guide(null,null); el.style.borderColor='rgba(124,58,237,0)'; _drawDims(); });
     var rz=el.querySelector('.asmR'), rs=null;
-    rz.addEventListener('pointerdown',function(e){ e.stopPropagation(); rs={sx:e.clientX,w:el.offsetWidth,ar:ar}; try{rz.setPointerCapture(e.pointerId);}catch(_e){} });
-    rz.addEventListener('pointermove',function(e){ if(!rs)return; var nw=Math.max(24,rs.w+e.clientX-rs.sx); el.style.width=nw+'px'; el.style.height=(nw*rs.ar)+'px'; _drawDims(); });
+    rz.addEventListener('pointerdown',function(e){ e.stopPropagation(); rs={sx:e.clientX,sy:e.clientY,w:el.offsetWidth,h:el.offsetHeight,ar:ar}; try{rz.setPointerCapture(e.pointerId);}catch(_e){} });
+    rz.addEventListener('pointermove',function(e){ if(!rs)return; var nw=Math.max(24,rs.w+e.clientX-rs.sx);
+      /* 🎨 แผ่นพื้นหลัง = ยืด/หดอิสระ กว้างกับสูงไม่ผูกกัน
+         ⚠️ ของเดิมล็อกสัดส่วนทุกชิ้น พอเป็นแผ่นรอง/หน้ากล่องไฟ ผู้ใช้ปรับให้พอดีงานไม่ได้เลย
+            ต้องกลับไปแก้ตัวเลขในกล่องแล้วสร้างแผ่นใหม่ทุกครั้ง — ช้าและปรับยากมาก
+         ✅ ชิ้นโลโก้/ข้อความยังล็อกสัดส่วนเหมือนเดิม (ไม่งั้นตัวอักษรจะบิด) */
+      if(back){ el.style.width=nw+'px'; el.style.height=Math.max(24,rs.h+e.clientY-rs.sy)+'px'; }
+      else { el.style.width=nw+'px'; el.style.height=(nw*rs.ar)+'px'; }
+      _drawDims(); });
     rz.addEventListener('pointerup',function(e){ rs=null; _drawDims(); });
     el.querySelector('.asmDel').onclick=function(){ var idx=_items.indexOf(it); if(idx>=0)_items.splice(idx,1); el.remove(); _drawDims(); };
+    /* ↔↕ จุดจับ 'ยืดด้านเดียว' — เฉพาะแผ่นพื้นหลัง
+       ขอบขวา = ปรับความกว้างอย่างเดียว · ขอบล่าง = ปรับความสูงอย่างเดียว
+       (จุดมุมยังปรับพร้อมกันสองแกนได้เหมือนเดิม) */
+    if(back){
+      try{ var _im=el.querySelector('img'); if(_im)_im.style.objectFit='fill'; }catch(_e){}
+      var _mkH=function(css,mode,tip){
+        var s=document.createElement('span');
+        s.title=tip;
+        s.style.cssText='position:absolute;'+css+';background:#db2777;border:2px solid #fff;border-radius:4px;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+        el.appendChild(s);
+        var st=null;
+        s.addEventListener('pointerdown',function(e){ e.stopPropagation();
+          st={x:e.clientX,y:e.clientY,w:el.offsetWidth,h:el.offsetHeight};
+          try{ s.setPointerCapture(e.pointerId); }catch(_e2){} });
+        s.addEventListener('pointermove',function(e){ if(!st)return;
+          if(mode==='w') el.style.width=Math.max(24,st.w+e.clientX-st.x)+'px';
+          else           el.style.height=Math.max(24,st.h+e.clientY-st.y)+'px';
+          _drawDims(); });
+        s.addEventListener('pointerup',function(){ st=null; _drawDims(); });
+      };
+      _mkH('right:-8px;top:50%;margin-top:-11px;width:15px;height:22px;cursor:ew-resize','w','ลากเพื่อยืด/หด เฉพาะความกว้าง');
+      _mkH('bottom:-8px;left:50%;margin-left:-11px;width:22px;height:15px;cursor:ns-resize','h','ลากเพื่อยืด/หด เฉพาะความสูง');
+    }
     _drawDims();
   }
   // 🔁 กู้โทเคนอัตโนมัติ: เซิร์ฟเวอร์รีสตาร์ต (deploy ใหม่) -> ไฟล์ต้นทางหาย -> อัปไฟล์เดิมใหม่ให้เอง แล้วรวมต่อ
   function _refreshTokens(cb){
     var toks={}; _items.forEach(function(it){ if(it.meta&&it.meta.token)toks[it.meta.token]=1; });
     var list=Object.keys(toks).filter(function(t){ return window._asmFiles&&window._asmFiles[t]; });
-    if(!list.length){ cb(false); return; }
-    var pend=list.length, any=false;
+    /* 🚑 กู้ชิ้นที่ 'เราสร้างเอง' (ข้อความ / พื้นหลัง) ด้วย
+       ⚠️ ผู้ใช้เจอจริง: จัดวางอยู่ดี ๆ กดรวมแล้วขึ้น "ไฟล์ต้นทางหมดอายุ" แล้วชิ้นข้อความหายไป
+          เพราะเส้นทางกู้เดิมกู้ได้เฉพาะชิ้นที่มาจากไฟล์ลูกค้า (มีไฟล์ให้อัปใหม่)
+          ชิ้นข้อความ/พื้นหลังไม่มีไฟล์ต้นทาง เลยตายถาวรทั้งที่สร้างใหม่ได้ใน 0.1 วินาที
+       ✅ เก็บ 'สูตร' ที่ใช้สร้างไว้กับชิ้น -> สร้างใหม่ให้เองเงียบ ๆ ผู้ใช้ไม่ต้องทำอะไร */
+    var _re=_items.filter(function(it){ return it.meta&&it.meta.recipe; });
+    if(!list.length&&!_re.length){ cb(false); return; }
+    var _reDone=0, _reAny=false;
+    var _reFin=function(){ if(++_reDone>=_re.length&&!list.length)cb(_reAny); };
+    _re.forEach(function(it){
+      var R=it.meta.recipe, req;
+      if(R.kind==='text'){
+        req=fetch((API||'')+'/api/text-asset',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify(R.cfg)});
+      } else {
+        var fd=new FormData();
+        for(var k in R.cfg){ fd.append(k,R.cfg[k]); }
+        if(R.file) fd.append('file',R.file);
+        req=fetch((API||'')+'/api/bg-asset',{method:'POST',body:fd});
+      }
+      req.then(function(r){return r.json();}).then(function(j){
+        if(j&&j.ok&&j.token){ _reAny=true;
+          it.meta.token=j.token; it.meta.bbox=j.bbox; it.meta.page=0; }
+        _reFin();
+      }).catch(function(){ _reFin(); });
+    });
+    if(!list.length){ if(!_re.length)cb(false); return; }
+    var pend=list.length, any=(_reAny||false);
     list.forEach(function(oldTok){
       var fd=new FormData(); fd.append('file',window._asmFiles[oldTok]);
       _apiFetch((API||'')+'/api/extract-assets',fd).then(_apiJson).then(function(j){
@@ -9413,6 +9475,7 @@ function _wallPickPieces(pieces, f){
       var items=_items.map(function(it){ var e=it.el;
         var base={x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K};
         if(it.meta&&it.meta.token){ base.token=it.meta.token; base.page=it.meta.page; base.bbox=it.meta.bbox; }
+        if(it.bg) base.fill=1;
         else { base.png=it.png; }
         return base; });
       var dbtn=ov.querySelector('#asmDone'); if(dbtn){dbtn.disabled=true;dbtn.textContent='⏳ กำลังรวมเวกเตอร์...';}
@@ -9445,10 +9508,51 @@ function _wallPickPieces(pieces, f){
               if(im&&im.complete&&im.naturalWidth){ try{ pgc.drawImage(im,(e.offsetLeft-minx)*psc,(e.offsetTop-miny)*psc,e.offsetWidth*psc,e.offsetHeight*psc); }catch(_x){} } });
             _pvURL=pv.toDataURL('image/png');
           }catch(_e){}
-          // ⚠️ แจ้งทันทีถ้าบางชิ้นรวมไม่สำเร็จ (เดิมเงียบ -> เห็นแค่ชิ้นเดียวแล้วงง)
-          if(j.requested&&j.count&&j.count<j.requested){
-            alert('⚠️ รวมได้ '+j.count+' จาก '+j.requested+' ชิ้น\n'+((j.fails||[]).join('\n')||'')+'\n\nถ้าขึ้นว่า "ไฟล์ต้นทางหมดอายุ" ให้ลากไฟล์เข้ามาใหม่แล้วแตกชิ้นอีกรอบค่ะ');
+          /* 🛑 ชิ้นหายแม้แต่ชิ้นเดียว = ห้ามส่งต่อเด็ดขาด
+             ⚠️ ผู้ใช้เจอจริง (2026-08-09): ขึ้นเตือน "รวมได้ 4 จาก 5 ชิ้น" แล้วระบบก็ส่งต่อไปเลย
+                พอไปถึงหน้าออกแบบป้าย ตัวหนังสือขาว "ทำฟัน จัดฟัน" หายไปเฉย ๆ
+                กว่าจะรู้ตัวก็ออกแบบไปไกลแล้ว — แบบที่ไม่ครบห้ามหลุดออกไปข้างหน้า
+             ✅ หยุดไว้ที่กระดาน บอกให้ชัดว่าขาดกี่ชิ้น แล้วให้กดรวมใหม่ได้ทันที
+                (ตอนนี้ระบบกู้ชิ้นข้อความ/พื้นหลังให้เองแล้ว กดอีกครั้งมักจะครบเลย) */
+          if(j.requested&&j.count<j.requested){
+            if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
+            alert('🛑 ยังรวมไม่ครบ — ได้ '+j.count+' จาก '+j.requested+' ชิ้น\n'
+                 +((j.fails||[]).join('\n')||'')
+                 +'\n\nยังไม่ส่งเข้าหน้าออกแบบป้ายนะคะ เพราะแบบจะขาดชิ้นไป'
+                 +'\nกด "รวมเป็นแบบ" อีกครั้งได้เลย ระบบจะสร้างชิ้นที่หายให้ใหม่เอง');
+            return;
           }
+          /* 🔁 ============ ไฟล์ "หน้า 2" ของกล่องไฟ 2 หน้า ============
+             ของจริงที่โรงงานต้องใช้: หน้าหลังวางสลับซ้าย-ขวากับหน้าหน้า
+               หน้า 1  [ โลโก้ ][ ข้อความ ]
+               หน้า 2  [ ข้อความ ][ โลโก้ ]
+             ⚠️ ห้ามพลิกกระจกทั้งแผ่น — ตัวหนังสือจะกลับด้านอ่านไม่ออก
+                ต้อง 'ย้ายตำแหน่งชิ้น' อย่างเดียว ตัวชิ้นเองไม่พลิก
+                x ใหม่ = ความกว้างรวม - (x เดิม + กว้างชิ้น) · y เท่าเดิม
+             ทำได้เพราะหน้านี้ยังรู้ว่าชิ้นไหนอยู่ตรงไหน (ไฟล์แบนแล้วทำไม่ได้) */
+          try{
+            var _c2=ov.querySelector('#asm2f');
+            if(_c2&&_c2.checked){
+              var _W2=0;
+              items.forEach(function(q){ _W2=Math.max(_W2,(+q.x_mm||0)+(+q.w_mm||0)); });
+              var _m2=items.map(function(q){
+                var r={}; for(var k in q)r[k]=q[k];
+                r.x_mm=_W2-((+q.x_mm||0)+(+q.w_mm||0));
+                return r; });
+              fetch((API||'')+'/api/compose-vector',{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({token:_tok0,items:_m2})})
+              .then(_apiJson).then(function(k){
+                if(!k||!k.ai_base64){ alert('สร้างไฟล์หน้า 2 ไม่สำเร็จ — '+((k&&k.error)||'?')+'\nหน้า 1 ใช้ได้ปกตินะคะ'); return; }
+                var b2=atob(k.ai_base64),u2=new Uint8Array(b2.length);
+                for(var z=0;z<b2.length;z++)u2[z]=b2.charCodeAt(z);
+                var a2=document.createElement('a');
+                a2.href=URL.createObjectURL(new Blob([u2],{type:'application/pdf'}));
+                a2.download='แบบกล่องไฟ_หน้า2_สลับซ้ายขวา.pdf';
+                document.body.appendChild(a2); a2.click();
+                setTimeout(function(){ try{ URL.revokeObjectURL(a2.href); a2.remove(); }catch(_x){} },1500);
+              }).catch(function(){ alert('สร้างไฟล์หน้า 2 ไม่สำเร็จ — หน้า 1 ใช้ได้ปกตินะคะ'); });
+            }
+          }catch(_e2f){}
           ov.remove();
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
           // ตั้งภาพพรีวิว 'หลัง' pick() เสมอ (pick จะซ่อน thumb ของไฟล์เวกเตอร์)
@@ -12162,11 +12266,17 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       im.src=png;
     }catch(_e){ cb(png); }
   }
-  function pushPiece(a,back){
+  function pushPiece(a,back,recipe){
     if(typeof window._asmPush!=='function'){
       alert('เปิดหน้า "แตกชิ้น + เลือก + จัดวาง" ก่อนนะคะ'); return false;
     }
     var p=toPiece(a);
+    /* 🧾 เก็บ "สูตร" ที่ใช้สร้างชิ้นนี้ไว้ด้วย
+       ⚠️ ถ้าเซิร์ฟเวอร์รีสตาร์ตกลางคัน (deploy ใหม่ / สลีป) token จะหมดอายุ
+          ชิ้นที่มาจากไฟล์ลูกค้ากู้ได้เพราะอัปไฟล์เดิมใหม่ได้ แต่ชิ้นข้อความ/พื้นหลัง
+          ไม่มีไฟล์ต้นทาง -> เคยตายถาวร ผู้ใช้ต้องทำใหม่เอง (เจอจริง 2026-08-09)
+       ✅ มีสูตรแล้ว ระบบสร้างใหม่ให้เองเงียบ ๆ ตอนกดรวม ผู้ใช้ไม่ต้องทำอะไรเลย */
+    if(recipe)p.recipe=recipe;
     withBackdrop(a.png,function(t){ p.thumb=t; window._asmPush(p,!!back); });
     return true;
   }
@@ -12279,7 +12389,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         var b=this, done=false;
         var reset=function(){ b.disabled=false; b.textContent='➕ วางลงกระดาน'; };
         var go=function(){ if(done)return; done=true;
-                           if(LAST&&pushPiece(LAST,false)) ov.remove();
+                           if(LAST&&pushPiece(LAST,false,{kind:'text',cfg:cfg()})) ov.remove();
                            else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — แก้ข้อความ/ฟอนต์แล้วลองใหม่นะคะ');
                            reset(); };
         if(DIRTY||BUSY||!LAST){
@@ -12393,8 +12503,13 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     ov.querySelector('#bgAdd').onclick=function(){
       var b=this, done=false;
       var reset=function(){ b.disabled=false; b.textContent='➕ วางเป็นพื้นหลัง (ล่างสุด)'; };
+      var _rc=function(){
+        var f=fd(), o={}, fi=ov.querySelector('#bgArt');
+        f.forEach(function(v,k){ if(k!=='file')o[k]=v; });
+        return {kind:'bg',cfg:o,file:(fi&&fi.files&&fi.files[0])||null};
+      };
       var go=function(){ if(done)return; done=true;
-                         if(LAST&&pushPiece(LAST,true)) ov.remove();
+                         if(LAST&&pushPiece(LAST,true,_rc())) ov.remove();
                          else if(!LAST) alert('ตัวอย่างยังสร้างไม่สำเร็จ — ตรวจค่าที่กรอกแล้วลองใหม่นะคะ');
                          reset(); };
       if(DIRTY||BUSY||!LAST){
