@@ -505,7 +505,14 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10px;color:#92700a">สูง</label><input class="numin" id="bxH" type="number" placeholder="auto" min="5" style="padding:5px;width:100%"></div>
               <div style="flex:1"><label style="font-size:10px;color:#92700a">ลึก</label><input class="numin" id="bxD" type="number" placeholder="ลึก" min="1" style="padding:5px;width:100%"></div>
             </div>
-            <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
+            <!-- 📐 ล็อกสัดส่วนงาน — ผู้ใช้สั่ง 2026-08-09
+                 ⚠️ เดิมกรอกทั้ง กว้าง+สูง = ยืดอิสระ 2 แกน -> งานถูกบิด ดู "สูงผิดปกติ"
+                 ✅ ล็อกไว้ = กรอกด้านเดียว อีกด้านคำนวณตามสัดส่วนงานจริงให้ = สเกลอย่างเดียว ไม่บิด -->
+            <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+              <button type="button" class="chip on" id="bxLock" title="ล็อกสัดส่วนงาน — กรอกด้านเดียว อีกด้านคิดให้" style="padding:5px 9px;font-size:13px">🔒</button>
+              <span id="bxAR" style="font-size:10.5px;color:#92700a;line-height:1.5"></span>
+            </div>
+            <div class="hint" style="margin:5px 0 0">🔒 <b>ล็อก</b> = กรอกด้านเดียว อีกด้านคิดตามสัดส่วนงานให้ (ไม่บิด) · 🔓 <b>ปลด</b> = ยืด/หดอิสระ 2 แกน · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
 
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
               <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
@@ -6366,12 +6373,58 @@ var TRIMW=1, TRIMDIR='out';
     if($('boxLitPanel'))$('boxLitPanel').style.display=_isBox?'block':'none';
     // 🎯 ตัวเลือก 'โลโก้เต็มพื้นที่กล่อง' มีเฉพาะกล่องไฟล้อมตามทรง 1/2 หน้า
     if($('bxTightRow'))$('bxTightRow').style.display=(v==='8'||v==='9')?'flex':'none';
-    if(_isBox){ if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
+    if(_isBox){ try{ window._bxARsync&&window._bxARsync(); }catch(_e){}
+      if($('bxW')&&!$('bxW').value&&$('realW'))$('bxW').value=Math.round((parseFloat($('realW').value)||600)/10); if($('bxD')&&!$('bxD').value)$('bxD').value=(RDEPTH||10); try{window._bxDrawPrev&&window._bxDrawPrev();}catch(_e){} }
     // 🖨️ งานพิมพ์เปิดไว้ทุกประเภท — กล่องไฟพิมพ์หน้า · ไดคัทพลาสวูด/อะคริลิค พิมพ์ลงผิว หรือพิมพ์สติ๊กเกอร์ไปติด
     if($('facePrintRow')) $('facePrintRow').style.display=(v&&v!=='')?'block':'none';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
-  if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0; if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);} };
+  // ══════════════════════════════════════════════════════════════
+  // 📐 ล็อกสัดส่วนงานบนแผงกล่องไฟ (ผู้ใช้สั่ง 2026-08-09)
+  //    สัดส่วนงาน (_ARTAR = กว้าง ÷ สูง) มาจาก 2 ทาง:
+  //      1) หน้าแตกชิ้น — ตั้งให้ตอนกด 'รวมเป็นแบบ' (แม่นที่สุด เพราะรู้ขนาดจริงเป็น มม.)
+  //      2) ไฟล์ที่อัปเข้ามาตรง ๆ — วัดจากสัดส่วนภาพพรีวิว
+  //    ล็อกอยู่ = พิมพ์ด้านไหน อีกด้านคำนวณตามให้ทันที -> สเกลอย่างเดียว งานไม่ถูกบิด
+  // ══════════════════════════════════════════════════════════════
+  window._BXLOCK = (window._BXLOCK !== false);
+  window._artAR=function(){
+    var a=parseFloat(window._ARTAR||0);
+    if(a>0.01) return a;
+    try{ var im=$('thumbImg');
+      if(im&&im.naturalWidth>0&&im.naturalHeight>0) return im.naturalWidth/im.naturalHeight; }catch(_e){}
+    return 0;
+  };
+  window._bxARsync=function(){
+    var el=$('bxAR'); if(!el)return;
+    var ar=window._artAR();
+    if(!(ar>0.01)){ el.innerHTML='<span style="color:#a8894a">ยังไม่รู้สัดส่วนงาน — กรอกได้ทั้งสองช่อง</span>'; return; }
+    var w=parseFloat(($('bxW')||{}).value)||0, h=parseFloat(($('bxH')||{}).value)||0;
+    var txt='สัดส่วนงาน <b>'+ar.toFixed(2)+' : 1</b>';
+    if(w>0&&h>0){ var cur=w/h, off=Math.abs(cur-ar)/ar*100;
+      txt += ' · ที่กรอก <b>'+cur.toFixed(2)+' : 1</b>' +
+             (off>2 ? ' <span style="color:#dc2626">⚠️ งานจะถูกบิด '+off.toFixed(0)+'%</span>'
+                    : ' <span style="color:#16a34a">✅ ตรงสัดส่วน</span>'); }
+    el.innerHTML=txt;
+  };
+  window._bxFill=function(from){
+    if(!window._BXLOCK) return;
+    var ar=window._artAR(); if(!(ar>0.01))return;
+    var W=$('bxW'), H=$('bxH'); if(!W||!H)return;
+    if(from==='w'){ var v=parseFloat(W.value)||0; if(v>0)H.value=Math.round(v/ar*10)/10; }
+    else          { var u=parseFloat(H.value)||0; if(u>0)W.value=Math.round(u*ar*10)/10; }
+  };
+  if($('bxLock'))$('bxLock').onclick=function(){
+    window._BXLOCK=!window._BXLOCK; this.textContent=window._BXLOCK?'🔒':'🔓';
+    this.classList.toggle('on',window._BXLOCK);
+    if(window._BXLOCK)window._bxFill('w');
+    window._bxARsync();
+  };
+  if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0;
+    if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);}
+    window._bxFill('w'); window._bxARsync(); };
+  if($('bxH'))$('bxH').oninput=function(){ window._bxFit=0; window._bxFill('h');
+    if($('bxW')&&$('realW')&&parseFloat($('bxW').value)>0){$('realW').value=Math.round(parseFloat($('bxW').value)*10);if($('realWcm'))$('realWcm').value=parseFloat($('bxW').value);}
+    window._bxARsync(); };
   // 🎯 สลับ 'โลโก้เต็มพื้นที่กล่อง' = ทรงกล่องเปลี่ยน -> ล้างค่าชดเชยความกว้างที่จำไว้
   if($('bxTight'))$('bxTight').onchange=function(){ window._bxFit=0; };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
@@ -8973,6 +9026,21 @@ function _wallPickPieces(pieces, f){
       +'<label class="alnB" style="display:inline-flex;align-items:center;gap:4px;background:#ecfeff;border-color:#67e8f9" title="โชว์ระยะห่างระหว่างชิ้น + ขนาดแต่ละชิ้น เป็นเซนติเมตรจริง"><input type="checkbox" id="asmDim" checked> 📏 วัดระยะ</label>'
       +'<label class="alnB" style="display:inline-flex;align-items:center;gap:4px" title="ระยะห่างที่ต้องการระหว่างชิ้น (กด &quot;เว้นเท่ากัน&quot; เพื่อบังคับ)">ช่องไฟ <input type="number" id="asmGapCm" value="" placeholder="ซม." style="width:52px;font-family:inherit;font-size:11.5px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:5px"></label>'
       +'<button class="alnB" data-a="gapx" title="บังคับระยะห่างแนวนอนระหว่างชิ้นให้เท่ากับที่กรอก" style="background:#fef3c7;border-color:#fcd34d">⇔ เว้นเท่ากัน</button>'
+      /* 📐 ขนาดแบบรวม (ซม.) — ผู้ใช้สั่ง 2026-08-09
+         ⚠️ ปัญหาเดิม: หน้านี้ไม่บอกว่าแบบที่วางอยู่กว้าง×สูงกี่ ซม.
+            พอส่งเข้าไปเลือกประเภทป้ายแล้วกรอก 230×85 ระบบจะ 'ยืดให้พอดี' -> สัดส่วนเพี้ยน
+            และหน้านั้นแก้สัดส่วนไม่ได้แล้ว (ย้ายชิ้นไม่ได้ ต้องกลับมาแตกชิ้นใหม่)
+         ✅ โชว์ขนาดจริง + สัดส่วน สด ๆ ตรงนี้ · กรอกกว้างหรือสูงแล้วกด 'ตั้ง' = สเกลทั้งแบบให้ได้ขนาดนั้น
+            (ปรับที่ค่า มม./พิกเซล ของกระดาน ไม่ขยับชิ้นเลย ตำแหน่งจัดวางจึงคงเดิมเป๊ะ)
+         📍 วางไว้บนแถบเครื่องมือนี้เพราะแถบล่างต้องเลื่อนจอลงไปหา ผู้ใช้มองไม่เห็น */
+      +'<span class="alnB" id="asmSizeBar" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;border-color:#5eead4;padding:3px 8px">'
+      +'<b style="color:#0f766e">📐 ขนาดแบบ</b>'
+      +'<input id="asmSW" type="number" min="1" step="0.5" placeholder="กว้าง" style="width:66px;font-family:inherit;font-size:11.5px;padding:2px 4px;border:1px solid #5eead4;border-radius:5px">'
+      +'<span style="color:#64748b">×</span>'
+      +'<input id="asmSH" type="number" min="1" step="0.5" placeholder="สูง" style="width:66px;font-family:inherit;font-size:11.5px;padding:2px 4px;border:1px solid #5eead4;border-radius:5px">'
+      +'<span style="color:#64748b">ซม.</span>'
+      +'<button id="asmSGo" style="border:none;background:#0d9488;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:700;font-family:inherit;font-size:11.5px">ตั้ง</button></span>'
+      +'<span id="asmSNow" style="display:inline-flex;align-items:center;color:#0f766e;font-size:11.5px;white-space:nowrap;margin-left:2px"></span>'
       +'<button class="alnB" id="asmBigger" title="ขยายพื้นที่จัดวางให้สูงขึ้น (หรือลากมุมขวาล่างของกระดานก็ได้)" style="background:#ecfdf5;border-color:#6ee7b7">⬍ ขยายพื้นที่</button>'
       +'<button class="alnB" id="asmSmaller" title="ลดความสูงพื้นที่จัดวาง" style="background:#f8fafc">⬍ ลดพื้นที่</button>'
       +'<button class="alnB" id="asmFull" title="ขยายเต็มจอ — ซ่อนแถบชิ้นงานด้านบน ได้พื้นที่จัดวางสูงสุด" style="background:#eef2ff;border-color:#a5b4fc;font-weight:700">⤢ เต็มจอ</button>'
@@ -8996,20 +9064,6 @@ function _wallPickPieces(pieces, f){
             ชิ้นที่ไม่มีเวกเตอร์ (เช่นข้อความไทยที่เป็น PNG) ยังฝังเป็นภาพเหมือนเดิม */
       +'<label id="asmVecWrap" title="ใช้เส้นเวกเตอร์จริงจากไฟล์ลูกค้าเป็นเส้นตัด — ชิ้นสีขาวจะไม่หาย · เอาติ๊กออก = ฝังทุกชิ้นเป็นภาพแบบเดิม" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#ecfeff;border:1px solid #67e8f9;border-radius:9px;padding:7px 12px;cursor:pointer">'
       +'<input type="checkbox" id="asmVec" checked> 📐 <b>ใช้เส้นเวกเตอร์จริง</b> (คมสุด · ชิ้นสีขาวไม่หาย)</label>'
-      /* 📐 ขนาดแบบรวม (ซม.) — ผู้ใช้สั่ง 2026-08-09
-         ⚠️ ปัญหาเดิม: หน้านี้ไม่บอกว่าแบบที่วางอยู่กว้าง×สูงกี่ ซม.
-            พอส่งเข้าไปเลือกประเภทป้ายแล้วกรอก 230×85 ระบบจะ 'ยืดให้พอดี' -> สัดส่วนเพี้ยน
-            และหน้านั้นแก้สัดส่วนไม่ได้แล้ว (ย้ายชิ้นไม่ได้ ต้องกลับมาแตกชิ้นใหม่)
-         ✅ โชว์ขนาดจริง + สัดส่วน สด ๆ ตรงนี้ · กรอกกว้างหรือสูงแล้วกด 'ตั้ง' = สเกลทั้งแบบให้ได้ขนาดนั้น
-            (ปรับที่ค่า มม./พิกเซล ของกระดาน ไม่ขยับชิ้นเลย ตำแหน่งจัดวางจึงคงเดิมเป๊ะ) */
-      +'<span id="asmSizeBar" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#f0fdfa;border:1px solid #5eead4;border-radius:9px;padding:6px 10px">'
-      +'<b style="color:#0f766e">📐 ขนาดแบบ</b>'
-      +'<input id="asmSW" type="number" min="1" step="0.5" placeholder="กว้าง" style="width:74px;padding:5px;border:1px solid #99f6e4;border-radius:6px;font-family:inherit;font-size:12px">'
-      +'<span style="color:#64748b">×</span>'
-      +'<input id="asmSH" type="number" min="1" step="0.5" placeholder="สูง" style="width:74px;padding:5px;border:1px solid #99f6e4;border-radius:6px;font-family:inherit;font-size:12px">'
-      +'<span style="color:#64748b;font-size:11.5px">ซม.</span>'
-      +'<button id="asmSGo" style="border:none;background:#0d9488;color:#fff;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12px">ตั้ง</button>'
-      +'<span id="asmSNow" style="color:#0f766e;font-size:11.5px;white-space:nowrap"></span></span>'
       +'<button id="asmClear" style="border:1px solid #cbd5e1;background:#f8fafc;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:inherit">🧹 ล้าง</button>'
       +'<button id="asmDone" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:9px;padding:9px 20px;cursor:pointer;font-weight:700;font-family:inherit">✅ รวมเป็นแบบ → เลือกประเภทป้าย</button></div></div>';
     document.body.appendChild(ov);
@@ -9658,6 +9712,8 @@ function _wallPickPieces(pieces, f){
             if($('realH'))$('realH').value=(_hcm9>0?Math.round(_hcm9*10):'');
             if($('bxW'))$('bxW').value=_wcm9;
             if($('bxH'))$('bxH').value=(_hcm9>0?_hcm9:'');
+            // 📐 บอกสัดส่วนงานจริงให้แผงกล่องไฟ -> ล็อกสัดส่วนคำนวณได้แม่น
+            try{ if(_hcm9>0) window._ARTAR=_wcm9/_hcm9; window._bxARsync&&window._bxARsync(); }catch(_e){}
             try{ window._bxFit=0; }catch(_e){}
           } else if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
           setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\n\n'
