@@ -14,6 +14,7 @@
 """
 
 import math
+import os
 import time
 
 import cv2
@@ -404,7 +405,10 @@ def fit_gradient(img_rgb, mask, min_delta=6.0, max_px=60000, seed=0):
 #
 # 🔒 ทั้งหมดนี้ทำงานเฉพาะเมื่อผู้ใช้ติ๊ก 🌈 "ภาพไล่สี" เท่านั้น · งานปกติไม่ถูกแตะเลย
 # ══════════════════════════════════════════════════════════════════
-GRAD_STOPS = 28              # จำนวนจุดสีของไล่สี (28 = จุดคุ้มค่าที่สุดจากที่วัด)
+GRAD_STOPS = 96              # จำนวนจุดสีของไล่สี
+# 📏 วัดจริงกับพื้นรุ้งของผู้ใช้ (2026-08-10): จำนวน "จุดสีต่อแถบ" คือตัวชี้ขาดความเนียน
+#    ไม่ใช่จำนวนแถบ — 28 จุด คลาด 3.40 · 48 จุด 1.94 · 64 จุด 1.61 · 96 จุด 1.40
+#    ผู้ใช้เห็น 28 จุดเป็น "คลื่น" ในพื้นไล่สี · 64 จุดคือจุดคุ้มค่าที่สุด (คลาดลดครึ่ง ไฟล์โต 2 เท่า)
 
 
 def _grad_nstops(g):
@@ -561,7 +565,7 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
 
 
 def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
-                       min_delta=8.0, max_err=6.0, max_bands=20):
+                       min_delta=8.0, max_err=6.0, max_bands=28):
     """🌈 ฟิต 'ไล่สีหลายจุด' ให้ย่านหนึ่ง — ลองทั้งแบบเส้นตรงและแบบวงกลม เลือกอันที่คลาดน้อยกว่า
 
     คืน dict:
@@ -644,7 +648,7 @@ def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
             #    ผู้ใช้ทัก 2026-08-10 ว่าโซนเขียวยังไม่เนียนเท่าโซนอื่น
             #    (วัดจริง: 8 แถบ 3.03 → 14 แถบ 2.21 → 20 แถบ 2.01 ระดับสี)
             _bd = _fit_bands(xf, yf, C, ns=ns, max_bands=int(max_bands),
-                             target=float(max_err) * 0.42)
+                             target=float(max_err) * 0.15)
             if _bd is not None and _bd["err"] <= float(max_err) * 2.2:
                 return _bd
 
@@ -1624,6 +1628,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     _smr = []
     _q_keep = keep
     _u_raw = None                                  # ย่านพื้นไล่สี (ก่อนอุดรู)
+    _ins = None                                    # ย่านพื้น (ขยายขอบแล้ว)
     _anchor = []                                   # สีตัวแทนของพื้น (กัน k-means ต้องเดาสีพื้น)
     if grad:
         try:
@@ -1679,9 +1684,18 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             for _rg in _smr:
                 _g0 = _rg["grad"]
                 # แบบตาข่ายสองมิติมีหลายแถบ -> เก็บสีตัวแทนจากทุกแถบ (พื้นรุ้งมีหลายโทน)
-                _sets = ([b["stops"] for b in _g0["bands"]] if _g0.get("bands")
-                         else [_g0["stops"]])
-                _each = max(2, int(round(16.0 / max(1, len(_sets)))))
+                _all = ([b["stops"] for b in _g0["bands"]] if _g0.get("bands")
+                        else [_g0["stops"]])
+                # ⚠️ อย่าเก็บสีตัวแทนจากทุกแถบ (96 แถบ × 2 = 192 สี!) จานสีจะบวมจนไปแย่ง
+                #    พิกเซลของลายจริง — ผู้ใช้เห็นเป็นตัวอักษรเล็กเพี้ยน (วัดได้แย่ลง 13.6 -> 15.4)
+                #    เอาแค่พอครอบคลุมช่วงสีของพื้น ~6 แถบ × 4 จุด = 24 สี ก็พอ
+                _pick = 6
+                if len(_all) > _pick:
+                    _idx = [int(round(q * (len(_all) - 1) / (_pick - 1))) for q in range(_pick)]
+                    _sets = [_all[q] for q in _idx]
+                else:
+                    _sets = _all
+                _each = max(2, int(round(24.0 / max(1, len(_sets)))))
                 for _st in _sets:
                     for _j in range(_each):
                         _o = _j / float(max(1, _each - 1))
@@ -1692,7 +1706,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                                              for c in range(3)))
 
     pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=_q_keep,
-                                     grad=bool(grad), kmin=(12 if _smr else 0),
+                                     grad=bool(grad),
+                                     kmin=(12 if _smr else 0),
                                      cap=(24 if _smr else None))
     _n_det = len(pal_lab)                          # สีที่ได้มาเพื่อ "รายละเอียด" เท่านั้น
     if _anchor:
@@ -1813,6 +1828,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    ปิดการดันขอบ = ริ้วขาวเต็มภาพ (วัดจริงเคยได้ 1,313 พิกเซลขาวแทรก จาก 0)
     # ภาพที่ถูกขยายมา ขอบจะฟุ้ง เกิดเศษเล็ก ๆ ง่าย -> ตัดเกณฑ์ให้สูงขึ้นตามส่วน
     min_a = max(float(cfg["min_area"]) * R * R * F * F, (max(W, H) * 0.0035) ** 2)
+    # 🔎 โหมดไล่สี: ลดเกณฑ์ "ชิ้นเล็กสุดที่ยอมเก็บ" ลง เพื่อไม่ให้ตัวอักษรจิ๋วหายไป
+    #    (โลโก้ wongnai ในไฟล์ 554 px สูงจริงแค่ ~9 px เส้นหนา 1 px)
+    if grad:
+        min_a *= 0.45
     sig_used = []
     layers = []
     # 🌈 ชั้นพื้นไล่สี — ไล่เส้นเป็น "รูปเดียว" (อุดรูแล้ว) วางล่างสุด
@@ -1855,6 +1874,28 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             # ✅ กติกา: สีของงานจริง "ห้ามลงไประบายลึกในย่านพื้นไล่สี"
             #    หดย่านพื้นเข้าไปก่อน เพื่อไม่ไปกินขอบงานจริงที่อยู่ชิดพื้น
             _sup = _mi & _u_raw
+            # ⚠️ ยังเหลือ "ชิ้นหลง" เกาะอยู่บนพื้น ตรงแถบรอบขอบงาน (ผู้ใช้วงไว้ 2026-08-10)
+            #    แถบนั้นไม่ได้ถูกนับเป็นพื้น สีของลายจึงลงไประบายได้ กลายเป็นปื้น/ใบไม้ปลอม
+            # ✅ ตัด "ทีละชิ้น": ชิ้นไหนอยู่ในย่านพื้น (ขยายขอบแล้ว) เกิน 85% = ไม่ใช่ลายจริง
+            #    ลายจริงเช่นใบไม้จะยื่นเข้าไปในตัวงานลึก จึงไม่มีทางเข้าเกณฑ์นี้
+            try:
+                _nc, _lb, _stt, _ = cv2.connectedComponentsWithStats(
+                    np.ascontiguousarray((_mi & ~_sup).astype(np.uint8)), 8)
+                if _nc > 1:
+                    _bad = []
+                    for _c in range(1, _nc):
+                        _ar = float(_stt[_c, cv2.CC_STAT_AREA])
+                        if _ar < 4 or _ar > 0.02 * H * W:
+                            continue
+                        _cm = (_lb == _c)
+                        if _ins is None:
+                            break
+                        if float((_cm & _ins).sum()) / _ar >= 0.85:
+                            _bad.append(_c)
+                    if _bad:
+                        _sup = _sup | np.isin(_lb, np.array(_bad, np.int32))
+            except Exception:
+                pass
             if not _sup.any():
                 _sup = None
             elif int((_mi & ~_sup).sum()) < 3:
