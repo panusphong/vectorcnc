@@ -619,8 +619,11 @@ def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
         # 📉 วัดจริงกับภาพรุ้งของผู้ใช้: 1 แถบ 23.2 → 8 แถบ 3.03 → 14 แถบ 2.21 → 20 แถบ 2.01
         # ══════════════════════════════════════════════════════════════
         if (best is None or best[1] > float(max_err)) and int(max_bands) >= 2:
+            # 🟢 ตั้งเป้าให้แน่นกว่าเดิม — ตาคนไวกับ "เฉดเขียว" มากที่สุด
+            #    ผู้ใช้ทัก 2026-08-10 ว่าโซนเขียวยังไม่เนียนเท่าโซนอื่น
+            #    (วัดจริง: 8 แถบ 3.03 → 14 แถบ 2.21 → 20 แถบ 2.01 ระดับสี)
             _bd = _fit_bands(xf, yf, C, ns=ns, max_bands=int(max_bands),
-                             target=float(max_err) * 0.6)
+                             target=float(max_err) * 0.42)
             if _bd is not None and _bd["err"] <= float(max_err) * 2.2:
                 return _bd
 
@@ -692,7 +695,8 @@ def smooth_regions(img_rgb, keep=None, min_frac=0.05, max_regions=4, k_thr=3.0):
     return out
 
 
-def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False):
+def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False,
+             kmin=0, cap=None):
     """คืน (palette RGB uint8, ภาพ Lab, palette Lab)
 
     ⚡ ไม่คำนวณป้ายสีของ 'ทุกพิกเซล' ที่นี่แล้ว
@@ -732,8 +736,14 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False):
     #    9 ก้อนไล่สีเนียน > 44 ก้อนแบนเรียงกัน (และไฟล์เล็กกว่า เร็วกว่ามาก)
     #    เพดานโหมดไล่สีจึงต่ำกว่าปกติ ไม่ใช่สูงกว่า
     # ══════════════════════════════════════════════════════════════
-    _cap = 14 if grad else 32
-    kk = max(2, min(_cap, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
+    # 🌈 เมื่อ "พื้นไล่สี" ถูกแยกออกไปแล้ว โควตาสีทั้งหมดเป็นของรายละเอียดล้วน ๆ
+    #    จึงเปิดเพดานสูงขึ้นและตั้งพื้นขั้นต่ำได้ (ผู้ใช้เจอจริง: ตัวอักษรเล็กหลายสีเพี้ยน
+    #    เพราะ auto_k มองว่า "เพิ่มสีแล้วไม่คุ้ม" — ตัวอักษรเล็กเป็นพิกเซลส่วนน้อยมาก)
+    _cap = int(cap) if cap else (14 if grad else 32)
+    kk = auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)
+    if (k is None or int(k) <= 0) and int(kmin) > 0:
+        kk = max(kk, int(kmin))
+    kk = max(2, min(_cap, kk))
     cen, _ = _kmeans_lab(Xf, kk, seed=seed)
     if not grad:
         S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
@@ -1490,6 +1500,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     # ══════════════════════════════════════════════════════════════
     _smr = []
     _q_keep = keep
+    _u_raw = None                                  # ย่านพื้นไล่สี (ก่อนอุดรู)
     _anchor = []                                   # สีตัวแทนของพื้น (กัน k-means ต้องเดาสีพื้น)
     if grad:
         try:
@@ -1504,6 +1515,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             _u = np.zeros((H, W), bool)
             for _rg in _smr:
                 _u |= _rg["core"]
+            _u_raw = _u
             _q_keep = (~_u) if keep is None else (keep & ~_u)
             if int(_q_keep.sum()) < 400:           # ทั้งภาพเป็นพื้นไล่สี -> ไม่ต้องกัน
                 _q_keep = keep
@@ -1523,15 +1535,40 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                         _anchor.append(tuple(int(round(_lo[1][c] + (_hi[1][c] - _lo[1][c]) * _t))
                                              for c in range(3)))
 
-    pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=_q_keep, grad=bool(grad))
+    pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=_q_keep,
+                                     grad=bool(grad), kmin=(12 if _smr else 0),
+                                     cap=(24 if _smr else None))
     _n_det = len(pal_lab)                          # สีที่ได้มาเพื่อ "รายละเอียด" เท่านั้น
     if _anchor:
         _a = np.array(sorted(set(_anchor)), np.uint8).reshape(1, -1, 3)
         _al = labf(cv2.cvtColor(_a, cv2.COLOR_RGB2LAB).reshape(-1, 3))
+        # ══════════════════════════════════════════════════════════════
+        # ⚠️ บั๊กที่ผู้ใช้ชี้ (2026-08-10): ใบไม้เขียว/ตัวอักษรเล็กสีเพี้ยนและแหว่ง
+        #    เพราะ "สีตัวแทนพื้น" (anchor) ไปชนะสีของงานจริง — ใบไม้เขียวอยู่ใกล้
+        #    เขียวของพื้นรุ้งมากกว่าเขียวในจานสีรายละเอียด พอชั้น anchor ถูกทิ้ง
+        #    (เพราะถือว่าเป็นพื้น) ใบไม้เลยหายไปทั้งใบ
+        # ✅ ให้ anchor แข่งได้ "เฉพาะในย่านพื้นไล่สี" เท่านั้น
+        #    นอกย่านนั้นใช้จานสีรายละเอียดล้วน — งานจริงจึงไม่มีทางโดน anchor กลืน
+        # ══════════════════════════════════════════════════════════════
+        _b1d, _b2d, _l1d, _l2d = nearest2(lab, pal_lab)
         pal_lab = np.vstack([pal_lab, _al])
         pal_rgb = np.vstack([pal_rgb, _a.reshape(-1, 3)])
-
-    b1, b2, l1, l2 = nearest2(lab, pal_lab)
+        b1, b2, l1, l2 = nearest2(lab, pal_lab)
+        # ⚠️ ย่านที่ปล่อยให้ anchor แข่งได้ ต้อง "กว้างกว่า" ย่านพื้นที่ตรวจเจอเล็กน้อย
+        #    เพราะตัวตรวจพื้นตัดแถบรอบขอบงานทิ้งไปราว 8-10 px (แถบขอบมีอนุพันธ์สูง)
+        #    ถ้าไม่ขยายคืน แถบนั้นจะไม่มีสีพื้นให้เลือก -> ไปเกาะสีงานจริง = เกิด "ขอบสีเพี้ยน"
+        #    รอบใบไม้/รอบวงกลม (ผู้ใช้เห็นเป็นริ้วสีแปลก ๆ รอบลาย)
+        if _u_raw is not None:
+            _rr2 = int(max(5, round(max(H, W) / 200.0))) | 1
+            _ins = cv2.dilate(_u_raw.astype(np.uint8),
+                              np.ones((_rr2, _rr2), np.uint8)).astype(bool)
+        else:
+            _ins = np.zeros(lab.shape[:2], bool)
+        b1 = np.where(_ins, b1, _b1d); b2 = np.where(_ins, b2, _b2d)
+        l1 = np.where(_ins, l1, _l1d); l2 = np.where(_ins, l2, _l2d)
+        del _b1d, _b2d, _l1d, _l2d
+    else:
+        b1, b2, l1, l2 = nearest2(lab, pal_lab)
     del lab                                            # ไม่ต้องใช้อีกแล้ว คืนแรมทันที
     labels = l1
 
@@ -1624,11 +1661,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     layers = []
     # 🌈 ชั้นพื้นไล่สี — ไล่เส้นเป็น "รูปเดียว" (อุดรูแล้ว) วางล่างสุด
     grad_layers = []
-    _u_raw = None
     if _smr:
-        _u_raw = np.zeros((H, W), bool)
-        for _rg in _smr:
-            _u_raw |= _rg["raw"]
         for _rg in _smr:
             try:
                 _f = cv2.GaussianBlur(_rg["shape"].astype(np.float32), (0, 0), 0.8)
@@ -1654,13 +1687,25 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         # 🌈 ก้อนที่อยู่ในย่านพื้นไล่สีแทบทั้งหมด = "แถบสีของพื้น" ที่ชั้นไล่สีแทนที่ไปแล้ว
         #    ทิ้งไปเลย ไม่งั้นจะไปวางทับพื้นเนียนกลายเป็นแถบเหมือนเดิม
         #    (ใช้ย่าน 'ก่อนอุดรู' วัด — โลโก้ที่วางบนพื้นจึงไม่โดนทิ้งไปด้วย)
+        _sup = None
         if grad_layers and _u_raw is not None:
             if i >= _n_det:
                 continue                            # สีตัวแทนพื้น ไม่ใช่สีของงานจริง
             _mi = (labels == i) if keep is None else ((labels == i) & keep)
-            if float((_mi & _u_raw).sum()) / max(1.0, float(n)) >= 0.90:
-                continue
+            # ⚠️ ต้องตัดเป็น "รายพิกเซล" ไม่ใช่ทั้งชั้น (ผู้ใช้ชี้จุด 2026-08-10)
+            #    ชั้นเดียวมักมีทั้งส่วนที่เป็นพื้น (ต้องทิ้ง) และส่วนที่เป็นงานจริง (ต้องเก็บ)
+            #    · ตัดสินทั้งชั้น -> ปื้นสีแบนบนพื้นหลุดรอดมา (ผู้ใช้วงแดงไว้)
+            #    · ตัดสินเป็น 'ชิ้นเชื่อมกัน' ก็ยังพลาด เพราะปื้นบนพื้นมักต่อกับขอบใบไม้
+            # ✅ กติกา: สีของงานจริง "ห้ามลงไประบายลึกในย่านพื้นไล่สี"
+            #    หดย่านพื้นเข้าไปก่อน เพื่อไม่ไปกินขอบงานจริงที่อยู่ชิดพื้น
+            _sup = _mi & _u_raw
+            if not _sup.any():
+                _sup = None
+            elif int((_mi & ~_sup).sum()) < 3:
+                continue                            # ทั้งชั้นเป็นพื้น
         f = coverage_field(i, b1, b2, l1, l2, alpha=af)
+        if _sup is not None:
+            f = f * (1.0 - cv2.GaussianBlur(_sup.astype(np.float32), (0, 0), 0.8))
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
                                    sigma_max=sigM, target=tgt, wave_target=wtgt)
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
