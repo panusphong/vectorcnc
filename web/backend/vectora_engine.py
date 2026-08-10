@@ -313,7 +313,74 @@ def prefilter(img_rgb, R, thr=2.2):
     return out, round(n, 2), d
 
 
-def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000):
+def fit_gradient(img_rgb, mask, min_delta=6.0, max_px=60000, seed=0):
+    """🌈 หา 'ไล่สีเชิงเส้น' ของก้อนสีหนึ่งก้อน
+
+    ═══════════════════════════════════════════════════════════════
+    ทำไมต้องมี (ผู้ใช้เจอจริง 2026-08-09):
+      วิธี quantize + trace ให้ 'รูปทึบสีเดียว' เสมอ ภาพพื้นหลังไล่เฉด
+      จึงกลายเป็นก้อนสีแบนเรียงกัน ต่อให้ซอยเป็น 48 สีก็ได้แค่ 'แถบถี่ขึ้น'
+      ไม่ใช่ไล่สีจริง (ผู้ใช้บอก "เละมาก" หลังลอง 48 สีแล้ว)
+
+    หลักการ (ย่อจากงานวิจัย linear gradient layer decomposition, Tsinghua 2023):
+      สีในก้อนหนึ่ง ๆ ของภาพไล่เฉด แทนได้ด้วยระนาบ  c = a·x + b·y + c0
+      หาค่า a,b,c0 ด้วยกำลังสองน้อยสุด แยกทีละช่อง R,G,B
+      -> ทิศไล่สี = (a,b)  ·  ปลายทั้งสองของไล่สี = จุดที่ฉายไกลสุดบนทิศนั้น
+
+    ผลลัพธ์: ก้อนเดียวไล่สีเนียนต่อเนื่องได้เอง ไม่ต้องพึ่งการซอยสีถี่ ๆ อีก
+      (8-14 สีก็เนียนกว่า 48 สีแบบแบน เพราะแต่ละก้อนไล่ในตัวเอง)
+
+    คืน None ถ้าก้อนนั้น 'สีแบนจริง ๆ' -> ผู้เรียกใช้ fill สีเดียวเหมือนเดิม
+    ═══════════════════════════════════════════════════════════════
+    """
+    try:
+        ys, xs = np.nonzero(mask)
+        n = len(xs)
+        if n < 64:
+            return None
+        if n > max_px:                                  # ก้อนใหญ่มาก -> สุ่มพอ (เร็วและได้ค่าเท่ากัน)
+            rng = np.random.default_rng(seed)
+            sel = rng.choice(n, size=max_px, replace=False)
+            xs, ys = xs[sel], ys[sel]
+        C = img_rgb[ys, xs].astype(np.float64)          # (m,3) ค่าสีจริงของพิกเซลในก้อนนี้
+        A = np.column_stack([xs.astype(np.float64), ys.astype(np.float64), np.ones(len(xs))])
+        coef, *_ = np.linalg.lstsq(A, C, rcond=None)    # (3,3) -> แถว 0,1 = ความชัน x,y
+        gx, gy = coef[0], coef[1]                       # ความชันต่อช่องสี
+
+        # ทิศไล่สีรวม = ทิศที่สีเปลี่ยนเร็วที่สุด (ถ่วงน้ำหนักด้วยขนาดความชันของแต่ละช่อง)
+        w = np.sqrt(gx ** 2 + gy ** 2)                  # ความแรงต่อช่อง
+        if float(w.sum()) < 1e-9:
+            return None
+        dx = float((gx * w).sum()); dy = float((gy * w).sum())
+        L = (dx * dx + dy * dy) ** 0.5
+        if L < 1e-9:
+            return None
+        ux, uy = dx / L, dy / L                         # เวกเตอร์หน่วยของทิศไล่สี
+
+        t = xs * ux + ys * uy                           # ฉายทุกพิกเซลลงบนทิศนั้น
+        t0, t1 = float(t.min()), float(t.max())
+        if t1 - t0 < 2.0:
+            return None
+        # จุดปลายทั้งสองของแถบไล่สี (พิกัดจริงบนภาพ)
+        p0 = (t0 * ux, t0 * uy)
+        p1 = (t1 * ux, t1 * uy)
+
+        def _col(px, py):
+            v = coef[0] * px + coef[1] * py + coef[2]
+            return tuple(int(np.clip(round(float(q)), 0, 255)) for q in v)
+
+        c0 = _col(*p0); c1 = _col(*p1)
+        # 🎚️ ต่างกันน้อย = ก้อนสีแบนจริง -> ไม่ต้องทำไล่สี (ไฟล์เล็กกว่า เปิดเร็วกว่า)
+        if max(abs(c0[i] - c1[i]) for i in range(3)) < float(min_delta):
+            return None
+        return {"x1": round(p0[0], 2), "y1": round(p0[1], 2),
+                "x2": round(p1[0], 2), "y2": round(p1[1], 2),
+                "c1": c0, "c2": c1}
+    except Exception:
+        return None
+
+
+def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False):
     """คืน (palette RGB uint8, ภาพ Lab, palette Lab)
 
     ⚡ ไม่คำนวณป้ายสีของ 'ทุกพิกเซล' ที่นี่แล้ว
@@ -335,11 +402,21 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000):
     Xf = labf(X[take])                                 # 🎨 วัดระยะในสเกล Lab จริงเสมอ
     if len(Xf) < 8:
         Xf = labf(X[:8])
-    kk = max(2, min(32, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
+    # ══════════════════════════════════════════════════════════════
+    # 🌈 โหมดไล่สี (grad=True) — ผู้ใช้เจอจริง 2026-08-09
+    #    สั่ง 32 สี แต่ได้ออกมา 14 สี เพราะ merge_blends ตัด 'สีผสม' ทิ้งไป 18 สี
+    #    ⚠️ ตรรกะนั้นถูกสำหรับโลโก้ (สีผสม = ขอบเทาสกปรก ต้องตัด)
+    #       แต่ผิดสำหรับภาพไล่เฉด — เพราะ 'สีผสม' คือเนื้อของไล่สีเอง!
+    #       ตัดทิ้ง = ไล่สีขาดเป็นก้อน ๆ ทันที
+    # ✅ โหมดนี้: ไม่ตัดสีผสม + เพดานสูงถึง 64 สี (ผู้ใช้สั่งเองเท่านั้น auto ยังคง 32)
+    # ══════════════════════════════════════════════════════════════
+    _cap = 64 if grad else 32
+    kk = max(2, min(_cap, auto_k(Xf, seed) if (k is None or int(k) <= 0) else int(k)))
     cen, _ = _kmeans_lab(Xf, kk, seed=seed)
-    S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
-    lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
-    cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
+    if not grad:
+        S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
+        lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
+        cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
     pal_rgb = cv2.cvtColor(unlabf(cen).reshape(1, -1, 3), cv2.COLOR_LAB2RGB).reshape(-1, 3)
     return pal_rgb, lab, cen
 
@@ -978,7 +1055,7 @@ def resolve(preset="general", **over):
 # ตัวหลัก
 # ══════════════════════════════════════════════════════════════════
 def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=None,
-              min_area=None, transparent=None, seed=0):
+              min_area=None, transparent=None, seed=0, grad=False):
     """img_rgba = ndarray HxWx3 (RGB) หรือ HxWx4 (RGBA)
 
     คืน dict: layers · size (กว้าง,สูง หน่วยพิกเซลต้นฉบับ) · bg · stats
@@ -1054,7 +1131,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     F = float(np.clip(min(F, max(1.0, _sw / 8.0)), 1.0, 10.0))
 
     img, nz, nd = prefilter(img, max(1.0, max(W, H) / 500.0))
-    pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep)
+    pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=keep, grad=bool(grad))
 
     b1, b2, l1, l2 = nearest2(lab, pal_lab)
     del lab                                            # ไม่ต้องใช้อีกแล้ว คืนแรมทันที
@@ -1113,6 +1190,17 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    เคยผูกไว้ที่ 2 เท่าของงบ แล้วภาพแถบสีตรง ๆ ยอมคลาดได้ถึง 5 px = ขอบเลื่อน
     #    (ชุดตรวจจับได้: many_colors ΔE 6.2 -> 11.1)
     tol_e = float(np.clip(max(tol_e, 0.6 * budget_e), 0.25, 1.5))
+    # ══════════════════════════════════════════════════════════════
+    # 🔬 โหมดละเอียดสูงสุด (grad=True) — ผู้ใช้สั่ง 2026-08-09 "ต้องได้ละเอียดสูงสุด"
+    #    เทียบมาตรฐาน vectorizer.ai: Line Fit Quality "Super Fine" = คลาดได้ 0.01 px
+    #    ของเดิมพื้นล่างอยู่ที่ 0.25 px -> หยาบกว่า 25 เท่า จึงเห็นขอบเป็นแฉก/หยัก
+    # ✅ โหมดนี้: ยอมคลาดแค่ 0.03 px + ลดงบเกลาแนวจุดเหลือ 1/4 + ไม่ดันขอบ
+    #    ได้เส้นตามต้นฉบับเป๊ะ (จุดเยอะขึ้น ไฟล์ใหญ่ขึ้น — แลกกับความคม)
+    #    ⚠️ งานทั่วไป (ไม่ติ๊ก) ยังใช้ค่าเดิมทุกตัว ไม่ถูกแตะเลย
+    # ══════════════════════════════════════════════════════════════
+    if grad:
+        tol_e = 0.03
+        budget_e = float(np.clip(budget_e * 0.25, 0.02, 0.6))
     #      ⚠️ ห้ามคูณตามความละเอียด — คูณแล้วจุดน้อยลงจริง แต่ความตรงกับต้นฉบับแย่ลง
     #         (วัดจริง: คูณ R^0.5 ได้ 892 จุด RMS 10.7 · ไม่คูณได้ 1175 จุด RMS 9.1)
     #         ผู้ใช้ปรับเองได้ที่ "จำนวนจุดบนเส้น" ถ้าอยากได้ไฟล์เล็กกว่า
@@ -1123,6 +1211,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    (วัดจริง: โลโก้สีเปิดเกลา σ0.96 แล้วมีขาวแทรก 1,313 พิกเซล จาก 0)
     #    จึงต้องชดเชยระยะดันขอบตามความแรงที่เกลาไปจริง ๆ ของแต่ละชั้น
     gap_e = float(cfg["gap"])
+    if grad:
+        gap_e = 0.0                    # 🔬 ไม่ดันขอบ — ให้ขอบอยู่ตรงตำแหน่งจริง (รอยต่อปิดด้วยการซ้อนชั้นอยู่แล้ว)
     # ภาพที่ถูกขยายมา ขอบจะฟุ้ง เกิดเศษเล็ก ๆ ง่าย -> ตัดเกณฑ์ให้สูงขึ้นตามส่วน
     min_a = max(float(cfg["min_area"]) * R * R * F * F, (max(W, H) * 0.0035) ** 2)
     sig_used = []
@@ -1140,10 +1230,17 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             continue
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
-        layers.append({"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
-                       "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e,
-                                          look=int(max(6, round(2.5 * sg) + 5)),
-                                          budget=budget_e)})
+        _Lr = {"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
+               "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e,
+                                  look=int(max(6, round(2.5 * sg) + 5)),
+                                  budget=budget_e)}
+        # 🌈 โหมดไล่สี: หาไล่สีเชิงเส้นของก้อนนี้ (ไม่มี = ก้อนสีแบน ใช้ fill เดียวเหมือนเดิม)
+        if grad:
+            _m = (labels == i) if keep is None else ((labels == i) & keep)
+            _g = fit_gradient(img, _m, seed=seed)
+            if _g:
+                _Lr["grad"] = _g
+        layers.append(_Lr)
     layers.sort(key=lambda L: -L["area"])           # ใหญ่ก่อน = ซ้อนทับ ไม่มีช่องว่าง
 
     # ขยายพิกัดคืนขนาดจริง

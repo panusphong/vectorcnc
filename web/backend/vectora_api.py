@@ -167,7 +167,9 @@ async def convert(file: UploadFile = File(...),
                   preset: str = Form("general"),
                   k: int = Form(0), smooth: int = Form(-1),
                   tol: float = Form(-1.0), gap: float = Form(-1.0),
-                  transparent: int = Form(-1)):
+                  transparent: int = Form(-1),
+                  # 🌈 โหมดไล่สี/ภาพถ่าย — ไม่ตัดสีผสม + เพดาน 64 สี (ผู้ใช้สั่ง 2026-08-09)
+                  grad: int = Form(0)):
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
@@ -178,7 +180,8 @@ async def convert(file: UploadFile = File(...),
                            smooth=(int(smooth) if int(smooth) >= 0 else None),
                            tol=(float(tol) if float(tol) >= 0 else None),
                            gap=(float(gap) if float(gap) >= 0 else None),
-                           transparent=(None if int(transparent) < 0 else bool(int(transparent))))
+                           transparent=(None if int(transparent) < 0 else bool(int(transparent))),
+                           grad=bool(int(grad or 0)))
     except ValueError as e:                     # ผิดมาตรฐานขาเข้า -> บอกผู้ใช้ตรง ๆ
         raise HTTPException(400, str(e))
     except Exception as e:

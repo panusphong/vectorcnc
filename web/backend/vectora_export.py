@@ -33,12 +33,36 @@ def to_svg(res, scale=1.0, background=True):
     p = ['<?xml version="1.0" encoding="UTF-8"?>',
          '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">'
          % (ow, oh, W, H)]
+    # ══════════════════════════════════════════════════════════════
+    # 🌈 นิยามไล่สีเชิงเส้น (โหมด "ภาพไล่สี") — ผู้ใช้สั่ง 2026-08-09
+    #    ก้อนไหนที่เอนจิ้นหา 'ระนาบสี' ได้ จะมี L["grad"] ติดมา
+    #    -> ออกเป็น <linearGradient> แล้ว fill ด้วย url(#..) แทนสีเดียว
+    #    ผลคือไล่สีเนียนต่อเนื่องจริง ไม่ใช่แถบสีแบนเรียงกัน
+    #    gradientUnits="userSpaceOnUse" = ใช้พิกัดเดียวกับ path ตรง ๆ ไม่ต้องแปลง
+    # ══════════════════════════════════════════════════════════════
+    _defs = []
+    for i, L in enumerate(res["layers"]):
+        g = L.get("grad")
+        if not g:
+            continue
+        _defs.append(
+            '<linearGradient id="g%d" gradientUnits="userSpaceOnUse" '
+            'x1="%s" y1="%s" x2="%s" y2="%s">'
+            '<stop offset="0" stop-color="#%02x%02x%02x"/>'
+            '<stop offset="1" stop-color="#%02x%02x%02x"/></linearGradient>'
+            % ((i + 1, g["x1"], g["y1"], g["x2"], g["y2"]) + tuple(g["c1"]) + tuple(g["c2"])))
+    if _defs:
+        p.append('<defs>' + "".join(_defs) + '</defs>')
     if background and res.get("bg"):
         p.append('<rect width="%d" height="%d" fill="#%02x%02x%02x"/>' % ((W, H) + tuple(res["bg"])))
     for i, L in enumerate(res["layers"]):
         d = " ".join(_d_of(it) for it in L["items"])
-        p.append('<path id="c%d" d="%s" fill="#%02x%02x%02x" fill-rule="evenodd"/>'
-                 % ((i + 1, d) + L["rgb"]))
+        if L.get("grad"):
+            p.append('<path id="c%d" d="%s" fill="url(#g%d)" fill-rule="evenodd"/>'
+                     % (i + 1, d, i + 1))
+        else:
+            p.append('<path id="c%d" d="%s" fill="#%02x%02x%02x" fill-rule="evenodd"/>'
+                     % ((i + 1, d) + L["rgb"]))
     p.append('</svg>')
     return "".join(p)
 
