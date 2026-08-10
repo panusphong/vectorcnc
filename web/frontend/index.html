@@ -502,17 +502,15 @@ select.numin{cursor:pointer}
             <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:3px">📐 ขนาดกล่อง (ซม.)</div>
             <div style="display:flex;gap:6px">
               <div style="flex:1"><label style="font-size:10px;color:#92700a">กว้าง</label><input class="numin" id="bxW" type="number" placeholder="กว้าง" min="5" style="padding:5px;width:100%"></div>
-              <div style="flex:1"><label style="font-size:10px;color:#92700a">สูง</label><input class="numin" id="bxH" type="number" placeholder="auto" min="5" style="padding:5px;width:100%"></div>
+              <div style="flex:1"><label style="font-size:10px;color:#92700a">สูง</label><input class="numin" id="bxH" type="number" placeholder="อัตโนมัติ" min="5" style="padding:5px;width:100%" title="เว้นว่าง = ระบบสเกลความสูงให้เองตามสัดส่วนงาน (งานไม่บิด)"></div>
               <div style="flex:1"><label style="font-size:10px;color:#92700a">ลึก</label><input class="numin" id="bxD" type="number" placeholder="ลึก" min="1" style="padding:5px;width:100%"></div>
             </div>
-            <!-- 📐 ล็อกสัดส่วนงาน — ผู้ใช้สั่ง 2026-08-09
-                 ⚠️ เดิมกรอกทั้ง กว้าง+สูง = ยืดอิสระ 2 แกน -> งานถูกบิด ดู "สูงผิดปกติ"
-                 ✅ ล็อกไว้ = กรอกด้านเดียว อีกด้านคำนวณตามสัดส่วนงานจริงให้ = สเกลอย่างเดียว ไม่บิด -->
-            <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
-              <button type="button" class="chip on" id="bxLock" title="ล็อกสัดส่วนงาน — กรอกด้านเดียว อีกด้านคิดให้" style="padding:5px 9px;font-size:13px">🔒</button>
-              <span id="bxAR" style="font-size:10.5px;color:#92700a;line-height:1.5"></span>
-            </div>
-            <div class="hint" style="margin:5px 0 0">🔒 <b>ล็อก</b> = กรอกด้านเดียว อีกด้านคิดตามสัดส่วนงานให้ (ไม่บิด) · 🔓 <b>ปลด</b> = ยืด/หดอิสระ 2 แกน · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
+            <!-- 📐 สูงคิดเองอัตโนมัติจากความกว้าง (ผู้ใช้สั่ง 2026-08-09)
+                 "กำหนดความกว้างเท่าไหร่ ให้มันวิ่งสเกลความสูงเอง อัตโนมัติเลย"
+                 ⚠️ เคยทำเป็นปุ่มล็อก 🔒 แล้วมันไปเขียนทับค่าที่ผู้ใช้กรอก (กรอก 85 โดนทับเป็น 66.8)
+                 ✅ ตอนนี้: เว้นช่อง 'สูง' ว่างไว้ = ระบบคิดให้เอง งานไม่บิด · อยากกำหนดเองค่อยพิมพ์ทับ -->
+            <div id="bxAR" style="font-size:10.5px;color:#92700a;line-height:1.55;margin-top:6px"></div>
+            <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = <b>ระบบสเกลความสูงให้เองตามสัดส่วนงาน</b> (งานไม่บิด) · พิมพ์ <b>สูง</b> เอง = ได้ขนาดนั้นเป๊ะ แต่งานจะถูกยืด · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
 
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
               <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
@@ -5282,7 +5280,11 @@ window.restoreDesignJob=function(d,job){
       if($('laWcm'))$('laWcm').value=d.la.wcm||''; if($('laHcm'))$('laHcm').value=d.la.hcm||''; }
     var fin=function(){ setTimeout(function(){ try{ if($('goLayer'))$('goLayer').click(); }catch(_e){} },300); };
     if(d.src){ fetch(d.src).then(function(r){return r.blob();}).then(function(bl){
-        var f=new File([bl],((job&&job.jobName)||'design')+'.jpg',{type:bl.type||'image/jpeg'});
+        // 📄 คืนไฟล์ด้วย 'ชื่อ+ชนิดเดิม' — เดิมบังคับเป็น .jpg เสมอ
+        //    ทำให้ composed_vector.pdf ที่เก็บไว้ กลายเป็น .jpg แล้วอ่านไม่ออก (เส้นเวกเตอร์หายหมด)
+        var _fn=String(d.srcname||'')||(((job&&job.jobName)||'design')+'.jpg');
+        var _ft=String(d.srctype||'')||bl.type||'image/jpeg';
+        var f=new File([bl],_fn,{type:_ft});
         try{ if(typeof pick==='function')pick(f); else fileObj=f; }catch(_e){ fileObj=f; }
         try{ window._stickerIdx=(d.sticker&&d.sticker.slice)?d.sticker.slice():[]; }catch(_e){}   // pick() ล้างไป -> ตั้งกลับ
         fin(); }).catch(fin); }
@@ -6380,13 +6382,12 @@ var TRIMW=1, TRIMDIR='out';
     if(_isLetter)fillFonts(); if(v==='17')fillNeon(); }
   // 📐 กว้าง->realW · ลึก->RDEPTH (สูง=bxH ใช้ตอนส่ง goLayer)
   // ══════════════════════════════════════════════════════════════
-  // 📐 ล็อกสัดส่วนงานบนแผงกล่องไฟ (ผู้ใช้สั่ง 2026-08-09)
-  //    สัดส่วนงาน (_ARTAR = กว้าง ÷ สูง) มาจาก 2 ทาง:
-  //      1) หน้าแตกชิ้น — ตั้งให้ตอนกด 'รวมเป็นแบบ' (แม่นที่สุด เพราะรู้ขนาดจริงเป็น มม.)
-  //      2) ไฟล์ที่อัปเข้ามาตรง ๆ — วัดจากสัดส่วนภาพพรีวิว
-  //    ล็อกอยู่ = พิมพ์ด้านไหน อีกด้านคำนวณตามให้ทันที -> สเกลอย่างเดียว งานไม่ถูกบิด
+  // 📐 ความสูงคิดเองอัตโนมัติ (ผู้ใช้สั่ง 2026-08-09)
+  //    "กำหนดความกว้างเท่าไหร่ ให้มันวิ่งสเกลความสูงเอง อัตโนมัติเลย"
+  //    ⚠️ ห้ามเขียนค่าลงช่อง 'สูง' เด็ดขาด — เคยทำแล้วมันทับค่าที่ผู้ใช้กรอกเอง
+  //       ปล่อยว่าง = หน้าเว็บส่ง real_height_mm=0 = หลังบ้านคิดสูงตามสัดส่วนให้เอง
+  //       หน้าที่ตรงนี้คือ 'บอกให้เห็นล่วงหน้า' ว่าจะได้สูงเท่าไหร่เท่านั้น
   // ══════════════════════════════════════════════════════════════
-  window._BXLOCK = (window._BXLOCK !== false);
   window._artAR=function(){
     var a=parseFloat(window._ARTAR||0);
     if(a>0.01) return a;
@@ -6397,36 +6398,25 @@ var TRIMW=1, TRIMDIR='out';
   window._bxARsync=function(){
     var el=$('bxAR'); if(!el)return;
     var ar=window._artAR();
-    if(!(ar>0.01)){ el.innerHTML='<span style="color:#a8894a">ยังไม่รู้สัดส่วนงาน — กรอกได้ทั้งสองช่อง</span>'; return; }
     var w=parseFloat(($('bxW')||{}).value)||0, h=parseFloat(($('bxH')||{}).value)||0;
+    if(!(ar>0.01)){ el.innerHTML='<span style="color:#a8894a">ยังไม่รู้สัดส่วนงาน — เว้นช่อง \u201cสูง\u201d ว่างไว้ ระบบจะคิดให้ตอนสร้างแบบ</span>'; return; }
     var txt='สัดส่วนงาน <b>'+ar.toFixed(2)+' : 1</b>';
-    if(w>0&&h>0){ var cur=w/h, off=Math.abs(cur-ar)/ar*100;
-      txt += ' · ที่กรอก <b>'+cur.toFixed(2)+' : 1</b>' +
-             (off>2 ? ' <span style="color:#dc2626">⚠️ งานจะถูกบิด '+off.toFixed(0)+'%</span>'
-                    : ' <span style="color:#16a34a">✅ ตรงสัดส่วน</span>'); }
+    if(!(h>0)){
+      txt += (w>0)
+        ? ' · กว้าง '+w+' ซม. → สูง <b style="color:#0f766e">~'+(w/ar).toFixed(1)+' ซม.</b> (คิดให้อัตโนมัติ · งานไม่บิด)'
+        : ' · กรอกแค่ <b>กว้าง</b> พอ — สูงคิดให้เองอัตโนมัติ';
+    } else if(w>0){
+      var cur=w/h, off=Math.abs(cur-ar)/ar*100;
+      txt += ' · ที่กรอก <b>'+cur.toFixed(2)+' : 1</b>'
+           + (off>2 ? ' <span style="color:#dc2626">⚠️ งานจะถูกยืด/บิด '+off.toFixed(0)+'% — ลบค่าใน \u201cสูง\u201d ทิ้ง ถ้าไม่อยากให้บิด</span>'
+                    : ' <span style="color:#16a34a">✅ ตรงสัดส่วน ไม่บิด</span>');
+    }
     el.innerHTML=txt;
-  };
-  window._bxFill=function(from){
-    if(!window._BXLOCK) return;
-    var ar=window._artAR(); if(!(ar>0.01))return;
-    var W=$('bxW'), H=$('bxH'); if(!W||!H)return;
-    if(from==='w'){ var v=parseFloat(W.value)||0; if(v>0)H.value=Math.round(v/ar*10)/10; }
-    else          { var u=parseFloat(H.value)||0; if(u>0)W.value=Math.round(u*ar*10)/10; }
-  };
-  if($('bxLock'))$('bxLock').onclick=function(){
-    window._BXLOCK=!window._BXLOCK; this.textContent=window._BXLOCK?'🔒':'🔓';
-    this.classList.toggle('on',window._BXLOCK);
-    if(window._BXLOCK)window._bxFill('w');
-    window._bxARsync();
   };
   if($('bxW'))$('bxW').oninput=function(){ window._bxFit=0;
     if($('realW')&&parseFloat(this.value)>0){$('realW').value=Math.round(parseFloat(this.value)*10);if($('realWcm'))$('realWcm').value=parseFloat(this.value);}
-    window._bxFill('w'); window._bxARsync(); };
-  if($('bxH'))$('bxH').oninput=function(){ window._bxFit=0; window._bxFill('h');
-    if($('bxW')&&$('realW')&&parseFloat($('bxW').value)>0){$('realW').value=Math.round(parseFloat($('bxW').value)*10);if($('realWcm'))$('realWcm').value=parseFloat($('bxW').value);}
     window._bxARsync(); };
-  // 🎯 สลับ 'โลโก้เต็มพื้นที่กล่อง' = ทรงกล่องเปลี่ยน -> ล้างค่าชดเชยความกว้างที่จำไว้
-  if($('bxTight'))$('bxTight').onchange=function(){ window._bxFit=0; };
+  if($('bxH'))$('bxH').oninput=function(){ window._bxFit=0; window._bxARsync(); };
   if($('bxD'))$('bxD').oninput=function(){ if(parseFloat(this.value)>0){ RDEPTH=parseFloat(this.value); var ch=document.querySelectorAll('#rdChips .chip'); for(var j=0;j<ch.length;j++)ch[j].classList.remove('on'); if($('rdCustom'))$('rdCustom').value=this.value; } };
   sel.addEventListener('change',function(){ window._bxFit=0; toggle(); if(typeof window.clearDesignResult==='function')window.clearDesignResult(); }); toggle();
   if($('mfTextFont'))$('mfTextFont').addEventListener('change',function(){try{loadGFont(this.value);}catch(_e){}});
@@ -7233,9 +7223,44 @@ $('goLayer').onclick=function(){
         pm:{mat:_gv('pmMaterial'),ledt:_gv('pmLedType'),pitch:_gv('pmLedPitch'),ledc:_gv('pmLedColor'),wire:_gv('pmWire'),print:_gv('pmPrint'),sales:_gv('pmSales'),graphic:_gv('pmGraphic'),deliv:_gv('pmDelivery')},
         la:{s:($('laScale')&&$('laScale').value)||100,dx:($('laDx')&&$('laDx').value)||0,dy:($('laDy')&&$('laDy').value)||0,
             wcm:($('laWcm')&&$('laWcm').value)||'',hcm:($('laHcm')&&$('laHcm').value)||''}};   // 📏 ขนาด logo ที่กำหนดเอง
+      // 📏 ความสูงจริงของงาน — ใช้ตอนบันทึกเพื่อไม่ให้หน้าค้นหางานขึ้น "230×? ซม."
+      //    ผู้ใช้เว้นช่อง 'สูง' ว่างไว้ให้ระบบคิดเอง (ตั้งใจ) แต่ตอนบันทึกต้องมีตัวเลขจริง
+      //    ลำดับที่เชื่อถือได้: ขนาดชั้นตัดที่คำนวณเสร็จแล้ว -> สัดส่วนงาน × ความกว้าง
+      var _jobH=function(){
+        try{ if(j&&j.outer_h_mm>0) return Math.round(j.outer_h_mm/10*10)/10; }catch(_e){}
+        try{ if(j&&j.h_mm>0) return Math.round(j.h_mm/10*10)/10; }catch(_e){}
+        try{ var ar=(window._artAR&&window._artAR())||0;
+          if(ar>0.01&&wcm>0) return Math.round(wcm/ar*10)/10; }catch(_e){}
+        return 0;
+      };
       var doSave=function(img,src){ st8.src=src||'';
-        window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:st8.hcm,image:img||'',signType:t,signName:st8.signName,design:JSON.stringify(st8)}); };
+        window.saveDesignJob({jobName:nm,customer:cust,wCm:wcm,hCm:(st8.hcm||_jobH()),image:img||'',signType:t,signName:st8.signName,design:JSON.stringify(st8)}); };
+      // ══════════════════════════════════════════════════════════════
+      // 💾 เก็บ 'ไฟล์งานต้นฉบับ' ไว้ในงานบันทึก
+      //
+      // ⚠️ ผู้ใช้เจอจริง (2026-08-09): กด "เปิดงาน" แล้วหน้าจอว่างเปล่า
+      //    ขึ้นเตือน "อัปโหลดภาพ/ไฟล์ก่อน" ทั้งที่บันทึกงานไว้แล้ว
+      //    ต้นเหตุ: โค้ดเดิมยัดไฟล์เข้า <Image> เสมอเพื่อย่อขนาด
+      //    แต่งานจากหน้าแตกชิ้นคือ composed_vector.pdf -> <Image> โหลด PDF ไม่ได้
+      //    -> im.onerror -> cb('') -> st8.src ว่าง -> เปิดงานมาไม่มีไฟล์
+      // ✅ แยกทาง: เป็นภาพ = ย่อเหมือนเดิม · ไม่ใช่ภาพ (pdf/ai/svg/eps) = เก็บดิบทั้งไฟล์
+      //    เก็บชื่อ+ชนิดไฟล์ไว้ด้วย จะได้คืนไฟล์เดิมเป๊ะตอนเปิดงาน (เวกเตอร์ยังคมเหมือนเดิม)
+      //    ไฟล์ใหญ่เกิน 6 MB = ไม่เก็บ (งานจะบวมจนบันทึก/เปิดไม่ไหว) แล้วบอกผู้ใช้ตรง ๆ
+      // ══════════════════════════════════════════════════════════════
       var mkSrc=function(cb){ if(typeof fileObj==='undefined'||!fileObj){cb('');return;}
+        var _nm=String(fileObj.name||''), _ty=String(fileObj.type||'');
+        var _isImg=(_ty.indexOf('image/')===0) && _ty.indexOf('svg')<0;
+        st8.srcname=_nm; st8.srctype=_ty;
+        if(!_isImg){                                   // 📄 เวกเตอร์/PDF -> เก็บทั้งไฟล์ ไม่แปลงเป็นภาพ
+          if(fileObj.size>6*1024*1024){
+            alert('⚠️ ไฟล์งานใหญ่ '+(fileObj.size/1048576).toFixed(1)+' MB — ใหญ่เกินกว่าจะเก็บไว้ในงานบันทึก\n\n'
+                 +'ระบบจะบันทึกค่าตั้งทั้งหมดให้ แต่ตอนเปิดงานกลับมาต้องลากไฟล์เข้ามาใหม่เอง');
+            cb(''); return; }
+          try{ var r2=new FileReader();
+            r2.onload=function(){ cb(String(r2.result||'')); };
+            r2.onerror=function(){ cb(''); };
+            r2.readAsDataURL(fileObj); }catch(_e){ cb(''); }
+          return; }
         try{ var r=new FileReader(); r.onload=function(){ var im=new Image(); im.onload=function(){
             var mx=800,sc=Math.min(1,mx/Math.max(im.width||1,im.height||1));
             var c=document.createElement('canvas'); c.width=Math.max(1,Math.round((im.width||1)*sc)); c.height=Math.max(1,Math.round((im.height||1)*sc));
@@ -9776,7 +9801,7 @@ function _wallPickPieces(pieces, f){
           if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
           setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\n\n'
             +'เลือก "ประเภทป้าย" → กรอกขนาดกล่องที่ต้องการ → กด "ชุดชั้นตัด + 3มิติ"\n'
-            +'💡 ล็อก 🔒 ไว้ กรอกด้านเดียวพอ อีกด้านคิดตามสัดส่วนงานให้เอง'
+            +'💡 กรอกแค่ "กว้าง" พอ — ระบบสเกลความสูงให้เองอัตโนมัติ (งานไม่บิด)'
             +(_wcm9>0? ('\n\n(สัดส่วนงานที่วางไว้ '+(_hcm9>0?(_wcm9/_hcm9).toFixed(2):'?')+' : 1)') : '')); },100);
         } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
           alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
@@ -11948,7 +11973,18 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         <div style="flex:1;min-width:300px"><div class="vinfo" id="vecInfo"></div></div>
       </div>
       <div id="vecNotes"></div>
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px">
+      <!-- 🌈 โหมดภาพไล่สี (ผู้ใช้สั่ง 2026-08-09)
+           ⚠️ ระบบเลือกจำนวนสีเองด้วย auto_k ซึ่งหยุดเมื่อ 'เพิ่มสีแล้วไม่คุ้ม'
+              ภาพพื้นหลังไล่เฉด (gradient) จึงเหลือแค่ 8-9 สี -> ไล่สีกลายเป็นก้อนสีแบน
+           ✅ ติ๊กแล้วบังคับใช้ 32 สี -> เฉดต่อเนื่องขึ้นมาก · งานเดิมไม่ติ๊กก็เหมือนเดิมทุกประการ -->
+      <label id="vecGradWrap" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:9px 11px;
+             border:1px dashed #a78bfa;border-radius:10px;background:#faf5ff;cursor:pointer">
+        <input type="checkbox" id="vecGrad" style="margin-top:2px">
+        <span style="font-size:12.5px;color:#6d28d9;line-height:1.55">🌈 <b>ภาพไล่สี / ภาพถ่าย</b> — เก็บเฉดสีให้ครบ
+          <span style="color:#7c3aed">(ใช้ 32 สี แทนที่จะให้ระบบเลือกเอง)</span><br>
+          <span style="font-size:11.5px;color:#8b5cf6">ติ๊กเมื่อภาพมีพื้นหลังไล่เฉด/เงานุ่ม ๆ แล้วผลลัพธ์ออกมาเป็นก้อนสีแบน ๆ · ไฟล์จะใหญ่ขึ้นและใช้เวลานานกว่าเล็กน้อย</span></span>
+      </label>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
         <button class="vbtn go" id="vecGo">⚡ <span data-i18n="vec.convert">แปลงเป็นเวกเตอร์</span></button>
         <button class="vbtn alt" id="vecBack1">← <span data-i18n="vec.change">เปลี่ยนไฟล์</span></button>
       </div>
@@ -12153,7 +12189,10 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     var b=$('vecGo'), b2=$('vecRe'), old=b.innerHTML;
     b.disabled=b2.disabled=true; b.innerHTML='⏳ กำลังแปลง…';
     var fd=new FormData();
-    fd.append('file',F); fd.append('preset',CFG.preset); fd.append('k',CFG.k);
+    // 🌈 ติ๊ก 'ภาพไล่สี' -> บังคับ 32 สี (ไม่ติ๊ก = ให้ระบบเลือกเองเหมือนเดิม)
+    var _kk=CFG.k;
+    try{ var _vg=document.getElementById('vecGrad'); if(_vg&&_vg.checked&&!(CFG.k>0))_kk=32; }catch(_e){}
+    fd.append('file',F); fd.append('preset',CFG.preset); fd.append('k',_kk);
     fd.append('smooth',CFG.smooth); fd.append('tol',CFG.tol); fd.append('gap',CFG.gap);
     fd.append('transparent',CFG.tr);
     fetch(API+'/api/vec/convert',{method:'POST',body:fd}).then(function(r){
