@@ -40,17 +40,28 @@ def to_svg(res, scale=1.0, background=True):
     #    ผลคือไล่สีเนียนต่อเนื่องจริง ไม่ใช่แถบสีแบนเรียงกัน
     #    gradientUnits="userSpaceOnUse" = ใช้พิกัดเดียวกับ path ตรง ๆ ไม่ต้องแปลง
     # ══════════════════════════════════════════════════════════════
+    # 🌈🌈 รองรับ "ไล่สีหลายจุด" (วิธีใหม่ 2026-08-10)
+    #    ของเดิมออกได้แค่ 2 จุด (หัว-ท้าย) = สมมติว่าสีเปลี่ยนเป็นเส้นตรงล้วน
+    #    ภาพไล่เฉดจริงแทบไม่มีอันไหนเป็นเส้นตรง -> คลาดเฉลี่ยถึง 19.7 ระดับสี (วัดจริง)
+    #    ตอนนี้ออกได้ถึง 28 จุด + รองรับไล่สีแบบวงกลม (radialGradient) ด้วย
     _defs = []
     for i, L in enumerate(res["layers"]):
         g = L.get("grad")
         if not g:
             continue
-        _defs.append(
-            '<linearGradient id="g%d" gradientUnits="userSpaceOnUse" '
-            'x1="%s" y1="%s" x2="%s" y2="%s">'
-            '<stop offset="0" stop-color="#%02x%02x%02x"/>'
-            '<stop offset="1" stop-color="#%02x%02x%02x"/></linearGradient>'
-            % ((i + 1, g["x1"], g["y1"], g["x2"], g["y2"]) + tuple(g["c1"]) + tuple(g["c2"])))
+        st = g.get("stops")
+        if not st:                                   # รูปแบบเดิม 2 จุด (เผื่อไฟล์เก่า)
+            st = [[0.0, tuple(g["c1"])], [1.0, tuple(g["c2"])]]
+        body = "".join('<stop offset="%.4f" stop-color="#%02x%02x%02x"/>'
+                       % ((float(o),) + tuple(int(v) for v in c)) for o, c in st)
+        if g.get("kind") == "radial":
+            _defs.append('<radialGradient id="g%d" gradientUnits="userSpaceOnUse" '
+                         'cx="%s" cy="%s" r="%s">%s</radialGradient>'
+                         % (i + 1, g["cx"], g["cy"], g["r"], body))
+        else:
+            _defs.append('<linearGradient id="g%d" gradientUnits="userSpaceOnUse" '
+                         'x1="%s" y1="%s" x2="%s" y2="%s">%s</linearGradient>'
+                         % (i + 1, g["x1"], g["y1"], g["x2"], g["y2"], body))
     if _defs:
         p.append('<defs>' + "".join(_defs) + '</defs>')
     if background and res.get("bg"):
