@@ -27,6 +27,42 @@ def _d_of(item):
     return d + "Z"
 
 
+def _poly_of(items, tol=0.55):
+    """แปลง items (เบซิเยร์) -> รูปทรง shapely พร้อม 'รู' ตามกติกา even-odd"""
+    from shapely.geometry import Polygon as _P
+    rings = []
+    for it in items:
+        pts = _flat(it, tol)
+        if len(pts) >= 4:
+            try:
+                g = _P(pts).buffer(0)
+                if not g.is_empty:
+                    rings.append(g)
+            except Exception:
+                pass
+    if not rings:
+        return None
+    rings.sort(key=lambda g: -g.area)
+    out = rings[0]
+    for g in rings[1:]:
+        out = out.difference(g) if out.contains(g.representative_point()) else out.union(g)
+    return None if out.is_empty else out
+
+
+def _d_of_poly(g):
+    def ring(c):
+        return "M " + " L ".join("%.1f %.1f" % (x, y) for x, y in c) + " Z"
+    ps = list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
+    d = []
+    for p in ps:
+        if p.is_empty:
+            continue
+        d.append(ring(p.exterior.coords))
+        for h in p.interiors:
+            d.append(ring(h.coords))
+    return " ".join(d)
+
+
 def to_svg(res, scale=1.0, background=True):
     W, H = res["size"]
     ow, oh = int(round(W * scale)), int(round(H * scale))
@@ -63,9 +99,13 @@ def to_svg(res, scale=1.0, background=True):
                 body = "".join('<stop offset="%.4f" stop-color="#%02x%02x%02x"/>'
                                % ((float(o),) + tuple(int(v) for v in c)) for o, c in b["stops"])
                 # ไล่สีอยู่ในกรอบที่หมุนแล้ว: แกน y ท้องถิ่น = -t  (offset 0 อยู่ที่ t0)
+                import math as _mm
+                _rd = _mm.radians(float(g["deg"]))
+                _ux, _uy = _mm.sin(_rd), -_mm.cos(_rd)
+                _t0, _t1 = float(g["t0"]), float(g["t1"])
                 _defs.append('<linearGradient id="gb%d_%d" gradientUnits="userSpaceOnUse" '
-                             'x1="0" y1="%.2f" x2="0" y2="%.2f">%s</linearGradient>'
-                             % (i + 1, k, -float(g["t0"]), -float(g["t1"]), body))
+                             'x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f">%s</linearGradient>'
+                             % (i + 1, k, _t0 * _ux, _t0 * _uy, _t1 * _ux, _t1 * _uy, body))
             _band[i] = len(bs)
             continue
         st = g.get("stops")
@@ -96,29 +136,48 @@ def to_svg(res, scale=1.0, background=True):
             #     = การเกลี่ยเชิงเส้นระหว่างแถบ (ขั้นละ ~1 ระดับสี ตาไม่เห็น)
             #   ⚠️ ห้ามเปลี่ยนไปใช้ <mask> — cairosvg ไม่รองรับ ไฟล์ PDF/EPS/PNG จะเพี้ยนทั้งใบ
             # ══════════════════════════════════════════════════════════
+            # ⚠️ ห้ามใช้ clipPath ที่มี "รู" — cairosvg รวมทุกวงเป็นก้อนเดียว รูจะหายไป
+            #    (ผู้ใช้เจอจริง: พื้นไล่สีไปนอนใต้วงกลมขาว แล้วโผล่เป็นริ้วม่วงในตัวอักษรเล็ก)
+            # ✅ ตัดรูปจริงด้วยเรขาคณิตใน Python ไปเลย — ได้ path ที่เปิดได้ทุกโปรแกรม
+            import math as _m
+            from shapely.geometry import Polygon as _P
             g = L["grad"]
             cs = [float(v) for v in g["cs"]]
             S = len(cs)
-            y0 = -float(g["t1"]) - 4.0
-            hh = (float(g["t1"]) - float(g["t0"])) + 8.0
-            D = float(W + H) * 1.5
+            rad = _m.radians(float(g["deg"]))
+            pxv, pyv = _m.cos(rad), _m.sin(rad)
+            ux, uy = pyv, -pxv
+            t0, t1 = float(g["t0"]), float(g["t1"])
+            M = float(W + H) * 2.0
             q = int(g.get("q") or 8)
-            p.append('<clipPath id="cp%d"><path d="%s" fill-rule="evenodd"/></clipPath>' % (i + 1, d))
-            p.append('<g clip-path="url(#cp%d)"><g transform="rotate(%s)">' % (i + 1, g["deg"]))
+            base = _poly_of(L["items"])
+            def _slab(a, b):
+                pts = [(a * pxv - y * ux, a * pyv - y * uy) for y in (-t1 - M, -t0 + M)]
+                pts += [(b * pxv - y * ux, b * pyv - y * uy) for y in (-t0 + M, -t1 - M)]
+                return _P(pts)
+            def _emit(a, b, k, op=None):
+                if base is None or b <= a:
+                    return
+                try:
+                    pc = base.intersection(_slab(a, b))
+                except Exception:
+                    return
+                if pc.is_empty:
+                    return
+                dd = _d_of_poly(pc)
+                if not dd:
+                    return
+                p.append('<path d="%s" fill="url(#gb%d_%d)" fill-rule="evenodd"%s/>'
+                         % (dd, i + 1, k, '' if op is None else ' fill-opacity="%.3f"' % op))
+            D = float(W + H) * 1.5
             for k in range(S):
                 if k > 0:                                     # ช่วงเกลี่ยเข้าหาแถบก่อนหน้า
                     a0, a1 = cs[k - 1], cs[k]
                     dw = (a1 - a0) / q
                     for j in range(q):
-                        p.append('<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
-                                 'fill="url(#gb%d_%d)" fill-opacity="%.3f"/>'
-                                 % (a0 + j * dw - 0.05, y0, dw + 0.10, hh,
-                                    i + 1, k, (j + 0.5) / q))
-                x0 = (cs[0] - D) if k == 0 else cs[k]
-                x1 = (cs[k + 1] if k + 1 < S else cs[k] + D)
-                p.append('<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="url(#gb%d_%d)"/>'
-                         % (x0, y0, max(0.01, x1 - x0), hh, i + 1, k))
-            p.append('</g></g>')
+                        _emit(a0 + j * dw - 0.05, a0 + (j + 1) * dw + 0.05, k, (j + 0.5) / q)
+                _emit((cs[0] - D) if k == 0 else cs[k],
+                      (cs[k + 1] if k + 1 < S else cs[k] + D), k)
             continue
         if L.get("grad"):
             p.append('<path id="c%d" d="%s" fill="url(#g%d)" fill-rule="evenodd"/>'

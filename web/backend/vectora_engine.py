@@ -643,15 +643,106 @@ def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
         return None
 
 
-def _fill_holes(m):
-    """อุดรูในมาสก์ (รู = โลโก้ที่วางทับพื้น) -> พื้นกลายเป็นแผ่นเดียวต่อเนื่อง"""
+def grad_eval(g, xs, ys):
+    """🌈 คำนวณสีที่ 'แบบจำลองไล่สี' ทำนายไว้ ณ พิกัดที่กำหนด — คืน (m,3) float
+
+    ใช้สองที่:
+      1) ขยายย่านพื้นให้ครบ (พิกเซลไหนที่แบบจำลองทายถูก = เป็นพื้นแน่นอน)
+      2) ตรวจความแม่นของแบบจำลองตอนทดสอบ
+    """
+    xs = np.asarray(xs, np.float64); ys = np.asarray(ys, np.float64)
+    def _ramp(st, t):
+        off = np.array([q[0] for q in st], np.float64)
+        col = np.array([q[1] for q in st], np.float64)
+        return np.stack([np.interp(t, off, col[:, c]) for c in range(3)], 1)
+    k = g.get("kind")
+    if k == "radial":
+        rr = max(1e-6, float(g["r"]))
+        t = np.hypot(xs - float(g["cx"]), ys - float(g["cy"])) / rr
+        return _ramp(g["stops"], np.clip(t, 0, 1))
+    if k == "bands":
+        rad = np.radians(float(g["deg"]))
+        pxv, pyv = np.cos(rad), np.sin(rad)
+        ux, uy = pyv, -pxv
+        t0, t1 = float(g["t0"]), float(g["t1"])
+        tn = np.clip((xs * ux + ys * uy - t0) / max(1e-6, t1 - t0), 0, 1)
+        cs = np.asarray(g["cs"], np.float64)
+        S = len(cs)
+        A = np.stack([_ramp(b["stops"], tn) for b in g["bands"]], 0)     # (S,m,3)
+        if S == 1:
+            return A[0]
+        sv = xs * pxv + ys * pyv
+        pos = np.clip((sv - cs[0]) / max(1e-6, cs[1] - cs[0]), 0.0, S - 1.0)
+        k0 = np.clip(np.floor(pos).astype(np.int32), 0, S - 2)
+        f = (pos - k0)[:, None]
+        ii = np.arange(len(xs))
+        return A[k0, ii] * (1 - f) + A[k0 + 1, ii] * f
+    x1, y1, x2, y2 = (float(g["x1"]), float(g["y1"]), float(g["x2"]), float(g["y2"]))
+    dx, dy = x2 - x1, y2 - y1
+    L = (dx * dx + dy * dy) ** 0.5
+    if L < 1e-9:
+        return _ramp(g["stops"], np.zeros(len(xs)))
+    ux, uy = dx / L, dy / L
+    a0 = x1 * ux + y1 * uy
+    t = np.clip((xs * ux + ys * uy - a0) / L, 0, 1)
+    return _ramp(g["stops"], t)
+
+
+def grad_claim(img_rgb, g, seed_mask, tol=13.0, chunk=400000):
+    """🔎 ขยายย่านพื้นให้ครบ — พิกเซลไหนที่ 'แบบจำลองไล่สีทายถูก' ก็คือพื้น
+
+    ⚠️ ทำไมต้องมี (ผู้ใช้ชี้จุด 2026-08-10 รอบสาม):
+       ตัวตรวจพื้นใช้อนุพันธ์อันดับสอง ซึ่งพลาดตรงย่านที่สีพื้นเปลี่ยนเร็ว
+       (พื้นรุ้งช่วงที่เฉดม้วนกลับ) ย่านพวกนั้นเลยไม่ถูกนับเป็นพื้น
+       -> k-means เอาโควตาสีไปจับสีรุ้ง แล้ววาดกลับมาเป็น 'ปื้นสีแบน' ทับพื้นเนียน
+          (ตรงที่ผู้ใช้วงแดงไว้) แถมยังกินโควตาสีของโลโก้เล็กไปด้วย
+    ✅ ให้ 'แบบจำลองไล่สี' ตัดสินเอง: ทายสีได้ตรง = เป็นพื้น · ทายไม่ตรง = เป็นลาย
+       ปลอดภัยเพราะลายจริง (ตัวอักษร/ใบไม้) ทายยังไงก็ไม่ตรง
+    """
+    H, W = img_rgb.shape[:2]
+    out = np.zeros((H, W), bool)
+    yy, xx = np.mgrid[0:H, 0:W]
+    xs = xx.reshape(-1); ys = yy.reshape(-1)
+    C = img_rgb.reshape(-1, 3).astype(np.float64)
+    ok = np.zeros(len(xs), bool)
+    for a in range(0, len(xs), chunk):
+        b = min(a + chunk, len(xs))
+        pr = grad_eval(g, xs[a:b], ys[a:b])
+        ok[a:b] = np.abs(pr - C[a:b]).max(1) <= float(tol)
+    ok = ok.reshape(H, W) | seed_mask
+    ok = cv2.morphologyEx(ok.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    n, lb, st, _ = cv2.connectedComponentsWithStats(ok, 8)
+    if n <= 1:
+        return seed_mask
+    # เอาเฉพาะชิ้นที่ทับกับย่านพื้นเดิม (กันหยิบพื้นที่ขาวในโลโก้ที่บังเอิญสีใกล้กัน)
+    keepid = np.unique(lb[seed_mask])
+    keepid = keepid[keepid > 0]
+    if not len(keepid):
+        return seed_mask
+    return np.isin(lb, keepid) | seed_mask
+
+
+def _fill_holes(m, max_frac=0.02):
+    """อุดรูในมาสก์ (รู = ลายที่วางทับพื้น) -> พื้นกลายเป็นแผ่นเดียวต่อเนื่อง
+
+    ⚠️ อุด 'ทุกรู' ไม่ได้ (ผู้ใช้ชี้จุด 2026-08-10 รอบสาม — ริ้วสีม่วงแทรกในตัวอักษรเล็ก)
+       รูใหญ่ ๆ เช่นวงกลมขาวกลางตรา จะถูกชั้นของมันเองระบายทับอยู่แล้ว
+       แต่ถ้าอุดไว้ พื้นไล่สีจะไปนอนอยู่ใต้ทั้งวง -> ช่องว่างระดับเศษพิกเซล
+       ระหว่างตัวอักษรกับพื้นขาว จะเผยสีรุ้งขึ้นมาเป็นริ้วฉูดฉาด (เห็นชัดมากกับตัวอักษรเล็ก)
+    ✅ อุดเฉพาะรูเล็ก (ใบไม้/ตัวอักษรบนพื้น) · รูใหญ่ปล่อยไว้
+       ตอนขยายขอบทีหลัง พื้นจะเลยเข้าไปใต้ขอบรูใหญ่พอดี ไม่เกิดขอบขาว
+    """
     inv = (~m).astype(np.uint8)
-    n, lbl = cv2.connectedComponents(inv, 4)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(inv, 4)
     if n <= 1:
         return m.copy()
-    edge = np.unique(np.concatenate([lbl[0, :], lbl[-1, :], lbl[:, 0], lbl[:, -1]]))
+    edge = set(np.unique(np.concatenate([lbl[0, :], lbl[-1, :], lbl[:, 0], lbl[:, -1]])).tolist())
+    lim = float(max_frac) * m.shape[0] * m.shape[1]
+    ids = [i for i in range(1, n)
+           if i not in edge and float(st[i, cv2.CC_STAT_AREA]) <= lim]
     out = m.copy()
-    out |= (lbl > 0) & ~np.isin(lbl, edge)
+    if ids:
+        out |= np.isin(lbl, np.array(ids, np.int32))
     return out
 
 
@@ -1506,9 +1597,33 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         try:
             for _rg in smooth_regions(img, keep=keep):
                 _g = fit_gradient_field(img, _rg["fit"], seed=seed)
-                if _g:
-                    _rg["grad"] = _g
-                    _smr.append(_rg)
+                if not _g:
+                    continue
+                # 🔎 ให้แบบจำลองไล่สี "เคลม" พิกเซลพื้นที่ตัวตรวจพลาดไป แล้วฟิตใหม่ให้แม่นขึ้น
+                try:
+                    _cl = grad_claim(img, _g, _rg["raw"])
+                    if keep is not None:
+                        _cl &= keep
+                    if _cl.sum() > _rg["raw"].sum():
+                        _rr3 = int(max(3, round(max(H, W) / 220.0))) | 1
+                        _fit2 = cv2.erode(_cl.astype(np.uint8),
+                                          np.ones((_rr3 + 4, _rr3 + 4), np.uint8)).astype(bool)
+                        if _fit2.sum() >= 400:
+                            _g2 = fit_gradient_field(img, _fit2, seed=seed)
+                            if _g2 and _g2.get("err", 99) <= _g.get("err", 99) * 1.25:
+                                _g = _g2
+                        _rg["raw"] = _cl
+                        _rg["core"] = _cl
+                        _rg["fit"] = _fit2 if _fit2.sum() >= 400 else _cl
+                        _rg["n"] = int(_cl.sum())
+                        _rg["shape"] = cv2.dilate(
+                            _fill_holes(_cl).astype(np.uint8),
+                            np.ones((int(max(3, round(max(H, W) / 220.0))) | 1,) * 2, np.uint8)
+                        ).astype(bool)
+                except Exception:
+                    pass
+                _rg["grad"] = _g
+                _smr.append(_rg)
         except Exception:
             _smr = []
         if _smr:
@@ -1516,8 +1631,17 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             for _rg in _smr:
                 _u |= _rg["core"]
             _u_raw = _u
-            _q_keep = (~_u) if keep is None else (keep & ~_u)
+            # ⚠️ บั๊กที่ผู้ใช้ชี้รอบสอง (2026-08-10): "ริ้วสีแดง/ส้มล้อมรอบใบไม้" + โลโก้เล็กสีเพี้ยน
+            #    เพราะกันแค่ย่านพื้น "ที่ตรวจเจอ" ออกจาก k-means — แต่ตัวตรวจตัดแถบรอบขอบ
+            #    งานทิ้งไปราว 8-10 px แถบนั้นเป็น "สีพื้น" ล้วน ๆ แต่ยังอยู่ในชุดฝึกสี
+            #    -> k-means เอาโควตาสีไปละลายกับสีพื้น แล้ววาดกลับมาเป็นวงล้อมรอบลาย
+            # ✅ กันย่านพื้นแบบ "ขยายขอบออก" ตอนเลือกสี จานสีจึงเป็นของงานจริงล้วน
+            _rq = int(max(9, round(max(H, W) / 200.0))) | 1
+            _u_big = cv2.dilate(_u.astype(np.uint8), np.ones((_rq, _rq), np.uint8)).astype(bool)
+            _q_keep = (~_u_big) if keep is None else (keep & ~_u_big)
             if int(_q_keep.sum()) < 400:           # ทั้งภาพเป็นพื้นไล่สี -> ไม่ต้องกัน
+                _q_keep = (~_u) if keep is None else (keep & ~_u)
+            if int(_q_keep.sum()) < 400:
                 _q_keep = keep
             # สีตัวแทนพื้น: หยิบตามจุดสีของไล่สี -> พิกเซลพื้นจะเกาะสีพวกนี้แทนที่จะไปแย่งสีโลโก้
             for _rg in _smr:
@@ -1559,7 +1683,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         #    ถ้าไม่ขยายคืน แถบนั้นจะไม่มีสีพื้นให้เลือก -> ไปเกาะสีงานจริง = เกิด "ขอบสีเพี้ยน"
         #    รอบใบไม้/รอบวงกลม (ผู้ใช้เห็นเป็นริ้วสีแปลก ๆ รอบลาย)
         if _u_raw is not None:
-            _rr2 = int(max(5, round(max(H, W) / 200.0))) | 1
+            _rr2 = int(max(9, round(max(H, W) / 200.0))) | 1
             _ins = cv2.dilate(_u_raw.astype(np.uint8),
                               np.ones((_rr2, _rr2), np.uint8)).astype(bool)
         else:
@@ -1706,16 +1830,25 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         f = coverage_field(i, b1, b2, l1, l2, alpha=af)
         if _sup is not None:
             f = f * (1.0 - cv2.GaussianBlur(_sup.astype(np.float32), (0, 0), 0.8))
+        # ⚠️ โหมดไล่สี: ห้ามให้ระบบ "เกลาเพิ่มเอง" ง่าย ๆ (ผู้ใช้ชี้จุด 2026-08-10)
+        #    ตัวเกลาอัตโนมัติจะแรงขึ้นเมื่อชั้นหนึ่งแตกเป็นหลายชิ้น — ซึ่งภาพถ่าย/ภาพไล่สี
+        #    เป็นแบบนั้นโดยธรรมชาติ ผลคือ "ตัวอักษรเล็กโดนเกลาจนขาด" (วัดได้ σ ขึ้นไป 1.6 px)
+        #    ผ่อนเกณฑ์ในโหมดนี้ -> σ อยู่ที่ 0 · ตัวอักษรเล็กครบ (ค่าคลาดโซนโลโก้ 18.8 -> 14.2)
+        _tg = tgt * (3.0 if grad else 1.0)
+        _mp = 2000 if grad else 250
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
-                                   sigma_max=sigM, target=tgt, wave_target=wtgt)
+                                   sigma_max=sigM, target=_tg, wave_target=wtgt,
+                                   max_pieces=_mp)
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
         cs = drop_fake_holes(denoise_field(f, sg), cs)
         if not cs:
             continue
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
+        # 🩹 มีพื้นไล่สีอยู่ข้างล่าง -> ช่องว่างเศษพิกเซลจะเผยสีจัด ๆ ขึ้นมา ต้องเกยกันมากขึ้น
+        _ge = gap_e * (1.9 if grad_layers else 1.0)
         _Lr = {"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
-               "items": to_bezier(grow(cs, gap_e + 0.35 * sg), tol_e,
+               "items": to_bezier(grow(cs, _ge + 0.35 * sg), tol_e,
                                   look=int(max(6, round(2.5 * sg) + 5)),
                                   budget=budget_e)}
         # 🌈 โหมดไล่สี: หาไล่สีเชิงเส้นของก้อนนี้ (ไม่มี = ก้อนสีแบน ใช้ fill เดียวเหมือนเดิม)
@@ -1752,7 +1885,11 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
 
     bg = None
     if not want_alpha and layers:
-        bg = max(layers, key=lambda L: L["n"])["rgb"]
+        # ⚠️ เมื่อมีพื้นไล่สี ห้ามใช้สีของมันเป็นสีรองพื้น
+        #    ช่องว่างระดับเศษพิกเซลระหว่างชั้นจะกลายเป็นริ้วสีฉูดฉาด
+        #    ใช้สีของชั้นลายที่ใหญ่ที่สุดแทน (มักเป็นพื้นขาวของตัวงาน) ริ้วจึงมองไม่เห็น
+        _pool = [L for L in layers if L not in grad_layers] or layers
+        bg = max(_pool, key=lambda L: L["n"])["rgb"]
 
     nodes = sum(len(it[2]) if it[0] == "B" else len(it[1]) for L in layers for it in L["items"])
     stats = {"colors": len(layers), "shapes": sum(len(L["items"]) for L in layers),
