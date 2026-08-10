@@ -8996,6 +8996,20 @@ function _wallPickPieces(pieces, f){
             ชิ้นที่ไม่มีเวกเตอร์ (เช่นข้อความไทยที่เป็น PNG) ยังฝังเป็นภาพเหมือนเดิม */
       +'<label id="asmVecWrap" title="ใช้เส้นเวกเตอร์จริงจากไฟล์ลูกค้าเป็นเส้นตัด — ชิ้นสีขาวจะไม่หาย · เอาติ๊กออก = ฝังทุกชิ้นเป็นภาพแบบเดิม" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#ecfeff;border:1px solid #67e8f9;border-radius:9px;padding:7px 12px;cursor:pointer">'
       +'<input type="checkbox" id="asmVec" checked> 📐 <b>ใช้เส้นเวกเตอร์จริง</b> (คมสุด · ชิ้นสีขาวไม่หาย)</label>'
+      /* 📐 ขนาดแบบรวม (ซม.) — ผู้ใช้สั่ง 2026-08-09
+         ⚠️ ปัญหาเดิม: หน้านี้ไม่บอกว่าแบบที่วางอยู่กว้าง×สูงกี่ ซม.
+            พอส่งเข้าไปเลือกประเภทป้ายแล้วกรอก 230×85 ระบบจะ 'ยืดให้พอดี' -> สัดส่วนเพี้ยน
+            และหน้านั้นแก้สัดส่วนไม่ได้แล้ว (ย้ายชิ้นไม่ได้ ต้องกลับมาแตกชิ้นใหม่)
+         ✅ โชว์ขนาดจริง + สัดส่วน สด ๆ ตรงนี้ · กรอกกว้างหรือสูงแล้วกด 'ตั้ง' = สเกลทั้งแบบให้ได้ขนาดนั้น
+            (ปรับที่ค่า มม./พิกเซล ของกระดาน ไม่ขยับชิ้นเลย ตำแหน่งจัดวางจึงคงเดิมเป๊ะ) */
+      +'<span id="asmSizeBar" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#f0fdfa;border:1px solid #5eead4;border-radius:9px;padding:6px 10px">'
+      +'<b style="color:#0f766e">📐 ขนาดแบบ</b>'
+      +'<input id="asmSW" type="number" min="1" step="0.5" placeholder="กว้าง" style="width:74px;padding:5px;border:1px solid #99f6e4;border-radius:6px;font-family:inherit;font-size:12px">'
+      +'<span style="color:#64748b">×</span>'
+      +'<input id="asmSH" type="number" min="1" step="0.5" placeholder="สูง" style="width:74px;padding:5px;border:1px solid #99f6e4;border-radius:6px;font-family:inherit;font-size:12px">'
+      +'<span style="color:#64748b;font-size:11.5px">ซม.</span>'
+      +'<button id="asmSGo" style="border:none;background:#0d9488;color:#fff;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12px">ตั้ง</button>'
+      +'<span id="asmSNow" style="color:#0f766e;font-size:11.5px;white-space:nowrap"></span></span>'
       +'<button id="asmClear" style="border:1px solid #cbd5e1;background:#f8fafc;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:inherit">🧹 ล้าง</button>'
       +'<button id="asmDone" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:9px;padding:9px 20px;cursor:pointer;font-weight:700;font-family:inherit">✅ รวมเป็นแบบ → เลือกประเภทป้าย</button></div></div>';
     document.body.appendChild(ov);
@@ -9170,6 +9184,13 @@ function _wallPickPieces(pieces, f){
     try{ if(window.ResizeObserver){ new ResizeObserver(function(){ try{_drawDims();}catch(_e){} }).observe(canv); } }catch(_e){}
     ov.querySelector('#asmClose').onclick=function(){ ov.remove(); };
     ov.querySelector('#asmClear').onclick=function(){ _items=[]; canv.innerHTML=''; _DIMS=null; _drawDims(); };
+    // 📐 ปุ่มตั้งขนาดแบบรวม + กด Enter ในช่องก็ได้
+    try{
+      var _sg=ov.querySelector('#asmSGo'); if(_sg)_sg.onclick=function(){ _applySize(); };
+      ['asmSW','asmSH'].forEach(function(id){ var e=ov.querySelector('#'+id); if(!e)return;
+        e.onkeydown=function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); _applySize(); } }; });
+      _syncSize();
+    }catch(_e){}
     ov.querySelector('#asmDone').onclick=function(){ if(!_items.length){ alert('เพิ่มชิ้นอย่างน้อย 1 ชิ้นก่อนนะคะ'); return; } compose(ov); };
     ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
   }
@@ -9247,7 +9268,49 @@ function _wallPickPieces(pieces, f){
     _items.forEach(function(o){ if(!o.el)return; x0=Math.min(x0,o.el.offsetLeft); x1=Math.max(x1,o.el.offsetLeft+o.el.offsetWidth); });
     return (x1>x0)? wmm/(x1-x0) : 0;
   }
+  // 📐 กรอบรวมของทุกชิ้นบนกระดาน (พิกเซล)
+  function _boardBox(){
+    var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    _items.forEach(function(o){ if(!o.el)return;
+      x0=Math.min(x0,o.el.offsetLeft); y0=Math.min(y0,o.el.offsetTop);
+      x1=Math.max(x1,o.el.offsetLeft+o.el.offsetWidth); y1=Math.max(y1,o.el.offsetTop+o.el.offsetHeight); });
+    return (x1>x0)? {w:x1-x0, h:y1-y0} : null;
+  }
+  // 📐 อัปเดตตัวเลขขนาดแบบรวมที่แถบล่าง (เรียกทุกครั้งที่ลาก/ย่อ/ขยาย/เพิ่มชิ้น)
+  function _syncSize(){
+    var el=document.getElementById('asmSNow'); if(!el)return;
+    var b=_boardBox(), K=_boardK();
+    if(!b||!(K>0)){ el.textContent='— ยังไม่มีชิ้นบนกระดาน'; return; }
+    var wcm=b.w*K/10, hcm=b.h*K/10;
+    el.innerHTML='ตอนนี้ <b>'+wcm.toFixed(1)+' × '+hcm.toFixed(1)+'</b> ซม. · สัดส่วน <b>'+(wcm/Math.max(0.001,hcm)).toFixed(2)+' : 1</b>';
+    var iw=document.getElementById('asmSW'), ih=document.getElementById('asmSH');
+    if(iw&&document.activeElement!==iw)iw.value=wcm.toFixed(1);
+    if(ih&&document.activeElement!==ih)ih.value=hcm.toFixed(1);
+  }
+  // 📐 ตั้งขนาดแบบรวม = สเกล 'มม. ต่อพิกเซล' ของกระดานใหม่ (ไม่แตะตำแหน่ง/ขนาดชิ้นเลย)
+  //    กรอกด้านเดียว = อีกด้านตามสัดส่วนเดิม · กรอกทั้งคู่ = ยึด 'กว้าง' แล้วเตือนถ้าสัดส่วนไม่ตรง
+  function _applySize(){
+    var b=_boardBox(); if(!b){ alert('ยังไม่มีชิ้นบนกระดานค่ะ'); return; }
+    var K=_boardK(); if(!(K>0)){ alert('ยังคำนวณขนาดจริงไม่ได้ — ต้องมีชิ้นเวกเตอร์อย่างน้อย 1 ชิ้น'); return; }
+    var tw=parseFloat((document.getElementById('asmSW')||{}).value)||0;
+    var th=parseFloat((document.getElementById('asmSH')||{}).value)||0;
+    if(!(tw>0)&&!(th>0)){ alert('กรอก กว้าง หรือ สูง อย่างน้อยหนึ่งช่องค่ะ'); return; }
+    var nowW=b.w*K/10, nowH=b.h*K/10;
+    var nk = (tw>0)? (tw*10/b.w) : (th*10/b.h);          // มม. ต่อพิกเซล ใหม่
+    if(tw>0&&th>0){
+      var want=tw/th, have=nowW/Math.max(0.001,nowH);
+      if(Math.abs(want-have)/Math.max(0.001,have) > 0.02){
+        if(!confirm('สัดส่วนที่กรอก ('+want.toFixed(2)+' : 1) ไม่ตรงกับแบบที่วางไว้ ('+have.toFixed(2)+' : 1)\n\n'
+          +'ระบบจะยึด "กว้าง" แล้วได้สูง '+(b.h*nk/10).toFixed(1)+' ซม. (ไม่บิดสัดส่วนงาน)\n'
+          +'ถ้าอยากได้ '+tw+' × '+th+' เป๊ะ ให้ย้าย/ย่อชิ้นบนกระดานให้ได้สัดส่วนนั้นก่อนนะคะ\n\nตั้งตามกว้างเลยไหม?')) return;
+      }
+    }
+    _K = nk;
+    _drawDims(); _syncSize();
+  }
+
   function _drawDims(){
+    try{ _syncSize(); }catch(_e){}
     var canv=_CANV; if(!canv)return;
     var chk=document.getElementById('asmDim');
     if(!_DIMS){ _DIMS=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -9584,8 +9647,22 @@ function _wallPickPieces(pieces, f){
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
           // ตั้งภาพพรีวิว 'หลัง' pick() เสมอ (pick จะซ่อน thumb ของไฟล์เวกเตอร์)
           try{ if(_pvURL&&$('thumbImg')){ $('thumbImg').src=_pvURL; if($('thumb')){$('thumb').style.display='block';} } }catch(_e){}
-          if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
-          setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\nกรอกขนาด "กว้าง (ซม.)" ตามที่ต้องการ → เลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย'); },100);
+          // 📐 ส่ง 'ขนาดจริงของแบบ' ที่ผู้ใช้ตั้งไว้ที่หน้าแตกชิ้น ต่อไปหน้าเลือกประเภทป้ายเลย
+          //    เดิมตั้งค่าตายตัว 120 ซม. -> ผู้ใช้ต้องมากรอกใหม่ แล้วระบบยืดแบบให้พอดี = สัดส่วนเพี้ยน
+          //    ตอนนี้กรอกที่หน้าแตกชิ้นครั้งเดียว ทุกช่องข้างหน้าได้ค่าตรงกันหมด
+          var _wcm9=0,_hcm9=0;
+          try{ _wcm9=Math.round((maxx-minx)*_K)/10; _hcm9=Math.round((maxy-miny)*_K)/10; }catch(_e){}
+          if(_wcm9>0){
+            if($('realWcm'))$('realWcm').value=_wcm9;
+            if($('realW'))$('realW').value=Math.round(_wcm9*10);
+            if($('realH'))$('realH').value=(_hcm9>0?Math.round(_hcm9*10):'');
+            if($('bxW'))$('bxW').value=_wcm9;
+            if($('bxH'))$('bxH').value=(_hcm9>0?_hcm9:'');
+            try{ window._bxFit=0; }catch(_e){}
+          } else if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
+          setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\n\n'
+            +(_wcm9>0? ('📐 ขนาดแบบ '+_wcm9.toFixed(1)+' × '+_hcm9.toFixed(1)+' ซม. — ใส่ให้ทุกช่องแล้ว\nเลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย')
+                       : 'กรอกขนาด "กว้าง (ซม.)" ตามที่ต้องการ → เลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย')); },100);
         } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
           alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
       }).catch(function(e){ if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
