@@ -12243,6 +12243,13 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
                                                     : 'ไม่มี — เส้นเดินตามไฟล์ทุกจุด')));
       w.innerHTML='<div class="vnote ok">✅ '+msg+'</div>';
     }
+    /* 🔬 บอกด้วยว่าขยายภาพก่อนไล่เส้นไปเท่าไหร่ (ผู้ใช้จะได้รู้ว่าไม่ได้ทำงานที่ภาพเล็ก) */
+    if(s.upscaled){ w.innerHTML+='<div class="vnote ok">🔬 '+esc(s.upscaled)+'</div>'; }
+    /* 🌈 โหมดไล่สี — ต้องเห็นชัดว่า "ทำงานจริงหรือไม่"
+       เคยเกิดเคสผู้ใช้ลืมติ๊กช่อง แล้วเข้าใจว่าโค้ดไล่สีใช้ไม่ได้ */
+    if(s.grad_bg){ w.innerHTML+='<div class="vnote ok">🌈 '+esc(s.grad_bg)+'</div>'; }
+    else if(s.grad_on){ w.innerHTML+='<div class="vnote">🌈 '+(en?'Gradient mode is on, but no smooth gradient area was found in this image — traced as flat colours.':'เปิดโหมดไล่สีไว้ แต่ภาพนี้ไม่มีย่านไล่สีเนียนให้จับ — ไล่เส้นเป็นสีแบนตามปกติ')+'</div>'; }
+    else { w.innerHTML+='<div class="vnote">🌈 '+(en?'Gradient mode is OFF. Tick “gradient image” if the artwork has a smooth colour blend.':'ยังไม่ได้ติ๊ก 🌈 “ภาพไล่สี” — ถ้างานมีพื้นไล่เฉด ให้ติ๊กช่องนี้แล้วแปลงใหม่')+'</div>'; }
   }
   function paintLangBtns(){
     document.querySelectorAll('#vecLang button').forEach(function(b){
