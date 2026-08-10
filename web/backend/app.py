@@ -11395,8 +11395,12 @@ TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
 # ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
 #   ฝังไว้ตรงนี้เลย ไม่ต้องตั้ง env บน Render (ถ้าอยากเปลี่ยน ตั้ง env ANALYTICS_WEBHOOK ทับได้)
-ANALYTICS_SHEET_URL = ("https://script.google.com/macros/s/"
-                       "AKfycbwY0lih8PDlfgM4eA6EQr36dVv3e7xgOMU9WW9fAlV_Qry2b41-HFqPAykpXTUeZ39Q/exec")
+# 🚫 ปิดการเชื่อมต่อ Google Sheet แล้ว (ผู้ใช้สั่ง 2026-08-09)
+#    เหตุผล: Apps Script ที่ deploy อยู่ไม่รู้จักคำสั่ง 'hit' -> ตอบ 400 ทุกครั้ง
+#    log เต็มไปด้วย "[analytics] push failed" โดยไม่มีประโยชน์อะไรเลย
+#    สถิติยังเก็บครบใน SQLite (/var/data) + สมุด .jsonl เหมือนเดิมทุกประการ
+#    ถ้าวันไหนอยากต่อกลับ: ตั้ง env ANALYTICS_WEBHOOK เป็น URL /exec ตัวใหม่ที่รองรับ api=hit
+ANALYTICS_SHEET_URL = ""
 
 
 # 📒 สมุดบันทึกถาวรแบบ 'ต่อท้ายอย่างเดียว' (append-only) วางข้าง ๆ ฐานข้อมูล
@@ -11535,7 +11539,11 @@ def _an_flush_pending(limit=200):
 
 
 def _an_flush_bg():
-    """ลองส่งคิวค้างแบบไม่หน่วงหน้าเว็บ (กันยิงซ้อน)"""
+    """ลองส่งคิวค้างแบบไม่หน่วงหน้าเว็บ (กันยิงซ้อน)
+
+    🚫 ปิดใช้งานพร้อมกับ _push_sheet — ไม่ปั่น thread ส่งคิวออกเน็ตอีกแล้ว"""
+    if not _sheet_hook():
+        return
     if getattr(_an_flush_bg, "_busy", False):
         return
     if not os.path.exists(_AN_PEND):
@@ -11766,14 +11774,22 @@ async def api_track(request: Request):
 def _sheet_hook():
     """URL Apps Script — ล้างช่องว่าง/ขึ้นบรรทัดใหม่ที่ติดมาตอน copy-paste ใส่ Render
        (ถ้ามี \n ปนอยู่ urllib จะโยน InvalidURL ทันที -> เขียนชีตไม่ได้เลย)"""
-    u = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL or ""
+    # 🚫 ไม่มี URL ฝังในโค้ดแล้ว — ต่อได้เฉพาะเมื่อผู้ดูแลตั้ง env ANALYTICS_WEBHOOK เอง
+    #    (ตัดขาดทั้งฝั่งเขียนสถิติและฝั่งอ่านสถิติกลับมาแสดง)
+    u = os.environ.get("ANALYTICS_WEBHOOK", "") or ""
     return "".join(str(u).split())          # ตัด space/tab/newline ทั้งหมด
 
 
 def _push_sheet(row, blocking=False, queue_on_fail=True):
     """ยิง event เข้า Google Sheet (Apps Script)
-       - เดิม timeout 3 วิ -> Apps Script ตอบไม่ทัน (มี redirect) -> ไม่มีแถวลงชีต
-       - ตอนนี้ ยิงใน background thread + timeout 25 วิ + ตาม redirect เอง"""
+
+    🚫 ปิดใช้งานแล้ว (ผู้ใช้สั่ง 2026-08-09) — ไม่ยิงเน็ตออกไปเลยแม้แต่ครั้งเดียว
+       คงฟังก์ชันไว้เพื่อไม่ให้จุดเรียก/หน้าตรวจสุขภาพระบบพัง แต่คืนค่าทันที
+       ไม่เข้าคิว ไม่เขียน log error · สถิติยังเก็บใน SQLite + .jsonl ครบเหมือนเดิม
+       จะกลับมาใช้: ตั้ง env ANALYTICS_WEBHOOK แล้วลบ 3 บรรทัดด้านล่างนี้ออก
+    """
+    return False, "ปิดการเชื่อมต่อ Google Sheet แล้ว (เก็บสถิติในเครื่องอย่างเดียว)"
+    # ── โค้ดเดิมด้านล่างถูกปิดตายด้วย return ข้างบน (เก็บไว้เผื่ออยากต่อกลับ) ──
     hook = _sheet_hook()
     if not hook:
         return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
