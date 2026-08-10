@@ -11980,12 +11980,11 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       <label id="vecGradWrap" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:9px 11px;
              border:1px dashed #a78bfa;border-radius:10px;background:#faf5ff;cursor:pointer">
         <input type="checkbox" id="vecGrad" style="margin-top:2px">
-        <span style="font-size:12.5px;color:#6d28d9;line-height:1.55">🌈 <b>ภาพไล่สี / ภาพถ่าย — โหมดละเอียดสูงสุด</b><br>
+        <span style="font-size:12.5px;color:#6d28d9;line-height:1.55">🌈 <b>ภาพไล่สี / ภาพถ่าย</b><br>
           <span style="font-size:11.5px;color:#7c3aed;line-height:1.6">
-          • <b>ไล่สีจริง</b> — แต่ละก้อนออกเป็น <code style="font-size:10.5px">linearGradient</code> เนียนต่อเนื่อง ไม่ใช่แถบสีแบน<br>
-          • <b>ขอบคมสุด</b> — ยอมคลาดแค่ 0.03 px (ปกติ 0.25) เทียบเท่า Super Fine ของ vectorizer.ai<br>
-          • <b>ไม่ดันขอบ ไม่ตัดสีผสมทิ้ง</b> — เส้นอยู่ตรงตำแหน่งจริง เฉดสีครบ<br>
-          <span style="color:#a78bfa">ติ๊กเมื่อภาพมีพื้นหลังไล่เฉด/เงานุ่ม ๆ · ไฟล์ใหญ่ขึ้นและใช้เวลานานกว่าเดิม</span></span></span>
+          แต่ละก้อนสีออกเป็น <code style="font-size:10.5px">linearGradient</code> ไล่เฉดต่อเนื่องในตัวเอง<br>
+          <b>ใช้สีน้อย (~9 สี) แต่เนียนกว่า</b> — เพราะได้ก้อนใหญ่ ๆ ที่ไล่สียาว ๆ ไม่ใช่แถบสีถี่ ๆ<br>
+          <span style="color:#a78bfa">ติ๊กเมื่อภาพมีพื้นหลังไล่เฉด/เงานุ่ม ๆ แล้วผลลัพธ์ออกมาเป็นก้อนสีแบน</span></span></span>
       </label>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
         <button class="vbtn go" id="vecGo">⚡ <span data-i18n="vec.convert">แปลงเป็นเวกเตอร์</span></button>
@@ -12195,9 +12194,10 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     // 🌈 ติ๊ก 'ภาพไล่สี' -> 48 สี + บอกหลังบ้านว่าห้ามตัดสีผสมทิ้ง
     //    ⚠️ รอบแรกส่งแค่ k=32 แต่ได้ออกมา 14 สี เพราะ merge_blends ตัดสีผสมไป 18 สี
     //       ซึ่ง 'สีผสม' คือเนื้อของไล่เฉดเอง — ต้องส่ง grad=1 ไปปิดตัวตัดด้วย
+    // ⚠️ โหมดไล่สี: ห้ามดันจำนวนสีขึ้น! (อลิซพลาดมาแล้ว — ดัน 48 สีแล้วเละหนัก)
+    //    แต่ละก้อนไล่สีในตัวเองได้แล้ว จึงต้องการก้อน 'ใหญ่และน้อย' -> ปล่อยระบบเลือกเอง (~9 สี)
     var _kk=CFG.k, _gd=0;
-    try{ var _vg=document.getElementById('vecGrad');
-      if(_vg&&_vg.checked){ _gd=1; if(!(CFG.k>0))_kk=48; } }catch(_e){}
+    try{ var _vg=document.getElementById('vecGrad'); if(_vg&&_vg.checked)_gd=1; }catch(_e){}
     fd.append('file',F); fd.append('preset',CFG.preset); fd.append('k',_kk); fd.append('grad',_gd);
     fd.append('smooth',CFG.smooth); fd.append('tol',CFG.tol); fd.append('gap',CFG.gap);
     fd.append('transparent',CFG.tr);
