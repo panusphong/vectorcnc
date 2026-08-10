@@ -470,6 +470,11 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
     ทิศตั้งฉาก p = แนวที่ซอยแถบ
     คืน dict kind="bands" หรือ None
     """
+    # ⚡ ค้นหาจำนวนแถบที่พอดีใช้ตัวอย่างย่อยพอ — ผลเท่ากันแต่เร็วกว่าหลายเท่า
+    #    (เคยใช้ครบ 150,000 จุด แล้วเวลาพุ่งจาก 27 เป็น 64 วินาที)
+    if len(xf) > 50000:
+        _sel = np.linspace(0, len(xf) - 1, 50000).astype(np.int64)
+        xf, yf, C = xf[_sel], yf[_sel], C[_sel]
     A = np.column_stack([xf, yf, np.ones(len(xf))])
     coef, *_ = np.linalg.lstsq(A, C, rcond=None)
     gx, gy = coef[0], coef[1]
@@ -526,16 +531,32 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
         return None
     err, S, c, B = best
     # ── ระบบพิกัดท้องถิ่น: หมุนภาพให้ "แนวซอยแถบ" เป็นแกน x และ "แนวไล่สี" เป็นแกน -y
-    #    ทำแบบนี้แล้วทุกอย่างในไฟล์ SVG กลายเป็นสี่เหลี่ยมตรง ๆ + ไล่สีแนวตั้ง
-    #    ⚠️ ห้ามใช้ <mask> เด็ดขาด — cairosvg (ตัวทำ PDF/EPS/PNG ของเรา) ไม่รองรับ
-    #       ทดสอบแล้ว: ชั้นที่มีมาสก์จะถูกวาดทึบเต็มร้อย = ภาพเพี้ยนหมด
-    #       จึงเกลี่ยรอยต่อด้วย "สี่เหลี่ยมย่อยที่ไล่ความทึบทีละขั้น" แทน (รองรับทุกโปรแกรม)
+    #
+    # ⚠️ บทเรียนสำคัญ (ผู้ใช้เจอจริง 2026-08-10): ห้ามเกลี่ยรอยต่อด้วย "ความโปร่งใส"
+    #    ครั้งแรกอลิซใช้ <mask> -> cairosvg ไม่รองรับ ไฟล์ PDF เพี้ยนทั้งใบ
+    #    ครั้งที่สองใช้สี่เหลี่ยมโปร่งซ้อนกัน -> เกิด "เส้นริ้ว" ทั้งภาพ
+    #      เพราะขอบของรูปสองชิ้นที่ชนกันพอดี ตัวเรนเดอร์เกลี่ยขอบให้ทั้งคู่ (ชิ้นละ ~50%)
+    #      รวมกันได้แค่ ~75% ไม่ใช่ 100% -> เห็นเป็นเส้นบางคั่นทุกรอยต่อ (160 เส้น!)
+    # ✅ วิธีที่ถูก: ซอยถี่ ๆ ไปเลย แล้วให้ **แต่ละแถบทึบ 100%** พร้อมไล่สีที่
+    #    "ผสมไว้ล่วงหน้า" ระหว่างแถบข้างเคียง · ทับกันเล็กน้อยได้โดยไม่มีผลข้างเคียง
+    #    (ทึบทับทึบ = ไม่มีอะไรเปลี่ยน) รอยต่อจึงหายสนิท และยังเกลี่ยเนียนเหมือนเดิม
     deg = float(np.degrees(np.arctan2(pyv, pxv)))
-    bands = [{"stops": _stops_trim(B[k][0], B[k][1])} for k in range(S)]
+    off0 = B[0][0]
+    NS = int(min(96, max(24, S * 5)))
+    bands = []
+    for j in range(NS):
+        a = s0 + (s1 - s0) * j / NS
+        b = s0 + (s1 - s0) * (j + 1) / NS
+        mid = (a + b) * 0.5
+        pos = float(np.clip((mid - c[0]) / max(1e-6, c[1] - c[0]), 0.0, S - 1.0)) if S > 1 else 0.0
+        k0 = int(np.clip(np.floor(pos), 0, max(0, S - 2)))
+        f = pos - k0
+        M = B[k0][1] if S == 1 else (B[k0][1] * (1 - f) + B[k0 + 1][1] * f)
+        bands.append({"s0": round(a, 2), "s1": round(b, 2),
+                      "stops": _stops_trim(off0, M)})
     return {"kind": "bands", "err": round(float(err), 2),
             "deg": round(deg, 3), "t0": round(t0, 2), "t1": round(t1, 2),
             "s0": round(s0, 2), "s1": round(s1, 2),
-            "cs": [round(float(v), 2) for v in c], "q": 8,
             "bands": bands}
 
 
@@ -666,17 +687,28 @@ def grad_eval(g, xs, ys):
         ux, uy = pyv, -pxv
         t0, t1 = float(g["t0"]), float(g["t1"])
         tn = np.clip((xs * ux + ys * uy - t0) / max(1e-6, t1 - t0), 0, 1)
-        cs = np.asarray(g["cs"], np.float64)
-        S = len(cs)
-        A = np.stack([_ramp(b["stops"], tn) for b in g["bands"]], 0)     # (S,m,3)
+        bs = g["bands"]
+        S = len(bs)
         if S == 1:
-            return A[0]
+            return _ramp(bs[0]["stops"], tn)
+        # ⚡ ห้ามกาง (จำนวนแถบ × จำนวนพิกเซล × 3) เป็นก้อนเดียว
+        #    84 แถบ × 400,000 พิกเซล = 800 MB ต่อรอบ และช้ากว่า 2 เท่า (เจอจริง 2026-08-10)
+        #    คิดทีละแถบเฉพาะพิกเซลของแถบนั้นพอ -> งานรวมเท่ากับจำนวนพิกเซลเฉย ๆ
+        cs = np.array([(float(b["s0"]) + float(b["s1"])) * 0.5 for b in bs], np.float64)
         sv = xs * pxv + ys * pyv
         pos = np.clip((sv - cs[0]) / max(1e-6, cs[1] - cs[0]), 0.0, S - 1.0)
         k0 = np.clip(np.floor(pos).astype(np.int32), 0, S - 2)
         f = (pos - k0)[:, None]
-        ii = np.arange(len(xs))
-        return A[k0, ii] * (1 - f) + A[k0 + 1, ii] * f
+        out = np.zeros((len(xs), 3), np.float64)
+        for k in range(S - 1):
+            sel = (k0 == k)
+            if not sel.any():
+                continue
+            r0 = _ramp(bs[k]["stops"], tn[sel])
+            r1 = _ramp(bs[k + 1]["stops"], tn[sel])
+            fk = f[sel]
+            out[sel] = r0 * (1 - fk) + r1 * fk
+        return out
     x1, y1, x2, y2 = (float(g["x1"]), float(g["y1"]), float(g["x2"]), float(g["y2"]))
     dx, dy = x2 - x1, y2 - y1
     L = (dx * dx + dy * dy) ** 0.5
@@ -1846,7 +1878,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
         # 🩹 มีพื้นไล่สีอยู่ข้างล่าง -> ช่องว่างเศษพิกเซลจะเผยสีจัด ๆ ขึ้นมา ต้องเกยกันมากขึ้น
-        _ge = gap_e * (1.9 if grad_layers else 1.0)
+        _ge = gap_e * (1.3 if grad_layers else 1.0)
         _Lr = {"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
                "items": to_bezier(grow(cs, _ge + 0.35 * sg), tol_e,
                                   look=int(max(6, round(2.5 * sg) + 5)),
@@ -1880,8 +1912,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 for _kx in ("t0", "t1", "s0", "s1"):    # 🌈 พิกัดของตาข่ายสองมิติก็ต้องหารกลับ
                     if _kx in g:
                         g[_kx] = round(float(g[_kx]) * inv, 2)
-                if g.get("cs"):
-                    g["cs"] = [round(float(q) * inv, 2) for q in g["cs"]]
+                for _bd in (g.get("bands") or []):
+                    for _kx in ("s0", "s1"):
+                        if _kx in _bd:
+                            _bd[_kx] = round(float(_bd[_kx]) * inv, 2)
 
     bg = None
     if not want_alpha and layers:

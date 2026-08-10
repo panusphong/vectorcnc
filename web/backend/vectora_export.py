@@ -137,47 +137,45 @@ def to_svg(res, scale=1.0, background=True):
             #   ⚠️ ห้ามเปลี่ยนไปใช้ <mask> — cairosvg ไม่รองรับ ไฟล์ PDF/EPS/PNG จะเพี้ยนทั้งใบ
             # ══════════════════════════════════════════════════════════
             # ⚠️ ห้ามใช้ clipPath ที่มี "รู" — cairosvg รวมทุกวงเป็นก้อนเดียว รูจะหายไป
-            #    (ผู้ใช้เจอจริง: พื้นไล่สีไปนอนใต้วงกลมขาว แล้วโผล่เป็นริ้วม่วงในตัวอักษรเล็ก)
-            # ✅ ตัดรูปจริงด้วยเรขาคณิตใน Python ไปเลย — ได้ path ที่เปิดได้ทุกโปรแกรม
+            #    และห้ามเกลี่ยรอยต่อด้วยความโปร่งใส — ขอบสองชิ้นที่ชนกันพอดีจะเกิด "เส้นริ้ว"
+            #    (ตัวเรนเดอร์เกลี่ยขอบให้ทั้งคู่ชิ้นละ ~50% รวมกันได้ 75% ไม่ใช่ 100%)
+            # ✅ ตัดรูปจริงด้วยเรขาคณิตใน Python · แต่ละแถบทึบ 100% · ให้ทับกันเล็กน้อย
             import math as _m
             from shapely.geometry import Polygon as _P
             g = L["grad"]
-            cs = [float(v) for v in g["cs"]]
-            S = len(cs)
+            bs = g["bands"]
             rad = _m.radians(float(g["deg"]))
             pxv, pyv = _m.cos(rad), _m.sin(rad)
             ux, uy = pyv, -pxv
             t0, t1 = float(g["t0"]), float(g["t1"])
             M = float(W + H) * 2.0
-            q = int(g.get("q") or 8)
-            base = _poly_of(L["items"])
-            def _slab(a, b):
-                pts = [(a * pxv - y * ux, a * pyv - y * uy) for y in (-t1 - M, -t0 + M)]
-                pts += [(b * pxv - y * ux, b * pyv - y * uy) for y in (-t0 + M, -t1 - M)]
-                return _P(pts)
-            def _emit(a, b, k, op=None):
-                if base is None or b <= a:
-                    return
-                try:
-                    pc = base.intersection(_slab(a, b))
-                except Exception:
-                    return
-                if pc.is_empty:
-                    return
-                dd = _d_of_poly(pc)
-                if not dd:
-                    return
-                p.append('<path d="%s" fill="url(#gb%d_%d)" fill-rule="evenodd"%s/>'
-                         % (dd, i + 1, k, '' if op is None else ' fill-opacity="%.3f"' % op))
             D = float(W + H) * 1.5
-            for k in range(S):
-                if k > 0:                                     # ช่วงเกลี่ยเข้าหาแถบก่อนหน้า
-                    a0, a1 = cs[k - 1], cs[k]
-                    dw = (a1 - a0) / q
-                    for j in range(q):
-                        _emit(a0 + j * dw - 0.05, a0 + (j + 1) * dw + 0.05, k, (j + 0.5) / q)
-                _emit((cs[0] - D) if k == 0 else cs[k],
-                      (cs[k + 1] if k + 1 < S else cs[k] + D), k)
+            ov = max(0.6, (W + H) / 1400.0)          # ทับกันกันเส้นริ้ว (ทึบทับทึบ ไม่มีผลข้างเคียง)
+            base = _poly_of(L["items"])
+            if base is not None:
+                try:                                  # ลดจุดก่อนตัด — เร็วขึ้นหลายเท่า ตาไม่เห็นต่าง
+                    _sm = base.simplify(0.25, preserve_topology=True)
+                    if not _sm.is_empty:
+                        base = _sm
+                except Exception:
+                    pass
+            for k, b in enumerate(bs):
+                a0 = float(b["s0"]) - (D if k == 0 else ov)
+                a1 = float(b["s1"]) + (D if k == len(bs) - 1 else ov)
+                if base is None:
+                    break
+                pts = [(a0 * pxv - y * ux, a0 * pyv - y * uy) for y in (-t1 - M, -t0 + M)]
+                pts += [(a1 * pxv - y * ux, a1 * pyv - y * uy) for y in (-t0 + M, -t1 - M)]
+                try:
+                    pc = base.intersection(_P(pts))
+                except Exception:
+                    continue
+                if pc.is_empty:
+                    continue
+                dd = _d_of_poly(pc)
+                if dd:
+                    p.append('<path d="%s" fill="url(#gb%d_%d)" fill-rule="evenodd"/>'
+                             % (dd, i + 1, k))
             continue
         if L.get("grad"):
             p.append('<path id="c%d" d="%s" fill="url(#g%d)" fill-rule="evenodd"/>'
