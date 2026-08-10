@@ -506,11 +506,7 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10px;color:#92700a">ลึก</label><input class="numin" id="bxD" type="number" placeholder="ลึก" min="1" style="padding:5px;width:100%"></div>
             </div>
             <div class="hint" style="margin:5px 0 0">เว้น <b>สูง</b> ว่าง = อัตโนมัติ · ใส่ทั้ง กว้าง+สูง = ยืด/หดอิสระ · <b>ติดตั้ง</b> ที่แผง 🦾 แขนยึด</div>
-            <!-- 🎯 เฉพาะกล่องไฟล้อมตามทรง (type 8/9) — ขอบกล่องเดินตามชิ้นงานจริงเป๊ะ ไม่เว้นขอบ ไม่เกลา -->
-            <label id="bxTightRow" style="display:none;align-items:flex-start;gap:6px;margin-top:7px;padding:7px 8px;border:1px dashed #f59e0b;border-radius:8px;background:#fffdf3;cursor:pointer">
-              <input type="checkbox" id="bxTight" style="margin-top:2px">
-              <span style="font-size:10.5px;color:#92700a;line-height:1.55">🎯 <b>โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)</b><br>ขอบกล่อง = เส้นขอบชิ้นงานจริงรวมกันเป๊ะ ๆ — ได้ <b>ขนาดตามที่กรอก</b> ร่อง/ซี่ครบ มุมฉากคม (ไม่เว้นขอบ ไม่เกลาขอบ)</span>
-            </label>
+
             <div style="border-top:1px dashed #fde68a;margin:9px 0 6px;padding-top:7px">
               <div style="font-size:11px;color:#b45309;font-weight:700;margin-bottom:4px">🖼️ ออกแบบหน้ากล่อง (พื้นหลัง + ข้อความ + โลโก้ ในตัวเดียว)</div>
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
@@ -666,6 +662,11 @@ select.numin{cursor:pointer}
           <!-- 🎯 ปรับ logo ในกล่องไฟ (โชว์เมื่อเลือกประเภทกล่องไฟ) -->
           <div id="logoAdj" style="display:none;margin-top:8px;padding:10px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
             <div style="font-size:12px;font-weight:700;color:#0f766e;margin-bottom:6px">🎯 ปรับ logo ในกล่อง (ขยับ + ย่อ/ขยาย)</div>
+            <!-- 🎯 กล่องไฟล้อมตามทรง (8/9) เท่านั้น — ย้ายมาอยู่รวมกับการปรับขนาด logo ทางขวา (ผู้ใช้สั่ง 2026-08-09: ซ้ำซ้อนกับแผงซ้าย) -->
+            <label id="bxTightRow" style="display:none;align-items:flex-start;gap:6px;margin-bottom:7px;padding:7px 8px;border:1px dashed #f59e0b;border-radius:8px;background:#fffbeb;cursor:pointer">
+              <input type="checkbox" id="bxTight" style="margin-top:2px">
+              <span style="font-size:10.5px;color:#92700a;line-height:1.55">🎯 <b>โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)</b><br>ขอบกล่อง = เส้นขอบชิ้นงานจริงรวมกันเป๊ะ ๆ — ได้ <b>ขนาดตามที่กรอก</b> ร่อง/ซี่ครบ มุมฉากคม (ไม่เว้นขอบ ไม่เกลาขอบ)<br><span style="color:#a8894a">ติ๊กแล้ว = ไม่ต้องใช้ช่องขนาด logo ด้านล่าง</span></span>
+            </label>
             <!-- 📏 กำหนดขนาดจริงของ logo บนหน้ากล่อง (ลูกค้าสั่งสูง 40 ซม. = ได้ 40.0 เป๊ะ) -->
             <div style="border:1px dashed #0d9488;border-radius:8px;padding:7px 8px;background:#ecfeff;margin-bottom:7px">
               <label style="font-size:10.5px;font-weight:700;color:#0f766e">📏 ขนาดจริงของ logo บนหน้ากล่อง (ซม.)</label>
