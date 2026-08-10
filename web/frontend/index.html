@@ -9034,7 +9034,7 @@ function _wallPickPieces(pieces, f){
             (ปรับที่ค่า มม./พิกเซล ของกระดาน ไม่ขยับชิ้นเลย ตำแหน่งจัดวางจึงคงเดิมเป๊ะ)
          📍 วางไว้บนแถบเครื่องมือนี้เพราะแถบล่างต้องเลื่อนจอลงไปหา ผู้ใช้มองไม่เห็น */
       +'<span class="alnB" id="asmSizeBar" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;border-color:#5eead4;padding:3px 8px">'
-      +'<b style="color:#0f766e">📐 ขนาดแบบ</b>'
+      +'<b style="color:#0f766e" title="ดูเฉย ๆ ก็ได้ ไม่ต้องตั้งก็ส่งต่อได้ — ค่อยกรอกขนาดจริงที่หน้าเลือกประเภทป้าย">📐 ขนาดแบบ <span style="font-weight:400;color:#64748b">(ไม่บังคับ)</span></b>'
       +'<input id="asmSW" type="number" min="1" step="0.5" placeholder="กว้าง" style="width:66px;font-family:inherit;font-size:11.5px;padding:2px 4px;border:1px solid #5eead4;border-radius:5px">'
       +'<span style="color:#64748b">×</span>'
       +'<input id="asmSH" type="number" min="1" step="0.5" placeholder="สูง" style="width:66px;font-family:inherit;font-size:11.5px;padding:2px 4px;border:1px solid #5eead4;border-radius:5px">'
@@ -9500,6 +9500,54 @@ function _wallPickPieces(pieces, f){
       if(h==null){ if(_gh){_gh.remove();_gh=null;} } else { if(!_gh){_gh=document.createElement('div');
           _gh.style.cssText='position:absolute;left:0;right:0;height:1px;background:#e11d48;pointer-events:none;z-index:9';canv.appendChild(_gh);} _gh.style.top=h+'px'; }
     };
+    // 🧲 ป้ายบอกสถานะสด ๆ ตอนลาก/ปรับขนาด — ลอยที่มุมบนขวาของชิ้น
+    //    ⚠️ ผู้ใช้สั่ง 2026-08-09: ตอนลากปรับขนาด 'เส้นวัดระยะบัง' จนไม่รู้ว่าพอดีหรือเหลื่อม
+    //    ✅ อ่านค่าจากป้ายนี้แทน + หรี่เส้นวัดระยะลงระหว่างลาก
+    var _lbl=null;
+    var _say=function(txt,col){
+      if(txt==null){ if(_lbl){_lbl.remove();_lbl=null;} return; }
+      if(!_lbl){ _lbl=document.createElement('div');
+        _lbl.style.cssText='position:absolute;pointer-events:none;z-index:12;font-family:inherit;font-size:11.5px;'
+          +'font-weight:700;padding:3px 8px;border-radius:7px;color:#fff;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+        canv.appendChild(_lbl); }
+      _lbl.textContent=txt; _lbl.style.background=col||'#0f766e';
+      _lbl.style.left=(el.offsetLeft+el.offsetWidth+8)+'px';
+      _lbl.style.top=Math.max(0,el.offsetTop-6)+'px';
+    };
+    // 📏 ช่องว่าง/การเหลื่อมกับชิ้นที่ใกล้ที่สุด (ซม.จริง) — บอกว่า 'พอดี' หรือ 'เหลื่อมเท่าไหร่'
+    var _fitTxt=function(){
+      var K=_boardK(); var L=el.offsetLeft,T=el.offsetTop,R=L+el.offsetWidth,B=T+el.offsetHeight;
+      var best=null;
+      _items.forEach(function(o){ if(o.el===el||!o.el)return; var e=o.el;
+        var l2=e.offsetLeft,t2=e.offsetTop,r2=l2+e.offsetWidth,b2=t2+e.offsetHeight;
+        if(Math.min(B,b2)-Math.max(T,t2) > 4){                     // ซ้อนกันในแนวตั้ง -> วัดช่องว่างแนวนอน
+          var g=(l2>=L)? (l2-R) : (L-r2);
+          if(best===null||Math.abs(g)<Math.abs(best))best=g; }
+        if(Math.min(R,r2)-Math.max(L,l2) > 4){                     // ซ้อนกันในแนวนอน -> วัดช่องว่างแนวตั้ง
+          var g2=(t2>=T)? (t2-B) : (T-b2);
+          if(best===null||Math.abs(g2)<Math.abs(best))best=g2; }
+      });
+      if(best===null) return null;
+      var cm=(K>0)? best*K/10 : null;
+      if(cm===null) return ['ระยะ '+Math.round(best)+' px','#475569'];
+      if(Math.abs(cm)<0.05) return ['🧲 ชนพอดี 0.0 ซม.','#16a34a'];
+      if(cm<0)             return ['⚠️ เหลื่อมกัน '+Math.abs(cm).toFixed(1)+' ซม.','#dc2626'];
+      return ['↔ ห่าง '+cm.toFixed(1)+' ซม.','#0f766e'];
+    };
+    // 🧲 ดูดขอบตอนปรับขนาด — ขอบขวา/ล่างของชิ้นนี้ดูดเข้าหาขอบชิ้นอื่น + กึ่งกลาง/ขอบกระดาน
+    var _snapEdge=function(R,B){
+      var BW=canv.clientWidth||900, BH=canv.clientHeight||420, TOL=8, gv=null, gh=null;
+      var xs=[BW/2,8,BW-8], ys=[BH/2,8,BH-8];
+      _items.forEach(function(o){ if(o.el===el||!o.el)return; var e=o.el;
+        xs.push(e.offsetLeft, e.offsetLeft+e.offsetWidth/2, e.offsetLeft+e.offsetWidth);
+        ys.push(e.offsetTop,  e.offsetTop+e.offsetHeight/2, e.offsetTop+e.offsetHeight); });
+      xs.forEach(function(v){ if(gv===null&&Math.abs(R-v)<TOL){ R=v; gv=v; } });
+      ys.forEach(function(v){ if(gh===null&&Math.abs(B-v)<TOL){ B=v; gh=v; } });
+      _guide(gv,gh);
+      return [R,B,(gv!==null||gh!==null)];
+    };
+    // 🌫️ หรี่เส้นวัดระยะระหว่างลาก (ไม่ให้บังขอบที่กำลังเล็ง) แล้วคืนค่าเมื่อปล่อยมือ
+    var _dim=function(on){ try{ if(_DIMS)_DIMS.style.opacity=on?'0.18':'1'; }catch(_e){} };
     var _snap=function(L,T){
       var BW=canv.clientWidth||900, BH=canv.clientHeight||420, TOL=7, gv=null, gh=null;
       var W0=el.offsetWidth, H0=el.offsetHeight;
@@ -9521,21 +9569,29 @@ function _wallPickPieces(pieces, f){
       el.classList.add('asmSel');                      // ✅ เลือกชิ้นนี้ -> ปุ่มจัดตำแหน่งจะทำเฉพาะชิ้นนี้
       _drawDims();
       drag={sx:e.clientX,sy:e.clientY,l:el.offsetLeft,t:el.offsetTop}; try{el.setPointerCapture(e.pointerId);}catch(_e){} el.style.borderColor='#7c3aed'; });
-    el.addEventListener('pointermove',function(e){ if(!drag)return;
+    el.addEventListener('pointermove',function(e){ if(!drag)return; _dim(true);
       var p=_snap(drag.l+e.clientX-drag.sx, drag.t+e.clientY-drag.sy);
-      el.style.left=p[0]+'px'; el.style.top=p[1]+'px'; _drawDims(); });
-    el.addEventListener('pointerup',function(e){ drag=null; _guide(null,null); el.style.borderColor='rgba(124,58,237,0)'; _drawDims(); });
+      el.style.left=p[0]+'px'; el.style.top=p[1]+'px'; _drawDims();
+      var f=_fitTxt(); if(f)_say(f[0],f[1]); else _say(null); });
+    el.addEventListener('pointerup',function(e){ drag=null; _guide(null,null); _say(null); _dim(false);
+      el.style.borderColor='rgba(124,58,237,0)'; _drawDims(); });
     var rz=el.querySelector('.asmR'), rs=null;
     rz.addEventListener('pointerdown',function(e){ e.stopPropagation(); rs={sx:e.clientX,sy:e.clientY,w:el.offsetWidth,h:el.offsetHeight,ar:ar}; try{rz.setPointerCapture(e.pointerId);}catch(_e){} });
-    rz.addEventListener('pointermove',function(e){ if(!rs)return; var nw=Math.max(24,rs.w+e.clientX-rs.sx);
+    rz.addEventListener('pointermove',function(e){ if(!rs)return; _dim(true);
+      var nw=Math.max(24,rs.w+e.clientX-rs.sx);
+      // 🧲 ดูดขอบขวา/ล่างเข้าหาขอบชิ้นอื่น (ผู้ใช้สั่ง 2026-08-09 — เดิมมีเฉพาะตอนลากย้าย)
+      var _nh0=back? Math.max(24,rs.h+e.clientY-rs.sy) : (nw*rs.ar);
+      var _sn=_snapEdge(el.offsetLeft+nw, el.offsetTop+_nh0);
+      nw=Math.max(24,_sn[0]-el.offsetLeft); _nh0=Math.max(24,_sn[1]-el.offsetTop);
       /* 🎨 แผ่นพื้นหลัง = ยืด/หดอิสระ กว้างกับสูงไม่ผูกกัน
          ⚠️ ของเดิมล็อกสัดส่วนทุกชิ้น พอเป็นแผ่นรอง/หน้ากล่องไฟ ผู้ใช้ปรับให้พอดีงานไม่ได้เลย
             ต้องกลับไปแก้ตัวเลขในกล่องแล้วสร้างแผ่นใหม่ทุกครั้ง — ช้าและปรับยากมาก
          ✅ ชิ้นโลโก้/ข้อความยังล็อกสัดส่วนเหมือนเดิม (ไม่งั้นตัวอักษรจะบิด) */
-      if(back){ el.style.width=nw+'px'; el.style.height=Math.max(24,rs.h+e.clientY-rs.sy)+'px'; }
-      else { el.style.width=nw+'px'; el.style.height=(nw*rs.ar)+'px'; }
-      _drawDims(); });
-    rz.addEventListener('pointerup',function(e){ rs=null; _drawDims(); });
+      if(back){ el.style.width=nw+'px'; el.style.height=_nh0+'px'; }
+      else { el.style.width=nw+'px'; el.style.height=(nw*rs.ar)+'px'; }   // ชิ้นงาน = ล็อกสัดส่วนเหมือนเดิม
+      _drawDims();
+      var f=_fitTxt(); if(f)_say(f[0],f[1]); else _say(null); });
+    rz.addEventListener('pointerup',function(e){ rs=null; _guide(null,null); _say(null); _dim(false); _drawDims(); });
     el.querySelector('.asmDel').onclick=function(){ var idx=_items.indexOf(it); if(idx>=0)_items.splice(idx,1); el.remove(); _drawDims(); };
     /* ↔↕ จุดจับ 'ยืดด้านเดียว' — เฉพาะแผ่นพื้นหลัง
        ขอบขวา = ปรับความกว้างอย่างเดียว · ขอบล่าง = ปรับความสูงอย่างเดียว
@@ -9551,11 +9607,17 @@ function _wallPickPieces(pieces, f){
         s.addEventListener('pointerdown',function(e){ e.stopPropagation();
           st={x:e.clientX,y:e.clientY,w:el.offsetWidth,h:el.offsetHeight};
           try{ s.setPointerCapture(e.pointerId); }catch(_e2){} });
-        s.addEventListener('pointermove',function(e){ if(!st)return;
-          if(mode==='w') el.style.width=Math.max(24,st.w+e.clientX-st.x)+'px';
-          else           el.style.height=Math.max(24,st.h+e.clientY-st.y)+'px';
-          _drawDims(); });
-        s.addEventListener('pointerup',function(){ st=null; _drawDims(); });
+        s.addEventListener('pointermove',function(e){ if(!st)return; _dim(true);
+          // 🧲 ดูดขอบด้านที่กำลังลากเข้าหาขอบชิ้นอื่น (แนวเดียวเท่านั้น อีกแกนไม่แตะ)
+          if(mode==='w'){ var R=el.offsetLeft+Math.max(24,st.w+e.clientX-st.x);
+            R=_snapEdge(R, el.offsetTop+el.offsetHeight)[0];
+            el.style.width=Math.max(24,R-el.offsetLeft)+'px'; }
+          else { var B=el.offsetTop+Math.max(24,st.h+e.clientY-st.y);
+            B=_snapEdge(el.offsetLeft+el.offsetWidth, B)[1];
+            el.style.height=Math.max(24,B-el.offsetTop)+'px'; }
+          _drawDims();
+          var f=_fitTxt(); if(f)_say(f[0],f[1]); else _say(null); });
+        s.addEventListener('pointerup',function(){ st=null; _guide(null,null); _say(null); _dim(false); _drawDims(); });
       };
       _mkH('right:-8px;top:50%;margin-top:-11px;width:15px;height:22px;cursor:ew-resize','w','ลากเพื่อยืด/หด เฉพาะความกว้าง');
       _mkH('bottom:-8px;left:50%;margin-left:-11px;width:22px;height:15px;cursor:ns-resize','h','ลากเพื่อยืด/หด เฉพาะความสูง');
@@ -9701,24 +9763,21 @@ function _wallPickPieces(pieces, f){
           try{ if(typeof pick==='function') pick(f); else { fileObj=f; } }catch(_e){ fileObj=f; }
           // ตั้งภาพพรีวิว 'หลัง' pick() เสมอ (pick จะซ่อน thumb ของไฟล์เวกเตอร์)
           try{ if(_pvURL&&$('thumbImg')){ $('thumbImg').src=_pvURL; if($('thumb')){$('thumb').style.display='block';} } }catch(_e){}
-          // 📐 ส่ง 'ขนาดจริงของแบบ' ที่ผู้ใช้ตั้งไว้ที่หน้าแตกชิ้น ต่อไปหน้าเลือกประเภทป้ายเลย
-          //    เดิมตั้งค่าตายตัว 120 ซม. -> ผู้ใช้ต้องมากรอกใหม่ แล้วระบบยืดแบบให้พอดี = สัดส่วนเพี้ยน
-          //    ตอนนี้กรอกที่หน้าแตกชิ้นครั้งเดียว ทุกช่องข้างหน้าได้ค่าตรงกันหมด
+          // 📐 ไม่บังคับขนาด (ผู้ใช้สั่ง 2026-08-09)
+          //    ตอนออกแบบมักยังไม่รู้ขนาดป้ายจริง + กำหนดสเกลบนกระดานยาก
+          //    -> วางอิสระได้เลย แล้วค่อยกรอกขนาดที่หน้าเลือกประเภทป้าย
+          //    ส่งไปให้แค่ 'สัดส่วนงาน' เพื่อให้ล็อกสัดส่วน 🔒 ที่หน้านั้นคำนวณอีกด้านให้ถูก
           var _wcm9=0,_hcm9=0;
           try{ _wcm9=Math.round((maxx-minx)*_K)/10; _hcm9=Math.round((maxy-miny)*_K)/10; }catch(_e){}
-          if(_wcm9>0){
-            if($('realWcm'))$('realWcm').value=_wcm9;
-            if($('realW'))$('realW').value=Math.round(_wcm9*10);
-            if($('realH'))$('realH').value=(_hcm9>0?Math.round(_hcm9*10):'');
-            if($('bxW'))$('bxW').value=_wcm9;
-            if($('bxH'))$('bxH').value=(_hcm9>0?_hcm9:'');
-            // 📐 บอกสัดส่วนงานจริงให้แผงกล่องไฟ -> ล็อกสัดส่วนคำนวณได้แม่น
-            try{ if(_hcm9>0) window._ARTAR=_wcm9/_hcm9; window._bxARsync&&window._bxARsync(); }catch(_e){}
-            try{ window._bxFit=0; }catch(_e){}
-          } else if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
+          try{
+            var _arw=(maxx-minx), _arh=(maxy-miny);
+            if(_arw>0&&_arh>0){ window._ARTAR=_arw/_arh; window._bxARsync&&window._bxARsync(); }
+          }catch(_e){}
+          if($('realWcm')&&!(parseFloat($('realWcm').value)>0)){ $('realWcm').value=120; if($('realW'))$('realW').value=1200; }
           setTimeout(function(){ alert('รวมเป็นแบบเวกเตอร์แท้แล้ว ✅ (เส้นคมเท่าต้นฉบับ ไม่ต้อง trace)\n\n'
-            +(_wcm9>0? ('📐 ขนาดแบบ '+_wcm9.toFixed(1)+' × '+_hcm9.toFixed(1)+' ซม. — ใส่ให้ทุกช่องแล้ว\nเลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย')
-                       : 'กรอกขนาด "กว้าง (ซม.)" ตามที่ต้องการ → เลือก "ประเภทป้าย" → กด "ชุดชั้นตัด + 3มิติ" ได้เลย')); },100);
+            +'เลือก "ประเภทป้าย" → กรอกขนาดกล่องที่ต้องการ → กด "ชุดชั้นตัด + 3มิติ"\n'
+            +'💡 ล็อก 🔒 ไว้ กรอกด้านเดียวพอ อีกด้านคิดตามสัดส่วนงานให้เอง'
+            +(_wcm9>0? ('\n\n(สัดส่วนงานที่วางไว้ '+(_hcm9>0?(_wcm9/_hcm9).toFixed(2):'?')+' : 1)') : '')); },100);
         } else { if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
           alert('รวมเวกเตอร์ไม่สำเร็จ: '+((j&&j.error)||'?')+'\nจะรวมเป็นภาพแทน'); composeRaster(ov,minx,miny,maxx,maxy); }
       }).catch(function(e){ if(dbtn){dbtn.disabled=false;dbtn.textContent='✅ รวมเป็นแบบ → เลือกประเภทป้าย';}
