@@ -45,9 +45,28 @@ def to_svg(res, scale=1.0, background=True):
     #    ภาพไล่เฉดจริงแทบไม่มีอันไหนเป็นเส้นตรง -> คลาดเฉลี่ยถึง 19.7 ระดับสี (วัดจริง)
     #    ตอนนี้ออกได้ถึง 28 จุด + รองรับไล่สีแบบวงกลม (radialGradient) ด้วย
     _defs = []
+    _band = {}                                       # ชั้นที่เป็นไล่สีสองมิติ -> เขียนแยกทีหลัง
     for i, L in enumerate(res["layers"]):
         g = L.get("grad")
         if not g:
+            continue
+        # ══════════════════════════════════════════════════════════════
+        # 🌈🌈🌈 ไล่สีสองมิติ (kind="bands") — พื้นสีรุ้งที่ไล่สองทิศพร้อมกัน
+        #    แต่ละแถบ = ไล่สีของตัวเอง + มาสก์ไล่ระดับที่เกลี่ยเข้าหาแถบก่อนหน้า
+        #    ผลลัพธ์ทางคณิตศาสตร์คือการเกลี่ยเชิงเส้นระหว่างแถบ -> ไม่มีรอยต่อ
+        #    ใช้ clipPath ครอบรูปทรงครั้งเดียว แล้ววาง <rect> เต็มผืนเป็นชั้น ๆ
+        #    (ถ้าซ้ำ path ทุกแถบ ไฟล์จะบวมเป็นสิบเท่า)
+        # ══════════════════════════════════════════════════════════════
+        if g.get("kind") == "bands":
+            bs = g.get("bands") or []
+            for k, b in enumerate(bs):
+                body = "".join('<stop offset="%.4f" stop-color="#%02x%02x%02x"/>'
+                               % ((float(o),) + tuple(int(v) for v in c)) for o, c in b["stops"])
+                # ไล่สีอยู่ในกรอบที่หมุนแล้ว: แกน y ท้องถิ่น = -t  (offset 0 อยู่ที่ t0)
+                _defs.append('<linearGradient id="gb%d_%d" gradientUnits="userSpaceOnUse" '
+                             'x1="0" y1="%.2f" x2="0" y2="%.2f">%s</linearGradient>'
+                             % (i + 1, k, -float(g["t0"]), -float(g["t1"]), body))
+            _band[i] = len(bs)
             continue
         st = g.get("stops")
         if not st:                                   # รูปแบบเดิม 2 จุด (เผื่อไฟล์เก่า)
@@ -68,6 +87,39 @@ def to_svg(res, scale=1.0, background=True):
         p.append('<rect width="%d" height="%d" fill="#%02x%02x%02x"/>' % ((W, H) + tuple(res["bg"])))
     for i, L in enumerate(res["layers"]):
         d = " ".join(_d_of(it) for it in L["items"])
+        if i in _band:
+            # ══════════════════════════════════════════════════════════
+            # 🌈 ไล่สีสองมิติ — วาดในกรอบที่ "หมุนแล้ว" ทุกอย่างจึงเป็นสี่เหลี่ยมตรง ๆ
+            #   · ครอบรูปทรงด้วย clipPath ครั้งเดียว (เขียน path ซ้ำทุกแถบไฟล์จะบวมสิบเท่า)
+            #   · แถบ k วางทึบเต็มในช่วงของตัวเอง
+            #   · ช่วงคาบเกี่ยวกับแถบก่อนหน้า ซอยเป็น q ชิ้น ไล่ความทึบทีละขั้น
+            #     = การเกลี่ยเชิงเส้นระหว่างแถบ (ขั้นละ ~1 ระดับสี ตาไม่เห็น)
+            #   ⚠️ ห้ามเปลี่ยนไปใช้ <mask> — cairosvg ไม่รองรับ ไฟล์ PDF/EPS/PNG จะเพี้ยนทั้งใบ
+            # ══════════════════════════════════════════════════════════
+            g = L["grad"]
+            cs = [float(v) for v in g["cs"]]
+            S = len(cs)
+            y0 = -float(g["t1"]) - 4.0
+            hh = (float(g["t1"]) - float(g["t0"])) + 8.0
+            D = float(W + H) * 1.5
+            q = int(g.get("q") or 8)
+            p.append('<clipPath id="cp%d"><path d="%s" fill-rule="evenodd"/></clipPath>' % (i + 1, d))
+            p.append('<g clip-path="url(#cp%d)"><g transform="rotate(%s)">' % (i + 1, g["deg"]))
+            for k in range(S):
+                if k > 0:                                     # ช่วงเกลี่ยเข้าหาแถบก่อนหน้า
+                    a0, a1 = cs[k - 1], cs[k]
+                    dw = (a1 - a0) / q
+                    for j in range(q):
+                        p.append('<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" '
+                                 'fill="url(#gb%d_%d)" fill-opacity="%.3f"/>'
+                                 % (a0 + j * dw - 0.05, y0, dw + 0.10, hh,
+                                    i + 1, k, (j + 0.5) / q))
+                x0 = (cs[0] - D) if k == 0 else cs[k]
+                x1 = (cs[k + 1] if k + 1 < S else cs[k] + D)
+                p.append('<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="url(#gb%d_%d)"/>'
+                         % (x0, y0, max(0.01, x1 - x0), hh, i + 1, k))
+            p.append('</g></g>')
+            continue
         if L.get("grad"):
             p.append('<path id="c%d" d="%s" fill="url(#g%d)" fill-rule="evenodd"/>'
                      % (i + 1, d, i + 1))

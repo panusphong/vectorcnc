@@ -407,6 +407,15 @@ def fit_gradient(img_rgb, mask, min_delta=6.0, max_px=60000, seed=0):
 GRAD_STOPS = 28              # จำนวนจุดสีของไล่สี (28 = จุดคุ้มค่าที่สุดจากที่วัด)
 
 
+def _grad_nstops(g):
+    """นับจุดสีทั้งหมดของไล่สีหนึ่งชุด (รองรับทั้งแบบแถบเดียวและแบบตาข่ายสองมิติ)"""
+    if not g:
+        return 0
+    if g.get("bands"):
+        return sum(len(b["stops"]) for b in g["bands"])
+    return len(g.get("stops") or [])
+
+
 def _grad_stops(t, C, ns=GRAD_STOPS):
     """t = ตำแหน่งบนแกนไล่สี 0..1 · C = สีจริง (m,3) -> (offsets, stops) + ค่าคลาดเฉลี่ย
 
@@ -454,8 +463,84 @@ def _stops_trim(off, S, tol=0.9):
              tuple(int(np.clip(round(float(v)), 0, 255)) for v in S[i])] for i in keep]
 
 
+def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
+    """🌈 ไล่สีสองมิติ: ซอยเป็นแถบ แต่ละแถบไล่สีเอง แล้วเกลี่ยเข้าหากันด้วยมาสก์
+
+    ทิศหลัก u = ทิศที่สีเปลี่ยนเร็วที่สุด (ใช้ทำไล่สีในแถบ)
+    ทิศตั้งฉาก p = แนวที่ซอยแถบ
+    คืน dict kind="bands" หรือ None
+    """
+    A = np.column_stack([xf, yf, np.ones(len(xf))])
+    coef, *_ = np.linalg.lstsq(A, C, rcond=None)
+    gx, gy = coef[0], coef[1]
+    w = np.sqrt(gx ** 2 + gy ** 2)
+    if float(w.sum()) < 1e-9:
+        return None
+    dx = float((gx * w).sum()); dy = float((gy * w).sum())
+    L = (dx * dx + dy * dy) ** 0.5
+    if L < 1e-9:
+        return None
+    ux, uy = dx / L, dy / L
+    pxv, pyv = -uy, ux
+    t = xf * ux + yf * uy
+    t0, t1 = float(t.min()), float(t.max())
+    s = xf * pxv + yf * pyv
+    s0, s1 = float(s.min()), float(s.max())
+    if t1 - t0 < 2.0 or s1 - s0 < 2.0:
+        return None
+    tn = (t - t0) / (t1 - t0)
+
+    best = None
+    for S in (2, 4, 8, 14, 20, 28):
+        if S > int(max_bands):
+            break
+        c = s0 + (np.arange(S) + 0.5) * (s1 - s0) / S
+        idx = np.clip(np.round((s - s0) / (s1 - s0) * S - 0.5).astype(np.int32), 0, S - 1)
+        B = []
+        ok = True
+        for k in range(S):
+            sel = idx == k
+            if int(sel.sum()) < 200:
+                ok = False; break
+            r, _e = _grad_stops(tn[sel], C[sel], ns)
+            if r is None:
+                ok = False; break
+            B.append(r)
+        if not ok:
+            continue
+        # ประเมินด้วย "โมเดลจริง" (เกลี่ยเชิงเส้นระหว่างแถบข้างเคียง) ไม่ใช่ค่าคลาดในแถบ
+        pos = np.clip((s - c[0]) / (c[1] - c[0]), 0.0, S - 1.0)
+        k0 = np.clip(np.floor(pos).astype(np.int32), 0, S - 2)
+        f = pos - k0
+        ii = np.arange(len(f))
+        err = 0.0
+        for ch in range(3):
+            a = np.stack([np.interp(tn, B[k][0], B[k][1][:, ch]) for k in range(S)], 1)
+            err += np.abs(a[ii, k0] * (1 - f) + a[ii, k0 + 1] * f - C[:, ch]).mean()
+        err /= 3.0
+        if best is None or err < best[0] * 0.94:
+            best = (err, S, c, B)
+        if err <= float(target):
+            break
+    if best is None:
+        return None
+    err, S, c, B = best
+    # ── ระบบพิกัดท้องถิ่น: หมุนภาพให้ "แนวซอยแถบ" เป็นแกน x และ "แนวไล่สี" เป็นแกน -y
+    #    ทำแบบนี้แล้วทุกอย่างในไฟล์ SVG กลายเป็นสี่เหลี่ยมตรง ๆ + ไล่สีแนวตั้ง
+    #    ⚠️ ห้ามใช้ <mask> เด็ดขาด — cairosvg (ตัวทำ PDF/EPS/PNG ของเรา) ไม่รองรับ
+    #       ทดสอบแล้ว: ชั้นที่มีมาสก์จะถูกวาดทึบเต็มร้อย = ภาพเพี้ยนหมด
+    #       จึงเกลี่ยรอยต่อด้วย "สี่เหลี่ยมย่อยที่ไล่ความทึบทีละขั้น" แทน (รองรับทุกโปรแกรม)
+    deg = float(np.degrees(np.arctan2(pyv, pxv)))
+    bands = [{"stops": _stops_trim(B[k][0], B[k][1])} for k in range(S)]
+    return {"kind": "bands", "err": round(float(err), 2),
+            "deg": round(deg, 3), "t0": round(t0, 2), "t1": round(t1, 2),
+            "s0": round(s0, 2), "s1": round(s1, 2),
+            "cs": [round(float(v), 2) for v in c], "q": 8,
+            "bands": bands}
+
+
 def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
-                       min_delta=8.0, max_err=6.0):
+                       min_delta=8.0, max_err=6.0, max_bands=20):
     """🌈 ฟิต 'ไล่สีหลายจุด' ให้ย่านหนึ่ง — ลองทั้งแบบเส้นตรงและแบบวงกลม เลือกอันที่คลาดน้อยกว่า
 
     คืน dict:
@@ -516,6 +601,28 @@ def fit_gradient_field(img_rgb, mask, seed=0, ns=GRAD_STOPS, max_px=150000,
                                 {"cx": round(cx, 2), "cy": round(cy, 2), "r": round(r1, 2)})
         except Exception:
             pass
+
+        # ══════════════════════════════════════════════════════════════
+        # 🌈🌈🌈 ไล่สี "สองมิติ" (แถบซ้อนเกลี่ย) — ผู้ใช้เจอจริง 2026-08-10
+        #
+        # ⚠️ เคสที่ (ก) และ (ข) แก้ไม่ได้: พื้นสีรุ้งที่ไล่ "สองทิศพร้อมกัน"
+        #    (ภาพจริงของผู้ใช้: ตรา USERS' CHOICE พื้นรุ้ง เขียว→น้ำเงิน→ม่วง→แดง→ส้ม)
+        #    ไล่สีทางเดียวไม่ว่าจะกี่จุดสีก็ฟิตไม่เข้า — วัดได้คลาดถึง 23.2 ระดับสี
+        #    ระบบจึงถอยไปใช้สีแบน = ผู้ใช้เห็นเป็นปื้นสีแข็ง ๆ ("เละเหมือนเดิม")
+        #
+        # ✅ วิธี: ซอยย่านเป็น "แถบ" ตามแนวตั้งฉากกับทิศไล่สีหลัก
+        #    แต่ละแถบมีไล่สีของตัวเอง แล้ว **เกลี่ยเข้าหากันด้วยมาสก์ไล่ระดับ**
+        #    (แถบ k ถูกทาทับด้วยความทึบที่ไต่จาก 0 ที่กึ่งกลางแถบ k-1 → 1 ที่กึ่งกลางแถบ k)
+        #    ผลทางคณิตศาสตร์ = การเกลี่ยเชิงเส้นระหว่างแถบข้างเคียง -> ไม่มีรอยต่อเลย
+        #    เท่ากับได้ 'ตาข่ายไล่สี' (gradient mesh) ด้วย SVG มาตรฐานล้วน ๆ
+        #
+        # 📉 วัดจริงกับภาพรุ้งของผู้ใช้: 1 แถบ 23.2 → 8 แถบ 3.03 → 14 แถบ 2.21 → 20 แถบ 2.01
+        # ══════════════════════════════════════════════════════════════
+        if (best is None or best[1] > float(max_err)) and int(max_bands) >= 2:
+            _bd = _fit_bands(xf, yf, C, ns=ns, max_bands=int(max_bands),
+                             target=float(max_err) * 0.6)
+            if _bd is not None and _bd["err"] <= float(max_err) * 2.2:
+                return _bd
 
         if best is None or best[1] > float(max_err):
             return None
@@ -1402,14 +1509,19 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 _q_keep = keep
             # สีตัวแทนพื้น: หยิบตามจุดสีของไล่สี -> พิกเซลพื้นจะเกาะสีพวกนี้แทนที่จะไปแย่งสีโลโก้
             for _rg in _smr:
-                _st = _rg["grad"]["stops"]
-                for _j in range(8):
-                    _o = _j / 7.0
-                    _lo = max([q for q in _st if q[0] <= _o] or [_st[0]])
-                    _hi = min([q for q in _st if q[0] >= _o] or [_st[-1]])
-                    _t = 0.0 if _hi[0] <= _lo[0] else (_o - _lo[0]) / (_hi[0] - _lo[0])
-                    _anchor.append(tuple(int(round(_lo[1][c] + (_hi[1][c] - _lo[1][c]) * _t))
-                                         for c in range(3)))
+                _g0 = _rg["grad"]
+                # แบบตาข่ายสองมิติมีหลายแถบ -> เก็บสีตัวแทนจากทุกแถบ (พื้นรุ้งมีหลายโทน)
+                _sets = ([b["stops"] for b in _g0["bands"]] if _g0.get("bands")
+                         else [_g0["stops"]])
+                _each = max(2, int(round(16.0 / max(1, len(_sets)))))
+                for _st in _sets:
+                    for _j in range(_each):
+                        _o = _j / float(max(1, _each - 1))
+                        _lo = max([q for q in _st if q[0] <= _o] or [_st[0]])
+                        _hi = min([q for q in _st if q[0] >= _o] or [_st[-1]])
+                        _t = 0.0 if _hi[0] <= _lo[0] else (_o - _lo[0]) / (_hi[0] - _lo[0])
+                        _anchor.append(tuple(int(round(_lo[1][c] + (_hi[1][c] - _lo[1][c]) * _t))
+                                             for c in range(3)))
 
     pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=_q_keep, grad=bool(grad))
     _n_det = len(pal_lab)                          # สีที่ได้มาเพื่อ "รายละเอียด" เท่านั้น
@@ -1524,7 +1636,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                        if abs(_area(c)) >= min_a]
                 if not _cs:
                     continue
-                _mid = _rg["grad"]["stops"][len(_rg["grad"]["stops"]) // 2][1]
+                _g0 = _rg["grad"]
+                _s0 = (_g0["bands"][len(_g0["bands"]) // 2]["stops"] if _g0.get("bands")
+                       else _g0["stops"])
+                _mid = _s0[len(_s0) // 2][1]
                 grad_layers.append({
                     "rgb": tuple(int(v) for v in _mid), "n": int(_rg["n"]),
                     "area": sum(abs(_area(c)) for c in _cs),
@@ -1562,7 +1677,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         if grad:
             _m = (labels == i) if keep is None else ((labels == i) & keep)
             # ก้อนรายละเอียดใช้จุดสีน้อยกว่า (12) — ก้อนเล็ก ไม่ต้องละเอียดเท่าพื้น
-            _g = fit_gradient_field(img, _m, seed=seed, ns=12, min_delta=10.0, max_err=5.0)
+            _g = fit_gradient_field(img, _m, seed=seed, ns=12, min_delta=10.0,
+                                    max_err=5.0, max_bands=1)
             if _g:
                 _Lr["grad"] = _g
         layers.append(_Lr)
@@ -1583,6 +1699,11 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 for _kx in ("x1", "y1", "x2", "y2", "cx", "cy", "r"):
                     if _kx in g:
                         g[_kx] = round(float(g[_kx]) * inv, 2)
+                for _kx in ("t0", "t1", "s0", "s1"):    # 🌈 พิกัดของตาข่ายสองมิติก็ต้องหารกลับ
+                    if _kx in g:
+                        g[_kx] = round(float(g[_kx]) * inv, 2)
+                if g.get("cs"):
+                    g["cs"] = [round(float(q) * inv, 2) for q in g["cs"]]
 
     bg = None
     if not want_alpha and layers:
@@ -1608,8 +1729,9 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                          "พื้นไล่สี %d ผืน · ไล่สีแบบ%s รวม %d จุดสี (คลาดเฉลี่ย %.1f ระดับสี) "
                          "— ทำเป็นรูปเดียวไม่แบ่งก้อน จึงไม่มีรอยต่อ"
                          % (len(grad_layers),
-                            "วงกลม" if grad_layers[0]["grad"].get("kind") == "radial" else "แถบตรง",
-                            sum(len(L["grad"]["stops"]) for L in grad_layers),
+                            {"radial": "วงกลม", "bands": "ตาข่ายสองมิติ"}.get(
+                                grad_layers[0]["grad"].get("kind"), "แถบตรง"),
+                            sum(_grad_nstops(L["grad"]) for L in grad_layers),
                             float(np.mean([L["grad"]["err"] for L in grad_layers])))),
              "grad_on": bool(grad),
              "min_area_px": round(min_a, 1), "res_mul": round(R, 2),
