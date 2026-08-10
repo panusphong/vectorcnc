@@ -8988,6 +8988,14 @@ function _wallPickPieces(pieces, f){
             ถ้าไปทำตอนเป็นไฟล์แบนแล้ว จะพลิกได้แค่ทั้งแผ่น = ตัวหนังสืออ่านไม่ออก */
       +'<label id="asm2fWrap" title="กล่องไฟ 2 หน้า — ด้านหลังต้องสลับซ้ายขวา (โลโก้ย้ายไปอีกฝั่ง) แต่ตัวหนังสือยังอ่านออกปกติ" style="display:inline-flex;align-items:center;gap:6px;margin-right:auto;font-size:12.5px;background:#fdf2f8;border:1px solid #f9a8d4;border-radius:9px;padding:7px 12px;cursor:pointer">'
       +'<input type="checkbox" id="asm2f"> 🔁 <b>กล่องไฟ 2 หน้า</b> — สร้างไฟล์<b>หน้า 2</b> ให้ด้วย (สลับซ้าย-ขวา)</label>'
+      /* 🎯 เวกเตอร์แท้ vs ฝังภาพ — ผู้ใช้เลือกเองได้ (ผู้ใช้สั่ง 2026-08-09)
+         ⚠️ บั๊กเดิม: ทุกชิ้นที่ไม่ใช่พื้นหลังถูกแนบ png ไปด้วยเสมอ แล้วหลังบ้านเห็น png ก็ฝังเป็นภาพทันที
+            -> ชิ้นเวกเตอร์ของลูกค้าถูกทิ้งทั้งงาน · เส้นตัดต้องไปไล่จาก 'ภาพ' ด้วย potrace
+            -> ชิ้นสีขาวบนพื้นขาว (เช่น รูปฟัน YN smile) หายเกลี้ยง ไม่มีเส้นตัด
+         ✅ ติ๊ก = ชิ้นไหนมีเส้นเวกเตอร์ในไฟล์ ใช้เส้นนั้นเลย (คมจริง · สีขาวไม่หาย)
+            ชิ้นที่ไม่มีเวกเตอร์ (เช่นข้อความไทยที่เป็น PNG) ยังฝังเป็นภาพเหมือนเดิม */
+      +'<label id="asmVecWrap" title="ใช้เส้นเวกเตอร์จริงจากไฟล์ลูกค้าเป็นเส้นตัด — ชิ้นสีขาวจะไม่หาย · เอาติ๊กออก = ฝังทุกชิ้นเป็นภาพแบบเดิม" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:#ecfeff;border:1px solid #67e8f9;border-radius:9px;padding:7px 12px;cursor:pointer">'
+      +'<input type="checkbox" id="asmVec" checked> 📐 <b>ใช้เส้นเวกเตอร์จริง</b> (คมสุด · ชิ้นสีขาวไม่หาย)</label>'
       +'<button id="asmClear" style="border:1px solid #cbd5e1;background:#f8fafc;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:inherit">🧹 ล้าง</button>'
       +'<button id="asmDone" style="border:none;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;border-radius:9px;padding:9px 20px;cursor:pointer;font-weight:700;font-family:inherit">✅ รวมเป็นแบบ → เลือกประเภทป้าย</button></div></div>';
     document.body.appendChild(ov);
@@ -9487,11 +9495,15 @@ function _wallPickPieces(pieces, f){
     //    เส้นเวกเตอร์คมเท่าต้นฉบับ 100% · ชิ้นภาพไม่ทำให้ทั้งงานกลายเป็น raster อีกต่อไป!
     if(_K>0&&_items.length&&_items.some(function(it){return !!(it.meta&&it.meta.token);})){
       try{
+      var _vchk=ov.querySelector('#asmVec');
+      var _useVec=(!_vchk)||_vchk.checked;        // ไม่มีช่อง = ถือว่าเปิด (ค่าเริ่มต้นใหม่)
       var items=_items.map(function(it){ var e=it.el;
         var base={x_mm:(e.offsetLeft-minx)*_K, y_mm:(e.offsetTop-miny)*_K, w_mm:e.offsetWidth*_K, h_mm:e.offsetHeight*_K};
         if(it.meta&&it.meta.token){ base.token=it.meta.token; base.page=it.meta.page; base.bbox=it.meta.bbox; }
         if(it.bg) base.fill=1;
-        else { base.png=it.png; }
+        // 📐 มี token เวกเตอร์ + ผู้ใช้เปิดโหมดเวกเตอร์ -> ไม่ต้องแนบ png (หลังบ้านจะใช้เส้นจริง)
+        //    ไม่งั้นแนบ png ให้ฝังเป็นภาพเหมือนเดิมทุกประการ
+        else if(!(_useVec && it.meta && it.meta.token)) base.png=it.png;
         return base; });
       var dbtn=ov.querySelector('#asmDone'); if(dbtn){dbtn.disabled=true;dbtn.textContent='⏳ กำลังรวมเวกเตอร์...';}
       // 🔑 token กลาง = จาก 'ชิ้นเวกเตอร์ตัวแรก' (ห้ามใช้ _items[0] ตรง ๆ — ถ้าชิ้นแรกเป็น PNG จะพังแล้วปุ่มค้าง!)
