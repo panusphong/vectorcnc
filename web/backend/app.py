@@ -11478,8 +11478,12 @@ TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
 # ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
 #   ฝังไว้ตรงนี้เลย ไม่ต้องตั้ง env บน Render (ถ้าอยากเปลี่ยน ตั้ง env ANALYTICS_WEBHOOK ทับได้)
-ANALYTICS_SHEET_URL = ("https://script.google.com/macros/s/"
-                       "AKfycbwY0lih8PDlfgM4eA6EQr36dVv3e7xgOMU9WW9fAlV_Qry2b41-HFqPAykpXTUeZ39Q/exec")
+# ⛔ ปิดการเชื่อมต่อ Google Sheet ถาวร (ผู้ใช้สั่ง 2026-08-10 และย้ำอีกครั้ง 2026-08-11)
+#    เหตุผล: Apps Script ตัวเดิมถูกถอด/เปลี่ยนไปแล้ว ตอบกลับ {"ok":false,"error":"unknown api: hit"}
+#    ทุกครั้ง -> log บน Render แดงทั้งหน้า วินาทีละหลายบรรทัด และหน่วง thread ฟรี ๆ
+#    สถิติทั้งหมดเก็บใน SQLite + สมุด .jsonl บนดิสก์ถาวรอยู่แล้ว ไม่ต้องพึ่งชีต
+#    ⚠️ ห้ามใส่ URL กลับมาที่นี่ ถ้าจะเปิดใหม่ต้องแก้ _sheet_hook() ด้วย (มันตัดตายอยู่)
+ANALYTICS_SHEET_URL = ""
 
 
 # 📒 สมุดบันทึกถาวรแบบ 'ต่อท้ายอย่างเดียว' (append-only) วางข้าง ๆ ฐานข้อมูล
@@ -11849,6 +11853,10 @@ async def api_track(request: Request):
 def _sheet_hook():
     """URL Apps Script — ล้างช่องว่าง/ขึ้นบรรทัดใหม่ที่ติดมาตอน copy-paste ใส่ Render
        (ถ้ามี \n ปนอยู่ urllib จะโยน InvalidURL ทันที -> เขียนชีตไม่ได้เลย)"""
+    # ⛔ ตัดตายที่นี่ — ไม่อ่าน env ด้วย (บน Render ยังมี ANALYTICS_WEBHOOK ค้างอยู่
+    #    ถ้าอ่าน env ต่อ ระบบจะกลับไปยิงชีตอีกทันทีที่ deploy · ผู้ใช้เห็น log แดงเต็มหน้า)
+    #    จะเปิดใหม่ต้องมาลบ 2 บรรทัดนี้ออกอย่างตั้งใจเท่านั้น
+    return ""
     u = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL or ""
     return "".join(str(u).split())          # ตัด space/tab/newline ทั้งหมด
 
@@ -11859,7 +11867,8 @@ def _push_sheet(row, blocking=False, queue_on_fail=True):
        - ตอนนี้ ยิงใน background thread + timeout 25 วิ + ตาม redirect เอง"""
     hook = _sheet_hook()
     if not hook:
-        return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
+        # เงียบสนิท — ไม่ print ไม่เข้าคิว ไม่เปิด thread (ปิดการเชื่อมต่อชีตถาวร)
+        return False, "ปิดการเชื่อมต่อ Google Sheet แล้ว — เก็บสถิติในเครื่องอย่างเดียว"
 
     payload = {"api": "hit",                       # ⚠️ ต้องมี — ไม่งั้น Apps Script ตอบ "unknown api: undefined"
                "sid": row[2], "account": row[3], "u": row[3], "ev": row[4], "page": row[5],

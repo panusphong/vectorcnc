@@ -1070,7 +1070,7 @@ def drop_fake_holes(field, cs, ambiguous=0.34):
 
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
                       target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0,
-                      wave_target=99.0):
+                      wave_target=99.0, fine_below=0):
     """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
 
     ⚠️ บทเรียน 2026-08-07 (พลาดสองรอบกว่าจะได้): ความแรงการเกลาจะตั้ง 'ตายตัว' ไม่ได้
@@ -1093,7 +1093,7 @@ def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
         #    รูจริงในงานออกแบบเล็กได้มาก (ช่องในตัว & % 8 ขนาดแค่ 27 px²)
         #    เคยใช้เกณฑ์เดียวกันทั้งคู่แล้วช่องพวกนี้หายไปเงียบ ๆ (ชุดตรวจจับได้)
         #    รูปลอมมี drop_fake_holes คัดด้วยความมั่นใจอยู่แล้ว ไม่ต้องพึ่งขนาด
-        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig)
+        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig, fine_below=fine_below)
               if (_area(c) >= 0 and abs(_area(c)) >= min_area)
               or (_area(c) < 0 and abs(_area(c)) >= min_hole)]
         if not cs or sig >= sigma_max:
@@ -1108,7 +1108,7 @@ def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
     return cs, sig
 
 
-def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2, sigma=0.0):
+def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2, sigma=0.0, fine_below=0):
     """⚠️ ต้องเติมขอบค่า 0 รอบสนามก่อนเสมอ
     ย่านสีที่ชนขอบภาพ (เช่นพื้นหลัง) จะได้คอนทัวร์เปิด ปิดรูปไม่ได้ -> หายทั้งชั้น"""
     field = denoise_field(field, sigma)
@@ -1118,7 +1118,13 @@ def contours_of(field, level=0.5, smooth_k=2, min_pts=8, pad=2, sigma=0.0):
         if len(c) < min_pts:
             continue
         p = np.column_stack([c[:, 1] - pad, c[:, 0] - pad])
-        out.append(_smooth(p, smooth_k))
+        # 🔎 ชิ้นเล็ก (ใบไม้ · ตัวอักษรจิ๋ว) เกลาน้อยลง 1 ขั้น — ไม่งั้นรายละเอียดถูกลบตั้งแต่ต้นทาง
+        #    ชิ้นใหญ่ยังเกลาเท่าเดิม จำนวนจุด/เวลาจึงไม่บาน (เกลาน้อยทั้งภาพ: จุด +70% เวลา ×2)
+        #    ⚠️ เปิดเฉพาะโหมดไล่สี (fine_below > 0) — งานปกติต้องได้ผลเท่าเดิมทุกจุด
+        _k9 = smooth_k
+        if int(fine_below) > 0 and len(p) <= int(fine_below):
+            _k9 = max(1, int(smooth_k) - 1)
+        out.append(_smooth(p, _k9))
     return out
 
 
@@ -1929,7 +1935,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         _mp = 2000 if grad else 250
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
                                    sigma_max=sigM, target=_tg, wave_target=wtgt,
-                                   max_pieces=_mp)
+                                   max_pieces=_mp, fine_below=(420 if grad else 0))
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
         cs = drop_fake_holes(denoise_field(f, sg), cs)
         if not cs:
