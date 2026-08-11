@@ -7422,7 +7422,20 @@ $('goLayer').onclick=function(){
             var _mst=$('mainSignType');
             if(_mst&&_mst.selectedIndex>=0&&typeof window._setWallType==='function'){ var _nm=(_mst.options[_mst.selectedIndex].textContent||'').replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); if(_nm)window._setWallType(_nm); }
           }catch(_e){}
-          if(typeof _wallLoad==='function'){ _wallLoad(e.target.result,(lastName||'design')+' (จากออกแบบ)'); }
+          /* 🧱 มีแบบบนผนังอยู่แล้ว -> ถามว่าจะ 'เพิ่มเป็นอีกแบบ' หรือ 'แทนที่' (ผู้ใช้สั่ง 2026-08-11) */
+          var _dsgName=(lastName||'design').replace(/\.[^.]+$/,'');
+          var _typeNm='';
+          try{ var _m2=$('mainSignType');
+               if(_m2&&_m2.selectedIndex>=0)_typeNm=(_m2.options[_m2.selectedIndex].textContent||'')
+                 .replace(/^\s*\d+\s*·\s*/,'').replace(/^\s*—.*—\s*$/,'').trim(); }catch(_e){}
+          var _addMore=false;
+          try{ if(window._wallHasDesign&&window._wallHasDesign()){
+                 _addMore=window.confirm('บนผนังมีแบบอยู่แล้ว\n\n• กด ตกลง = เพิ่มแบบนี้เป็น "อีกแบบหนึ่ง" (คิดราคาแยกบรรทัด แล้วรวมให้)\n• กด ยกเลิก = แทนที่แบบเดิม');
+               } }catch(_e){}
+          if(_addMore && typeof window._wallAddDesign==='function'){
+            window._wallAddDesign(e.target.result, _dsgName, (_rwmm>0?_rwmm/10:0), _typeNm);
+          }
+          else if(typeof _wallLoad==='function'){ window._wDesignName=_dsgName; _wallLoad(e.target.result,_dsgName+' (จากออกแบบ)'); }
           else { var im=new Image(); im.onload=function(){ window.wallImg=im; try{wallDraw();}catch(_x){} }; im.src=e.target.result; }
           setTimeout(function(){ try{ if(typeof wallPrice==='function')wallPrice(); }catch(_e){} }, 250);   // คิดราคาให้ครบหลังภาพโหลด
           try{ vcLogSim && vcLogSim('จำลองผนัง (จากออกแบบ)'); }catch(_e){}
@@ -10171,7 +10184,11 @@ function wallPrice(){ if(!$('wPResult'))return;
     lines.push({label:label,type:type,w:Math.round(a.w),h:Math.round(a.h),r:r}); total+=r.total; }
   if(splitOn){
     measBoxes.forEach(function(b){ addLine((b.role==='logo'?'\ud83d\udd34 ':'\ud83d\udd35 ')+(b.name||''), b.type||'', {w:b.fw*s.Wm,h:b.fh*s.Hm}, b.role||'text'); });
-  } else { var a=wallSignAreaSqm(); addLine('', (($('wPType')&&$('wPType').value)||''), {w:a.w,h:a.h}); }
+  } else { var a=wallSignAreaSqm();
+    /* 🧱 วางหลายแบบบนผนังได้ -> ป้ายหลักต้องมีชื่อกำกับ ไม่งั้นอ่านไม่ออกว่าบรรทัดไหนคือแบบไหน */
+    var _multi=((typeof wLogos!=='undefined'&&wLogos.length)||(typeof textBoxes!=='undefined'&&textBoxes.length));
+    addLine(_multi?('\ud83d\udfe9 '+((window._wDesignName)||'แบบที่ 1')):'',
+            (($('wPType')&&$('wPType').value)||''), {w:a.w,h:a.h}); }
   if(typeof textBoxes!=='undefined'&&textBoxes.length){ textBoxes.forEach(function(t){ if(!t.type||!t._wcm||!t._hcm)return; if(wIsLight(t.type))anyLight=true; var rr=wCalcPrice(t.type, t._wcm/100, t._hcm/100, t._hcm, colorSpecial, 'none', 'text'); if(rr&&!rr.error){ lines.push({label:'\ud83d\udcdd "'+(t.text||'')+'"',type:t.type,w:Math.round(t._wcm),h:Math.round(t._hcm),r:rr}); total+=rr.total; } }); }
   if($('wPLight'))$('wPLight').checked=anyLight;
   if(typeof shapes!=='undefined'&&shapes.length){ shapes.forEach(function(sp){ var rp=shpPrice(sp); if(rp&&!rp.error){ lines.push({label:(sp.type==='circle'?'◯':'▭')+' แผ่นหลัง',type:rp.mat,w:rp.w,h:rp.h,r:{billable:rp.areaSqm,tiered:false,total:rp.total,material:rp.material,per:rp.per,transFee:0,colorFee:0,framePrice:0,minA:false,minTot:rp.minTot}}); total+=rp.total; } }); }
@@ -10394,6 +10411,45 @@ function buildTypeList(){ var opts='';
   if($('wPTypeList'))$('wPTypeList').innerHTML=opts;   // 100+ \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23 (\u0e04\u0e49\u0e19\u0e2b\u0e32/\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e44\u0e14\u0e49) \u00b7 \u0e43\u0e0a\u0e49\u0e23\u0e48\u0e27\u0e21\u0e01\u0e31\u0e1a\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21/\u0e42\u0e25\u0e42\u0e01\u0e49
 }
 // \ud83c\udfaf \u0e15\u0e31\u0e49\u0e07\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22\u0e43\u0e19\u0e15\u0e31\u0e27\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32 (input+datalist) \u0e43\u0e2b\u0e49\u0e15\u0e23\u0e07\u0e01\u0e31\u0e1a WCAT key \u2014 match exact -> contains
+/* ════════════════════════════════════════════════════════════════════
+   🧱 โยนแบบจากหน้าออกแบบลงผนังได้ "มากกว่า 1 แบบ" (ผู้ใช้สั่ง 2026-08-11)
+   ─────────────────────────────────────────────────────────────────────
+   ของเดิม: ส่งแบบเข้าผนัง = เขียนทับป้ายหลักเสมอ -> วางได้ทีละแบบเดียว
+   ของใหม่: ถ้าบนผนังมีแบบอยู่แล้ว -> วางเป็น "ชิ้นใหม่" ใน wLogos
+            ซึ่งมีระบบลาก/ย่อขยาย/เลือกประเภท/คิดราคาแยกบรรทัด อยู่ครบแล้ว
+            ราคารวมมุมขวาล่างบวกให้เองโดยไม่ต้องแก้ (wallPrice รวม wLogos อยู่แล้ว)
+   ════════════════════════════════════════════════════════════════════ */
+window._wTypeKey=function(nm){
+  if(!nm||typeof WCAT!=='object')return '';
+  nm=String(nm).trim(); var keys=Object.keys(WCAT||{});
+  for(var i=0;i<keys.length;i++)if(keys[i]===nm)return keys[i];
+  for(var j=0;j<keys.length;j++)if(keys[j].indexOf(nm)>=0||nm.indexOf(keys[j])>=0)return keys[j];
+  return '';
+};
+/* วาง 'แบบ' ลงผนังเป็นชิ้นใหม่ — ตั้งความกว้างจริง (ซม.) และประเภทป้ายให้เลย */
+window._wallAddDesign=function(src,name,wCm,typeName){
+  var im=new Image();
+  im.onload=function(){
+    try{
+      var s=wallSignReal(), ar=(im.height/im.width)||1;
+      var w=(wCm>0)?wCm:Math.max(8,s.Wm*0.28);
+      var n=(window.wLogos||[]).length;
+      wLogos.push({img:im,src:src,name:name||('แบบที่ '+(n+2)),ar:ar,wCm:w,
+                   type:(window._wTypeKey(typeName||'')||''),
+                   fx:Math.min(0.70,0.10+0.07*(n%6)),fy:Math.min(0.70,0.10+0.07*(n%6))});
+      _lgSel=wLogos.length-1;
+      try{openLogoEdit();}catch(_e){}
+      try{wallDraw();}catch(_e){}
+      try{wallPrice();}catch(_e){}
+    }catch(_e){}
+  };
+  im.src=src;
+};
+/* มีแบบวางอยู่บนผนังแล้วหรือยัง */
+window._wallHasDesign=function(){
+  try{ return !!(window.wallImg) || ((window.wLogos||[]).length>0); }catch(_e){ return false; }
+};
+
 window._setWallType=function(nm){ var el=$('wPType'); if(!el||!nm||typeof WCAT!=='object')return false; nm=String(nm).trim();
   var keys=Object.keys(WCAT||{}), hit='';
   for(var i=0;i<keys.length;i++){ if(keys[i]===nm){hit=keys[i];break;} }
