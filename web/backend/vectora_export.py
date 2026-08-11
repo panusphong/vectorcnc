@@ -27,7 +27,7 @@ def _d_of(item):
     return d + "Z"
 
 
-def _poly_of(items, tol=0.55):
+def _poly_of(items, tol=0.9):
     """แปลง items (เบซิเยร์) -> รูปทรง shapely พร้อม 'รู' ตามกติกา even-odd"""
     from shapely.geometry import Polygon as _P
     rings = []
@@ -154,7 +154,8 @@ def to_svg(res, scale=1.0, background=True):
             base = _poly_of(L["items"])
             if base is not None:
                 try:                                  # ลดจุดก่อนตัด — เร็วขึ้นหลายเท่า ตาไม่เห็นต่าง
-                    _sm = base.simplify(0.25, preserve_topology=True)
+                    # ขอบของชั้นพื้นถูกลายด้านบนทับอยู่ ~4 px อยู่แล้ว ลดจุดได้มากโดยตาไม่เห็น
+                    _sm = base.simplify(1.2, preserve_topology=True)
                     if not _sm.is_empty:
                         base = _sm
                 except Exception:

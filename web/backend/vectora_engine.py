@@ -546,7 +546,14 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
     #    (ทึบทับทึบ = ไม่มีอะไรเปลี่ยน) รอยต่อจึงหายสนิท และยังเกลี่ยเนียนเหมือนเดิม
     deg = float(np.degrees(np.arctan2(pyv, pxv)))
     off0 = B[0][0]
-    NS = int(min(96, max(24, S * 5)))
+    # ⚠️ ผู้ใช้ยังเห็น "คลื่นเป็นเส้น" (2026-08-10 รอบสี่)
+    #    เพราะแถบที่วาดจริงมีสีคงที่ทั้งแถบในแนว s -> ขอบแถบเป็นขั้นเล็ก ๆ
+    #    ตาคนจับขั้นสีระดับ 1-2 หน่วยบนพื้นเรียบได้ (Mach band) จึงเห็นเป็นเส้น
+    # ✅ คำนวณจำนวนแถบจาก "ขั้นสีที่ยอมได้" (0.5 หน่วย) ไม่ใช่ตั้งตายตัว
+    _dmax = 0.0
+    for _q in range(S - 1):
+        _dmax = max(_dmax, float(np.abs(B[_q + 1][1] - B[_q][1]).max()))
+    NS = int(np.clip(round(1 + (S - 1) * _dmax / 1.2), 24, 120)) if S > 1 else 1
     bands = []
     for j in range(NS):
         a = s0 + (s1 - s0) * j / NS
@@ -557,7 +564,7 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
         f = pos - k0
         M = B[k0][1] if S == 1 else (B[k0][1] * (1 - f) + B[k0 + 1][1] * f)
         bands.append({"s0": round(a, 2), "s1": round(b, 2),
-                      "stops": _stops_trim(off0, M)})
+                      "stops": _stops_trim(off0, M, tol=1.4)})
     return {"kind": "bands", "err": round(float(err), 2),
             "deg": round(deg, 3), "t0": round(t0, 2), "t1": round(t1, 2),
             "s0": round(s0, 2), "s1": round(s1, 2),
@@ -698,20 +705,18 @@ def grad_eval(g, xs, ys):
         # ⚡ ห้ามกาง (จำนวนแถบ × จำนวนพิกเซล × 3) เป็นก้อนเดียว
         #    84 แถบ × 400,000 พิกเซล = 800 MB ต่อรอบ และช้ากว่า 2 เท่า (เจอจริง 2026-08-10)
         #    คิดทีละแถบเฉพาะพิกเซลของแถบนั้นพอ -> งานรวมเท่ากับจำนวนพิกเซลเฉย ๆ
-        cs = np.array([(float(b["s0"]) + float(b["s1"])) * 0.5 for b in bs], np.float64)
+        # ⚠️ ต้องคิดแบบเดียวกับที่ "วาดออกมาจริง" เป๊ะ ๆ: แต่ละแถบใช้ไล่สีของตัวเองเต็มช่วง
+        #    (เคยเขียนเป็นการเกลี่ยระหว่างศูนย์กลางแถบ -> ค่าคลาดจากของจริงถึง 8 หน่วย
+        #     ทำให้ขั้นตอน "ขยายย่านพื้น" ตัดสินผิด)
+        a0 = float(bs[0]["s0"]); a1 = float(bs[-1]["s1"])
         sv = xs * pxv + ys * pyv
-        pos = np.clip((sv - cs[0]) / max(1e-6, cs[1] - cs[0]), 0.0, S - 1.0)
-        k0 = np.clip(np.floor(pos).astype(np.int32), 0, S - 2)
-        f = (pos - k0)[:, None]
+        k0 = np.clip(((sv - a0) / max(1e-6, (a1 - a0)) * S).astype(np.int32), 0, S - 1)
         out = np.zeros((len(xs), 3), np.float64)
-        for k in range(S - 1):
+        for k in range(S):
             sel = (k0 == k)
             if not sel.any():
                 continue
-            r0 = _ramp(bs[k]["stops"], tn[sel])
-            r1 = _ramp(bs[k + 1]["stops"], tn[sel])
-            fk = f[sel]
-            out[sel] = r0 * (1 - fk) + r1 * fk
+            out[sel] = _ramp(bs[k]["stops"], tn[sel])
         return out
     x1, y1, x2, y2 = (float(g["x1"]), float(g["y1"]), float(g["x2"]), float(g["y2"]))
     dx, dy = x2 - x1, y2 - y1
@@ -872,6 +877,16 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False,
         kk = max(kk, int(kmin))
     kk = max(2, min(_cap, kk))
     cen, _ = _kmeans_lab(Xf, kk, seed=seed)
+    if grad and len(cen) > 2:
+        # ⚠️ ผู้ใช้ชี้จุด: ใบไม้สีเดียวถูกแบ่งเป็นสองเฉด แล้วเกิดปื้นสีหลุดในใบ
+        #    โหมดไล่สีข้าม merge_blends ไป (ถูกแล้วสำหรับพื้น) แต่ต้องกันสีซ้ำซ้อนด้วย
+        # ✅ รวมสีที่ห่างกันน้อยกว่า 6 หน่วย Lab (ตาคนแทบแยกไม่ออก) เข้าด้วยกัน
+        _keep = [0]
+        for _i in range(1, len(cen)):
+            if min(float(np.linalg.norm(cen[_i] - cen[_j])) for _j in _keep) >= 6.0:
+                _keep.append(_i)
+        if len(_keep) >= 2:
+            cen = cen[np.array(_keep)]
     if not grad:
         S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
         lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
