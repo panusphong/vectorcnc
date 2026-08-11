@@ -1068,6 +1068,40 @@ def drop_fake_holes(field, cs, ambiguous=0.34):
     return out
 
 
+
+def drop_weak_specks(field, cs, min_area, conf=0.62):
+    """🧹 ตัด 'จุดด่างปลอม' ที่เกิดจากรอยบีบอัด JPEG รอบตัวอักษร/ขอบคมทิ้ง
+
+    ⚠️ ผู้ใช้ชี้จุด 2026-08-11: มีปื้นเทา/ดำเล็ก ๆ โผล่บนพื้นขาว (ข้าง ' ของ USERS' ·
+       หลังตัว E · ใบไม้ปลอมบนพื้นหลัง) หลังจากอลิซลดเกณฑ์ชิ้นเล็กสุดลง 55%
+       เพื่อเก็บตัวอักษรจิ๋วไว้ — ตัวอักษรจิ๋วรอด แต่รอยด่างบีบอัดก็รอดมาด้วย
+
+    ✅ อย่าตัดด้วย "ขนาด" อย่างเดียว (ตัวอักษรจิ๋วก็เล็กเหมือนกัน) ให้ดู "ความมั่นใจ"
+       ลายจริง: ข้างในเป็นสีนั้นเต็ม ๆ -> ค่าสนามใกล้ 1
+       รอยด่างบีบอัด: เป็นสีก้ำกึ่ง -> ค่าสนามค้างแถว 0.5-0.6
+       ตัดเฉพาะชิ้นที่ "เล็กกว่าเกณฑ์เดิม และ ไม่มั่นใจ" เท่านั้น
+    """
+    if not cs:
+        return cs
+    H, W = field.shape[:2]
+    out = []
+    for c in cs:
+        a = np.asarray(c, float)
+        ar = _area(a)
+        if ar <= 0 or abs(ar) >= float(min_area) or len(a) < 4:
+            out.append(c); continue                    # รู หรือ ชิ้นใหญ่พอ -> เก็บ
+        x0 = max(0, int(np.floor(a[:, 0].min())) - 1); x1 = min(W, int(np.ceil(a[:, 0].max())) + 2)
+        y0 = max(0, int(np.floor(a[:, 1].min())) - 1); y1 = min(H, int(np.ceil(a[:, 1].max())) + 2)
+        if x1 - x0 < 3 or y1 - y0 < 3:
+            out.append(c); continue
+        m = np.zeros((y1 - y0, x1 - x0), np.uint8)
+        cv2.fillPoly(m, [np.round(a - [x0, y0]).astype(np.int32)], 1)
+        if m.sum() < 3:
+            out.append(c); continue
+        if float(field[y0:y1, x0:x1][m > 0].mean()) >= float(conf):
+            out.append(c)                              # มั่นใจว่าเป็นลายจริง -> เก็บ
+    return out
+
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
                       target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0,
                       wave_target=99.0, fine_below=0):
@@ -1939,7 +1973,12 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                                    sigma_max=sigM, target=_tg, wave_target=wtgt,
                                    max_pieces=_mp, fine_below=(420 if grad else 0))
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
-        cs = drop_fake_holes(denoise_field(f, sg), cs)
+        _fd9 = denoise_field(f, sg)
+        cs = drop_fake_holes(_fd9, cs)
+        # 🧹 โหมดไล่สี: เกณฑ์ชิ้นเล็กถูกลดลง 55% เพื่อเก็บตัวอักษรจิ๋ว
+        #    -> ต้องกรอง "จุดด่างจากรอยบีบอัด" ออกด้วย ไม่งั้นได้ปื้นเทาโผล่บนพื้นขาว
+        if grad:
+            cs = drop_weak_specks(_fd9, cs, min_a / 0.45)
         if not cs:
             continue
         sig_used.append(sg)
