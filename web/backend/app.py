@@ -6158,6 +6158,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                     # 🎯 กล่องไฟล้อมตามทรง: "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)"
                     #    "1" = ขอบกล่องคือ union ของชิ้นงานจริงเป๊ะ ๆ (ดู _wrap_silhouette โหมด tight)
                     wrap_tight: str = Form("0"),
+                    # 🏗️ ข้อมูลหน้างานติดตั้ง — จำเป็นต่อการคำนวณแรงลม/พุกตามมาตรฐาน
+                    inst_env: str = Form("outdoor"),      # outdoor | indoor
+                    inst_wall: str = Form("concrete"),    # concrete|brick|hollow|aac|gypsum|steel
+                    inst_h: str = Form("3"),              # ความสูงติดตั้ง (ม.)
+                    inst_zone: str = Form("central"),     # กลุ่มพื้นที่แรงลม มยผ.1311-50
+                    inst_edge: str = Form("0"),           # ติดที่มุม/ขอบอาคาร
                     safe_mode: str = Form("0")):
     """ออก 'ชุดชั้นตัด' อัตโนมัติตามแบบป้าย 1-7 — ขยาย/หดเส้นต่อชั้นตามค่าเผื่อ แยก layer/สี ตามวัสดุ
        return_depth_cm > 0 = กำหนดความหนายกขอบ (ความลึกตัว) เอง เช่น 2.5/5/7.5/10 หรือ 3"""
@@ -6268,11 +6274,34 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
             # 📐 กล่องไฟล้อมตามทรง: มุมสี่เหลี่ยมต้องตัดตรง ไม่โค้ง (ผู้ใช้สั่ง 2026-08-09)
             # 🎯 ติ๊ก "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" -> ขอบกล่อง = union ชิ้นงานจริง ขนาดเป๊ะตามที่กรอก
             _tight9 = (str(wrap_tight) == "1")
+            _dbgA = full.bounds                       # 🔍 ขนาดงานก่อนทำทรงกล่อง
             full = _wrap_silhouette(full, float(rec.get("wrap_bridge_cm", 3.0)) * 10.0, sharp=True,
                                     tight=_tight9)
+            _dbgB = full.bounds                       # 🔍 หลัง union
             if _tight9:
                 # 📏 หักความกว้างคิ้วออกก่อน -> ขนาดนอกสุด (รวมคิ้ว) = ที่กรอกเป๊ะ
                 full = _wrap_fit_outer(full, rec, trim_width_cm, trim_dir)
+            # ══════════════════════════════════════════════════════════════
+            # 🔍 ตัววัดขนาด (ผู้ใช้เจอ 2026-08-09: กรอก 230 แต่ได้ 222.5 — เล็กลงผิด)
+            #    รายงานทุกขั้นออกหน้าจอ จะได้รู้ทันทีว่าขนาดหายไปตรงไหน ไม่ต้องเดา
+            # ══════════════════════════════════════════════════════════════
+            if _tight9:
+                try:
+                    _dbgC = full.bounds
+                    _g9 = _wrap_trim_grow(rec, trim_width_cm, trim_dir)
+                    _o9 = full.buffer(_g9, join_style=2, mitre_limit=4.0, resolution=12) if _g9 > 0.05 else full
+                    _ob9 = _o9.bounds
+                    _prewarn.append(
+                        "🔍 ตรวจขนาด (โลโก้เต็มพื้นที่กล่อง): กรอก %.1f ซม. · คิ้ว %.1f ซม. (%s) → "
+                        "งานเข้ามา %.1f×%.1f → union %.1f×%.1f → ตัวกล่อง %.1f×%.1f → "
+                        "นอกสุดรวมคิ้ว %.1f×%.1f ซม."
+                        % (float(real_width_mm) / 10.0, float(trim_width_cm or 0), str(trim_dir),
+                           (_dbgA[2] - _dbgA[0]) / 10.0, (_dbgA[3] - _dbgA[1]) / 10.0,
+                           (_dbgB[2] - _dbgB[0]) / 10.0, (_dbgB[3] - _dbgB[1]) / 10.0,
+                           (_dbgC[2] - _dbgC[0]) / 10.0, (_dbgC[3] - _dbgC[1]) / 10.0,
+                           (_ob9[2] - _ob9[0]) / 10.0, (_ob9[3] - _ob9[1]) / 10.0))
+                except Exception:
+                    pass
             try:
                 if _tight9:
                     # 🎯 "โลโก้เต็มพื้นที่กล่อง" = งานพิมพ์ทาบเต็มหน้ากล่องพอดี ไม่เหลือขอบ ไม่ล้น
@@ -7590,16 +7619,47 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                              % (_p9["avg_mm"] / 10.0, _p9["min_mm"] / 10.0,
                                 int(frame_info.get("bolts") or 0), int(frame_info.get("wires") or 0)))
             # 🧾 BOQ อุปกรณ์สิ้นเปลืองงานติดตั้ง (คิดจากจุดยึด · รู · ความยาวเหล็ก · เส้นไฟ)
-            from vectorcnc import sign_weight as _SWb
+            # 🏗️ อ่านข้อมูลหน้างานติดตั้ง (มีค่าเริ่มต้นที่ปลอดภัย ถ้าหน้าเว็บยังไม่ส่งมา)
+            _inst_outdoor = (str(inst_env or "outdoor").lower() != "indoor")
+            _inst_wall = str(inst_wall or "concrete").lower()
+            try:
+                _inst_h = max(0.5, min(80.0, float(str(inst_h or "3").strip() or 3)))
+            except Exception:
+                _inst_h = 3.0
+            _inst_zone = str(inst_zone or "central").lower()
+            _inst_edge = (str(inst_edge or "0") == "1")
+            # 🏗️ คำนวณงานติดตั้งตามมาตรฐานจริง: แรงลม -> แรงที่จุดยึด -> เลือกพุก -> BOQ
+            #    (ผู้ใช้สั่ง 2026-08-11: "อย่ามั่ว" — ทุกตัวเลขต้องมีที่มา และต้องต่างกันตามประเภทป้าย)
+            #    กฎกระทรวง ฉ.6 ข้อ 17 · มยผ. 1311-50 · fischer FIS V Plus (EN 1992-4) · NEC Art.600 · IBC App.H
+            from vectorcnc import install_calc as _ICb
             _fi9 = frame_info if isinstance(frame_info, dict) else {}
-            _boq = _SWb.boq(total_kg=_ws["total_kg"],
-                            frame_len_mm=(_fi9.get("frame_len_mm") or (_sp * 2.0 + (full.bounds[3] - full.bounds[1]) * 2.0)),
-                            frame_tube=_tb, supports=int(_fi9.get("supports") or 2),
-                            bolts=int(_fi9.get("bolts") or 0), wires=int(_fi9.get("wires") or 0),
-                            letters=int(_fi9.get("letters") or 0),
-                            led_m=float((led_info or {}).get("total_m") or 0.0),
-                            transformer_w=int((led_info or {}).get("transformer_w") or 0),
-                            perimeter_mm=float(perimeter or 0.0) * 10.0, arm=(_arm_info or None))
+            _bb9 = full.bounds
+            _flen_m = float(_fi9.get("frame_len_mm") or (_sp * 2.0 + (_bb9[3] - _bb9[1]) * 2.0)) / 1000.0
+            _face_m2 = max(0.0, (_bb9[2] - _bb9[0]) * (_bb9[3] - _bb9[1])) / 1.0e6
+            _ispec = _ICb.install_spec(
+                rec=rec, total_kg=_ws["total_kg"], face_area_m2=_face_m2,
+                perimeter_m=float(perimeter or 0.0) / 100.0,
+                frame_len_m=_flen_m, frame_tube=_tb,
+                supports=int(_fi9.get("supports") or 2),
+                bolts=int(_fi9.get("bolts") or 0), wires=int(_fi9.get("wires") or 0),
+                letters=int(_fi9.get("letters") or 0),
+                led_m=float((led_info or {}).get("total_m") or 0.0),
+                transformer_w=int((led_info or {}).get("transformer_w") or 0),
+                arm=(_arm_info or None), outdoor=_inst_outdoor, substrate=_inst_wall,
+                install_h_m=_inst_h, zone=_inst_zone, at_edge=_inst_edge,
+                mount=str(mount or "none"), depth_cm=float(rec.get("depth_cm") or 0.0))
+            _boq = _ispec["boq"]
+            _xtra.append("💨 " + _ispec["wind"]["note"])
+            _an9 = _ispec["anchor"]
+            _xtra.append("🔩 พุกยึดผนัง: %s ฝัง %d มม. × %d ตัว/เพลท × %d จุด · ผนัง%s · "
+                         "รับดึง %.2f/%.2f kN ต่อตัว (ใช้งาน %.0f%% ของพิกัด) · "
+                         "ระยะขอบขั้นต่ำ %d มม. · ห่างกันขั้นต่ำ %d มม."
+                         % (_an9["size"], _an9["hef_mm"], _an9["per_plate"],
+                            int(_fi9.get("supports") or 2), _an9["substrate"],
+                            _an9["use_n_kn"], _an9["cap_n_kn"], _an9["util"] / 1.2 * 100.0,
+                            _an9["cmin_mm"], _an9["smin_mm"]))
+            for _w9 in (_an9.get("warn") or []):
+                _xtra.append("⚠️ " + _w9)
             # 🎨 สีที่ใช้ผลิต — ไม่เกิน 3 สี · ถ้าไม่ได้เลือกสีพิเศษจะระบุ ขาว/ดำ ให้ชัดเจนเอง
             from vectorcnc import spot_color as _SPC
             # 🎨 เอาเฉพาะ 'ชิ้นที่ต้องพ่นสี' (คิ้ว · ขอบข้าง · หรือทั้งตัวถ้าเป็นไฟออกหลัง)
@@ -7616,7 +7676,12 @@ async def layer_set(file: UploadFile = File(...), sign_type: str = Form("1"),
                            "span_cm": round(_sp / 10.0, 1), "safe": bool(_ft),
                            "sigma_mpa": round(_ck["sigma"], 1), "sigma_limit_mpa": 140.0,
                            "defl_mm": round(_ck["defl"], 2), "defl_limit_mm": round(_ck["defl_lim"], 2),
-                           "arm": _arm_info, "boq": _boq}
+                           "arm": _arm_info, "boq": _boq,
+                           "wind": _ispec["wind"], "loads": _ispec["loads"],
+                           "anchor": _ispec["anchor"],
+                           "install": {"env": ("outdoor" if _inst_outdoor else "indoor"),
+                                       "wall": _inst_wall, "h_m": _inst_h,
+                                       "zone": _inst_zone, "edge": bool(_inst_edge)}}
         except Exception:
             weight_info = {}
             try:
@@ -8201,6 +8266,12 @@ async def job_sheet(file: UploadFile = File(...), sign_type: str = Form("1"),
                     material_groups: str = Form(""),
                     # 🎯 กล่องไฟล้อมตามทรง: "โลโก้เต็มพื้นที่กล่อง (ไม่เว้นขอบ)" — ต้องตรงกับหน้าออกแบบ
                     wrap_tight: str = Form("0"),
+                    # 🏗️ ข้อมูลหน้างานติดตั้ง — จำเป็นต่อการคำนวณแรงลม/พุกตามมาตรฐาน
+                    inst_env: str = Form("outdoor"),      # outdoor | indoor
+                    inst_wall: str = Form("concrete"),    # concrete|brick|hollow|aac|gypsum|steel
+                    inst_h: str = Form("3"),              # ความสูงติดตั้ง (ม.)
+                    inst_zone: str = Form("central"),     # กลุ่มพื้นที่แรงลม มยผ.1311-50
+                    inst_edge: str = Form("0"),           # ติดที่มุม/ขอบอาคาร
                     logo_w_cm: float = Form(0.0), logo_h_cm: float = Form(0.0)):
     """สร้าง 'ใบสั่งผลิต / แบบยืนยันลูกค้า' (HTML พร้อมพิมพ์ PDF) รวม 3D + โครง + LED + BOM"""
     import datetime as _dt
@@ -9922,7 +9993,19 @@ async def compose_vector(request: Request):
         import fitz, base64 as _b64
         from vectorcnc import assets as _as
         MMPT = 72.0 / 25.4
-        pad = 5.0                                       # เผื่อขอบ 5 มม.
+        # ══════════════════════════════════════════════════════════════
+        # 📐 ห้ามเผื่อขอบ (ผู้ใช้เจอจริง 2026-08-09)
+        #
+        # ⚠️ เดิม pad = 5.0 มม. -> หน้ากระดาษของ composed_vector.pdf ใหญ่กว่าตัวงาน
+        #    5 มม. ทางขวาและล่าง กลายเป็น 'ขอบขาว' ติดไปกับงานทุกขั้นตอน:
+        #      · หน้าจำลองผนัง -> เห็นขอบขาวรอบอาร์ต ไม่เต็มกล่อง (ผู้ใช้ทัก)
+        #      · ขนาดจริงเพี้ยน -> vector_import ใช้ 'ความกว้างหน้ากระดาษ' หาร
+        #        เป็นสเกล มม./พิกเซล ดังนั้น 230 ซม. ที่กรอกถูกแมปกับ
+        #        'งาน + ขอบขาว' ไม่ใช่ตัวงาน -> งานจริงเล็กกว่าที่สั่งเสมอ
+        # ✅ 0 = หน้ากระดาษพอดีตัวงานเป๊ะ เหมือนที่เห็นตอนจัดวางทุกประการ
+        #    (ชิ้นถูกเลื่อนให้เริ่มที่ 0 อยู่แล้วด้านบน จึงไม่มีชิ้นไหนตกขอบ)
+        # ══════════════════════════════════════════════════════════════
+        pad = 0.0
         # 🧮 ทำความสะอาดพิกัด: ทิ้งชิ้นขนาดผิดปกติ + เลื่อนให้เริ่มที่ 0 (กันชิ้นตกนอกหน้ากระดาษจนหายไป)
         good = []
         for it in items:
@@ -11395,12 +11478,8 @@ TZ7 = timezone(timedelta(hours=7))          # เวลาไทย
 
 # ⬇ Google Sheet (Apps Script /exec) — เก็บสถิติถาวร ไม่หายตอน deploy
 #   ฝังไว้ตรงนี้เลย ไม่ต้องตั้ง env บน Render (ถ้าอยากเปลี่ยน ตั้ง env ANALYTICS_WEBHOOK ทับได้)
-# 🚫 ปิดการเชื่อมต่อ Google Sheet แล้ว (ผู้ใช้สั่ง 2026-08-09)
-#    เหตุผล: Apps Script ที่ deploy อยู่ไม่รู้จักคำสั่ง 'hit' -> ตอบ 400 ทุกครั้ง
-#    log เต็มไปด้วย "[analytics] push failed" โดยไม่มีประโยชน์อะไรเลย
-#    สถิติยังเก็บครบใน SQLite (/var/data) + สมุด .jsonl เหมือนเดิมทุกประการ
-#    ถ้าวันไหนอยากต่อกลับ: ตั้ง env ANALYTICS_WEBHOOK เป็น URL /exec ตัวใหม่ที่รองรับ api=hit
-ANALYTICS_SHEET_URL = ""
+ANALYTICS_SHEET_URL = ("https://script.google.com/macros/s/"
+                       "AKfycbwY0lih8PDlfgM4eA6EQr36dVv3e7xgOMU9WW9fAlV_Qry2b41-HFqPAykpXTUeZ39Q/exec")
 
 
 # 📒 สมุดบันทึกถาวรแบบ 'ต่อท้ายอย่างเดียว' (append-only) วางข้าง ๆ ฐานข้อมูล
@@ -11539,11 +11618,7 @@ def _an_flush_pending(limit=200):
 
 
 def _an_flush_bg():
-    """ลองส่งคิวค้างแบบไม่หน่วงหน้าเว็บ (กันยิงซ้อน)
-
-    🚫 ปิดใช้งานพร้อมกับ _push_sheet — ไม่ปั่น thread ส่งคิวออกเน็ตอีกแล้ว"""
-    if not _sheet_hook():
-        return
+    """ลองส่งคิวค้างแบบไม่หน่วงหน้าเว็บ (กันยิงซ้อน)"""
     if getattr(_an_flush_bg, "_busy", False):
         return
     if not os.path.exists(_AN_PEND):
@@ -11774,22 +11849,14 @@ async def api_track(request: Request):
 def _sheet_hook():
     """URL Apps Script — ล้างช่องว่าง/ขึ้นบรรทัดใหม่ที่ติดมาตอน copy-paste ใส่ Render
        (ถ้ามี \n ปนอยู่ urllib จะโยน InvalidURL ทันที -> เขียนชีตไม่ได้เลย)"""
-    # 🚫 ไม่มี URL ฝังในโค้ดแล้ว — ต่อได้เฉพาะเมื่อผู้ดูแลตั้ง env ANALYTICS_WEBHOOK เอง
-    #    (ตัดขาดทั้งฝั่งเขียนสถิติและฝั่งอ่านสถิติกลับมาแสดง)
-    u = os.environ.get("ANALYTICS_WEBHOOK", "") or ""
+    u = os.environ.get("ANALYTICS_WEBHOOK", "") or ANALYTICS_SHEET_URL or ""
     return "".join(str(u).split())          # ตัด space/tab/newline ทั้งหมด
 
 
 def _push_sheet(row, blocking=False, queue_on_fail=True):
     """ยิง event เข้า Google Sheet (Apps Script)
-
-    🚫 ปิดใช้งานแล้ว (ผู้ใช้สั่ง 2026-08-09) — ไม่ยิงเน็ตออกไปเลยแม้แต่ครั้งเดียว
-       คงฟังก์ชันไว้เพื่อไม่ให้จุดเรียก/หน้าตรวจสุขภาพระบบพัง แต่คืนค่าทันที
-       ไม่เข้าคิว ไม่เขียน log error · สถิติยังเก็บใน SQLite + .jsonl ครบเหมือนเดิม
-       จะกลับมาใช้: ตั้ง env ANALYTICS_WEBHOOK แล้วลบ 3 บรรทัดด้านล่างนี้ออก
-    """
-    return False, "ปิดการเชื่อมต่อ Google Sheet แล้ว (เก็บสถิติในเครื่องอย่างเดียว)"
-    # ── โค้ดเดิมด้านล่างถูกปิดตายด้วย return ข้างบน (เก็บไว้เผื่ออยากต่อกลับ) ──
+       - เดิม timeout 3 วิ -> Apps Script ตอบไม่ทัน (มี redirect) -> ไม่มีแถวลงชีต
+       - ตอนนี้ ยิงใน background thread + timeout 25 วิ + ตาม redirect เอง"""
     hook = _sheet_hook()
     if not hook:
         return False, "ไม่ได้ตั้ง ANALYTICS_WEBHOOK"
