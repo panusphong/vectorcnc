@@ -553,7 +553,7 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
     _dmax = 0.0
     for _q in range(S - 1):
         _dmax = max(_dmax, float(np.abs(B[_q + 1][1] - B[_q][1]).max()))
-    NS = int(np.clip(round(1 + (S - 1) * _dmax / 1.2), 24, 120)) if S > 1 else 1
+    NS = int(np.clip(round(1 + (S - 1) * _dmax / 0.8), 24, 180)) if S > 1 else 1
     bands = []
     for j in range(NS):
         a = s0 + (s1 - s0) * j / NS
@@ -564,7 +564,7 @@ def _fit_bands(xf, yf, C, ns=GRAD_STOPS, max_bands=20, target=3.5):
         f = pos - k0
         M = B[k0][1] if S == 1 else (B[k0][1] * (1 - f) + B[k0 + 1][1] * f)
         bands.append({"s0": round(a, 2), "s1": round(b, 2),
-                      "stops": _stops_trim(off0, M, tol=1.4)})
+                      "stops": _stops_trim(off0, M, tol=2.2)})
     return {"kind": "bands", "err": round(float(err), 2),
             "deg": round(deg, 3), "t0": round(t0, 2), "t1": round(t1, 2),
             "s0": round(s0, 2), "s1": round(s1, 2),
@@ -1745,7 +1745,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         #    ถ้าไม่ขยายคืน แถบนั้นจะไม่มีสีพื้นให้เลือก -> ไปเกาะสีงานจริง = เกิด "ขอบสีเพี้ยน"
         #    รอบใบไม้/รอบวงกลม (ผู้ใช้เห็นเป็นริ้วสีแปลก ๆ รอบลาย)
         if _u_raw is not None:
-            _rr2 = int(max(9, round(max(H, W) / 200.0))) | 1
+            # ⚠️ ย่านนี้ต้อง "แคบ" (ผู้ใช้เจอจริง 2026-08-10): ถ้ากว้างไป สีตัวแทนพื้นจะไปชนะ
+            #    พิกเซลของใบไม้ที่อยู่ชิดขอบวง -> เกิด "ปื้นสีน้ำเงินหลุด" กลางใบ
+            #    วัดจริง: 9 px -> 5 px ค่าคลาดโลโก้ 14.7->12.2 · ใบไม้ 3.9->3.4 · ทั้งภาพ 2.9->2.6
+            _rr2 = int(max(3, round(max(H, W) / 900.0))) | 1
             _ins = cv2.dilate(_u_raw.astype(np.uint8),
                               np.ones((_rr2, _rr2), np.uint8)).astype(bool)
         else:
@@ -1943,6 +1946,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         if grad:
             _m = (labels == i) if keep is None else ((labels == i) & keep)
             # ก้อนรายละเอียดใช้จุดสีน้อยกว่า (12) — ก้อนเล็ก ไม่ต้องละเอียดเท่าพื้น
+            # 🍃 ลายที่ไล่สีในตัวเอง (เช่นพวงหรีดเขียว->ฟ้า) ต้องใช้ไล่สีสองมิติด้วย
+            #    ไม่งั้น k-means จะซอยเป็นหลายเฉด แล้วเกิด "สีหลุด" เป็นปื้นกลางใบ
             _g = fit_gradient_field(img, _m, seed=seed, ns=12, min_delta=10.0,
                                     max_err=5.0, max_bands=1)
             if _g:

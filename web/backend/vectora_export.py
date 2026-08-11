@@ -155,7 +155,7 @@ def to_svg(res, scale=1.0, background=True):
             if base is not None:
                 try:                                  # ลดจุดก่อนตัด — เร็วขึ้นหลายเท่า ตาไม่เห็นต่าง
                     # ขอบของชั้นพื้นถูกลายด้านบนทับอยู่ ~4 px อยู่แล้ว ลดจุดได้มากโดยตาไม่เห็น
-                    _sm = base.simplify(1.2, preserve_topology=True)
+                    _sm = base.simplify(2.2, preserve_topology=True)
                     if not _sm.is_empty:
                         base = _sm
                 except Exception:
