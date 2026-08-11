@@ -664,6 +664,54 @@ select.numin{cursor:pointer}
               <div style="flex:1"><label style="font-size:10.5px;color:#64748b">กราฟิก (ผู้ออกแบบ)</label><input class="numin" id="pmGraphic" type="text" placeholder="ชื่อกราฟิก" style="width:100%;padding:6px"></div>
             </div>
           </div>
+          <!-- 🏗️ ข้อมูลหน้างานติดตั้ง — ใช้คำนวณแรงลม/ขนาดพุก/BOQ ตามมาตรฐานจริง
+               ผู้ใช้สั่ง 2026-08-11: ห้ามมั่ว ต้องคำนวณจากของจริง
+               อ้างอิง: กฎกระทรวง ฉ.6 ข้อ 17 · มยผ.1311-50 · fischer FIS V Plus (EN 1992-4)
+                        NEC Article 600 · IBC Appendix H -->
+          <div id="instBox" style="margin-top:8px;padding:10px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff">
+            <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px">🏗️ หน้างานติดตั้ง (ใช้คำนวณแรงลม + ขนาดพุก)</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <div style="flex:1;min-width:118px">
+                <label style="font-size:10.5px;color:#64748b">ติดตั้งที่</label>
+                <select class="numin" id="instEnv" style="width:100%;padding:6px">
+                  <option value="outdoor">กลางแจ้ง (คิดแรงลม)</option>
+                  <option value="indoor">ในร่ม (ไม่มีแรงลม)</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:118px">
+                <label style="font-size:10.5px;color:#64748b">ผนังที่ยึด</label>
+                <select class="numin" id="instWall" style="width:100%;padding:6px">
+                  <option value="concrete">คอนกรีต / เสา-คาน</option>
+                  <option value="brick">อิฐมอญตัน / บล็อกตัน</option>
+                  <option value="hollow">อิฐกลวง / บล็อกกลวง</option>
+                  <option value="aac">อิฐมวลเบา (AAC)</option>
+                  <option value="gypsum">ผนังเบา ยิปซัม</option>
+                  <option value="steel">โครงเหล็ก</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:88px">
+                <label style="font-size:10.5px;color:#64748b">สูงจากพื้น (ม.)</label>
+                <input class="numin" id="instH" type="number" min="0.5" max="80" step="0.5" value="3" style="width:100%;padding:6px">
+              </div>
+              <div style="flex:1;min-width:118px">
+                <label style="font-size:10.5px;color:#64748b">พื้นที่ (แรงลม)</label>
+                <select class="numin" id="instZone" style="width:100%;padding:6px">
+                  <option value="central">ภาคกลาง/กรุงเทพฯ</option>
+                  <option value="north_low">เหนือตอนล่าง/ชายแดน</option>
+                  <option value="north_up">เหนือตอนบน</option>
+                  <option value="south_e">ชายฝั่ง ตอ. ภาคใต้</option>
+                  <option value="south_w">เพชรบุรี/ชายฝั่ง ตต. ใต้</option>
+                </select>
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:#1e40af;cursor:pointer">
+              <input type="checkbox" id="instEdge"> ติดที่ <b>มุม/ขอบอาคาร</b> (แรงลมสูงกว่ากลางผนังราว 1.5 เท่า)
+            </label>
+            <div style="font-size:10.5px;color:#64748b;line-height:1.55;margin-top:6px">
+              ค่าที่กรอกจะถูกใช้คำนวณจริง: แรงลม → แรงดึง/เฉือนที่จุดยึด → เลือกขนาดพุก+จำนวน → ออก BOQ<br>
+              อ้างอิง กฎกระทรวง ฉ.6 ข้อ 17 · มยผ.1311-50 · ตารางพุกเคมี fischer FIS V Plus (EN 1992-4) · NEC Art.600 · IBC App.H
+            </div>
+          </div>
           <!-- 🎯 ปรับ logo ในกล่องไฟ (โชว์เมื่อเลือกประเภทกล่องไฟ) -->
           <div id="logoAdj" style="display:none;margin-top:8px;padding:10px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">
             <div style="font-size:12px;font-weight:700;color:#0f766e;margin-bottom:6px">🎯 ปรับ logo ในกล่อง (ขยับ + ย่อ/ขยาย)</div>
@@ -3271,7 +3319,10 @@ function _apiJson(r){
       fd.append('real_width_mm','1000'); fd.append('max_pts','5000');
       if(W3.type){ fd.append('sign_type',W3.type);
         fd.append('trim_width_cm',String(W3.tw)); fd.append('trim_dir','out');
-        fd.append('wrap_tight',($('bxTight')&&$('bxTight').checked)?'1':'0'); }
+        fd.append('wrap_tight',($('bxTight')&&$('bxTight').checked)?'1':'0');
+      try{ instFD(fd); }catch(_e){}
+  try{ instFD(fd); }catch(_e){} }
+        try{ instFD(fd); }catch(_e){}
       fetch((typeof API!=='undefined'?API:'')+'/api/geom3d',{method:'POST',body:fd})
       .then(_apiJson).then(function(j){
         W3.busy=false;
@@ -12218,6 +12269,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     }).catch(function(e){
       alert((typeof LANG!=='undefined'&&LANG==='en'?'Convert failed — ':'แปลงไม่สำเร็จ — ')+(e.message||e));
     }).then(function(){ BUSY=false; b.disabled=b2.disabled=false; b.innerHTML=old; });
+  }
+
+  /* 🏗️ ข้อมูลหน้างานติดตั้ง — ส่งไปให้เครื่องคำนวณแรงลม/พุกตามมาตรฐาน
+     (กฎกระทรวง ฉ.6 · มยผ.1311-50 · fischer FIS V Plus · NEC Art.600 · IBC App.H)
+     ถ้าผู้ใช้ยังไม่เลือก จะใช้ค่าเริ่มต้นที่ปลอดภัย: กลางแจ้ง · ผนังคอนกรีต · สูง 3 ม. */
+  function instFD(fd){
+    var g=function(id,dv){ var e=document.getElementById(id); return (e&&e.value)?e.value:dv; };
+    fd.append('inst_env',  g('instEnv','outdoor'));
+    fd.append('inst_wall', g('instWall','concrete'));
+    fd.append('inst_h',    g('instH','3'));
+    fd.append('inst_zone', g('instZone','central'));
+    var e=document.getElementById('instEdge');
+    fd.append('inst_edge', (e&&e.checked)?'1':'0');
   }
 
   function paintSum(){
