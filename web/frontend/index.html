@@ -12506,18 +12506,52 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
        (เดิมใช้ลิงก์ตรง พอพลาดเบราว์เซอร์โชว์แค่ export.json / File wasn't available
         ไม่มีใครรู้ว่าพังเพราะอะไร — ผลลัพธ์หมดอายุ? แรมไม่พอ? โค้ดพัง?) */
     var okList=[];
+    var base=(F&&F.name?F.name.replace(/\.[^.]+$/,''):'vector');
+    function saveBlob(b,f){
+      var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+      a.download=base+'.'+f; document.body.appendChild(a); a.click(); a.remove();
+      okList.push(f); $('vecDlMsg').textContent='✓ '+okList.join(', ').toUpperCase();
+    }
     list.forEach(function(f,i){
       setTimeout(function(){
+        /* 💪 SVG/PNG สร้างจากในเบราว์เซอร์ตรง ๆ — ตัวเวกเตอร์อยู่ในมือเราแล้วตั้งแต่แปลงเสร็จ
+           เซิร์ฟเวอร์จะรีสตาร์ต/หมดอายุ/แรมเต็ม ก็ไม่มีผลกับสองนามสกุลนี้อีกต่อไป
+           (ผู้ใช้เจอ "ดาวน์โหลดไม่ได้" ซ้ำ ๆ ทุกครั้งที่เซิร์ฟเวอร์ deploy ใหม่) */
+        if(f==='svg'&&SVG){
+          try{ saveBlob(new Blob([SVG],{type:'image/svg+xml'}),'svg'); return; }catch(_e){}
+        }
+        if(f==='png'&&SVG&&INFO){
+          try{
+            var img=new Image();
+            var bu=URL.createObjectURL(new Blob([SVG],{type:'image/svg+xml'}));
+            img.onload=function(){
+              try{
+                var cv=document.createElement('canvas');
+                cv.width=Math.round(INFO.width*SC); cv.height=Math.round(INFO.height*SC);
+                var cx=cv.getContext('2d');
+                cx.drawImage(img,0,0,cv.width,cv.height);
+                cv.toBlob(function(b){
+                  if(b){ saveBlob(b,'png'); }
+                  else{ srvDl('png'); }              /* แปลงในเครื่องพลาด -> ใช้เซิร์ฟเวอร์ */
+                },'image/png');
+              }catch(_e){ srvDl('png'); }
+              URL.revokeObjectURL(bu);
+            };
+            img.onerror=function(){ URL.revokeObjectURL(bu); srvDl('png'); };
+            img.src=bu;
+            return;
+          }catch(_e){}
+        }
+        srvDl(f);
+      }, i*450);
+    });
+    function srvDl(f){
         var u=API+'/api/vec/export?token='+encodeURIComponent(TOKEN)+'&fmt='+f+'&scale='+SC+'&mm_per_px='+mmpp;
         fetch(u).then(function(r){
           if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
           return r.blob();
         }).then(function(b){
-          var a=document.createElement('a'); a.href=URL.createObjectURL(b);
-          a.download=(F&&F.name?F.name.replace(/\.[^.]+$/,''):'vector')+'.'+f;
-          document.body.appendChild(a); a.click(); a.remove();
-          okList.push(f);
-          $('vecDlMsg').textContent='✓ '+okList.join(', ').toUpperCase();
+          saveBlob(b,f);
         }).catch(function(e){
           var m=String(e&&e.message||e);
           if(m.indexOf('หมดอายุ')>=0){
@@ -12534,8 +12568,7 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
           }
           $('vecDlMsg').innerHTML='<span style="color:#dc2626">'+f.toUpperCase()+' ไม่สำเร็จ: '+m+'</span>';
         });
-      }, i*450);
-    });
+    }
   }
 
   /* ── ส่งต่อเข้าหน้าออกแบบป้าย (SVG ที่ได้ = ไฟล์เวกเตอร์ต้นทางชั้นดี) ── */
