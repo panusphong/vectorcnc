@@ -906,13 +906,23 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                             'width="%.2fmm" height="%.2fmm"' % (_Wmm, _Hmm), 1)
                         import cairosvg
                         pdf_bytes = cairosvg.svg2pdf(bytestring=_svg_mm.encode("utf-8"))
+                        # 🖼️ ภาพตัวอย่างส่งเป็น PNG เบา ๆ — เคยส่ง SVG ทั้งดุ้น (3MB, 5 หมื่นจุด)
+                        #    เบราว์เซอร์วาดสดแล้วค้างหลายสิบวินาที (ผู้ใช้เจอจริง 2026-08-11)
+                        _pv = ""
+                        try:
+                            _psc = min(2.0, 1400.0 / max(1, _W0, _H0))
+                            _pv = base64.b64encode(
+                                _VX._cairo(_svg, "png", px_scale=_psc)).decode()
+                        except Exception:
+                            pass
                         return {"ai_base64": base64.b64encode(pdf_bytes).decode(),
                                 "w_mm": round(_Wmm, 1), "h_mm": round(_Hmm, 1),
                                 "layers": _res["stats"]["colors"],
                                 "paths": _res["stats"]["shapes"],
                                 "used_engine": "color-grad",
                                 "grad_bg": _res["stats"].get("grad_bg") or "",
-                                "svg_preview": _svg if len(_svg) < 2500000 else ""}
+                                "preview_png": _pv,
+                                "svg_preview": ""}
             except Exception:
                 pass                     # เอนจิ้นไล่สีสะดุด -> ใช้ทาง VTracer เดิมต่อ
         if used == "mono":
