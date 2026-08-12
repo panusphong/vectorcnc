@@ -12500,11 +12500,27 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     var mm=parseFloat($('vecMM').value||'0')||0;
     var mmpp=(mm>0&&INFO)?(mm/INFO.width):0;
     $('vecDlMsg').textContent='⏳ '+list.length+' file(s)…';
+    /* ⬇️ โหลดผ่าน fetch — ถ้าเซิร์ฟเวอร์ตอบ error จะเห็น "สาเหตุจริง" ในหน้าเลย
+       (เดิมใช้ลิงก์ตรง พอพลาดเบราว์เซอร์โชว์แค่ export.json / File wasn't available
+        ไม่มีใครรู้ว่าพังเพราะอะไร — ผลลัพธ์หมดอายุ? แรมไม่พอ? โค้ดพัง?) */
+    var okList=[];
     list.forEach(function(f,i){
       setTimeout(function(){
         var u=API+'/api/vec/export?token='+encodeURIComponent(TOKEN)+'&fmt='+f+'&scale='+SC+'&mm_per_px='+mmpp;
-        var a=document.createElement('a'); a.href=u; a.download=''; document.body.appendChild(a); a.click(); a.remove();
-        if(i===list.length-1)setTimeout(function(){ $('vecDlMsg').textContent='✓ '+list.join(', ').toUpperCase(); },400);
+        fetch(u).then(function(r){
+          if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
+          return r.blob();
+        }).then(function(b){
+          var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+          a.download=(F&&F.name?F.name.replace(/\.[^.]+$/,''):'vector')+'.'+f;
+          document.body.appendChild(a); a.click(); a.remove();
+          okList.push(f);
+          $('vecDlMsg').textContent='✓ '+okList.join(', ').toUpperCase();
+        }).catch(function(e){
+          var m=String(e&&e.message||e);
+          if(m.indexOf('หมดอายุ')>=0){ m='ผลลัพธ์หมดอายุ (เก็บไว้ 30 นาที) — กด "↻ แปลงใหม่" แล้วโหลดอีกครั้งค่ะ'; }
+          $('vecDlMsg').innerHTML='<span style="color:#dc2626">'+f.toUpperCase()+' ไม่สำเร็จ: '+m+'</span>';
+        });
       }, i*450);
     });
   }
