@@ -8,6 +8,7 @@
 """
 
 import io
+import os
 import time
 import uuid
 
@@ -28,6 +29,41 @@ MAX_BYTES = 30 * 1024 * 1024
 CACHE = {}                                          # token -> {res, t, name}
 CACHE_TTL = 1800.0
 CACHE_MAX = 40
+# 💾 สำรองผลลัพธ์ลงดิสก์ด้วย — แคชในแรมหายทุกครั้งที่โปรเซสรีสตาร์ต/deploy
+#    (ผู้ใช้เจอจริง 2026-08-11: แปลงเสร็จ กดดาวน์โหลดไม่ได้เพราะ "ผลลัพธ์หมดอายุ")
+VEC_DISK = "/tmp/vec_cache"
+try:
+    os.makedirs(VEC_DISK, exist_ok=True)
+except Exception:
+    pass
+
+
+def _disk_put(tok, e):
+    try:
+        import pickle
+        with open(os.path.join(VEC_DISK, "%s.pkl" % tok), "wb") as _f:
+            pickle.dump(e, _f)
+        now = time.time()
+        for _fn in os.listdir(VEC_DISK):
+            _p = os.path.join(VEC_DISK, _fn)
+            if now - os.path.getmtime(_p) > CACHE_TTL:
+                os.unlink(_p)
+    except Exception:
+        pass
+
+
+def _disk_get(tok):
+    try:
+        import pickle, re as _re
+        if not _re.fullmatch(r"[0-9a-f]{16}", tok or ""):
+            return None
+        _p = os.path.join(VEC_DISK, "%s.pkl" % tok)
+        if not os.path.exists(_p) or time.time() - os.path.getmtime(_p) > CACHE_TTL:
+            return None
+        with open(_p, "rb") as _f:
+            return pickle.load(_f)
+    except Exception:
+        return None
 
 
 def _sweep():
@@ -191,6 +227,7 @@ async def convert(file: UploadFile = File(...),
     _sweep()
     tok = uuid.uuid4().hex[:16]
     CACHE[tok] = {"res": res, "t": time.time(), "name": (file.filename or "image")}
+    _disk_put(tok, CACHE[tok])
     st = dict(res["stats"])
     st["svg_bytes"] = len(svg.encode("utf-8"))
     return JSONResponse({"ok": True, "token": tok, "svg": svg, "stats": st,
@@ -203,6 +240,10 @@ async def convert(file: UploadFile = File(...),
 @router.get("/export")
 def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 0.0):
     e = CACHE.get(token)
+    if not e:
+        e = _disk_get(token)                     # 💾 แรมโดนล้าง (รีสตาร์ต) -> กู้จากดิสก์
+        if e:
+            CACHE[token] = e
     if not e:
         raise HTTPException(404, "ผลลัพธ์หมดอายุแล้ว — กดแปลงใหม่อีกครั้งค่ะ")
     fmt = (fmt or "svg").lower()
