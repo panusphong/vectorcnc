@@ -869,7 +869,7 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
         if used == "mono":
             items = trace_engine.trace_potrace(inp, n_colors=2)
         else:
-            # 🎨 สีสด+เนียน: VTracer color+spline (cp=8 สีตรงต้นฉบับ) + clip เง��ไม่ให้หลุด outline
+            # 🎨 สีสด+เนียน: VTracer color+spline (cp=8 สีตรงต้นฉบับ) + clip เง  ไม่ให้หลุด outline
             try:
                 items, clip_subs = trace_engine.trace_color_vtracer(
                     inp, color_precision=8, layer_difference=16, filter_speckle=6,
