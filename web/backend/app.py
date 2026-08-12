@@ -911,8 +911,10 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                         _pv = ""
                         try:
                             _psc = min(2.0, 1400.0 / max(1, _W0, _H0))
+                            # ใช้ตัววาดตรงประหยัดแรม — cairo กับผลลัพธ์ 5 หมื่นจุด
+                            # ทำแรมเซิร์ฟเวอร์หมดจนโปรเซสโดนฆ่า (เจอจริงบน Render)
                             _pv = base64.b64encode(
-                                _VX._cairo(_svg, "png", px_scale=_psc)).decode()
+                                _VX.raster_png(_res, px_scale=_psc)).decode()
                         except Exception:
                             pass
                         return {"ai_base64": base64.b64encode(pdf_bytes).decode(),

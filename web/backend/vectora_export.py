@@ -188,6 +188,82 @@ def to_svg(res, scale=1.0, background=True):
     return "".join(p)
 
 
+
+
+# ─────────────── PNG แบบประหยัดแรม (วาดเองจากข้อมูลเส้น ไม่ผ่าน cairo) ───────────────
+def raster_png(res, px_scale=1.0):
+    """🖼️ วาดผลลัพธ์เป็น PNG โดยตรงจากโครงสร้างชั้นสี — ไม่แปลง SVG ก่อน
+
+    ⚠️ ทำไมต้องมี (ผู้ใช้เจอจริง 2026-08-11): ผลลัพธ์โหมดผสมมีเส้น ~5 หมื่นจุด 2,476 ชั้น
+       cairosvg ต้องกางทั้งไฟล์เป็นวัตถุ Python -> แรมบานจนเครื่องเซิร์ฟเวอร์ฆ่าโปรเซส
+       ("Internal Server Error" ตอนดาวน์โหลด PNG) — เครื่องทดสอบแรมเยอะเลยไม่เคยเจอ
+    ✅ ตัวนี้วาดด้วย OpenCV ทีละชั้น + คูณพิกัดตรง ๆ · ซูเปอร์แซมเปิล 2 เท่าแล้วย่อ = ขอบเนียน
+       หน่วยความจำคงที่ราว 60-120 MB ไม่ว่าจะกี่หมื่นจุด
+    กติกาเดียวกับ to_svg เป๊ะ: วาดตามลำดับชั้น · รูใช้ even-odd · ชั้นไล่สีเติมสีตามแบบจำลอง
+    """
+    import numpy as np
+    import cv2
+    W, H = res["size"]
+    s = float(px_scale)
+    # ซูเปอร์แซมเปิล 2 เท่าแล้วย่อ = ขอบเนียน · แต่ภาพปลายทางใหญ่มาก (4x/8x) ให้งดซูเปอร์
+    # กันแคนวาสบวมเกินแรมเซิร์ฟเวอร์ (8x ของภาพ 554 = 4432px · x2 อีกจะเป็น 235MB)
+    SS = 2 if max(res["size"]) * s * 2 <= 6000 else 1
+    ow, oh = max(1, int(round(W * s))), max(1, int(round(H * s)))
+    f = s * SS
+    cw, ch = ow * SS, oh * SS
+    bg = res.get("bg")
+    canvas = np.zeros((ch, cw, 3), np.uint8)
+    canvas[:] = (bg if bg else (255, 255, 255))
+    for L in res["layers"]:
+        # ⚡ ทำงานเฉพาะกรอบของชั้นนี้ ไม่กางเต็มผืนทุกชั้น (2,476 ชั้น × ผืนเต็ม = 36 วิ)
+        polys = []
+        x0 = y0 = 10 ** 9; x1 = y1 = -10 ** 9
+        for it in L["items"]:
+            pts = _flat(it, tol=max(0.15, 0.45 / f))
+            if len(pts) < 3:
+                continue
+            arr = np.round(np.asarray(pts, np.float64) * f).astype(np.int32)
+            polys.append(arr)
+            x0 = min(x0, int(arr[:, 0].min())); x1 = max(x1, int(arr[:, 0].max()))
+            y0 = min(y0, int(arr[:, 1].min())); y1 = max(y1, int(arr[:, 1].max()))
+        if not polys:
+            continue
+        x0 = max(0, x0); y0 = max(0, y0)
+        x1 = min(cw - 1, x1); y1 = min(ch - 1, y1)
+        if x1 < x0 or y1 < y0:
+            continue
+        bw, bh = x1 - x0 + 1, y1 - y0 + 1
+        m = np.zeros((bh, bw), np.uint8)
+        t = np.zeros((bh, bw), np.uint8)
+        off = np.array([[x0, y0]], np.int32)
+        for arr in polys:
+            t[:] = 0
+            cv2.fillPoly(t, [arr - off], 1)
+            np.bitwise_xor(m, t, out=m)               # even-odd -> รูโปร่งถูกต้อง
+        if not m.any():
+            continue
+        g = L.get("grad")
+        sub = canvas[y0:y1 + 1, x0:x1 + 1]
+        if g:
+            try:
+                import vectora_engine as _VE
+            except Exception:
+                from . import vectora_engine as _VE
+            ys, xs = np.nonzero(m)
+            # แบ่งเป็นก้อน กันอาร์เรย์ยักษ์ (ชั้นพื้นเต็มผืน)
+            for q0 in range(0, len(xs), 2000000):
+                q1 = min(len(xs), q0 + 2000000)
+                col = _VE.grad_eval(g, (xs[q0:q1] + x0) / f, (ys[q0:q1] + y0) / f)
+                sub[ys[q0:q1], xs[q0:q1]] = np.clip(col, 0, 255).astype(np.uint8)
+        else:
+            sub[m.astype(bool)] = L["rgb"]
+    out = cv2.resize(canvas, (ow, oh), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".png", cv2.cvtColor(out, cv2.COLOR_RGB2BGR))
+    if not ok:
+        raise RuntimeError("PNG encode ล้มเหลว")
+    return bytes(buf)
+
+
 # ─────────────── PDF / EPS / PNG (ผ่าน cairosvg) ───────────────
 def _cairo(svg, kind, px_scale=1.0):
     import cairosvg
@@ -291,6 +367,11 @@ def render(res, fmt, png_scale=2.0, mm_per_px=None, background=True):
     fmt = (fmt or "svg").lower()
     if fmt == "dxf":
         return to_dxf(res, mm_per_px=mm_per_px)
+    # 🖼️ PNG ของผลลัพธ์ก้อนใหญ่ (โหมดผสม ~5 หมื่นจุด) ใช้ตัววาดตรงประหยัดแรม
+    #    — cairosvg กับไฟล์ขนาดนี้ทำเซิร์ฟเวอร์แรมหมดจนโดนฆ่าโปรเซส (เจอจริงบน Render)
+    #    ผลลัพธ์ปกติ (จุดน้อย) ยังใช้ cairosvg เหมือนเดิมทุกประการ
+    if fmt == "png" and int(res.get("stats", {}).get("nodes", 0)) > 15000:
+        return raster_png(res, px_scale=png_scale)
     svg = to_svg(res, background=background)
     if fmt == "svg":
         return svg.encode("utf-8")
