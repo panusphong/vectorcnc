@@ -211,8 +211,18 @@ def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 
     try:
         data = VX.render(e["res"], fmt, png_scale=max(0.25, min(8.0, float(scale))),
                          mm_per_px=(float(mm_per_px) or None))
+    except MemoryError:
+        # 🛟 PNG ใหญ่ + ผลลัพธ์โหมดผสม (เส้น 5 หมื่นจุด) อาจกินแรมเกินเครื่องเซิร์ฟเวอร์
+        #    ถอยมาลองขนาดเท่าต้นฉบับก่อนยอมแพ้
+        try:
+            data = VX.render(e["res"], fmt, png_scale=1.0,
+                             mm_per_px=(float(mm_per_px) or None))
+        except Exception as ex:
+            raise HTTPException(500, "สร้างไฟล์ %s ไม่สำเร็จ (แรมไม่พอ): %s" % (fmt.upper(), ex))
     except Exception as ex:
-        raise HTTPException(500, "สร้างไฟล์ %s ไม่สำเร็จ: %s" % (fmt.upper(), ex))
+        import traceback as _tb
+        raise HTTPException(500, "สร้างไฟล์ %s ไม่สำเร็จ: %s | %s"
+                            % (fmt.upper(), ex, _tb.format_exc()[-300:]))
     base = (e["name"].rsplit(".", 1)[0] or "vector")[:60]
     return Response(content=data, media_type=VX.MIME[fmt],
                     headers={"Content-Disposition": 'attachment; filename="%s.%s"' % (base, VX.EXT[fmt]),
