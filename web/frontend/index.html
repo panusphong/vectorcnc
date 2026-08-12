@@ -7546,15 +7546,23 @@ $('aiDraft').onclick=function(){
         (j.grad_bg?('<br>🌈 '+j.grad_bg):'');
     }
     /* 🖼️ โชว์ผลที่แปลงแล้วในพื้นที่กลางจอ (ฝั่งขวาของแถบเลื่อนเทียบ) ทันที
-       — เดิมต้องดาวน์โหลดไฟล์มาเปิดดูเองถึงจะเห็น ซึ่งไม่ make sense ตามที่พี่ว่า */
-    if(j.svg_preview){
-      try{
-        $('after').innerHTML=j.svg_preview.replace('<svg ',
-          '<svg style="width:100%;height:100%;background:#fff" preserveAspectRatio="xMidYMid meet" ');
+       ✅ ใช้ภาพ PNG จากเซิร์ฟเวอร์ — เร็วทันใจ
+       ⚠️ ห้ามฉีด SVG ใหญ่เข้า DOM ตรง ๆ (5 หมื่นจุด = หน้าค้างหลายสิบวิ ผู้ใช้เจอจริง)
+          ถ้ามีแต่ SVG ให้แปลงเป็น <img> ผ่าน Blob URL แทน เบราว์เซอร์วาดเร็วกว่ามาก */
+    try{
+      var _pvHtml='';
+      if(j.preview_png){
+        _pvHtml='<img src="data:image/png;base64,'+j.preview_png+'" style="width:100%;height:100%;object-fit:contain;background:#fff">';
+      }else if(j.svg_preview){
+        var _bu=URL.createObjectURL(new Blob([j.svg_preview],{type:'image/svg+xml'}));
+        _pvHtml='<img src="'+_bu+'" style="width:100%;height:100%;object-fit:contain;background:#fff">';
+      }
+      if(_pvHtml){
+        $('after').innerHTML=_pvHtml;
         if($('cmp'))$('cmp').style.display='block';
         if($('emptyStage'))$('emptyStage').style.display='none';
-      }catch(_e){}
-    }
+      }
+    }catch(_e){}
   }).catch(function(e){if(window._aiTick){clearInterval(window._aiTick);window._aiTick=null;}
     if($('aiProg'))$('aiProg').style.display='none';
     btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
