@@ -264,6 +264,316 @@ def raster_png(res, px_scale=1.0):
     return bytes(buf)
 
 
+
+
+# ─────────────── PDF เขียนเอง (เวกเตอร์แท้ · ไล่สีจริง · ประหยัดแรม) ───────────────
+def _pdf_col(c):
+    return "%.4f %.4f %.4f" % (c[0] / 255.0, c[1] / 255.0, c[2] / 255.0)
+
+
+def _pdf_func(stops):
+    """สร้าง 'ฟังก์ชันสี' ของ PDF จากจุดสีแบบ SVG — ต่อกันทีละช่วงด้วย stitching function"""
+    st = [[float(o), tuple(int(v) for v in c)] for o, c in stops]
+    st.sort(key=lambda z: z[0])
+    if not st:
+        st = [[0.0, (0, 0, 0)]]
+    if st[0][0] > 0.001:
+        st.insert(0, [0.0, st[0][1]])
+    if st[-1][0] < 0.999:
+        st.append([1.0, st[-1][1]])
+    segs = []
+    for i in range(len(st) - 1):
+        if st[i + 1][0] - st[i][0] < 1e-6:
+            continue
+        segs.append((st[i], st[i + 1]))
+    if not segs:
+        c = _pdf_col(st[0][1])
+        return "<</FunctionType 2/Domain[0 1]/C0[%s]/C1[%s]/N 1>>" % (c, c)
+    if len(segs) == 1:
+        return "<</FunctionType 2/Domain[0 1]/C0[%s]/C1[%s]/N 1>>" % (
+            _pdf_col(segs[0][0][1]), _pdf_col(segs[0][1][1]))
+    fns = "".join("<</FunctionType 2/Domain[0 1]/C0[%s]/C1[%s]/N 1>>"
+                  % (_pdf_col(a[1]), _pdf_col(b[1])) for a, b in segs)
+    bounds = " ".join("%.5f" % b[0][0] for b in segs[1:])
+    enc = " ".join(["0 1"] * len(segs))
+    return ("<</FunctionType 3/Domain[0 1]/Functions[%s]/Bounds[%s]/Encode[%s]>>"
+            % (fns, bounds, enc))
+
+
+def _pdf_shading(kind, geo, stops):
+    f = _pdf_func(stops)
+    if kind == "radial":
+        return ("<</ShadingType 3/ColorSpace/DeviceRGB/Coords[%.2f %.2f 0 %.2f %.2f %.2f]"
+                "/Function %s/Extend[true true]>>"
+                % (geo[0], geo[1], geo[0], geo[1], max(0.01, geo[2]), f))
+    return ("<</ShadingType 2/ColorSpace/DeviceRGB/Coords[%.2f %.2f %.2f %.2f]"
+            "/Function %s/Extend[true true]>>" % (geo[0], geo[1], geo[2], geo[3], f))
+
+
+def _pdf_path_ops(items, out):
+    for it in items:
+        if it[0] == "P":
+            pts = it[1]
+            if len(pts) < 3:
+                continue
+            out.append("%.2f %.2f m" % (pts[0][0], pts[0][1]))
+            for q in pts[1:]:
+                out.append("%.2f %.2f l" % (q[0], q[1]))
+            out.append("h")
+        else:
+            st, sg = it[1], it[2]
+            if not sg:
+                continue
+            out.append("%.2f %.2f m" % (st[0], st[1]))
+            for g in sg:
+                if g[0] == "L":
+                    out.append("%.2f %.2f l" % (g[1][0], g[1][1]))
+                else:
+                    out.append("%.2f %.2f %.2f %.2f %.2f %.2f c"
+                               % (g[1][0], g[1][1], g[2][0], g[2][1], g[3][0], g[3][1]))
+            out.append("h")
+
+
+def _pdf_poly_ops(pg, out):
+    ps = list(pg.geoms) if pg.geom_type == "MultiPolygon" else [pg]
+    for p in ps:
+        if p.is_empty:
+            continue
+        for ring in [p.exterior] + list(p.interiors):
+            cs = list(ring.coords)
+            if len(cs) < 3:
+                continue
+            out.append("%.2f %.2f m" % cs[0])
+            for q in cs[1:]:
+                out.append("%.2f %.2f l" % q)
+            out.append("h")
+
+
+def to_pdf(res, scale=0.75):
+    """📄 เขียน PDF เองจากข้อมูลชั้นสี — ไม่ผ่าน cairosvg
+
+    ⚠️ ทำไมต้องมี (ผู้ใช้เจอจริง 2026-08-11): ผลลัพธ์โหมดผสมมี 2,476 ชั้น 5 หมื่นจุด
+       cairosvg ต้องกางทั้งไฟล์เป็นวัตถุ Python -> แรมเซิร์ฟเวอร์หมด โปรเซสโดนฆ่า
+       ผู้ใช้เห็นเป็น "Internal Server Error" ตอนกดดาวน์โหลด PDF
+    ✅ ตัวนี้ทยอยเขียนไบต์ออกไปตรง ๆ · ไล่สีใช้ Shading ของ PDF จริง (เวกเตอร์แท้ 100%)
+       ไฟล์เล็กกว่าเดิมด้วย เพราะบีบอัดสตรีมเนื้อหา
+    📐 แกน Y: PDF นับขึ้นบน · SVG นับลงล่าง -> พลิกด้วย cm ครั้งเดียวตอนเปิดหน้า
+    """
+    import zlib
+    import math as _m
+    W, H = res["size"]
+    pw, ph = W * scale, H * scale
+    ops = ["%.4f 0 0 %.4f 0 %.2f cm" % (scale, -scale, ph)]   # พลิกแกน Y ครั้งเดียว
+    shd = []                                                   # (ชื่อ, dict ของ shading)
+
+    bg = res.get("bg")
+    if bg:
+        ops.append("%s rg 0 0 %.2f %.2f re f" % (_pdf_col(bg), W, H))
+
+    for L in res["layers"]:
+        g = L.get("grad")
+        if g and g.get("kind") == "bands":
+            # 🌈 ตาข่ายไล่สีสองมิติ — ตัดรูปจริงทีละแถบ (กติกาเดียวกับ to_svg เป๊ะ)
+            try:
+                from shapely.geometry import Polygon as _P
+                bs = g["bands"]
+                rad = _m.radians(float(g["deg"]))
+                pxv, pyv = _m.cos(rad), _m.sin(rad)
+                ux, uy = pyv, -pxv
+                t0, t1 = float(g["t0"]), float(g["t1"])
+                M = float(W + H) * 2.0
+                D = float(W + H) * 1.5
+                ov = max(0.6, (W + H) / 1400.0)
+                base = _poly_of(L["items"])
+                if base is None:
+                    continue
+                try:
+                    _sm = base.simplify(2.2, preserve_topology=True)
+                    if not _sm.is_empty:
+                        base = _sm
+                except Exception:
+                    pass
+                for k, b in enumerate(bs):
+                    a0 = float(b["s0"]) - (D if k == 0 else ov)
+                    a1 = float(b["s1"]) + (D if k == len(bs) - 1 else ov)
+                    pts = [(a0 * pxv - y * ux, a0 * pyv - y * uy) for y in (-t1 - M, -t0 + M)]
+                    pts += [(a1 * pxv - y * ux, a1 * pyv - y * uy) for y in (-t0 + M, -t1 - M)]
+                    try:
+                        pc = base.intersection(_P(pts))
+                    except Exception:
+                        continue
+                    if pc.is_empty:
+                        continue
+                    nm = "S%d" % len(shd)
+                    shd.append((nm, _pdf_shading("linear",
+                                                 (t0 * ux, t0 * uy, t1 * ux, t1 * uy),
+                                                 b["stops"])))
+                    ops.append("q")
+                    _pdf_poly_ops(pc, ops)
+                    ops.append("W* n /%s sh Q" % nm)
+            except Exception:
+                pass
+            continue
+        if g:
+            st = g.get("stops") or [[0.0, tuple(g["c1"])], [1.0, tuple(g["c2"])]]
+            if g.get("kind") == "radial":
+                geo = (float(g["cx"]), float(g["cy"]), float(g["r"]))
+            else:
+                geo = (float(g["x1"]), float(g["y1"]), float(g["x2"]), float(g["y2"]))
+            nm = "S%d" % len(shd)
+            shd.append((nm, _pdf_shading(g.get("kind", "linear"), geo, st)))
+            ops.append("q")
+            _pdf_path_ops(L["items"], ops)
+            ops.append("W* n /%s sh Q" % nm)
+        else:
+            ops.append("%s rg" % _pdf_col(L["rgb"]))
+            _pdf_path_ops(L["items"], ops)
+            ops.append("f*")
+
+    content = zlib.compress("\n".join(ops).encode("latin-1"), 6)
+    del ops
+    shres = ("/Shading<<%s>>" % "".join("/%s %s" % (n, d) for n, d in shd)) if shd else ""
+    objs = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Count 1/Kids[3 0 R]>>",
+        ("<</Type/Page/Parent 2 0 R/MediaBox[0 0 %.2f %.2f]/Resources<<%s>>/Contents 4 0 R>>"
+         % (pw, ph, shres)).encode("latin-1"),
+        b"<</Length %d/Filter/FlateDecode>>\nstream\n" % len(content) + content + b"\nendstream",
+    ]
+    buf = [b"%PDF-1.7\n%\xb5\xed\xae\xfb\n"]
+    pos = len(buf[0])
+    offs = []
+    for i, o in enumerate(objs):
+        offs.append(pos)
+        chunk = b"%d 0 obj\n" % (i + 1) + o + b"\nendobj\n"
+        buf.append(chunk)
+        pos += len(chunk)
+    xref = pos
+    x = [b"xref\n0 %d\n" % (len(objs) + 1), b"0000000000 65535 f \n"]
+    for o in offs:
+        x.append(b"%010d 00000 n \n" % o)
+    buf.extend(x)
+    buf.append(b"trailer\n<</Size %d/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n"
+               % (len(objs) + 1, xref))
+    return b"".join(buf)
+
+
+
+
+def _ps_path_ops(items, out):
+    for it in items:
+        if it[0] == "P":
+            pts = it[1]
+            if len(pts) < 3:
+                continue
+            out.append("%.2f %.2f moveto" % (pts[0][0], pts[0][1]))
+            for q in pts[1:]:
+                out.append("%.2f %.2f lineto" % (q[0], q[1]))
+            out.append("closepath")
+        else:
+            st, sg = it[1], it[2]
+            if not sg:
+                continue
+            out.append("%.2f %.2f moveto" % (st[0], st[1]))
+            for g in sg:
+                if g[0] == "L":
+                    out.append("%.2f %.2f lineto" % (g[1][0], g[1][1]))
+                else:
+                    out.append("%.2f %.2f %.2f %.2f %.2f %.2f curveto"
+                               % (g[1][0], g[1][1], g[2][0], g[2][1], g[3][0], g[3][1]))
+            out.append("closepath")
+
+
+def to_eps(res, scale=0.75):
+    """🖨️ EPS (PostScript ระดับ 3) เขียนเอง — เหตุผลเดียวกับ to_pdf คือกันแรมเซิร์ฟเวอร์หมด
+       ไล่สีใช้ shfill ของ PostScript 3 · ใช้พจนานุกรม shading หน้าตาเดียวกับ PDF เป๊ะ"""
+    import math as _m
+    W, H = res["size"]
+    pw, ph = W * scale, H * scale
+    out = ["%!PS-Adobe-3.0 EPSF-3.0",
+           "%%%%BoundingBox: 0 0 %d %d" % (int(_m.ceil(pw)), int(_m.ceil(ph))),
+           "%%LanguageLevel: 3", "%%EndComments",
+           "gsave", "[%.4f 0 0 %.4f 0 %.2f] concat" % (scale, -scale, ph)]
+    bg = res.get("bg")
+    if bg:
+        out.append("%s setrgbcolor 0 0 %.2f %.2f rectfill" % (_pdf_col(bg), W, H))
+    for L in res["layers"]:
+        g = L.get("grad")
+        if g and g.get("kind") == "bands":
+            try:
+                from shapely.geometry import Polygon as _P
+                bs = g["bands"]
+                rad = _m.radians(float(g["deg"]))
+                pxv, pyv = _m.cos(rad), _m.sin(rad)
+                ux, uy = pyv, -pxv
+                t0, t1 = float(g["t0"]), float(g["t1"])
+                M = float(W + H) * 2.0
+                D = float(W + H) * 1.5
+                ov = max(0.6, (W + H) / 1400.0)
+                base = _poly_of(L["items"])
+                if base is None:
+                    continue
+                try:
+                    _sm = base.simplify(2.2, preserve_topology=True)
+                    if not _sm.is_empty:
+                        base = _sm
+                except Exception:
+                    pass
+                for k, b in enumerate(bs):
+                    a0 = float(b["s0"]) - (D if k == 0 else ov)
+                    a1 = float(b["s1"]) + (D if k == len(bs) - 1 else ov)
+                    pts = [(a0 * pxv - y * ux, a0 * pyv - y * uy) for y in (-t1 - M, -t0 + M)]
+                    pts += [(a1 * pxv - y * ux, a1 * pyv - y * uy) for y in (-t0 + M, -t1 - M)]
+                    try:
+                        pc = base.intersection(_P(pts))
+                    except Exception:
+                        continue
+                    if pc.is_empty:
+                        continue
+                    out.append("gsave newpath")
+                    _ps_poly_ops(pc, out)
+                    out.append("eoclip")
+                    out.append("%s shfill grestore"
+                               % _pdf_shading("linear", (t0 * ux, t0 * uy, t1 * ux, t1 * uy),
+                                              b["stops"]))
+            except Exception:
+                pass
+            continue
+        if g:
+            st = g.get("stops") or [[0.0, tuple(g["c1"])], [1.0, tuple(g["c2"])]]
+            if g.get("kind") == "radial":
+                geo = (float(g["cx"]), float(g["cy"]), float(g["r"]))
+            else:
+                geo = (float(g["x1"]), float(g["y1"]), float(g["x2"]), float(g["y2"]))
+            out.append("gsave newpath")
+            _ps_path_ops(L["items"], out)
+            out.append("eoclip")
+            out.append("%s shfill grestore" % _pdf_shading(g.get("kind", "linear"), geo, st))
+        else:
+            out.append("%s setrgbcolor newpath" % _pdf_col(L["rgb"]))
+            _ps_path_ops(L["items"], out)
+            out.append("eofill")
+    out.append("grestore")
+    out.append("showpage")
+    out.append("%%EOF")
+    return "\n".join(out).encode("latin-1", "replace")
+
+
+def _ps_poly_ops(pg, out):
+    ps = list(pg.geoms) if pg.geom_type == "MultiPolygon" else [pg]
+    for p in ps:
+        if p.is_empty:
+            continue
+        for ring in [p.exterior] + list(p.interiors):
+            cs = list(ring.coords)
+            if len(cs) < 3:
+                continue
+            out.append("%.2f %.2f moveto" % cs[0])
+            for q in cs[1:]:
+                out.append("%.2f %.2f lineto" % q)
+            out.append("closepath")
+
+
 # ─────────────── PDF / EPS / PNG (ผ่าน cairosvg) ───────────────
 def _cairo(svg, kind, px_scale=1.0):
     import cairosvg
@@ -370,8 +680,13 @@ def render(res, fmt, png_scale=2.0, mm_per_px=None, background=True):
     # 🖼️ PNG ของผลลัพธ์ก้อนใหญ่ (โหมดผสม ~5 หมื่นจุด) ใช้ตัววาดตรงประหยัดแรม
     #    — cairosvg กับไฟล์ขนาดนี้ทำเซิร์ฟเวอร์แรมหมดจนโดนฆ่าโปรเซส (เจอจริงบน Render)
     #    ผลลัพธ์ปกติ (จุดน้อย) ยังใช้ cairosvg เหมือนเดิมทุกประการ
-    if fmt == "png" and int(res.get("stats", {}).get("nodes", 0)) > 15000:
+    _big = int(res.get("stats", {}).get("nodes", 0)) > 15000
+    if fmt == "png" and _big:
         return raster_png(res, px_scale=png_scale)
+    if fmt == "pdf" and _big:
+        return to_pdf(res)
+    if fmt == "eps" and _big:
+        return to_eps(res)
     svg = to_svg(res, background=background)
     if fmt == "svg":
         return svg.encode("utf-8")
