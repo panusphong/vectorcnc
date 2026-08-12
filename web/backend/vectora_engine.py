@@ -887,7 +887,60 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False,
                 _keep.append(_i)
         if len(_keep) >= 2:
             cen = cen[np.array(_keep)]
-    if not grad:
+    if grad and HARD_ADD > 0:
+        # ══════════════════════════════════════════════════════════════
+        # 🎯 เก็บ "สีของชิ้นเล็ก" ที่ k-means มองไม่เห็น — เสนอจากชิ้นส่วนจริงในภาพ
+        #
+        # ⚠️ ผู้ใช้เจอจริง 2026-08-11: คำ wongnai สีน้ำเงิน (20,131,201) ออกมาจางเป็นเทาฟ้า
+        #    เพราะจานสีไม่มีน้ำเงินเลย (สีใกล้สุดห่าง 37.6 หน่วย) — k-means แบ่งตามจำนวนพิกเซล
+        #    ตัวอักษรเล็กมีแค่ ~0.1% ของภาพ ไม่มีวันชนะ
+        # ⛔ ที่ลองแล้วพัง (อย่าย้อนกลับไปทำ):
+        #    เพิ่มโควตาสี 12→18/24/30       -> โลโก้ 10.65→12.14/13.23/12.00 (สีไปลงพื้น/พวงหรีด)
+        #    เพิ่มสีจาก "พิกเซลไกลจาน" สุ่มทั้งภาพ -> 10.65→13.67 (ได้แต่สีขอบผสม/แถบไล่สี)
+        # ✅ ที่ถูก: หา "ก้อนที่ติดกันในภาพ" ของพิกเซลไกลจาน กร่อนขอบผสมทิ้งก่อน
+        #    แล้วให้แต่ละก้อนเสนอ "สีกลาง" ของตัวเอง รับเฉพาะก้อนที่สีเกาะกันแน่น
+        #    (ก้อนตัวอักษร = สีเดียวทั้งก้อน · แถบไล่สี/ขอบ = สีกระจาย -> ถูกคัดออกเอง)
+        # ══════════════════════════════════════════════════════════════
+        try:
+            _H9, _W9 = lab.shape[:2]
+            _ds9 = int(max(1, round(max(_H9, _W9) / 900.0)))
+            _Ld = labf(lab[::_ds9, ::_ds9].reshape(-1, 3)).reshape(
+                lab[::_ds9, ::_ds9].shape[:2] + (3,))
+            _dd = np.full(_Ld.shape[:2], 1e9, np.float32)
+            for _c9 in cen:
+                np.minimum(_dd, np.sqrt(((_Ld - _c9) ** 2).sum(2)), out=_dd)
+            _hm = (_dd > HARD_D).astype(np.uint8)
+            if keep is not None:
+                _hm &= keep[::_ds9, ::_ds9].astype(np.uint8)
+            _hm = cv2.erode(_hm, np.ones((3, 3), np.uint8))     # ตัดขอบผสมบาง ๆ ทิ้ง
+            _nc9, _lb9, _st9, _ = cv2.connectedComponentsWithStats(_hm, 8)
+            _prop = []
+            for _q9 in range(1, _nc9):
+                _a9 = int(_st9[_q9, cv2.CC_STAT_AREA])
+                if _a9 < 12:
+                    continue
+                _m9 = (_lb9 == _q9)
+                _md = np.median(_Ld[_m9], axis=0)
+                _sp = float(np.sqrt(((_Ld[_m9] - _md) ** 2).sum(1)).mean())
+                if _sp <= HARD_TIGHT:
+                    _prop.append((_a9, _md))
+            _prop.sort(key=lambda z: -z[0])
+            _addc = []
+            for _a9, _md in _prop:
+                _pool = np.vstack([cen] + [np.asarray(z).reshape(1, 3) for z in _addc])                         if _addc else cen
+                if float(np.sqrt(((_pool - _md) ** 2).sum(1)).min()) >= 8.0:
+                    _addc.append(_md)
+                if len(_addc) >= int(HARD_ADD):
+                    break
+            if _addc:
+                cen = np.vstack([cen, np.asarray(_addc, np.float64)])
+        except Exception:
+            pass
+    if (not grad) or GRAD_BLEND_CUT:
+        # 🌈 โหมดไล่สี: เดิมข้าม merge_blends เพราะ "สีผสมคือเนื้อไล่สี" — แต่นั่นคือสมัยที่
+        #    จานสีนี้ยังต้องรับผิดชอบพื้นไล่สีด้วย ตอนนี้พื้นถูกแยกไปที่ anchor แล้ว
+        #    จานนี้เหลือแต่ "ลายเส้น/โลโก้" ซึ่งสีผสม = ขอบเปื้อน ต้องตัดเหมือนโหมดปกติ
+        #    (ผู้ใช้เห็นจริง: วงแสงเขียวซีดรอบตัวอักษร wongnai = สีผสมขาว×น้ำเงินที่หลุดมา)
         S = Xf[rng.choice(len(Xf), size=min(int(seed_sample), len(Xf)), replace=False)]
         lb0 = ((S[:, None, :] - cen[None, :, :]) ** 2).sum(2).argmin(1)
         cen = merge_blends(cen, np.bincount(lb0, minlength=len(cen)).astype(np.float64))
@@ -898,6 +951,164 @@ def quantize(img_rgb, k=8, seed=0, keep=None, seed_sample=200000, grad=False,
 # ══════════════════════════════════════════════════════════════════
 # 2) สนามความเป็นสี (ย่อยพิกเซล)
 # ══════════════════════════════════════════════════════════════════
+
+# 🍃 ค่าฟิตไล่สีของ "ชั้นที่เกิดจากการรวมเฉด" (พวงหรีดเขียว→ฟ้า)
+#    แยกออกมาเป็นค่าคงที่เพื่อให้กวาดหาค่าที่ดีที่สุดได้โดยไม่ต้องแตะตรรกะ
+RAMP_FIT = {"ns": 32, "err": 3.0, "bands": 12}
+SOLID_MIN, SOLID_FILL = 150.0, 0.80
+# 🖋️ ตัวคูณ "ระยะเกยขอบ" ของโหมดไล่สี (แก้รอยขาวเศษพิกเซล) — คุมน้ำหนักเส้นตัวอักษรด้วย
+GRAD_GAP = 1.3
+# ✂️ ความแรงของหน้ากากคมชัดหลังขยายภาพ (0 = ปิด)
+SHARP_AMT = 0.0
+# 🔁 จำนวนรอบ "ฉายกลับ" ตอนขยายภาพ (0 = ปิด) และอัตราแก้ต่อรอบ
+IBP_ITERS, IBP_LAM = 6, 0.7
+# 🎨 โควตาสีของ "ชั้นรายละเอียด" เมื่อพื้นไล่สีถูกแยกออกไปแล้ว
+# ⛔ อย่าเพิ่มโควตาสี — วัดจริงกับไฟล์จริง: 12→18 โลโก้ 10.65→12.14 · 12→24 →13.23 · 12→30 →12.00
+GRAD_KMIN, GRAD_CAP = 12, 24
+INK_LEVEL = False              # ⛔ ตัดตามครึ่งยอด — วัดแล้วแย่ลง (ทั้งภาพ 3.11→3.59 · จุด +37%)
+# 🎯 เพิ่มสีตามค่าคลาด: จำนวนสีสูงสุดที่เพิ่มได้ต่อรอบ และระยะที่ถือว่า "ไม่มีสีรองรับ"
+# ⛔ ผู้ใช้ตัดสินแล้ว (2026-08-11): ชุดแก้รอบ wongnai ทั้งสามตัวทำภาพรวม "แย่ลง" ในสายตาจริง
+#    แม้ตัวเลขบางโซนดีขึ้น — ปิดทั้งชุด กลับไปเวอร์ชันก่อนหน้า (ตัวเลขชุดนั้นคือ
+#    ใบไม้ 5.32 · หัวข้อ 8.11 · โลโก้ 10.65 · ทั้งภาพ 3.11 · 13 สี · 28,002 จุด)
+#    โค้ดเก็บไว้ครบ เผื่อกลับมาจูนใหม่แบบระวังกว่านี้ แต่ห้ามเปิดโดยไม่ให้ผู้ใช้ดูภาพก่อน
+HARD_ADD, HARD_D, HARD_TIGHT = 0, 18.0, 5.0
+GRAD_BLEND_CUT = False         # (เคยเปิด: หัวข้อ 8.11→6.01 แต่ผู้ใช้เห็นภาพรวมแย่ลง)
+VT_MIX = True                  # 🤝 ชั้นลายใช้ VTracer (จากปุ่ม .ai) + พื้นไล่สีของเรา
+GRAD_CORE_FIT = False          # ฟิตไล่สีของชั้นลายจากเนื้อใน (กร่อนขอบผสมทิ้งก่อน)         # ตัด "สีผสม" ในจานรายละเอียดของโหมดไล่สีด้วย               # ตัดเส้นชั้นแบบรักษาปริมาณสี (แก้เส้นบางออกมาจาง)
+SLIVER_W = 0.0                 # ความหนาขั้นต่ำของชิ้นงาน (พิกเซลของไฟล์ต้นฉบับ)
+IBP_CLAMP = False              # กรอบค่าเพื่อนบ้าน — วัดแล้วแย่ลง (ทั้งภาพ 2.32→2.44) ปิดไว้
+IBP_LO, IBP_HI = 12.0, 40.0    # ช่วงอนุพันธ์อันดับสองที่ถือว่า "เป็นขอบจริง"
+#    กวาดหาแล้ว: (6,25) โลโก้ 11.89 · (12,40) โลโก้ 11.36 ✅ · (20,60) โลโก้ 15.74 (แรงไปจนขอบแหว่ง)
+
+
+def spatial_adj(labels, n, keep=None, ds=1):
+    """🗺️ วัดว่า "สีคู่ไหนอยู่ติดกันจริงในภาพ" — คืนเมทริกซ์สัดส่วนขอบที่ชนกัน
+
+    ทำไมต้องมี: การรวมเฉดด้วย "ระยะสีใน Lab" อย่างเดียวแยกไม่ออกระหว่าง
+      · 6 เฉดของพวงหรีดที่ไล่ต่อกันในใบเดียวกัน  (ควรรวม)
+      · สีอื่นที่บังเอิญอยู่ใกล้กันในปริภูมิสี แต่คนละที่ในภาพ (ห้ามรวม)
+    ตัวชี้ขาดคือ "ติดกันในภาพ" — เฉดของไล่สีเดียวกันจะแบ่งกันด้วยรอยต่อยาว ๆ
+    ส่วนสีคนละชิ้นงานแทบไม่มีขอบร่วมกันเลย
+
+    A[i, j] = สัดส่วนของ 'เส้นขอบสี i' ที่ไปติดกับสี j  (0..1)
+    """
+    L = labels[::ds, ::ds]
+    K = None if keep is None else keep[::ds, ::ds]
+    k3 = np.ones((3, 3), np.uint8)
+    M = []
+    for i in range(n):
+        m = (L == i)
+        if K is not None:
+            m = m & K
+        M.append(m)
+    A = np.zeros((n, n), np.float64)
+    solid = np.zeros(n, bool)
+    for i in range(n):
+        if not M[i].any():
+            continue
+        # 🧱 สีนี้มี "ก้อนตันใหญ่" อยู่ด้วยไหม (เช่นสี่เหลี่ยมเขียวของโลโก้ LINEMAN)
+        #    ถ้ามี ห้ามเอาไปรวมเป็นเฉดไล่สี — เพราะสีเดียวกันถูกใช้กับงานแบนด้วย
+        #    รวมเมื่อไหร่ ก้อนแบนนั้นจะเปลี่ยนสีทันที (วัดจริง: โลโก้ 12.7 → 17.5)
+        _nc, _lc, _st, _ = cv2.connectedComponentsWithStats(M[i].astype(np.uint8), 8)
+        if _nc > 1:
+            _ar = _st[1:, cv2.CC_STAT_AREA].astype(np.float64)
+            _bb = (_st[1:, cv2.CC_STAT_WIDTH] * _st[1:, cv2.CC_STAT_HEIGHT]).astype(np.float64)
+            _fl = _ar / np.maximum(1.0, _bb)
+            if bool(((_ar >= SOLID_MIN) & (_fl >= SOLID_FILL)).any()):
+                solid[i] = True
+        di = cv2.dilate(M[i].astype(np.uint8), k3).astype(bool)
+        rim = di & ~M[i]
+        nb = int(rim.sum())
+        if nb < 8:
+            continue
+        for j in range(n):
+            if j != i:
+                A[i, j] = int((rim & M[j]).sum()) / float(nb)
+    return A, solid
+
+
+def merge_ramp(pal_lab, pal_rgb, gap=18.0, resid=5.0, min_n=3, adj=None, amin=0.18,
+               solid=None):
+    """🍃 รวม "เฉดที่เป็นเส้นไล่สีเดียวกัน" ให้เหลือสีเดียว — ทำ *ก่อน* ติดป้ายสีให้พิกเซล
+
+    ⚠️ บทเรียนสำคัญ (ผู้ใช้ชี้จุด 2026-08-11 · อลิซพลาดมา 2 รอบ):
+       พวงหรีดที่ไล่เขียว→ฟ้าถูก k-means หั่นเป็น 6 เฉด (วัดจริง แต่ละเฉดกินใบ 15-20%)
+       ใบหนึ่งใบจึงมีรอยต่อแข็ง ๆ กลางใบ = "สีหลุด" ที่ผู้ใช้เห็น
+       อลิซเคยแก้ด้วยการ "ใส่ไล่สีให้ทีละเฉดที่ถูกหั่นแล้ว" -> แย่ลงทั้ง 2 ครั้ง
+       เพราะแต่ละเฉดเป็นก้อนเล็กกระจัดกระจาย แบบจำลองจับได้แต่คลื่นรบกวน
+
+    ✅ ลำดับที่ถูกคือ "รวมก่อน แล้วค่อยไล่สี" (หลักเดียวกับที่ใช้แก้พื้นหลังสำเร็จ)
+       รวมตั้งแต่ตอนนี้ -> ขั้นติดป้ายสีมองพวงหรีดเป็นก้อนเดียว ไม่มีรอยต่อภายในตั้งแต่ต้น
+       แล้วชั้นนั้นค่อยไปฟิตไล่สีสองมิติทีหลัง (ก้อนใหญ่ ฟิตได้แม่น)
+
+    เกณฑ์รวม (ต้องเข้าทั้งสามข้อ ป้องกันรวมมั่ว):
+      · ห่างกันน้อย  — ระยะระหว่างเฉดติดกัน ≤ gap
+      · เรียงเป็นเส้น — ระยะจากเส้นที่ฟิต ≤ resid  (เฉดของไล่สีจะเรียงเป็นเส้นตรงใน Lab)
+      · มีอย่างน้อย min_n เฉด — 2 เฉดถือว่าเป็นคนละสีจริง ไม่ใช่ไล่สี
+    """
+    n = len(pal_lab)
+    if n < min_n + 1:
+        return pal_lab, pal_rgb, []
+    P = np.asarray(pal_lab, np.float64)
+    used = np.zeros(n, bool)
+    groups = []
+    order = np.argsort(P[:, 0])                      # เรียงตามความสว่าง — ไล่สีมักเรียงตามนี้
+    for a in order:
+        if used[a] or (solid is not None and solid[a]):
+            continue
+        g = [a]
+        while True:
+            cur = P[g[-1]]
+            best, bd = -1, 1e9
+            for b in range(n):
+                if used[b] or b in g or (solid is not None and solid[b]):
+                    continue
+                d = float(np.linalg.norm(P[b] - cur))
+                # 🗺️ เกณฑ์ข้อที่สาม: ต้อง "ติดกันจริงในภาพ" กับสมาชิกตัวใดตัวหนึ่งของกลุ่ม
+                if adj is not None:
+                    ok = max(max(float(adj[q, b]), float(adj[b, q])) for q in g)
+                    if ok < amin:
+                        continue
+                if d < bd:
+                    best, bd = b, d
+            if best < 0 or bd > gap:
+                break
+            # ตรวจความเป็นเส้นตรงของกลุ่มถ้าเติมตัวนี้เข้าไป
+            cand = g + [best]
+            if len(cand) >= 3:
+                Q = P[cand]; c = Q.mean(0)
+                u, sv, vt = np.linalg.svd(Q - c, full_matrices=False)
+                r = float(np.sqrt(((Q - c) - np.outer((Q - c) @ vt[0], vt[0])) ** 2).sum(1).max())
+                if r > resid:
+                    break
+            g = cand
+        if len(g) >= min_n:
+            for q in g:
+                used[q] = True
+            groups.append(sorted(g))
+    if not groups:
+        return pal_lab, pal_rgb, []
+    keep, newlab, newrgb, merged = [], [], [], []
+    ing = {}
+    for gi, g in enumerate(groups):
+        for q in g:
+            ing[q] = gi
+    done = set()
+    for i in range(n):
+        if i in ing:
+            gi = ing[i]
+            if gi in done:
+                continue
+            done.add(gi)
+            g = groups[gi]
+            newlab.append(P[g].mean(0))
+            newrgb.append(np.asarray(pal_rgb, np.float64)[g].mean(0))
+            merged.append(len(newlab) - 1)
+        else:
+            newlab.append(P[i]); newrgb.append(np.asarray(pal_rgb, np.float64)[i])
+    return (np.asarray(newlab, np.float64),
+            np.asarray(np.clip(np.round(newrgb), 0, 255), np.uint8), merged)
+
 def nearest2(lab, pal_lab, chunk_rows=256):
     """หา 'ระยะถึงสีที่ใกล้ที่สุด' และ 'ใกล้รองลงมา' + ป้ายสีที่ใกล้ที่สุด
 
@@ -1102,9 +1313,29 @@ def drop_weak_specks(field, cs, min_area, conf=0.62):
             out.append(c)                              # มั่นใจว่าเป็นลายจริง -> เก็บ
     return out
 
+def ink_level(field, lo=0.30, hi=0.50):
+    """🖋️ หา 'ระดับเส้นชั้น' ที่ทำให้พื้นที่ของรูปเท่ากับปริมาณสีจริงในสนาม
+
+    ⚠️ ปัญหาที่ผู้ใช้เห็น (2026-08-11): โลโก้ wongnai ออกมา "จาง" ทั้งที่ต้นฉบับน้ำเงินเข้ม
+       เพราะเส้นหนาแค่ ~2 px ในไฟล์ 554 px ค่าความเป็นสีสูงสุดกลางเส้นจึงไม่ถึง 1.0
+       พอตัดที่ 0.5 ตายตัว เส้นที่ได้จะบางกว่าของจริงมาก -> ตอนวาดโดนเกลี่ยกับพื้นขาว = จาง
+       (วัดได้ว่าเส้นบางลงทั้งภาพ 4-5% ซึ่งไม่มีผลกับก้อนใหญ่ แต่ฆ่าเส้นบางทิ้งเลย)
+    ✅ ใช้หลัก "ปริมาณสีต้องไม่หาย": พื้นที่ของรูปที่ได้ ต้องเท่ากับผลรวมความเป็นสีของสนาม
+       ก้อนใหญ่ขอบคม -> ได้ 0.5 เท่าเดิมเป๊ะ · เส้นบาง -> ระดับลดลงเอง เส้นจึงหนาเท่าของจริง
+       จำกัดไม่ต่ำกว่า lo กัน 'ชั้นที่จาง ๆ ทั้งชั้น' บวมจนกลืนชั้นอื่น
+    """
+    m = field[field > 0.2]
+    if m.size < 16:
+        return float(hi)
+    pk = float(np.percentile(m, 99.0))
+    if pk >= 0.90:
+        return float(hi)                 # ชั้นนี้มีเนื้อเต็ม ๆ อยู่ -> ตัดครึ่งตามเดิม
+    return float(np.clip(0.5 * pk, lo, hi))
+
+
 def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
                       target=1.5, grow_rate=1.7, max_round=5, max_pieces=250, min_hole=4.0,
-                      wave_target=99.0, fine_below=0):
+                      wave_target=99.0, fine_below=0, level=0.5):
     """🎯 เกลาเท่าที่จำเป็น — ไม่มากไม่น้อย
 
     ⚠️ บทเรียน 2026-08-07 (พลาดสองรอบกว่าจะได้): ความแรงการเกลาจะตั้ง 'ตายตัว' ไม่ได้
@@ -1127,7 +1358,7 @@ def contours_adaptive(field, min_area, smooth_k=2, sigma0=0.6, sigma_max=6.0,
         #    รูจริงในงานออกแบบเล็กได้มาก (ช่องในตัว & % 8 ขนาดแค่ 27 px²)
         #    เคยใช้เกณฑ์เดียวกันทั้งคู่แล้วช่องพวกนี้หายไปเงียบ ๆ (ชุดตรวจจับได้)
         #    รูปลอมมี drop_fake_holes คัดด้วยความมั่นใจอยู่แล้ว ไม่ต้องพึ่งขนาด
-        cs = [c for c in contours_of(field, 0.5, smooth_k, sigma=sig, fine_below=fine_below)
+        cs = [c for c in contours_of(field, level, smooth_k, sigma=sig, fine_below=fine_below)
               if (_area(c) >= 0 and abs(_area(c)) >= min_area)
               or (_area(c) < 0 and abs(_area(c)) >= min_hole)]
         if not cs or sig >= sigma_max:
@@ -1628,10 +1859,62 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             _up = max(1.0, ((MAX_MP * 0.55 * 1e6) / max(1.0, W0 * H0)) ** 0.5)
         if _up > 1.05:
             _nw, _nh = int(round(W0 * _up)), int(round(H0 * _up))
+            img0u = np.ascontiguousarray(img)
+            img0f = img.astype(np.float32)
             img = cv2.resize(img, (_nw, _nh), interpolation=cv2.INTER_LANCZOS4)
             if alpha is not None:
                 alpha = cv2.resize(alpha, (_nw, _nh), interpolation=cv2.INTER_LANCZOS4)
             sc = float(_nw) / float(W0)                       # ตอนจบ _scale_items จะหารกลับให้เอง
+            # ⛔ หน้ากากคมชัดธรรมดา (unsharp) — วัดแล้วแย่ลง ปิดไว้ อย่ารื้อมาใช้อีก
+            #    แรง 0.4 → โลโก้ 12.20 · ข้อความ 7.20 · ใบไม้ 3.57 · ทั้งภาพ 2.63
+            #    แรง 0.8 → โลโก้ 11.53 · ข้อความ 6.70 · ใบไม้ 3.42 · ทั้งภาพ 2.58
+            #    เพราะมัน "เดา" ว่าขอบควรชันแค่ไหน แล้วสร้างขอบเว่อร์ที่ไม่มีในไฟล์จริง
+            # ✂️ คืนความชันของขอบที่หายไปตอนขยาย (ผู้ใช้ทักซ้ำว่า "ไม่คม/เบลอ")
+            #    ไฟล์เล็กถูกขยาย 3 เท่า -> ขอบเดิมกว้าง 1 px กลายเป็นทางลาดกว้าง 3 px
+            #    ขั้นหาเส้นขอบใช้จุดตัด 0.5 ของทางลาดนั้น ยิ่งลาดกว้างตำแหน่งยิ่งไม่แน่นอน
+            #    จึงหักคืนด้วยหน้ากากคมชัดที่ 'จูนขนาดตามความฟุ้งที่วัดได้จริง' ไม่ใช่ค่าตายตัว
+            # 🔁 คืนรายละเอียดด้วยการ "ฉายกลับ" (iterative back-projection)
+            #    ต่างจากหน้ากากคมชัดตรงที่ไม่ได้เดาว่าขอบควรชันแค่ไหน แต่บังคับเงื่อนไขจริง:
+            #    "ถ้าย่อภาพที่ขยายแล้วกลับลงมา ต้องได้ต้นฉบับเป๊ะ" แล้วไล่แก้ส่วนต่างทีละรอบ
+            #    จึงไม่เกิดขอบเว่อร์ (overshoot) แบบหน้ากากคมชัด — ข้อมูลมาจากไฟล์จริงล้วน ๆ
+            if IBP_ITERS > 0 and grad:
+                # 🔒 เปิดเฉพาะโหมดไล่สี — โหมดปกติจูนมาทั้งชุดตรวจ 11 ไฟล์แล้ว ห้ามขยับเงียบ ๆ
+                # ⚠️ วัดจริง: ถ้าฉายกลับ "ทั้งภาพ" โลโก้ดีขึ้น (12.69→11.66) แต่พื้นไล่สี
+                #    กับใบไม้แย่ลงชัด (2.92→3.54) เพราะการคืนความชันไปคืนคลื่นรบกวน JPEG
+                #    ในย่านที่สีควรเปลี่ยนอย่างนุ่มนวลด้วย -> เกิดริ้วบนไล่สี
+                # ✅ จึงใส่ให้ "เฉพาะย่านที่มีขอบจริง" — วัดด้วยอนุพันธ์อันดับสอง
+                #    ไล่สีเชิงเส้นมีอนุพันธ์อันดับสอง ~0 · ขอบตัวอักษรสูงมาก แยกกันได้สะอาด
+                _lp = np.abs(cv2.Laplacian(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+                                           .astype(np.float32), cv2.CV_32F, ksize=3))
+                _w = np.clip((_lp - IBP_LO) / max(1e-6, IBP_HI - IBP_LO), 0.0, 1.0)
+                _w = cv2.GaussianBlur(_w, (0, 0), 1.5)[:, :, None]
+                # 🛡️ กันขอบเว่อร์ (ringing): บังคับให้ทุกค่าอยู่ในช่วง "ต่ำสุด-สูงสุดของเพื่อนบ้าน"
+                #    ของภาพขยายตั้งต้นเสมอ -> สร้างสีใหม่ที่ไม่มีอยู่รอบ ๆ ไม่ได้เลย
+                #    (ไม่ใส่ตัวนี้จะเกิด "เส้นเขียวอมฟ้าบาง ๆ" ตรงรอยต่อพื้นน้ำเงินกับวงขาว)
+                #    ใช้ช่วงค่าจาก "ไฟล์ต้นฉบับก่อนขยาย" (ขยายแบบไม่เกลี่ย) ไม่ใช่จากภาพที่ขยายแล้ว
+                #    เพราะภาพที่ขยายแล้วถูกเกลี่ยจนช่วงค่าแคบลง ถ้าเอามาเป็นกรอบจะล็อกความคมไว้เท่าเดิม
+                _k3 = np.ones((3, 3), np.uint8)
+                _lo = cv2.resize(cv2.erode(img0u, _k3), (_nw, _nh),
+                                 interpolation=cv2.INTER_NEAREST).astype(np.float32)
+                _hi = cv2.resize(cv2.dilate(img0u, _k3), (_nw, _nh),
+                                 interpolation=cv2.INTER_NEAREST).astype(np.float32)
+                _U = img.astype(np.float32)
+                for _ in range(int(IBP_ITERS)):
+                    _D = cv2.resize(_U, (W0, H0), interpolation=cv2.INTER_AREA)
+                    _E = img0f - _D
+                    if float(np.abs(_E).mean()) < 0.35:
+                        break
+                    _U += (IBP_LAM * _w) * cv2.resize(_E, (_nw, _nh),
+                                                      interpolation=cv2.INTER_LANCZOS4)
+                    if IBP_CLAMP:
+                        np.clip(_U, _lo, _hi, out=_U)
+                img = np.clip(_U, 0, 255).astype(np.uint8)
+                del _U, _w, _lp, _lo, _hi
+            if SHARP_AMT > 0:
+                _sg = float(np.clip(edge_ramp_px(img) / 2.6, 0.7, 3.0))
+                _bl = cv2.GaussianBlur(img, (0, 0), _sg)
+                img = np.clip(img.astype(np.float32) * (1.0 + SHARP_AMT)
+                              - _bl.astype(np.float32) * SHARP_AMT, 0, 255).astype(np.uint8)
     H, W = img.shape[:2]
 
     af = None
@@ -1764,8 +2047,38 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
 
     pal_rgb, lab, pal_lab = quantize(img, k=cfg["k"], seed=seed, keep=_q_keep,
                                      grad=bool(grad),
-                                     kmin=(12 if _smr else 0),
-                                     cap=(24 if _smr else None))
+                                     kmin=(GRAD_KMIN if _smr else 0),
+                                     cap=(GRAD_CAP if _smr else None))
+    # 🍃 รวมเฉดที่เป็นเส้นไล่สีเดียวกัน (พวงหรีดเขียว→ฟ้า) ให้เหลือสีเดียว ก่อนติดป้ายสี
+    _ramp = []
+    # ⚠️ วัดจริง 2026-08-11 (รอบแรก ตัดสินด้วยระยะสีอย่างเดียว = ล้มเหลว):
+    #    เกณฑ์แน่น (ระยะ ≤14) ไม่มีกลุ่มไหนเข้าเกณฑ์เลย · เกณฑ์หลวม (≥16) รวมเลยเถิด
+    #    สี 14→9 · ใบไม้ 2.92→3.21 · ทั้งภาพ 2.18→2.39
+    # ✅ รอบสอง 2026-08-11 ทำครบตามแผน "ติดป้ายสี -> วัดการติดกันจริงในภาพ -> รวม -> ติดป้ายใหม่"
+    #    (โค้ดอยู่ครบด้านบน: spatial_adj + merge_ramp(adj=..., solid=...) ใช้งานได้จริง)
+    # ⛔ แต่ **วัดแล้วแย่ลงทุกทาง** จึงปิดไว้ — ตัวเลขจริงจากภาพตรา USERS' CHOICE:
+    #       ฐาน (ไม่รวม)             โลโก้ 12.69 · ใบไม้ 2.92 · ทั้งภาพ 2.18 · 14 สี · 23,182 จุด
+    #       รวม + ไล่สีเส้นตรง        โลโก้ 17.53 · ใบไม้ 3.21 · ทั้งภาพ 2.39 ·  9 สี · 18,714 จุด
+    #       รวม + บังคับไล่สีสองมิติ  โลโก้ 17.53 · ใบไม้ 4.64 · ทั้งภาพ 2.91 (ฟิตไม่เข้า -> สีแบน)
+    # 🔍 สาเหตุที่แก้ไม่ได้ที่ชั้น "จานสี" (พิสูจน์ด้วยภาพเทียบแล้ว):
+    #    (1) พวงหรีดเป็น "วงแหวน" สีไล่ไปตามส่วนโค้ง ไม่มีไล่สีมาตรฐานของ SVG
+    #        (เส้นตรง/วงกลม/แถบสองมิติ) ที่ฟิตวงแหวนได้ — ค่าคลาดที่ดีที่สุดคือ 7.7
+    #        ซึ่งแย่กว่าการปล่อยให้เป็น 6 เฉดแยกกันเสียอีก
+    #    (2) สี (54,187,98) ถูกใช้ร่วมกันระหว่าง "ปลายเขียวของพวงหรีด" กับ
+    #        "สี่เหลี่ยมเขียวตันของโลโก้ LINEMAN" — พอรวมเป็นเฉดไล่สี สี่เหลี่ยมนั้นเปลี่ยนสีทันที
+    #        (ลองกันด้วยตัวตรวจ "ก้อนตัน" แล้ว แยกไม่ออก เพราะเป็นป้ายสีเดียวกันจริง ๆ)
+    # ➡️ ถ้าจะเอาให้ได้จริง ต้องแยกป้ายสีตาม "ชิ้นส่วนในภาพ" ก่อน (คนละสีแม้ค่าสีเท่ากัน)
+    #    ซึ่งขั้นติดป้ายสี (nearest2) ปัจจุบันแสดงแทนไม่ได้ — เป็นงานรื้อโครงสร้างอีกชั้น
+    if grad and len(pal_lab) >= 4 and False:
+        try:
+            _dsm = int(max(1, round(max(H, W) / 450.0)))
+            _lb0 = nearest2(np.ascontiguousarray(lab[::_dsm, ::_dsm]), pal_lab)[2]
+            _adj, _sol = spatial_adj(_lb0, len(pal_lab),
+                                     keep=(None if _q_keep is None else _q_keep[::_dsm, ::_dsm]))
+            pal_lab, pal_rgb, _ramp = merge_ramp(pal_lab, pal_rgb, adj=_adj, solid=_sol)
+            del _lb0, _adj, _sol
+        except Exception:
+            _ramp = []
     _n_det = len(pal_lab)                          # สีที่ได้มาเพื่อ "รายละเอียด" เท่านั้น
     if _anchor:
         _a = np.array(sorted(set(_anchor)), np.uint8).reshape(1, -1, 3)
@@ -1908,11 +2221,29 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 _s0 = (_g0["bands"][len(_g0["bands"]) // 2]["stops"] if _g0.get("bands")
                        else _g0["stops"])
                 _mid = _s0[len(_s0) // 2][1]
-                grad_layers.append({
+                _gl9 = {
                     "rgb": tuple(int(v) for v in _mid), "n": int(_rg["n"]),
                     "area": sum(abs(_area(c)) for c in _cs),
                     "items": to_bezier(grow(_cs, gap_e), tol_e, budget=budget_e),
-                    "grad": _rg["grad"]})
+                    "grad": _rg["grad"]}
+                # 🤝 เผื่อโหมดผสม VTracer: เตรียม "รูปทรงยืดขอบ" ไว้อีกชุด (เข้าใต้ขอบงาน ~10px)
+                #    ชั้นลาย VTracer ไม่ถมแถบรอบขอบงานเหมือนชั้นลายเดิม ต้องให้พื้นมุดเข้าไปปิดแทน
+                #    ⚠️ ใช้เฉพาะเมื่อ VTracer ชนะจริงเท่านั้น — ชุดปกติห้ามยืด (วัดแล้ว
+                #    ใบไม้พัง 2.96→5.12 เพราะพื้นที่ยืดออกไปโผล่รอบขอบลายเดิม)
+                if VT_MIX and grad:
+                    try:
+                        _rq9 = int(max(3, round(max(H, W) / 150.0))) | 1
+                        _shv = cv2.dilate(_rg["shape"].astype(np.uint8),
+                                          np.ones((_rq9, _rq9), np.uint8)).astype(bool)
+                        _fv = cv2.GaussianBlur(_shv.astype(np.float32), (0, 0), 0.8)
+                        _csv = [c for c in contours_of(_fv, 0.5, smooth_k=2, sigma=0.0)
+                                if abs(_area(c)) >= min_a]
+                        if _csv:
+                            _gl9["_items_v"] = to_bezier(grow(_csv, gap_e), tol_e,
+                                                         budget=budget_e)
+                    except Exception:
+                        pass
+                grad_layers.append(_gl9)
             except Exception:
                 continue
     for i in range(len(pal_lab)):
@@ -1971,7 +2302,8 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         _mp = 2000 if grad else 250
         cs, sg = contours_adaptive(f, min_a, smooth_k=2, sigma0=sig0,
                                    sigma_max=sigM, target=_tg, wave_target=wtgt,
-                                   max_pieces=_mp, fine_below=(420 if grad else 0))
+                                   max_pieces=_mp, fine_below=(420 if grad else 0),
+                                   level=(ink_level(f) if (grad and INK_LEVEL) else 0.5))
         # 🕳️ คัดเฉพาะ 'รูปลอม' ออก โดยดูความมั่นใจ ไม่ใช่ขนาด (ดู drop_fake_holes)
         _fd9 = denoise_field(f, sg)
         cs = drop_fake_holes(_fd9, cs)
@@ -1979,12 +2311,25 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         #    -> ต้องกรอง "จุดด่างจากรอยบีบอัด" ออกด้วย ไม่งั้นได้ปื้นเทาโผล่บนพื้นขาว
         if grad:
             cs = drop_weak_specks(_fd9, cs, min_a / 0.45)
+            # 🪒 ตัด "เส้นริ้วบาง" ทิ้ง — ชิ้นที่ยาวแต่บางกว่าเส้นจริงในงาน
+            #    เกิดจากขอบเว่อร์เล็ก ๆ ตรงรอยต่อสองสีจัด แล้วถูกจับเป็นสีที่สามบาง ๆ
+            #    (ผู้ใช้จะเห็นเป็น "เส้นเขียวอมฟ้า" เลียบขอบวงกลมขาวกับพื้นน้ำเงิน)
+            #    ความหนาเฉลี่ยของรูปปิด ≈ 2·พื้นที่/เส้นรอบรูป — เส้นจริงบางสุดยังหนากว่านี้มาก
+            if SLIVER_W > 0:
+                _cs2 = []
+                for _c in cs:
+                    _pa = abs(_area(_c))
+                    _pe = float(np.abs(np.diff(np.vstack([_c, _c[:1]]), axis=0)).sum())
+                    if _pe > 1e-6 and (2.0 * _pa / _pe) < SLIVER_W * max(1.0, sc)                        and _pa < min_a * 40.0:
+                        continue
+                    _cs2.append(_c)
+                cs = _cs2
         if not cs:
             continue
         sig_used.append(sg)
         area = sum(abs(_area(c)) for c in cs)
         # 🩹 มีพื้นไล่สีอยู่ข้างล่าง -> ช่องว่างเศษพิกเซลจะเผยสีจัด ๆ ขึ้นมา ต้องเกยกันมากขึ้น
-        _ge = gap_e * (1.3 if grad_layers else 1.0)
+        _ge = gap_e * (GRAD_GAP if grad_layers else 1.0)
         _Lr = {"rgb": tuple(int(v) for v in pal_rgb[i]), "n": n, "area": area,
                "items": to_bezier(grow(cs, _ge + 0.35 * sg), tol_e,
                                   look=int(max(6, round(2.5 * sg) + 5)),
@@ -1997,8 +2342,24 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             #    ไม่งั้น k-means จะซอยเป็นหลายเฉด แล้วเกิด "สีหลุด" เป็นปื้นกลางใบ
             # ⚠️ อย่าเปิดไล่สีสองมิติให้ชั้นลาย — ทดสอบ 2 รอบแล้วแย่ลงทั้งคู่
             #    (ใบไม้ 2.91→3.40 · ทั้งภาพ 2.19→2.43) ชั้นลายเป็นก้อนเล็ก แบบจำลองไล่สีจับเสียงรบกวน
-            _g = fit_gradient_field(img, _m, seed=seed, ns=12, min_delta=10.0,
-                                    max_err=5.0, max_bands=1)
+            # 🍃 ชั้นที่เกิดจากการ "รวมเฉดไล่สี" -> ต้องได้ไล่สีจริง (ก้อนใหญ่ ฟิตแม่น)
+            #    ชั้นสีเดียวธรรมดายังใช้ค่าเดิม (ไล่สีทางเดียว 12 จุด) เหมือนเดิมทุกประการ
+            # 🍂 ฟิตจาก "เนื้อใน" เท่านั้น — กร่อนขอบทิ้งก่อน 1-2 px
+            #    พิกเซลขอบเป็นสีผสม (ใบ×พื้นขาว = เขียวซีด) ถ้าปล่อยเข้าไป
+            #    ไล่สีของใบจะถูกลากให้ "ปลายใบซีด" เห็นเป็นปื้นจาง ๆ ที่ปลายใบทุกใบ
+            if GRAD_CORE_FIT:
+                _er9 = int(max(1, round(max(H, W) / 900.0)))
+                _mc = cv2.erode(_m.astype(np.uint8),
+                                np.ones((2 * _er9 + 1,) * 2, np.uint8)).astype(bool)
+                if int(_mc.sum()) >= 400:
+                    _m = _mc
+            if i in _ramp:
+                _g = fit_gradient_field(img, _m, seed=seed, ns=RAMP_FIT["ns"],
+                                        min_delta=6.0, max_err=RAMP_FIT["err"],
+                                        max_bands=RAMP_FIT["bands"])
+            else:
+                _g = fit_gradient_field(img, _m, seed=seed, ns=12, min_delta=10.0,
+                                        max_err=5.0, max_bands=1)
             if _g:
                 _Lr["grad"] = _g
         layers.append(_Lr)
@@ -2007,6 +2368,166 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         grad_layers.sort(key=lambda L: -L["area"])
         layers = grad_layers + layers
 
+    # ══════════════════════════════════════════════════════════════
+    # 🤝 โหมดผสม (ผู้ใช้สั่ง 2026-08-11): เอาจุดแข็งของปุ่ม ".ai ให้กราฟิค" (VTracer —
+    #    โลโก้คม ใบไม้ครบ) มาแทน "ชั้นลายเส้น" ของโหมดไล่สี ส่วน "พื้นไล่สี" ยังใช้
+    #    ตาข่ายไล่สีสองมิติของเราซึ่งทำได้ดีอยู่แล้ว = ได้ข้อดีของทั้งสองปุ่มในไฟล์เดียว
+    #
+    # วิธี: ทาสีมาสก์พิเศษ (magenta) ทับย่านพื้นไล่สี แล้วส่งภาพให้ VTracer ไล่เส้น
+    #    - แผ่น magenta เต็มจอถูกตัวกรอง "แผ่นพื้นหลัง" ของ trace_engine ทิ้งเอง
+    #    - เศษสีที่เปื้อน magenta (ขอบเกลี่ยขาว↔magenta ที่ริมวง) คัดทิ้งด้วยกติกาสี
+    #    - พิกัด VTracer อยู่บนภาพที่มันขยายเป็น 2000 px เอง -> คูณกลับเป็นพิกัดภาพทำงาน
+    #    ชั้นที่ได้วางตามลำดับซ้อนของ VTracer (ห้าม sort ตามพื้นที่ — ลำดับคือการซ้อนทับจริง)
+    # 🔒 ทำเฉพาะโหมดไล่สี + ภาพไม่มีช่องโปร่ง · พังเมื่อไหร่ถอยกลับชั้นลายเดิมอัตโนมัติ
+    # ══════════════════════════════════════════════════════════════
+    _vt_used = False
+    if grad and VT_MIX and keep is None:
+        try:
+            import tempfile as _tmpf
+            from vectorcnc import trace_engine as _TE9
+            _im9 = np.ascontiguousarray(img)
+            if _u_raw is not None:
+                # 🩷 ทาสีมาสก์ทับ "เนื้อใน" ของพื้นไล่สี (ไม่แตะแถบรอบขอบงาน ~8-10 px)
+                #    - VTracer ไม่ต้องเสียโควตาสีให้พื้นรุ้ง -> ลาย/โลโก้ได้สีเต็ม ๆ (วัดจริง
+                #      โลโก้ 11.98 -> ~6.9 ต่างกันเกือบเท่าตัว)
+                #    - ขอบงานยังถูกไล่เส้นกับพิกเซลจริง -> ขอบวงกลมเรียบตามต้นฉบับ
+                #      (เคยทามาสก์ทับถึงขอบ -> ขอบวงเป็นขั้นบันไดตามรอยหยักของมาสก์)
+                #    เศษแถบรอบขอบที่เหลือ ถูกกติกา "ส่วนที่มองเห็นจมในย่านพื้น" ตัดทิ้งเอง
+                # ขยายถึงใต้ขอบงานด้วยหัวกลม + เกลาขอบมาสก์ให้เป็นเส้นโค้งเรียบ
+                # (มาสก์ดิบขอบหยึกหยัก -> VTracer จะลอกรอยหยักนั้นไปเป็นขอบงานจริง)
+                _rq8 = int(max(3, round(max(H, W) / 220.0))) | 1
+                _mk9 = cv2.dilate(_u_raw.astype(np.uint8),
+                                  cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_rq8, _rq8)))
+                _mk9 = (cv2.GaussianBlur(_mk9.astype(np.float32), (0, 0),
+                                         max(1.5, _rq8 / 3.0)) > 0.5)
+                _im9 = _im9.copy(); _im9[_mk9] = (255, 0, 255)
+            _tf9 = _tmpf.mktemp(suffix=".png")
+            cv2.imwrite(_tf9, cv2.cvtColor(_im9, cv2.COLOR_RGB2BGR))
+            _r9 = _TE9.trace_color_vtracer(_tf9, color_precision=8, layer_difference=16,
+                                           filter_speckle=6, clip_to_silhouette=False)
+            _its9 = _r9[0] if isinstance(_r9, tuple) else _r9
+            try:
+                os.unlink(_tf9)
+            except Exception:
+                pass
+            _long9 = float(max(H, W))
+            _f9 = 1.0 if _long9 >= 2000.0 else _long9 / 2000.0
+            # ย่านพื้นไล่สี (ขยายถึงใต้ขอบงาน) สำหรับตัดสินว่า path ไหนคือ "แถบสีของพื้น"
+            _ds9 = 4
+            _bg9 = None
+            if _u_raw is not None:
+                _rq8 = int(max(3, round(max(H, W) / 220.0))) | 1
+                _bg9 = cv2.dilate(_u_raw.astype(np.uint8),
+                                  np.ones((_rq8, _rq8), np.uint8))[::_ds9, ::_ds9].astype(bool)
+            _newL = []
+            _pend9 = []                              # (layer, rings) รอตัดสินว่าเป็นแถบพื้นไหม
+            for _col9, _subs9 in _its9:
+                _b9, _g9, _r9c = int(_col9[0]), int(_col9[1]), int(_col9[2])
+                _itl9 = []
+                _ar9 = 0.0
+                _rings9 = []
+                for _sp9 in _subs9:
+                    _st9 = (float(_sp9["start"][0]) * _f9, float(_sp9["start"][1]) * _f9)
+                    _sg9 = []
+                    _pts9 = [_st9]
+                    for _s9 in _sp9["segs"]:
+                        if _s9[0] == "L":
+                            _e9 = (float(_s9[1][0]) * _f9, float(_s9[1][1]) * _f9)
+                            _sg9.append(("L", _e9))
+                        else:
+                            _e9 = (float(_s9[3][0]) * _f9, float(_s9[3][1]) * _f9)
+                            _sg9.append(("C",
+                                         (float(_s9[1][0]) * _f9, float(_s9[1][1]) * _f9),
+                                         (float(_s9[2][0]) * _f9, float(_s9[2][1]) * _f9),
+                                         _e9))
+                        _pts9.append(_e9)
+                    if len(_sg9) < 2:
+                        continue
+                    _a9 = 0.0
+                    for _q9 in range(len(_pts9) - 1):
+                        _a9 += (_pts9[_q9][0] * _pts9[_q9 + 1][1]
+                                - _pts9[_q9 + 1][0] * _pts9[_q9][1])
+                    _ar9 += abs(_a9) * 0.5
+                    _itl9.append(("B", _st9, _sg9))
+                    _rings9.append(np.round(np.asarray(_pts9, np.float64) / _ds9)
+                                   .astype(np.int32))
+                if not _itl9:
+                    continue
+                _pend9.append(({"rgb": (_r9c, _g9, _b9), "n": int(max(1, _ar9)),
+                                "area": float(_ar9), "items": _itl9}, _rings9))
+            # 🗑️ ตัด "แถบสีแบนของพื้น" ที่พื้นไล่สีของเราแทนที่ไปแล้ว
+            #    VTracer วางชั้นแบบซ้อนทับ (ชั้นล่างไม่มีรู) -> ต้องดูเฉพาะ "ส่วนที่มองเห็นจริง"
+            #    ของแต่ละชั้น (ส่วนที่ไม่ถูกชั้นบนทับ): ไล่จากบนลงล่าง สะสมย่านที่ถูกทับไว้
+            #    ชั้นไหนส่วนที่มองเห็นจมในย่านพื้น ≥85% (หรือมองไม่เห็นเลย) = แถบพื้น ทิ้ง
+            if _bg9 is not None and _pend9:
+                _cov9 = np.zeros(_bg9.shape, bool)
+                _drop9 = [False] * len(_pend9)
+                for _q9 in range(len(_pend9) - 1, -1, -1):
+                    _acc9 = np.zeros(_bg9.shape, bool)
+                    for _rg9 in _pend9[_q9][1]:
+                        _t9 = np.zeros(_bg9.shape, np.uint8)
+                        cv2.fillPoly(_t9, [_rg9], 1)
+                        _acc9 ^= _t9.astype(bool)
+                    _vis9 = _acc9 & ~_cov9
+                    _cov9 |= _acc9
+                    _nv9 = int(_vis9.sum())
+                    # ⚠️ ชิ้นจิ๋ว (ตัวอักษร wongnai) เล็กกว่าตะแกรงย่อ 4x -> ราสเตอร์ได้ 0 ช่อง
+                    #    ห้ามถือว่า "มองไม่เห็น" แล้วทิ้ง (เคยทิ้ง โลโก้พัง 6.9 -> 12.0)
+                    #    ตัดสินได้เฉพาะชิ้นที่มีเนื้อบนตะแกรงจริง ≥ 4 ช่องเท่านั้น
+                    if _nv9 >= 4:
+                        if int((_vis9 & _bg9).sum()) >= 0.85 * _nv9:
+                            _drop9[_q9] = True
+                    elif int(_acc9.sum()) >= 4:
+                        if int((_acc9 & _bg9).sum()) >= 0.85 * int(_acc9.sum()):
+                            _drop9[_q9] = True
+                _newL = [_pend9[_q9][0] for _q9 in range(len(_pend9)) if not _drop9[_q9]]
+            else:
+                _newL = [_z9[0] for _z9 in _pend9]
+            # 🧵 รวมชั้น "สีเดียวกันที่อยู่ติดกันในลำดับซ้อน" เป็นชั้นเดียว
+            #    (ปลอดภัยต่อการซ้อนทับ 100% — สลับเฉพาะชิ้นที่ไม่มีใครคั่นกลาง)
+            #    VTracer คืนมาเป็นพัน path จำนวนชั้นจะบวมโดยไม่จำเป็น
+            if _newL:
+                _mg9 = [_newL[0]]
+                for _L9 in _newL[1:]:
+                    if _L9["rgb"] == _mg9[-1]["rgb"]:
+                        _mg9[-1]["items"].extend(_L9["items"])
+                        _mg9[-1]["area"] += _L9["area"]
+                        _mg9[-1]["n"] += _L9["n"]
+                    else:
+                        _mg9.append(_L9)
+                # ⚖️ ตัดสินด้วยการวัด ไม่ใช่เดา: เรนเดอร์ทั้งสองแบบแล้วเทียบกับภาพจริง
+                #    - ลายเส้นสีแบน (โลโก้/ตราจริง)  -> VTracer ชนะขาด (วัดจริง โลโก้ 10.7->6.9)
+                #    - ลายที่ "ไล่สีในตัวเอง" (พวงหรีดไล่เฉด) -> VTracer หั่นเป็นแถบแบน แพ้ชัด
+                #      (วัดจริงกับภาพทดสอบ: ทั้งภาพ 2.29 -> 4.19 แย่เกือบเท่าตัว)
+                #    จึงต้องลองทั้งคู่แล้วเลือกตัวที่คลาดน้อยกว่าจริง (+~8 วิ แลกกับไม่พลาดเลย)
+                try:
+                    import vectora_export as _VX9
+                except Exception:
+                    from . import vectora_export as _VX9
+                def _err9(_ly9):
+                    _sc9 = 554.0 / max(W, H)
+                    _sv9 = _VX9.to_svg({"layers": _ly9, "size": (W, H), "bg": None,
+                                        "stats": {}}, scale=1.0)
+                    _pg9 = _VX9._cairo(_sv9, "png", px_scale=_sc9)
+                    _o9 = cv2.imdecode(np.frombuffer(_pg9, np.uint8), cv2.IMREAD_COLOR)
+                    _rf9 = cv2.resize(cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
+                                      (_o9.shape[1], _o9.shape[0]))
+                    _L1 = cv2.cvtColor(_o9, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    _L2 = cv2.cvtColor(_rf9, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    return float(np.sqrt(((_L1 - _L2) ** 2).sum(2)).mean())
+                _glv9 = [dict(_g9x, items=_g9x.get("_items_v", _g9x["items"]))
+                         for _g9x in grad_layers]
+                for _g9x in _glv9:
+                    _g9x.pop("_items_v", None)
+                _eo9 = _err9(layers)
+                _en9 = _err9(_glv9 + _mg9)
+                if _en9 <= _eo9 * 0.97:
+                    layers = _glv9 + _mg9
+                    _vt_used = True
+        except Exception:
+            pass                                    # VTracer ไม่พร้อม -> ใช้ชั้นลายเดิม
+    for _L in layers:
+        _L.pop("_items_v", None)
     # ขยายพิกัดคืนขนาดจริง
     if sc != 1.0:
         inv = 1.0 / sc
@@ -2036,7 +2557,9 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
         bg = max(_pool, key=lambda L: L["n"])["rgb"]
 
     nodes = sum(len(it[2]) if it[0] == "B" else len(it[1]) for L in layers for it in L["items"])
-    stats = {"colors": len(layers), "shapes": sum(len(L["items"]) for L in layers),
+    # 🤝 ชั้นลายจาก VTracer มาเป็นพัน path (ซ้อนสีสลับกัน) — จำนวน "สี" ที่คนอยากรู้
+    #    คือสีไม่ซ้ำ ไม่ใช่จำนวนชั้น (2,476 ชั้น แต่สีจริง ~30)
+    stats = {"colors": (len(set(tuple(L["rgb"]) for L in layers)) if _vt_used else len(layers)), "shapes": sum(len(L["items"]) for L in layers),
              "nodes": int(nodes), "work_px": [W, H], "scale": round(sc, 4),
              "full_res": bool(sc == 1.0),
              # 🔬 บอกตรง ๆ ว่าไล่เส้นที่ความละเอียดเท่าไหร่ (ผู้ใช้จะได้รู้ว่าไม่ได้ทำงานที่ภาพเล็ก)

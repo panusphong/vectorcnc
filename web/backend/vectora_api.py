@@ -194,7 +194,9 @@ async def convert(file: UploadFile = File(...),
     st = dict(res["stats"])
     st["svg_bytes"] = len(svg.encode("utf-8"))
     return JSONResponse({"ok": True, "token": tok, "svg": svg, "stats": st,
-                         "size": list(res["size"]), "palette": [L["rgb"] for L in res["layers"]]})
+                         "size": list(res["size"]),
+                         # 🤝 โหมดผสม VTracer มีเป็นพันชั้น -> ส่งจานสีแบบไม่ซ้ำพอ (กัน UI พัง)
+                         "palette": list(dict.fromkeys(tuple(L["rgb"]) for L in res["layers"]))[:64]})
 
 
 # ══════════════════════════════════════════════════════════════════

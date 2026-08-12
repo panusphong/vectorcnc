@@ -45,7 +45,7 @@ def _psd_ok():
         return False
 
 
-BUILD_TAG = "2026-08-09-logo-builder"
+BUILD_TAG = "2026-08-11-grad-ai"
 # 📌 สรุปอัปเดตล่าสุดแบบ "หนึ่งบรรทัด" สำหรับโชว์บนหัวเว็บ
 #    (build_note ตัวเต็มยาวเป็นหน้ากระดาษ เอาไปขึ้นหัวเว็บไม่ได้)
 BUILD_SHORT = "หน้าแตกชิ้น = ที่สร้างโลโก้แบรนด์ครบจบ: ✍️ พิมพ์ข้อความฟอนต์จริง (ไทย 23 ตัว) + 🎨 ใส่พื้นหลัง/artwork"
@@ -866,10 +866,59 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
             except Exception:
                 used = "color"
         items = None; clip_subs = None
+        # ══ 🌈 หลายสี + พื้นไล่สี (ผู้ใช้สั่ง 2026-08-11): ถ้าภาพมี "พื้นไล่เฉด" จริง
+        #    ใช้เอนจิ้นไล่สีของปุ่มแปลงเวกเตอร์ (ตาข่ายไล่สีสองมิติ = พื้นเนียนไม่เป็นแถบ
+        #    + ชั้นลายจาก VTracer ที่คมระดับ .ai + ตัวเลือกอัตโนมัติที่วัดผลจริงก่อนเลือก)
+        #    ไม่เจอพื้นไล่สี -> ตกลงมาใช้ VTracer เดิมทุกประการ (งานลายเส้นเดิมไม่กระทบ) ══
+        if used == "color":
+            try:
+                import vectora_engine as _VE
+                import vectora_export as _VX
+                import cv2 as _cv
+                import numpy as _np
+                _bgr = _cv.imread(inp, _cv.IMREAD_COLOR)
+                _has_grad = False
+                if _bgr is not None and max(_bgr.shape[:2]) >= 64:
+                    # ⚡ ตรวจเร็ว (<0.5 วิ) ว่ามี "พื้นไล่เฉดจริง" ไหม ก่อนเข้าเอนจิ้นหนัก
+                    #    ⚠️ พื้นสีเรียบก็ผ่าน smooth_regions เหมือนกัน (อนุพันธ์ ~0 ทั้งคู่)
+                    #       ต้องเช็กด้วยว่า "สีในย่านนั้นเปลี่ยนจริง" (ช่วงสี ≥ 25 ระดับ)
+                    #    ไม่งั้นงานลายเส้นธรรมดาจะโดนลากเข้าเอนจิ้นไล่สี เสียเวลา 1-3 นาทีฟรี
+                    _h0, _w0 = _bgr.shape[:2]
+                    _sc0 = 420.0 / max(_h0, _w0)
+                    _sm0 = (_cv.resize(_bgr, (int(_w0 * _sc0), int(_h0 * _sc0)))
+                            if _sc0 < 1.0 else _bgr)
+                    _rgb0 = _cv.cvtColor(_sm0, _cv.COLOR_BGR2RGB)
+                    for _rg0 in _VE.smooth_regions(_rgb0):
+                        _px0 = _rgb0[_rg0["raw"]]
+                        if len(_px0) > 30 and max(int(_np.ptp(_px0[:, _c0]))
+                                                  for _c0 in range(3)) >= 25:
+                            _has_grad = True
+                            break
+                if _has_grad:
+                    _res = _VE.vectorize(_cv.cvtColor(_bgr, _cv.COLOR_BGR2RGB), grad=True)
+                    if _res["stats"].get("grad_bg"):
+                        _svg = _VX.to_svg(_res)
+                        _W0, _H0 = _res["size"]
+                        _Wmm = float(width_mm) or 600.0
+                        _Hmm = _Wmm * _H0 / max(1, _W0)
+                        _svg_mm = _svg.replace(
+                            'width="%d" height="%d"' % (_W0, _H0),
+                            'width="%.2fmm" height="%.2fmm"' % (_Wmm, _Hmm), 1)
+                        import cairosvg
+                        pdf_bytes = cairosvg.svg2pdf(bytestring=_svg_mm.encode("utf-8"))
+                        return {"ai_base64": base64.b64encode(pdf_bytes).decode(),
+                                "w_mm": round(_Wmm, 1), "h_mm": round(_Hmm, 1),
+                                "layers": _res["stats"]["colors"],
+                                "paths": _res["stats"]["shapes"],
+                                "used_engine": "color-grad",
+                                "grad_bg": _res["stats"].get("grad_bg") or "",
+                                "svg_preview": _svg if len(_svg) < 2500000 else ""}
+            except Exception:
+                pass                     # เอนจิ้นไล่สีสะดุด -> ใช้ทาง VTracer เดิมต่อ
         if used == "mono":
             items = trace_engine.trace_potrace(inp, n_colors=2)
         else:
-            # 🎨 สีสด+เนียน: VTracer color+spline (cp=8 สีตรงต้นฉบับ) + clip เง  ไม่ให้หลุด outline
+            # 🎨 สีสด+เนียน: VTracer color+spline (cp=8 สีตรงต้นฉบับ) + clip เง��ไม่ให้หลุด outline
             try:
                 items, clip_subs = trace_engine.trace_color_vtracer(
                     inp, color_precision=8, layer_difference=16, filter_speckle=6,
