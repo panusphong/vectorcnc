@@ -12428,6 +12428,8 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       paintSum(); pngLbl(); progEnd(true); step(3);
       // ตั้งซูมหลังวางกล่องเสร็จ (ต้องรอให้ aspect-ratio มีผลก่อน ถึงจะวัดขนาดกล่องได้ถูก)
       requestAnimationFrame(resetZoom);
+      /* 🔁 มีคิวดาวน์โหลดค้างจากเคส "ผลลัพธ์หมดอายุ" -> โหลดต่อให้เองเลย ไม่ต้องกดซ้ำ */
+      if(window._vecRedl){ window._vecRedl=false; setTimeout(dl, 400); }
     }).catch(function(e){
       progEnd(false);
       alert((typeof LANG!=='undefined'&&LANG==='en'?'Convert failed — ':'แปลงไม่สำเร็จ — ')+(e.message||e));
@@ -12518,7 +12520,18 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
           $('vecDlMsg').textContent='✓ '+okList.join(', ').toUpperCase();
         }).catch(function(e){
           var m=String(e&&e.message||e);
-          if(m.indexOf('หมดอายุ')>=0){ m='ผลลัพธ์หมดอายุ (เก็บไว้ 30 นาที) — กด "↻ แปลงใหม่" แล้วโหลดอีกครั้งค่ะ'; }
+          if(m.indexOf('หมดอายุ')>=0){
+            /* ⏳ ผลค้างจากก่อนเซิร์ฟเวอร์รีสตาร์ต -> แปลงใหม่ให้เอง แล้วโหลดต่ออัตโนมัติ */
+            if(!window._vecRedl){
+              window._vecRedl=true;
+              $('vecDlMsg').innerHTML='<span style="color:#7c3aed">⏳ ผลลัพธ์เดิมหมดอายุ — กำลังแปลงใหม่ให้อัตโนมัติ เสร็จแล้วจะดาวน์โหลดต่อให้เลยค่ะ</span>';
+              convert();
+            } else {
+              window._vecRedl=false;
+              $('vecDlMsg').innerHTML='<span style="color:#dc2626">'+f.toUpperCase()+' ไม่สำเร็จ: ผลลัพธ์หมดอายุซ้ำ — ลองกด "↻ แปลงใหม่" เองอีกครั้งค่ะ</span>';
+            }
+            return;
+          }
           $('vecDlMsg').innerHTML='<span style="color:#dc2626">'+f.toUpperCase()+' ไม่สำเร็จ: '+m+'</span>';
         });
       }, i*450);
