@@ -825,6 +825,16 @@ select.numin{cursor:pointer}
               <div style="font-size:10.5px;color:#8A99B5;margin:3px 0 0 27px" data-i18n="ai.white.hint">รองขาว = พิมพ์หมึกขาวชั้นล่างก่อน สีจึงสด — จำเป็นตอนพิมพ์ลงวัสดุใส/สี/เมทัลลิก · แยกเป็นเลเยอร์ "White"</div>
             </div>
             <button class="btn" id="aiDraft" data-i18n="dl.ai" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;font-weight:700">🎨 ดาวน์โหลด .ai (ให้กราฟิค)</button>
+            <!-- 📊 แถบความคืบหน้า (ผู้ใช้ขอ 2026-08-11: งานไล่สีใช้ 1-3 นาที ต้องเห็นว่าเดินอยู่) -->
+            <div id="aiProg" style="display:none;margin-top:7px">
+              <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#7c3aed;margin-bottom:3px">
+                <span id="aiProgTxt">กำลังเริ่ม...</span><b id="aiProgPct">0%</b></div>
+              <div style="height:8px;background:#ede9fe;border-radius:6px;overflow:hidden">
+                <div id="aiProgBar" style="height:100%;width:0%;border-radius:6px;
+                     background:linear-gradient(90deg,#7c3aed,#4f46e5,#7c3aed);background-size:200% 100%;
+                     animation:aiProgSlide 1.2s linear infinite;transition:width .9s ease"></div></div>
+            </div>
+            <style>@keyframes aiProgSlide{0%{background-position:0% 0}100%{background-position:200% 0}}</style>
             <div id="aiOut" style="font-size:11px;color:#8A99B5;margin-top:5px"></div>
           </div>
 
@@ -7469,6 +7479,29 @@ $('aiDraft').onclick=function(){
   if(/\.(jpe?g|png|psd|bmp|webp)$/i.test(fileObj.name||'')&&!(+($('realW').value)>0)){alert('⚠️ กำหนดขนาด "กว้าง (ซม.)" ก่อน — ภาพ JPG/PNG ไม่มีขนาดกำกับ');if($('realWcm'))$('realWcm').focus();return;}
   var btn=$('aiDraft');btn.disabled=true;var old=btn.textContent;btn.textContent='⏳ กำลังดราฟท์เวกเตอร์...';
   $('aiOut').textContent='กำลังแปลงภาพเป็นเวกเตอร์ (อาจใช้เวลาสักครู่)...';
+  /* ⏱️ ตัวจับเวลา — ไม่ให้ผู้ใช้คิดว่าค้าง (ภาพพื้นไล่สีใช้เอนจิ้นหนัก 1-3 นาที)
+     + ขึ้นวงหมุนที่กลางจอด้วย จะได้รู้ว่างานกำลังวิ่งอยู่จริง */
+  var _t0ai=Date.now();
+  if(window._aiTick)clearInterval(window._aiTick);
+  if($('aiProg')){$('aiProg').style.display='block';$('aiProgBar').style.width='2%';
+    $('aiProgPct').textContent='0%';$('aiProgTxt').textContent='อัปโหลด + วิเคราะห์ภาพ...';}
+  window._aiTick=setInterval(function(){
+    var _sec=Math.round((Date.now()-_t0ai)/1000);
+    btn.textContent='⏳ กำลังดราฟท์... '+_sec+' วิ';
+    /* เป้าเวลาโดยประมาณ: งานปกติ ~25 วิ · ถ้าเกิน 12 วิ = เข้าเอนจิ้นไล่สี ~150 วิ */
+    var _T=(_sec>12)?150:25;
+    var _p=Math.min(95, Math.round(95*(1-Math.exp(-_sec/(_T/3.0)))));
+    if($('aiProg')){
+      $('aiProgBar').style.width=_p+'%'; $('aiProgPct').textContent=_p+'%';
+      $('aiProgTxt').textContent=(_sec<=3)?'อัปโหลด + วิเคราะห์ภาพ...'
+        :(_sec<=12)?'กำลังไล่เส้นเวกเตอร์...'
+        :(_sec<=45)?'🌈 เจอพื้นไล่สี — กำลังทำตาข่ายไล่สี + ลายเส้นคม (1-3 นาที)...'
+        :(_sec<=100)?'🌈 กำลังเทียบผลสองแบบ เลือกแบบที่คมกว่า...'
+        :'📦 กำลังประกอบไฟล์ .ai ...';
+    }
+    if(_sec===12&&$('aiOut'))$('aiOut').textContent='ภาพมีพื้นไล่สี — กำลังทำเวกเตอร์ไล่สี อาจใช้ 1-3 นาที อย่าเพิ่งปิดหน้านะคะ';
+  },1000);
+  try{ if($('after'))$('after').innerHTML='<div style="text-align:center"><div class="spinner"></div><div style="color:#5A6B8C;font-size:13px">กำลังดราฟท์เวกเตอร์...</div></div>'; }catch(_e){}
   var eng=$('aiEng').value||'auto';
   var fd=new FormData();
   fd.append('file',fileObj);fd.append('width_mm',$('realW').value||'600');
@@ -7481,6 +7514,10 @@ $('aiDraft').onclick=function(){
     $('aiOut').textContent='กำลังฝังภาพ + สร้างเส้นไดคัท...';
   }
   _apiFetch((API||'')+'/api/draft-ai',fd).then(_apiJson).then(function(j){
+    if(window._aiTick){clearInterval(window._aiTick);window._aiTick=null;}
+    if($('aiProg')){$('aiProgBar').style.width='100%';$('aiProgPct').textContent='100%';
+      $('aiProgTxt').textContent='เสร็จแล้ว ✓';
+      setTimeout(function(){ $('aiProg').style.display='none'; },1200);}
     btn.disabled=false;btn.textContent=old;
     if(j.error){$('aiOut').innerHTML='<span style="color:#EF4444">'+j.error+'</span>';return;}
     try{ window._lastAiB64=j.ai_base64||''; }catch(e){}   /* เก็บให้ซองงานโรงงาน */
@@ -7504,10 +7541,23 @@ $('aiDraft').onclick=function(){
       if($('aiDlSvg'))$('aiDlSvg').onclick=function(){ if(!window._lastCutSvg){alert('ไม่มีเส้นตัด');return;}
         var sa=document.createElement('a');sa.href=URL.createObjectURL(new Blob([window._lastCutSvg],{type:'image/svg+xml'}));sa.download=(window._cutNm||'artwork')+'_cut.svg';sa.click(); };
     }else{
-      var em=j.used_engine==='mono'?'ลายเส้นคม':'หลายสี';
-      $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.';
+      var em=j.used_engine==='mono'?'ลายเส้นคม':(j.used_engine==='color-grad'?'หลายสี + พื้นไล่สีเวกเตอร์ 🌈':'หลายสี');
+      $('aiOut').innerHTML='✓ ได้ไฟล์ .ai · '+em+' · '+j.layers+' เลเยอร์สี · '+j.paths+' path · '+j.w_mm+'×'+j.h_mm+' มม.'+
+        (j.grad_bg?('<br>🌈 '+j.grad_bg):'');
     }
-  }).catch(function(e){btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
+    /* 🖼️ โชว์ผลที่แปลงแล้วในพื้นที่กลางจอ (ฝั่งขวาของแถบเลื่อนเทียบ) ทันที
+       — เดิมต้องดาวน์โหลดไฟล์มาเปิดดูเองถึงจะเห็น ซึ่งไม่ make sense ตามที่พี่ว่า */
+    if(j.svg_preview){
+      try{
+        $('after').innerHTML=j.svg_preview.replace('<svg ',
+          '<svg style="width:100%;height:100%;background:#fff" preserveAspectRatio="xMidYMid meet" ');
+        if($('cmp'))$('cmp').style.display='block';
+        if($('emptyStage'))$('emptyStage').style.display='none';
+      }catch(_e){}
+    }
+  }).catch(function(e){if(window._aiTick){clearInterval(window._aiTick);window._aiTick=null;}
+    if($('aiProg'))$('aiProg').style.display='none';
+    btn.disabled=false;btn.textContent=old;$('aiOut').innerHTML='<span style="color:#EF4444">ต่อ backend ไม่ได้ '+e+'</span>';});
 };
 
 // ==================== 🏭 งานพิมพ์ผลิตซ้ำ (Step & Repeat) ====================
@@ -12097,7 +12147,14 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
         <button class="vbtn go" id="vecGo">⚡ <span data-i18n="vec.convert">แปลงเป็นเวกเตอร์</span></button>
         <button class="vbtn alt" id="vecBack1">← <span data-i18n="vec.change">เปลี่ยนไฟล์</span></button>
-      </div>
+      <div class="vecProgWrap" style="display:none;flex-basis:100%;margin-top:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#7c3aed;margin-bottom:3px">
+          <span class="vecProgTxt">กำลังเริ่ม...</span><b class="vecProgPct">0%</b></div>
+        <div style="height:9px;background:#ede9fe;border-radius:6px;overflow:hidden">
+          <div class="vecProgBar" style="height:100%;width:0%;border-radius:6px;
+               background:linear-gradient(90deg,#7c3aed,#4f46e5,#7c3aed);background-size:200% 100%;
+               animation:aiProgSlide 1.2s linear infinite;transition:width .9s ease"></div></div>
+      </div></div>
     </div>
 
     <!-- ── ขั้น 3: ผลลัพธ์ ── -->
@@ -12144,6 +12201,14 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
           <div class="vrow"><label data-i18n="vec.cbg">พื้นหลัง</label>
             <span class="vseg" id="vecTr" style="display:inline-flex"><button data-v="-1" class="on" data-i18n="vec.auto">อัตโนมัติ</button><button data-v="1" data-i18n="vec.clear">โปร่งใส</button><button data-v="0" data-i18n="vec.fill">ทึบตามภาพ</button></span></div>
           <div style="text-align:right"><button class="vbtn go" id="vecRe" style="padding:9px 18px;font-size:13px">↻ <span data-i18n="vec.redo">แปลงใหม่</span></button></div>
+          <div class="vecProgWrap" style="display:none;flex-basis:100%;margin-top:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#7c3aed;margin-bottom:3px">
+          <span class="vecProgTxt">กำลังเริ่ม...</span><b class="vecProgPct">0%</b></div>
+        <div style="height:9px;background:#ede9fe;border-radius:6px;overflow:hidden">
+          <div class="vecProgBar" style="height:100%;width:0%;border-radius:6px;
+               background:linear-gradient(90deg,#7c3aed,#4f46e5,#7c3aed);background-size:200% 100%;
+               animation:aiProgSlide 1.2s linear infinite;transition:width .9s ease"></div></div>
+      </div>
         </div>
       </div>
 
@@ -12294,10 +12359,43 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
   }
 
   /* ── แปลงจริง ── */
+  /* 📊 แถบความคืบหน้า (ผู้ใช้ขอ 2026-08-11) — เดินตามเวลาโดยประมาณ ค้าง 95% จนเสร็จจริง */
+  function progAll(f){ document.querySelectorAll('.vecProgWrap').forEach(f); }
+  function progStart(gd){
+    if(window._vecTick)clearInterval(window._vecTick);
+    var t0=Date.now();
+    progAll(function(w){ w.style.display='block';
+      w.querySelector('.vecProgBar').style.width='2%';
+      w.querySelector('.vecProgPct').textContent='0%';
+      w.querySelector('.vecProgTxt').textContent='อัปโหลด + วิเคราะห์ภาพ...'; });
+    window._vecTick=setInterval(function(){
+      var sec=Math.round((Date.now()-t0)/1000);
+      var T=gd?120:45;                          /* ติ๊ก 🌈 = เอนจิ้นไล่สี ใช้เวลานานกว่า */
+      var p=Math.min(95, Math.round(95*(1-Math.exp(-sec/(T/3.0)))));
+      var tx=(sec<=3)?'อัปโหลด + วิเคราะห์ภาพ...'
+        :(sec<=15)?'กำลังไล่เส้นเวกเตอร์... '+sec+' วิ'
+        :gd?((sec<=60)?'🌈 กำลังทำพื้นไล่สี + ลายเส้นคม... '+sec+' วิ (อาจใช้ 1-3 นาที)'
+                      :'🌈 กำลังเทียบผลสองแบบ เลือกแบบที่คมกว่า... '+sec+' วิ')
+        :'กำลังเก็บรายละเอียดเส้น... '+sec+' วิ';
+      progAll(function(w){ w.querySelector('.vecProgBar').style.width=p+'%';
+        w.querySelector('.vecProgPct').textContent=p+'%';
+        w.querySelector('.vecProgTxt').textContent=tx; });
+    },1000);
+  }
+  function progEnd(ok){
+    if(window._vecTick){clearInterval(window._vecTick);window._vecTick=null;}
+    progAll(function(w){
+      if(ok){ w.querySelector('.vecProgBar').style.width='100%';
+        w.querySelector('.vecProgPct').textContent='100%';
+        w.querySelector('.vecProgTxt').textContent='เสร็จแล้ว ✓';
+        setTimeout(function(){ w.style.display='none'; },1200); }
+      else w.style.display='none'; });
+  }
   function convert(){
     if(!F||BUSY)return; BUSY=true;
     var b=$('vecGo'), b2=$('vecRe'), old=b.innerHTML;
     b.disabled=b2.disabled=true; b.innerHTML='⏳ กำลังแปลง…';
+    try{ var _vg0=document.getElementById('vecGrad'); progStart(!!(_vg0&&_vg0.checked)); }catch(_e){ progStart(false); }
     var fd=new FormData();
     // 🌈 ติ๊ก 'ภาพไล่สี' -> 48 สี + บอกหลังบ้านว่าห้ามตัดสีผสมทิ้ง
     //    ⚠️ รอบแรกส่งแค่ k=32 แต่ได้ออกมา 14 สี เพราะ merge_blends ตัดสีผสมไป 18 สี
@@ -12319,10 +12417,11 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         return '<i title="rgb('+c.join(',')+')" style="background:rgb('+c.join(',')+')"></i>';}).join('');
       $('vecCmp').style.aspectRatio=j.size[0]+'/'+j.size[1];
       $('vecEng').textContent='engine ok · '+j.stats.seconds+'s';
-      paintSum(); pngLbl(); step(3);
+      paintSum(); pngLbl(); progEnd(true); step(3);
       // ตั้งซูมหลังวางกล่องเสร็จ (ต้องรอให้ aspect-ratio มีผลก่อน ถึงจะวัดขนาดกล่องได้ถูก)
       requestAnimationFrame(resetZoom);
     }).catch(function(e){
+      progEnd(false);
       alert((typeof LANG!=='undefined'&&LANG==='en'?'Convert failed — ':'แปลงไม่สำเร็จ — ')+(e.message||e));
     }).then(function(){ BUSY=false; b.disabled=b2.disabled=false; b.innerHTML=old; });
   }
