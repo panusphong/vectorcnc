@@ -73,6 +73,38 @@ def mem_limit_mb():
         return 2048.0                                # เดาแบบระมัดระวัง
 
 
+def cpu_quota():
+    """⚙️ "แรงม้า CPU ที่ใช้ได้จริง" กี่คอร์ — ไม่ใช่จำนวนคอร์ที่มองเห็น
+
+    ⚠️ บทเรียน 2026-08-13: เครื่องทดสอบกับเครื่องจริงเห็น CPU 2 ตัวเท่ากัน
+       แต่เครื่องจริงช้ากว่า 4-10 เท่า · สาเหตุที่เป็นไปได้มากสุดคือ "โควตา CPU"
+       (cgroup cpu.max) — เห็น 2 คอร์ แต่ถูกอนุญาตให้ใช้จริงแค่เศษเสี้ยว
+       พอใช้เกินโควตาในแต่ละรอบ ระบบจะ "แช่แข็ง" โปรเซสไว้จนหมดรอบ
+       ซึ่งทำให้งานคำนวณยาว ๆ ช้าลงแบบทวีคูณ และมองไม่เห็นเลยถ้าไม่วัด
+    ✅ อ่านค่าจริงออกมา แล้วเอาไปเลือกคุณภาพ + โชว์ที่ /api/health ให้ตรวจได้
+    """
+    try:                                             # cgroup v2: "<quota> <period>"
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            q, p = f.read().split()
+        if q != "max":
+            return max(0.1, float(q) / float(p))
+    except Exception:
+        pass
+    try:                                             # cgroup v1
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+            q = float(f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+            p = float(f.read().strip())
+        if q > 0 and p > 0:
+            return max(0.1, q / p)
+    except Exception:
+        pass
+    try:
+        return float(os.cpu_count() or 2)
+    except Exception:
+        return 2.0
+
+
 def quality_for_mem(mb=None):
     """เลือก 'ความละเอียดภาพทำงาน / ความละเอียดไล่เส้น' ให้พอดีกับแรมที่มีจริง
 
@@ -88,10 +120,11 @@ def quality_for_mem(mb=None):
        แรมพอไม่ได้แปลว่าเครื่องเร็วพอ
     """
     mb = float(mem_limit_mb() if mb is None else mb)
-    try:
-        cpu = int(os.cpu_count() or 2)
-    except Exception:
-        cpu = 2
+    cpu = cpu_quota()                    # แรงม้าที่ใช้ได้จริง ไม่ใช่จำนวนคอร์ที่เห็น
+    if cpu < 1.5:
+        # 🐌 โควตา CPU น้อยกว่า 1.5 คอร์ — งานคุณภาพสูงจะกินเวลาหลายนาที
+        #    ยอมลดความละเอียดลงเพื่อให้ "ใช้งานได้จริง" (พี่สั่ง: อย่าให้นานไป)
+        return (1400.0, 2400) if mb >= 1400 else (1200.0, 2000)
     if mb >= 2800 and cpu >= 4:
         return 2400.0, 4000          # เครื่องใหญ่และเร็ว — คุณภาพเต็ม
     if mb >= 2800:

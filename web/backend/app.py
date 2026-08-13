@@ -45,7 +45,7 @@ def _psd_ok():
         return False
 
 
-BUILD_TAG = "2026-08-13-fast"
+BUILD_TAG = "2026-08-13-probe"
 # 📌 สรุปอัปเดตล่าสุดแบบ "หนึ่งบรรทัด" สำหรับโชว์บนหัวเว็บ
 #    (build_note ตัวเต็มยาวเป็นหน้ากระดาษ เอาไปขึ้นหัวเว็บไม่ได้)
 BUILD_SHORT = "หน้าแตกชิ้น = ที่สร้างโลโก้แบรนด์ครบจบ: ✍️ พิมพ์ข้อความฟอนต์จริง (ไทย 23 ตัว) + 🎨 ใส่พื้นหลัง/artwork"
@@ -242,9 +242,18 @@ def health():
     #    ใช้ตรวจว่าแพลนถูกลดกลับเป็น free (512 MB) หรือเปล่า ซึ่งเป็นต้นเหตุที่งานแปลง
     #    ถูกฆ่ากลางคันตอนแรมพุ่งสูงสุด (ผู้ใช้เจอ 2026-08-13)
     try:
-        from vectora_engine import mem_limit_mb as _mlm, quality_for_mem as _qfm
-        _mem = int(_mlm()); _q = _qfm()
-        _memq = {"mem_mb": _mem, "work_long": int(_q[0]), "trace_px": int(_q[1])}
+        from vectora_engine import (mem_limit_mb as _mlm, quality_for_mem as _qfm,
+                                    cpu_quota as _cq)
+        import os as _os2, time as _t2
+        _t = _t2.perf_counter()                      # วัดความเร็วจริงของ CPU เครื่องนี้
+        _x = 0
+        for _i in range(2000000):
+            _x += _i
+        _bench = round(_t2.perf_counter() - _t, 3)   # เครื่องทดสอบของเราได้ ~0.09 วิ
+        _q = _qfm()
+        _memq = {"mem_mb": int(_mlm()), "cpu_seen": _os2.cpu_count(),
+                 "cpu_quota": round(_cq(), 2), "bench_sec": _bench,
+                 "work_long": int(_q[0]), "trace_px": int(_q[1])}
     except Exception as _e:
         _memq = {"mem_mb": "?", "err": str(_e)[:80]}
     return {"ok": True, "service": "VectorCNC",
