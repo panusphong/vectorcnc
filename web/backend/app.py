@@ -895,9 +895,14 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                             _has_grad = True
                             break
                 if _has_grad:
-                    _res = _VE.vectorize(_cv.cvtColor(_bgr, _cv.COLOR_BGR2RGB), grad=True)
+                    # 🧵 งานนี้กิน 1-3 นาที ถ้าทำบนเส้นเดินหลักของเซิร์ฟเวอร์
+                    #    เครื่องจะตอบ /api/health ไม่ได้ -> Render รีสตาร์ตกลางคัน
+                    #    ผู้ใช้ได้หน้า error HTML แทน JSON (เจอจริง 2026-08-13)
+                    from starlette.concurrency import run_in_threadpool as _rtp
+                    _res = await _rtp(_VE.vectorize,
+                                      _cv.cvtColor(_bgr, _cv.COLOR_BGR2RGB), grad=True)
                     if _res["stats"].get("grad_bg"):
-                        _svg = _VX.to_svg(_res)
+                        _svg = await _rtp(_VX.to_svg, _res)
                         _W0, _H0 = _res["size"]
                         _Wmm = float(width_mm) or 600.0
                         _Hmm = _Wmm * _H0 / max(1, _W0)
@@ -905,7 +910,8 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                             'width="%d" height="%d"' % (_W0, _H0),
                             'width="%.2fmm" height="%.2fmm"' % (_Wmm, _Hmm), 1)
                         import cairosvg
-                        pdf_bytes = cairosvg.svg2pdf(bytestring=_svg_mm.encode("utf-8"))
+                        pdf_bytes = await _rtp(
+                            lambda: cairosvg.svg2pdf(bytestring=_svg_mm.encode("utf-8")))
                         # 🖼️ ภาพตัวอย่างส่งเป็น PNG เบา ๆ — เคยส่ง SVG ทั้งดุ้น (3MB, 5 หมื่นจุด)
                         #    เบราว์เซอร์วาดสดแล้วค้างหลายสิบวินาที (ผู้ใช้เจอจริง 2026-08-11)
                         _pv = ""
@@ -914,7 +920,7 @@ async def draft_ai(file: UploadFile = File(...), n_colors: int = Form(4),
                             # ใช้ตัววาดตรงประหยัดแรม — cairo กับผลลัพธ์ 5 หมื่นจุด
                             # ทำแรมเซิร์ฟเวอร์หมดจนโปรเซสโดนฆ่า (เจอจริงบน Render)
                             _pv = base64.b64encode(
-                                _VX.raster_png(_res, px_scale=_psc)).decode()
+                                await _rtp(_VX.raster_png, _res, px_scale=_psc)).decode()
                         except Exception:
                             pass
                         return {"ai_base64": base64.b64encode(pdf_bytes).decode(),

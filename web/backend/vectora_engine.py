@@ -966,6 +966,8 @@ IBP_ITERS, IBP_LAM = 6, 0.7
 #    รอบ / ความแรงต่อรอบ / ความฟุ้งที่ใช้หาทิศของขอบ (0 รอบ = ปิด)
 SHOCK_ITERS, SHOCK_AMT, SHOCK_SIG = 2, 1.0, 1.2
 SHOCK_IBP = 2                  # จำนวนรอบ "ฉายกลับ" ที่คั่นหลังยุบขอบแต่ละรอบ (กันเส้นผอม)
+SHOCK_R = 1                    # รัศมีเพื่อนบ้านที่ดูดเข้าหา (1 = 3x3 · 2 = 5x5 ยุบไวขึ้นเท่าตัว)
+WORK_LONG = 1800.0             # ความละเอียดภาพทำงาน (ด้านยาว) ก่อนไล่เส้น
 # 🧽 เก็บกวาดคลื่นรบกวนในย่านเรียบก่อนยุบขอบ (ขนาดหน้าต่าง 0/1 = ปิด, ความแรง 0-1)
 FLAT_MED, FLAT_AMT = 7, 1.0
 MASK_DROP_D = 150              # ระยะสีที่ถือว่าเป็น "เศษสีมาสก์" แล้วทิ้ง (ผลรวม |ΔR|+|ΔG|+|ΔB|)
@@ -1734,7 +1736,7 @@ def denoise_poly(a, budget, corner_w=None, target=1.2, max_pass=60):
     return cur
 
 
-def _shock_rgb(img_rgb, w, iters=2, amt=1.0, sig=1.2):
+def _shock_rgb(img_rgb, w, iters=2, amt=1.0, sig=1.2, r=1):
     """⚡ ทำให้ "ทางลาดของขอบ" กลับเป็น "ขั้นบันได" (shock filter — Osher & Rudin)
 
     ทำไมต้องมี (2026-08-13 — พี่ตีกลับว่า "นี่คือคมแล้วเหรอ ทำใหม่ ไม่ผ่าน"):
@@ -1755,31 +1757,64 @@ def _shock_rgb(img_rgb, w, iters=2, amt=1.0, sig=1.2):
 
     w : น้ำหนักต่อพิกเซล (h,w,1) — ใช้ตัวเดียวกับขั้นฉายกลับ คือ "แรงเฉพาะที่มี
         ขอบจริง" ย่านไล่สีนุ่ม ๆ อนุพันธ์อันดับสอง ~0 จึงไม่โดนแตะเลย
+    r : รัศมีเพื่อนบ้าน — 1 คือดูรอบตัว 3x3 (ยุบทางลาดได้รอบละ 1 px)
+        ทางลาดหลังขยายภาพกว้าง 3-4 px ถ้าใช้ r=1 ต้องวนหลายรอบกว่าจะยุบหมด
+        ซึ่งกัดเส้นบางให้ผอมไปด้วย · r=2 กระโดดทีเดียว 2 px จบเร็วกว่า เสียหายน้อยกว่า
+
+    💾 ทำงาน "ทับที่เดิม" บน float32 ที่ส่งเข้ามา และไล่ทีละช่องสี — ภาพทำงาน
+       1800x1800 ถ้าจับทั้งสามช่องพร้อมกันต้องใช้ก้อนละ 39 MB หลายก้อนซ้อน
+       (วัดจริง: ขั้นนี้เคยดันแรมพุ่งชั่วขณะถึง 186 MB) ทำทีละช่องเหลือราว 1/3
     """
-    F = img_rgb.astype(np.float32)
+    F = img_rgb if img_rgb.dtype == np.float32 else img_rgb.astype(np.float32)
     h, w_ = F.shape[:2]
+    r = max(1, int(r))
+    n = (2 * r + 1) ** 2
+    w1 = w[:, :, 0] if w.ndim == 3 else w
     for _ in range(int(iters)):
-        g = cv2.cvtColor(np.clip(F, 0, 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        # 🛡️ ต้องหนีบให้อยู่ในช่วง 0-255 ก่อนทุกรอบ — ขั้นฉายกลับดันค่าล้นออกนอกช่วงได้
+        #    ถ้าปล่อยไว้ ขั้นนี้จะไป "เลือกเพื่อนบ้านที่สว่าง/มืดที่สุด" ซึ่งก็คือค่าล้นนั้นเอง
+        #    แล้วแพร่มันออกไปทั่วขอบ (วัดจริงตอนลืมหนีบ: หัวข้อ 4.63 -> 5.91 · โลโก้ 5.49 -> 5.79)
+        np.clip(F, 0, 255, out=F)
+        g = cv2.cvtColor(F.astype(np.uint8), cv2.COLOR_RGB2GRAY)
         gs = cv2.GaussianBlur(g.astype(np.float32), (0, 0), sig)
         lap = cv2.Laplacian(gs, cv2.CV_32F, ksize=3)
-        gp = cv2.copyMakeBorder(g, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
-        st = np.empty((9, h, w_), np.uint8)
-        for i in range(9):
-            dy, dx = divmod(i, 3)
-            st[i] = gp[dy:dy + h, dx:dx + w_]
-        sel = np.where(lap > 0, np.argmin(st, 0), np.argmax(st, 0)).astype(np.uint8)
-        del st, gp
-        Fp = cv2.copyMakeBorder(F, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
-        tgt = np.empty_like(F)
-        for i in range(9):
-            dy, dx = divmod(i, 3)
-            m = (sel == i)
-            if m.any():
-                tgt[m] = Fp[dy:dy + h, dx:dx + w_][m]
-        del Fp
-        F += (float(amt) * w) * (tgt - F)
-        del tgt
-    return np.clip(F, 0, 255).astype(np.uint8)
+        del gs
+        gp = cv2.copyMakeBorder(g, r, r, r, r, cv2.BORDER_REPLICATE)
+        del g
+        # หา "เพื่อนบ้านมืดสุด/สว่างสุด" แบบเดินสะสม ไม่กองทุกชั้นไว้พร้อมกัน
+        # (r=2 คือ 25 ชั้น · ภาพ 1800x1800 = 81 MB ถ้ากองไว้ — เครื่อง Render มี 512 MB)
+        # ⚠️ ต้องตั้งค่าเริ่มจาก "เพื่อนบ้านหมายเลข 0" ไม่ใช่พิกเซลตรงกลาง — เคยตั้งจาก
+        #    ตรงกลางแต่ให้หมายเลขเป็น 0 ผลคือพิกเซลที่ตัวเองมืด/สว่างที่สุดอยู่แล้ว
+        #    จะถูกชี้ไปที่เพื่อนบ้านมุมบนซ้ายแทน = ภาพเลื่อนเฉียง 1 px ทั้งย่านขอบ
+        #    (วัดจริงตอนพลาด: หัวข้อ 4.63 -> 5.73 · โลโก้ 5.49 -> 5.61)
+        vmin = gp[0:h, 0:w_].copy(); imin = np.zeros((h, w_), np.uint8)
+        vmax = vmin.copy(); imax = np.zeros((h, w_), np.uint8)
+        for i in range(1, n):
+            dy, dx = divmod(i, 2 * r + 1)
+            v = gp[dy:dy + h, dx:dx + w_]
+            m = v < vmin
+            vmin[m] = v[m]; imin[m] = i
+            m = v > vmax
+            vmax[m] = v[m]; imax[m] = i
+        sel = np.where(lap > 0, imin, imax)
+        del gp, vmin, vmax, imin, imax, lap
+        aw = (float(amt) * w1)
+        for _ch in range(F.shape[2]):                 # ทีละช่องสี = แรมชั่วขณะเหลือ 1/3
+            Cp = cv2.copyMakeBorder(F[:, :, _ch], r, r, r, r, cv2.BORDER_REPLICATE)
+            tg = np.empty((h, w_), np.float32)
+            for i in range(n):
+                dy, dx = divmod(i, 2 * r + 1)
+                m = (sel == i)
+                if m.any():
+                    tg[m] = Cp[dy:dy + h, dx:dx + w_][m]
+            del Cp
+            tg -= F[:, :, _ch]
+            tg *= aw
+            F[:, :, _ch] += tg
+            del tg
+        del sel, aw
+    np.clip(F, 0, 255, out=F)
+    return F
 
 
 def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0):
@@ -2011,7 +2046,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    ด้วยกลไก sc / _scale_items ที่มีอยู่แล้ว ผลลัพธ์จึงอยู่ในหน่วยภาพต้นฉบับเป๊ะ
     # ══════════════════════════════════════════════════════════════════
     _long = float(max(H0, W0))
-    _tgt_long = 1800.0                       # ความละเอียดทำงานที่พอดี (คม แต่ไม่ช้าเกิน)
+    _tgt_long = float(WORK_LONG)             # ความละเอียดทำงานที่พอดี (คม แต่ไม่ช้าเกิน)
     #  ⚠️ อย่าขยับขึ้น 2400 — ทดสอบแล้วแย่ลงทุกตัว (คลื่นรบกวน JPEG ถูกขยายตาม)
     #     วัดจริง: โลโก้ 12.8→15.7 · ใบไม้ 2.91→3.33 · ทั้งภาพ 2.19→2.93 · เวลา 61→75 วิ
     if _long > 0 and _long < _tgt_long * 0.95:
@@ -2055,11 +2090,16 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 #    (ไม่ใส่ตัวนี้จะเกิด "เส้นเขียวอมฟ้าบาง ๆ" ตรงรอยต่อพื้นน้ำเงินกับวงขาว)
                 #    ใช้ช่วงค่าจาก "ไฟล์ต้นฉบับก่อนขยาย" (ขยายแบบไม่เกลี่ย) ไม่ใช่จากภาพที่ขยายแล้ว
                 #    เพราะภาพที่ขยายแล้วถูกเกลี่ยจนช่วงค่าแคบลง ถ้าเอามาเป็นกรอบจะล็อกความคมไว้เท่าเดิม
-                _k3 = np.ones((3, 3), np.uint8)
-                _lo = cv2.resize(cv2.erode(img0u, _k3), (_nw, _nh),
-                                 interpolation=cv2.INTER_NEAREST).astype(np.float32)
-                _hi = cv2.resize(cv2.dilate(img0u, _k3), (_nw, _nh),
-                                 interpolation=cv2.INTER_NEAREST).astype(np.float32)
+                # 💾 สร้างเฉพาะตอนเปิดใช้จริง — สองก้อนนี้คือ float32 เต็มขนาดภาพขยาย
+                #    (ภาพ 1800x1800 = ก้อนละ 39 MB) เดิมสร้างทุกครั้งทั้งที่ IBP_CLAMP
+                #    ปิดอยู่ = ทิ้ง 78 MB ฟรี ๆ บนเครื่องที่มีแรม 512 MB
+                _lo = _hi = None
+                if IBP_CLAMP:
+                    _k3 = np.ones((3, 3), np.uint8)
+                    _lo = cv2.resize(cv2.erode(img0u, _k3), (_nw, _nh),
+                                     interpolation=cv2.INTER_NEAREST).astype(np.float32)
+                    _hi = cv2.resize(cv2.dilate(img0u, _k3), (_nw, _nh),
+                                     interpolation=cv2.INTER_NEAREST).astype(np.float32)
                 def _ibp(_U, _n):
                     for _ in range(int(_n)):
                         _D = cv2.resize(_U, (W0, H0), interpolation=cv2.INTER_AREA)
@@ -2094,12 +2134,13 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 #    -> ขอบยังชันขึ้นได้ แต่ความหนา/น้ำหนักหมึกของเส้นถูกดึงกลับที่เดิม
                 if SHOCK_ITERS > 0:
                     for _ in range(int(SHOCK_ITERS)):
-                        _U = _shock_rgb(np.clip(_U, 0, 255).astype(np.uint8), _w,
-                                        iters=1, amt=SHOCK_AMT,
-                                        sig=SHOCK_SIG).astype(np.float32)
+                        _U = _shock_rgb(_U, _w, iters=1, amt=SHOCK_AMT,
+                                        sig=SHOCK_SIG, r=SHOCK_R)
                         _U = _ibp(_U, SHOCK_IBP)
                 img = np.clip(_U, 0, 255).astype(np.uint8)
-                del _U, _w, _lp, _lo, _hi
+                del _U, _w, _lp, _lo, _hi, _ibp
+                import gc as _gc9
+                _gc9.collect()
             if SHARP_AMT > 0:
                 _sg = float(np.clip(edge_ramp_px(img) / 2.6, 0.7, 3.0))
                 _bl = cv2.GaussianBlur(img, (0, 0), _sg)
@@ -2708,10 +2749,14 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 except Exception:
                     from . import vectora_export as _VX9
                 def _err9(_ly9):
+                    # 🧠 วาดด้วยตัววาดของเราเอง ไม่ผ่าน cairosvg
+                    #    เดิมสร้างสตริง SVG ~9 MB แล้วให้ cairosvg กางเป็นวัตถุ Python
+                    #    ทั้งก้อน — ทำสองรอบ (ของเก่า/ของใหม่) แค่เพื่อ "ให้คะแนน" เท่านั้น
+                    #    แรมพุ่งจนเครื่องจริงถูกฆ่าโปรเซส (ผู้ใช้เจอ 2026-08-13:
+                    #    หน้าเว็บขึ้น "Unexpected token '<'" = ได้หน้า error HTML กลับมา)
                     _sc9 = 554.0 / max(W, H)
-                    _sv9 = _VX9.to_svg({"layers": _ly9, "size": (W, H), "bg": None,
-                                        "stats": {}}, scale=1.0)
-                    _pg9 = _VX9._cairo(_sv9, "png", px_scale=_sc9)
+                    _pg9 = _VX9.raster_png({"layers": _ly9, "size": (W, H), "bg": None,
+                                            "stats": {}}, px_scale=_sc9)
                     _o9 = cv2.imdecode(np.frombuffer(_pg9, np.uint8), cv2.IMREAD_COLOR)
                     _rf9 = cv2.resize(cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
                                       (_o9.shape[1], _o9.shape[0]))

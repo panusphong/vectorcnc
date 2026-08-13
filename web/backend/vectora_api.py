@@ -17,6 +17,18 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from PIL import Image
 
+# 🧵 ย้ายงานหนักออกจาก "เส้นเดินหลัก" ของเซิร์ฟเวอร์
+# ⚠️ ต้นเหตุจริงที่ผู้ใช้เจอ (2026-08-13 — "Unexpected token '<' ... is not valid JSON"):
+#    endpoint เขียนเป็น async def แต่ข้างในเรียกงานแปลงเวกเตอร์แบบธรรมดา ซึ่งกิน
+#    เวลา 1-3 นาที -> ตลอดเวลานั้น event loop ถูกยึดไว้ทั้งเส้น ตอบอะไรไม่ได้เลย
+#    Dockerfile ตั้ง WEB_CONCURRENCY=1 และ render.yaml ตั้ง healthCheckPath ไว้
+#    -> Render ยิงเช็คสุขภาพแล้วไม่มีใครตอบ = ตัดสินว่าเครื่องตาย -> รีสตาร์ตให้
+#    -> คำขอที่กำลังทำอยู่ตายกลางคัน ผู้ใช้ได้หน้า error HTML กลับไปแทน JSON
+#    (และระหว่างนั้นคนอื่นทั้งเว็บก็ค้างไปด้วย)
+# ✅ โยนงานหนักไปเธรดอื่น -> event loop ว่างตอบเช็คสุขภาพและผู้ใช้คนอื่นได้ตลอด
+#    (numpy/OpenCV ปล่อย GIL ระหว่างคำนวณหนักอยู่แล้ว จึงได้ผลจริง)
+from starlette.concurrency import run_in_threadpool
+
 try:
     from . import vectora_engine as VE, vectora_export as VX
 except Exception:                                   # รันแบบไฟล์เดี่ยว
@@ -211,20 +223,23 @@ async def convert(file: UploadFile = File(...),
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
     arr = _rgba(_open(raw, file.filename or ""))
+
+    def _work():                                 # 🧵 ทั้งก้อนนี้ทำในเธรดอื่น (ดูหมายเหตุหัวไฟล์)
+        _r = VE.vectorize(arr, preset=preset,
+                          k=(int(k) if int(k) > 0 else (0 if preset == "general" else None)),
+                          smooth=(int(smooth) if int(smooth) >= 0 else None),
+                          tol=(float(tol) if float(tol) >= 0 else None),
+                          gap=(float(gap) if float(gap) >= 0 else None),
+                          transparent=(None if int(transparent) < 0 else bool(int(transparent))),
+                          grad=bool(int(grad or 0)))
+        return _r, VX.to_svg(_r)
+
     try:
-        res = VE.vectorize(arr, preset=preset,
-                           k=(int(k) if int(k) > 0 else (0 if preset == "general" else None)),
-                           smooth=(int(smooth) if int(smooth) >= 0 else None),
-                           tol=(float(tol) if float(tol) >= 0 else None),
-                           gap=(float(gap) if float(gap) >= 0 else None),
-                           transparent=(None if int(transparent) < 0 else bool(int(transparent))),
-                           grad=bool(int(grad or 0)))
+        res, svg = await run_in_threadpool(_work)
     except ValueError as e:                     # ผิดมาตรฐานขาเข้า -> บอกผู้ใช้ตรง ๆ
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, "แปลงไม่สำเร็จ: %s" % e)
-
-    svg = VX.to_svg(res)
     _sweep()
     tok = uuid.uuid4().hex[:16]
     CACHE[tok] = {"res": res, "t": time.time(), "name": (file.filename or "image")}
@@ -234,7 +249,7 @@ async def convert(file: UploadFile = File(...),
     #       เพราะตอนกดโหลด ต้องประกอบไฟล์ใหม่ทั้งก้อน ซึ่งพลาดได้หลายทาง (แรม/รีสตาร์ต/หมดอายุ)
     #    ✅ ทำตอนนี้ที่ข้อมูลอยู่ในมือครบแล้ว -> ตอนกดโหลดแค่ส่งไบต์ออกไป ไม่มีอะไรให้พลาด
     try:
-        _pb = VX.to_pdf(res)
+        _pb = await run_in_threadpool(VX.to_pdf, res)
         with open(os.path.join(VEC_DISK, "%s.pdf" % tok), "wb") as _f:
             _f.write(_pb)
         with open(os.path.join(VEC_DISK, "%s.name" % tok), "w", encoding="utf-8") as _f:
