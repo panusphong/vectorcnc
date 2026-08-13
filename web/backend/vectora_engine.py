@@ -80,10 +80,28 @@ def quality_for_mem(mb=None):
       1800px + ไล่เส้น 3200  ->  ~551 MB · 156,269 จุด · ทั้งภาพ 2.54
       2216px + ไล่เส้น 4000  ->  ~750 MB · 208,230 จุด · ทั้งภาพ 2.48   (คมสุด)
     เผื่อที่ว่างให้ระบบอีกราว 25% เสมอ
+
+    ⏱️ ต้องดู "จำนวน CPU" ด้วย ไม่ใช่แรมอย่างเดียว (บทเรียน 2026-08-13):
+       เครื่องผู้ใช้เป็น Pro **4 GB แต่ 2 CPU** พอเลือกคุณภาพจากแรมอย่างเดียวเลยได้
+       ชุดสูงสุด แล้วงานไปกินเวลาเป็นสิบนาที — ขั้นไล่เส้นของ VTracer เป็นงานเธรดเดียว
+       เวลาแปรตามจำนวนพิกเซลตรง ๆ (4000px = 16 ล้านพิกเซล · 3200px = 10.2 ล้าน)
+       แรมพอไม่ได้แปลว่าเครื่องเร็วพอ
     """
     mb = float(mem_limit_mb() if mb is None else mb)
+    try:
+        cpu = int(os.cpu_count() or 2)
+    except Exception:
+        cpu = 2
+    if mb >= 2800 and cpu >= 4:
+        return 2400.0, 4000          # เครื่องใหญ่และเร็ว — คุณภาพเต็ม
     if mb >= 2800:
-        return 2400.0, 4000          # เครื่องใหญ่ (Pro 4 GB ขึ้นไป) — คุณภาพเต็ม
+        # แรมเยอะแต่ CPU น้อย (Pro 4 GB / 2 CPU — เครื่องของพี่)
+        # ⏱️ วัดจริงบนเครื่อง 2 CPU (เวลาแปลงล้วน ไม่รวมทำไฟล์):
+        #    ภาพทำงาน 2216px + ไล่เส้น 3200 -> 71 วิ · ทั้งภาพ 2.51
+        #    ภาพทำงาน 1800px + ไล่เส้น 3200 -> 52 วิ · ทั้งภาพ 2.54   ← เลือกอันนี้
+        #    เร็วขึ้น 27% แลกกับค่าคลาด 0.03 ซึ่งตาแทบไม่เห็น (พี่สั่ง "อย่าให้นานไป")
+        #    ตัวที่กินเวลาคือ "ภาพทำงาน" ไม่ใช่ VTracer — ขั้นแปลงหลัก 52.6 -> 38 วิ
+        return 1800.0, 3200
     if mb >= 1400:
         return 1800.0, 3200          # กลาง (Standard 2 GB)
     if mb >= 900:
@@ -1873,7 +1891,8 @@ def _shock_rgb(img_rgb, w, iters=2, amt=1.0, sig=1.2, r=1):
     return F
 
 
-def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0):
+def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0,
+              progress=None):
     """🔪 ไล่เส้นด้วย VTracer เอง — คุมขั้นเตรียมภาพเองทั้งหมด เพื่อ "ความคมสูงสุด"
 
     ⚠️ ทำไมไม่เรียกผ่าน trace_engine (ผู้ใช้ขอความคมสุด ๆ 2026-08-11):
@@ -1914,7 +1933,15 @@ def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0):
         except Exception:
             pass
     out = []
-    for pm in _re.finditer(r'<path\b([^>]*?)/>', svg, _re.S):
+    # 📶 ขั้นแยกเส้นจาก SVG ใช้เวลาพอควรเมื่อมีเส้นเป็นแสนจุด — รายงานความคืบหน้าด้วย
+    _pl = list(_re.finditer(r'<path\b([^>]*?)/>', svg, _re.S))
+    _np = max(1, len(_pl))
+    for _i9, pm in enumerate(_pl):
+        if progress is not None and (_i9 % 200) == 0:
+            try:
+                progress(100.0 * _i9 / _np, "แยกเส้นลายละเอียด %d/%d" % (_i9, _np))
+            except Exception:
+                pass
         tag = pm.group(1)
         dm = _re.search(r'd="([^"]+)"', tag)
         fm = _re.search(r'fill="#([0-9a-fA-F]{6})"', tag)
@@ -2718,6 +2745,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 _im9 = _im9.copy(); _im9[_mk9] = _MK_C
             _pg(55, "ไล่เส้นลายละเอียด")
             _its9 = _vt_items(_im9, px=(VT_PX if VT_PX > 0 else _vtpx),
+                              progress=(lambda p, t: _pg(55 + int(p * 0.25), t)),
                               cp=VT_OPTS["color_precision"],
                               ld=VT_OPTS["layer_difference"],
                               spk=VT_OPTS["filter_speckle"],
@@ -2827,7 +2855,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                     #    ทั้งก้อน — ทำสองรอบ (ของเก่า/ของใหม่) แค่เพื่อ "ให้คะแนน" เท่านั้น
                     #    แรมพุ่งจนเครื่องจริงถูกฆ่าโปรเซส (ผู้ใช้เจอ 2026-08-13:
                     #    หน้าเว็บขึ้น "Unexpected token '<'" = ได้หน้า error HTML กลับมา)
-                    _sc9 = 554.0 / max(W, H)
+                    # 🏃 ให้คะแนนที่ภาพเล็กลงครึ่งหนึ่ง — ขั้นนี้แค่ "เทียบว่าแบบไหนตรงกว่า"
+                    #    ไม่ได้เอาภาพไปใช้ต่อ · วัดจริงบนเครื่อง 2 CPU: 22.0 วิ -> 6.5 วิ
+                    #    (ต้องวาดสองรอบ ของเก่า/ของใหม่ จึงคุ้มมาก) ผลตัดสินไม่เปลี่ยน
+                    _sc9 = 280.0 / max(W, H)
                     _pg9 = _VX9.raster_png({"layers": _ly9, "size": (W, H), "bg": None,
                                             "stats": {}}, px_scale=_sc9)
                     _o9 = cv2.imdecode(np.frombuffer(_pg9, np.uint8), cv2.IMREAD_COLOR)
