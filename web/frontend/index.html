@@ -12444,8 +12444,22 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     fd.append('smooth',CFG.smooth); fd.append('tol',CFG.tol); fd.append('gap',CFG.gap);
     fd.append('transparent',CFG.tr);
     fetch(API+'/api/vec/convert',{method:'POST',body:fd}).then(function(r){
-      if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||('HTTP '+r.status));});
-      return r.json();
+      /* 🩺 อ่านเป็นข้อความก่อนเสมอ แล้วค่อยแปลงเป็น JSON เอง
+         ⚠️ ผู้ใช้เจอจริง 2026-08-13: ขึ้น "Unexpected token '<', "<!DOCTYPE"..."
+            ซึ่งอ่านไม่รู้เรื่องเลยว่าเกิดอะไรขึ้น — สาเหตุคือเซิร์ฟเวอร์รีสตาร์ตกลางคัน
+            แล้วตัวหน้าเว็บของ Render ส่ง "หน้า HTML แจ้ง error" กลับมาแทน JSON
+            r.json() จึงพังที่ตัวอักษร '<' ตัวแรก แล้วพ่นข้อความของเบราว์เซอร์ออกมาดิบ ๆ
+         ✅ ดักไว้เอง แล้วบอกเป็นภาษาคนว่าเกิดอะไร + ต้องทำยังไงต่อ */
+      return r.text().then(function(t){
+        var j=null; try{ j=JSON.parse(t); }catch(_e){}
+        if(j===null){
+          throw new Error(LANG==='en'
+            ? 'the server dropped the connection mid-convert (it may have restarted). Please press convert again — if it keeps happening, try a smaller image.'
+            : 'เซิร์ฟเวอร์หลุดกลางคันระหว่างแปลง (น่าจะรีสตาร์ตตัวเอง) ลองกดแปลงอีกครั้งได้เลย · ถ้ายังเป็นซ้ำ ลองใช้ภาพที่เล็กลง');
+        }
+        if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
+        return j;
+      });
     }).then(function(j){
       TOKEN=j.token; SVG=j.svg; LAST=j;
       /* 🖼️ แสดงผลด้วย <img> จาก Blob แทนการฝัง SVG ดิบเข้า DOM
