@@ -99,14 +99,51 @@ def _sweep():
 #    ผลพลอยได้: แถบความคืบหน้าเป็นของจริง ไม่ใช่แถบหลอกที่วิ่งตามเวลา
 #    และงานจะนานแค่ไหนก็ได้ — เปิดทางให้ดันความคมได้เต็มที่โดยไม่ชนเพดานเวลา
 # ══════════════════════════════════════════════════════════════════
-JOBS = {}                                           # job -> {state, pct, step, t, ...}
+# 💾 สถานะงานเก็บ "ลงดิสก์" ไม่ใช่ในแรมของโปรเซส
+# ⚠️ ต้นเหตุของอาการล่าสุด (2026-08-13): ขึ้น "ไม่พบงานนี้" ทั้งที่แถบเพิ่งวิ่งถึง 75%
+#    เครื่องเป็น Pro 4 GB (ยืนยันจากหน้า Render แล้ว) จึงไม่ใช่แรมหมดแน่นอน
+#    แต่ Dockerfile เขียนไว้เองว่า "เปลี่ยน WEB_CONCURRENCY ได้จาก Environment ของ Render
+#    โดยไม่ต้อง build ใหม่ · Pro 4GB -> 2" -> ถ้าตั้งไว้ 2 จะมีโปรเซสแยกกันสองตัว
+#    /start ไปตกที่ตัวหนึ่ง (ตารางงานอยู่ในแรมของตัวนั้น) แต่ /status ถูกสลับไปอีกตัว
+#    ซึ่งไม่รู้จักงานนี้เลย -> ตอบ "ไม่พบงานนี้" ทันที
+# ✅ เก็บลงดิสก์ที่ทุกโปรเซสเห็นร่วมกัน -> จะกี่ worker ก็ตอบถูกหมด และรอดการรีสตาร์ตด้วย
 JOB_TTL = 1800.0
 
 
-def _job_sweep():
-    now = time.time()
-    for k in [k for k, v in JOBS.items() if now - v["t"] > JOB_TTL]:
-        JOBS.pop(k, None)
+def _job_p(job, ext="json"):
+    import re as _re
+    if not _re.fullmatch(r"[0-9a-f]{16}", job or ""):
+        return None
+    return os.path.join(VEC_DISK, "job_%s.%s" % (job, ext))
+
+
+def _job_set(job, **kv):
+    try:
+        import json as _js
+        p = _job_p(job)
+        if not p:
+            return
+        d = _job_get(job) or {}
+        d.update(kv)
+        with open(p + ".tmp", "w", encoding="utf-8") as f:   # เขียนแล้วสลับชื่อ
+            _js.dump(d, f)                                    # กันอ่านเจอไฟล์เขียนค้าง
+        os.replace(p + ".tmp", p)
+    except Exception:
+        pass
+
+
+def _job_get(job):
+    try:
+        import json as _js
+        p = _job_p(job)
+        if not p or not os.path.exists(p):
+            return None
+        if time.time() - os.path.getmtime(p) > JOB_TTL:
+            return None
+        with open(p, encoding="utf-8") as f:
+            return _js.load(f)
+    except Exception:
+        return None
 
 
 def _open(raw, name=""):
@@ -296,15 +333,16 @@ async def start(file: UploadFile = File(...),
     arr = _rgba(_open(raw, file.filename or ""))
     name = file.filename or "image"
     job = uuid.uuid4().hex[:16]
-    _job_sweep()
-    JOBS[job] = {"state": "run", "pct": 2, "step": "เตรียมภาพ", "t": time.time()}
+    _job_set(job, state="run", pct=2, step="เตรียมภาพ", t0=time.time())
 
     def _run():
-        J = JOBS.get(job)
         try:
+            _last = [0]
+
             def _tick(pct, step):                # 📶 ความคืบหน้าจริงจากตัวเครื่องแปลง
-                if J is not None:
-                    J["pct"] = int(pct); J["step"] = step
+                if int(pct) != _last[0]:         # เขียนดิสก์เฉพาะตอนตัวเลขขยับจริง
+                    _last[0] = int(pct)
+                    _job_set(job, state="run", pct=int(pct), step=step)
             _tick(6, "กำลังทำพื้นไล่สี + ลายเส้นคม")
             _r = VE.vectorize(arr, preset=preset,
                               k=(int(k) if int(k) > 0 else (0 if preset == "general" else None)),
@@ -320,15 +358,16 @@ async def start(file: UploadFile = File(...),
             CACHE[_tk] = {"res": _r, "t": time.time(), "name": name}
             _disk_put(_tk, CACHE[_tk])
             _st = dict(_r["stats"]); _st["svg_bytes"] = len(_s.encode("utf-8"))
-            if J is not None:
-                J.update(state="done", pct=100, step="เสร็จแล้ว", t=time.time(),
-                         out={"ok": True, "token": _tk, "svg": _s, "stats": _st,
-                              "size": list(_r["size"]),
-                              "palette": list(dict.fromkeys(
-                                  tuple(L["rgb"]) for L in _r["layers"]))[:64]})
+            # ตัว SVG ก้อนใหญ่เก็บเป็นไฟล์ต่างหาก ไม่ยัดลงไฟล์สถานะ (จะได้อ่าน/เขียนเร็ว)
+            with open(os.path.join(VEC_DISK, "%s.svg" % _tk), "w", encoding="utf-8") as _f:
+                _f.write(_s)
+            _job_set(job, state="done", pct=100, step="เสร็จแล้ว",
+                     out={"ok": True, "token": _tk, "stats": _st,
+                          "size": list(_r["size"]),
+                          "palette": list(dict.fromkeys(
+                              tuple(L["rgb"]) for L in _r["layers"]))[:64]})
         except Exception as _e:
-            if J is not None:
-                J.update(state="err", t=time.time(), msg=str(_e)[:300])
+            _job_set(job, state="err", msg=str(_e)[:300])
 
     import threading as _th
     _th.Thread(target=_run, daemon=True).start()
@@ -337,19 +376,22 @@ async def start(file: UploadFile = File(...),
 
 @router.get("/status")
 def status(job: str):
-    J = JOBS.get(job)
+    J = _job_get(job)
     if not J:
         raise HTTPException(404, "ไม่พบงานนี้ — อาจหมดอายุแล้ว กดแปลงใหม่อีกครั้งค่ะ")
-    if J["state"] == "err":
-        JOBS.pop(job, None)
+    if J.get("state") == "err":
         raise HTTPException(500, "แปลงไม่สำเร็จ: %s" % J.get("msg", ""))
-    if J["state"] == "done":
-        out = J.get("out") or {}
-        JOBS.pop(job, None)                      # ส่งครั้งเดียวแล้วปล่อยแรมทิ้งเลย
+    if J.get("state") == "done":
+        out = dict(J.get("out") or {})
+        try:                                     # อ่าน SVG จากไฟล์แล้วส่งไปพร้อมกันทีเดียว
+            with open(os.path.join(VEC_DISK, "%s.svg" % out["token"]), encoding="utf-8") as _f:
+                out["svg"] = _f.read()
+        except Exception:
+            raise HTTPException(404, "ผลลัพธ์หมดอายุแล้ว — กดแปลงใหม่อีกครั้งค่ะ")
         return JSONResponse(dict(out, state="done"))
     return JSONResponse({"ok": True, "state": "run", "pct": int(J.get("pct", 5)),
                          "step": J.get("step", ""),
-                         "seconds": round(time.time() - J["t"], 1)})
+                         "seconds": round(time.time() - float(J.get("t0", time.time())), 1)})
 
 
 # ══════════════════════════════════════════════════════════════════
