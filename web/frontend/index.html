@@ -4786,10 +4786,17 @@ if($('ikExGo'))$('ikExGo').onclick=function(){
         ps.map(function(p,i){return '<div class="ik-asset" data-i="'+i+'"><img src="'+p.png+'" style="background:repeating-conic-gradient(#eef 0% 25%,#fff 0% 50%) 0/14px 14px">'+
           '<span class="ik-chip c-img">เลเยอร์ PSD</span>'+
           '<div style="font-size:12px;font-weight:700;color:#0f172a">ชิ้น '+(i+1)+'</div>'+
-          '<div style="font-size:11px;color:#64748b">'+p.w+' × '+p.h+' px</div></div>';}).join('')+'</div></div>';
+          '<div style="font-size:11px;color:#64748b">'+p.w+' × '+p.h+' px</div>'+
+          '<button class="ik-btn ikGrab" data-i="'+i+'" style="width:100%;margin-top:6px;padding:7px 0;font-size:12px">⬇ ดาวน์โหลด PNG</button>'+
+          '</div>';}).join('')+'</div></div>';
+      /* 📥 ปุ่มดาวน์โหลดในการ์ด (ผู้ใช้ขอ 2026-08-11 — เดิมต้องเดาว่าคลิกที่การ์ดได้) */
+      function _grabPsd(i){ var p=ps[i];
+        try{ var a=document.createElement('a'); a.href=p.png; a.download='psd_layer_'+(i+1)+'.png';
+             document.body.appendChild(a); a.click(); a.remove(); }catch(e){alert('❌ '+e);} }
+      document.querySelectorAll('#ikExOut .ikGrab').forEach(function(b){
+        b.onclick=function(ev){ ev.stopPropagation(); _grabPsd(parseInt(b.getAttribute('data-i'),10)); }; });
       document.querySelectorAll('#ikExOut .ik-asset').forEach(function(el){
-        el.onclick=function(){ var p=ps[parseInt(el.getAttribute('data-i'),10)];
-          try{ var a=document.createElement('a'); a.href=p.png; a.download='psd_layer_'+(parseInt(el.getAttribute('data-i'),10)+1)+'.png'; a.click(); }catch(e){alert('❌ '+e);} };
+        el.onclick=function(){ _grabPsd(parseInt(el.getAttribute('data-i'),10)); };
       });
     }).catch(function(e){$('ikExMsg').textContent='❌ '+e;});
     return;
@@ -4807,20 +4814,41 @@ if($('ikExGo'))$('ikExGo').onclick=function(){
         return '<div class="ik-asset" data-i="'+i+'">'+(a.thumb?'<img src="'+a.thumb+'">':'<div style="height:110px"></div>')+
           '<span class="ik-chip '+k[0]+'">'+k[1]+'</span>'+
           '<div style="font-size:12px;font-weight:700;color:#0f172a;line-height:1.35">'+a.label+'</div>'+
-          '<div style="font-size:11px;color:#64748b">'+a.w_mm+' × '+a.h_mm+' มม.</div></div>';}).join('')+'</div></div>';
+          '<div style="font-size:11px;color:#64748b">'+a.w_mm+' × '+a.h_mm+' มม.</div>'+
+          '<button class="ik-btn ikGrab" data-i="'+i+'" style="width:100%;margin-top:6px;padding:7px 0;font-size:12px">⬇ ดาวน์โหลด '+(a.kind==='image'?'PNG':'.ai')+'</button>'+
+          '</div>';}).join('')+'</div></div>';
+    /* 📥 ปุ่มดาวน์โหลดในการ์ด (ผู้ใช้ขอ 2026-08-11) — กดที่การ์ดก็ยังได้เหมือนเดิม */
+    function _grabAsset(i, el){
+      var a=as[i]; if(!a)return;
+      var btn=el?el.querySelector('.ikGrab'):null, old=btn?btn.textContent:'';
+      if(btn){ btn.disabled=true; btn.textContent='⏳ กำลังสร้างไฟล์...'; }
+      if(el)el.style.opacity='.55';
+      fetch(API+'/api/extract-asset',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:IK_TOK,kind:a.kind,page:a.page,bbox:a.bbox,xref:a.xref||0})})
+      .then(_apiJson).then(function(k){
+        if(el)el.style.opacity='1';
+        if(btn){ btn.disabled=false; btn.textContent=old; }
+        if(k.error){alert('❌ '+k.error);return;}
+        if(k.kind==='image'){
+          ikDl(k.png_base64,'asset_'+a.id+'.png','image/png');
+          if(btn)btn.textContent='✓ ดาวน์โหลดแล้ว (PNG)';
+        }else{
+          ikDl(k.ai_base64,'asset_'+a.id+'.ai');
+          if(btn)btn.textContent='✓ ดาวน์โหลดแล้ว (.ai)';
+        }
+        if(btn)setTimeout(function(){ btn.textContent=old; },2500);
+      }).catch(function(e){
+        if(el)el.style.opacity='1';
+        if(btn){ btn.disabled=false; btn.textContent=old; }
+        alert('❌ '+e);
+      });
+    }
+    document.querySelectorAll('#ikExOut .ikGrab').forEach(function(b){
+      b.onclick=function(ev){ ev.stopPropagation();
+        var i=parseInt(b.getAttribute('data-i'),10);
+        _grabAsset(i, b.closest('.ik-asset')); }; });
     document.querySelectorAll('#ikExOut .ik-asset').forEach(function(el){
-      el.onclick=function(){
-        var a=as[parseInt(el.getAttribute('data-i'),10)];
-        el.style.opacity='.5';
-        fetch(API+'/api/extract-asset',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({token:IK_TOK,kind:a.kind,page:a.page,bbox:a.bbox,xref:a.xref||0})})
-        .then(_apiJson).then(function(k){
-          el.style.opacity='1';
-          if(k.error){alert('❌ '+k.error);return;}
-          if(k.kind==='image'){ikDl(k.png_base64,'asset_'+a.id+'.png','image/png');alert('📷 ได้ภาพแล้ว — ภาพ raster ต้องส่งเข้า "ดราฟท์ .ai" ต่อเพื่อแปลงเป็นเวกเตอร์');}
-          else{ikDl(k.ai_base64,'asset_'+a.id+'.ai');}
-        }).catch(function(e){el.style.opacity='1';alert('❌ '+e);});
-      };
+      el.onclick=function(){ _grabAsset(parseInt(el.getAttribute('data-i'),10), el); };
     });
   }).catch(function(e){$('ikExMsg').textContent='❌ '+e;});
 };
