@@ -962,6 +962,23 @@ GRAD_GAP = 1.3
 SHARP_AMT = 0.0
 # 🔁 จำนวนรอบ "ฉายกลับ" ตอนขยายภาพ (0 = ปิด) และอัตราแก้ต่อรอบ
 IBP_ITERS, IBP_LAM = 6, 0.7
+# ⚡ ยุบทางลาดของขอบให้เป็นขั้นบันได (shock filter) — ทำต่อจากขั้นฉายกลับ
+#    รอบ / ความแรงต่อรอบ / ความฟุ้งที่ใช้หาทิศของขอบ (0 รอบ = ปิด)
+SHOCK_ITERS, SHOCK_AMT, SHOCK_SIG = 2, 1.0, 1.2
+SHOCK_IBP = 2                  # จำนวนรอบ "ฉายกลับ" ที่คั่นหลังยุบขอบแต่ละรอบ (กันเส้นผอม)
+# 🧽 เก็บกวาดคลื่นรบกวนในย่านเรียบก่อนยุบขอบ (ขนาดหน้าต่าง 0/1 = ปิด, ความแรง 0-1)
+FLAT_MED, FLAT_AMT = 7, 1.0
+MASK_DROP_D = 150              # ระยะสีที่ถือว่าเป็น "เศษสีมาสก์" แล้วทิ้ง (ผลรวม |ΔR|+|ΔG|+|ΔB|)
+# ── ผลวัดจริงกับ real.jpg (554px) · "คม" = ความชันขอบเฉลี่ยที่เรนเดอร์ 4 เท่า ยิ่งสูงยิ่งคม
+#  ปิดทั้งชุด        ใบไม้ 3.36 หัวข้อ 7.60 โลโก้ 5.55 ทั้งภาพ 2.66 | คม 377 | 152,681 จุด
+#  ยุบรวดเดียว 1 รอบ  ใบไม้ 3.19 หัวข้อ 4.99 โลโก้ 5.99 ทั้งภาพ 2.60 | คม 474
+#  ยุบรวดเดียว 2 รอบ  ใบไม้ 3.41 หัวข้อ 4.80 โลโก้ 7.83 ทั้งภาพ 2.62 | คม 533   ← เส้นเริ่มผอม
+#  ยุบรวดเดียว 4 รอบ  ใบไม้ 3.84 หัวข้อ 5.34 โลโก้ 9.51 ทั้งภาพ 2.66 | คม 580   ← โลโก้พังชัด
+#  สลับฉายกลับ 2 รอบ  ใบไม้ 3.17 หัวข้อ 4.91 โลโก้ 5.51 ทั้งภาพ 2.60 | คม 492   ← โลโก้กลับมา
+#  + เก็บกวาด 7 ✅   ใบไม้ 3.19 หัวข้อ 4.63 โลโก้ 5.49 ทั้งภาพ 2.58 | คม 497 | 164,385 จุด
+# ⛔ อย่าเพิ่มรอบยุบขอบเป็น 3-4 — คมขึ้นแค่ 2% แต่โลโก้ถอย (5.49→5.76→5.90)
+# ⛔ อย่าขยับ layer_difference ของ VTracer หวังลดจุด — 16→24 ทั้งภาพ 2.58→2.83 · 16→32 →2.88
+#    (จุดลดเยอะจริง 164k→118k→92k แต่ใบไม้พังเป็นแถบ 3.19→3.88→4.17) · corner 60→30 ก็แย่ลง
 # 🎨 โควตาสีของ "ชั้นรายละเอียด" เมื่อพื้นไล่สีถูกแยกออกไปแล้ว
 # ⛔ อย่าเพิ่มโควตาสี — วัดจริงกับไฟล์จริง: 12→18 โลโก้ 10.65→12.14 · 12→24 →13.23 · 12→30 →12.00
 GRAD_KMIN, GRAD_CAP = 12, 24
@@ -975,7 +992,11 @@ HARD_ADD, HARD_D, HARD_TIGHT = 0, 18.0, 5.0
 GRAD_BLEND_CUT = False         # (เคยเปิด: หัวข้อ 8.11→6.01 แต่ผู้ใช้เห็นภาพรวมแย่ลง)
 # 🔧 ค่าละเอียดของตัวไล่เส้น VTracer (กวาดหาค่าที่คมที่สุดได้โดยไม่ต้องแตะตรรกะ)
 VT_OPTS = {"color_precision": 8, "layer_difference": 16, "filter_speckle": 2,   # วัดจริง 6→2: ใบไม้ 4.16→3.80 · โลโก้ 6.93→6.25 · ทั้งภาพ 2.86→2.78
-           "corner_threshold": 60, "path_precision": 6}
+           "corner_threshold": 60, "path_precision": 8}
+VT_PX = 3200     # วัดจริง 2000→2600→3200→4000: ทั้งภาพ 2.82→2.71→2.66→2.60
+                 # เลือก 3200 = คมเกือบสุด แต่ไฟล์/เวลายังไม่บาน (4000 จุดเพิ่ม 37% แลกกับ 0.06)
+                 # ความละเอียดที่ป้อนให้ตัวไล่เส้น (ยิ่งสูงยิ่งคม แลกกับเวลา)
+VT_BILAT = 0     # 0 = ไม่กรองเลย (ภาพผ่านการคืนความชันขอบมาแล้ว กรองซ้ำ = ลบความคมทิ้ง)
 VT_MIX = True                  # 🤝 ชั้นลายใช้ VTracer (จากปุ่ม .ai) + พื้นไล่สีของเรา
 GRAD_CORE_FIT = False          # ฟิตไล่สีของชั้นลายจากเนื้อใน (กร่อนขอบผสมทิ้งก่อน)         # ตัด "สีผสม" ในจานรายละเอียดของโหมดไล่สีด้วย               # ตัดเส้นชั้นแบบรักษาปริมาณสี (แก้เส้นบางออกมาจาง)
 SLIVER_W = 0.0                 # ความหนาขั้นต่ำของชิ้นงาน (พิกเซลของไฟล์ต้นฉบับ)
@@ -1713,6 +1734,144 @@ def denoise_poly(a, budget, corner_w=None, target=1.2, max_pass=60):
     return cur
 
 
+def _shock_rgb(img_rgb, w, iters=2, amt=1.0, sig=1.2):
+    """⚡ ทำให้ "ทางลาดของขอบ" กลับเป็น "ขั้นบันได" (shock filter — Osher & Rudin)
+
+    ทำไมต้องมี (2026-08-13 — พี่ตีกลับว่า "นี่คือคมแล้วเหรอ ทำใหม่ ไม่ผ่าน"):
+      ที่ผ่านมาเราวัดคุณภาพด้วย ΔE เทียบไฟล์ต้นฉบับ 554 px ซึ่ง "เบลออยู่แล้ว"
+      ตัวชี้วัดนั้นจึงให้รางวัลกับการ *เก็บรอยเบลอไว้ให้ครบ* — ยิ่งลอกทางลาดของ
+      ขอบมาเหมือนเท่าไหร่ คะแนนยิ่งดี แต่สายตาคนอ่านว่า "ไม่คม" เพราะ VTracer
+      ไปไล่เส้นทางลาดนั้นออกมาเป็นชั้นสีกลาง ๆ หลายชั้นซ้อนกัน = ขอบฟุ้ง
+      ตัวนี้ตัดสินใจแทน: พิกเซลในทางลาดต้องเลือกข้าง ไม่อยู่กลางทาง
+
+    หลักการ: ที่อนุพันธ์อันดับสอง > 0 (ฝั่งเว้า = ด้านมืดของขอบ) ให้ดูดเข้าหา
+    เพื่อนบ้านที่มืดที่สุด · < 0 (ฝั่งนูน) ดูดเข้าหาเพื่อนบ้านที่สว่างที่สุด
+    ทำซ้ำไม่กี่รอบ ทางลาดกว้าง 3-4 px จะยุบเป็นขอบคม 1 px
+
+    🛡️ ห้ามสร้างสีใหม่: ไม่ได้ใช้ erode/dilate แยกทีละช่องสี (แบบนั้นเอา R ต่ำสุด
+       จากพิกเซลหนึ่ง G ต่ำสุดจากอีกพิกเซล = ได้สีที่ไม่มีอยู่จริงในภาพ ขอบสองสี
+       จะเกิดเส้นสีแปลกปลอมคั่นกลาง) แต่เลือก "พิกเซลเพื่อนบ้าน" ด้วยความสว่าง
+       แล้วคัดลอก RGB ของพิกเซลนั้นมาทั้งชุด -> ทุกสีที่ออกมามีอยู่ในภาพจริงเสมอ
+
+    w : น้ำหนักต่อพิกเซล (h,w,1) — ใช้ตัวเดียวกับขั้นฉายกลับ คือ "แรงเฉพาะที่มี
+        ขอบจริง" ย่านไล่สีนุ่ม ๆ อนุพันธ์อันดับสอง ~0 จึงไม่โดนแตะเลย
+    """
+    F = img_rgb.astype(np.float32)
+    h, w_ = F.shape[:2]
+    for _ in range(int(iters)):
+        g = cv2.cvtColor(np.clip(F, 0, 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        gs = cv2.GaussianBlur(g.astype(np.float32), (0, 0), sig)
+        lap = cv2.Laplacian(gs, cv2.CV_32F, ksize=3)
+        gp = cv2.copyMakeBorder(g, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
+        st = np.empty((9, h, w_), np.uint8)
+        for i in range(9):
+            dy, dx = divmod(i, 3)
+            st[i] = gp[dy:dy + h, dx:dx + w_]
+        sel = np.where(lap > 0, np.argmin(st, 0), np.argmax(st, 0)).astype(np.uint8)
+        del st, gp
+        Fp = cv2.copyMakeBorder(F, 1, 1, 1, 1, cv2.BORDER_REPLICATE)
+        tgt = np.empty_like(F)
+        for i in range(9):
+            dy, dx = divmod(i, 3)
+            m = (sel == i)
+            if m.any():
+                tgt[m] = Fp[dy:dy + h, dx:dx + w_][m]
+        del Fp
+        F += (float(amt) * w) * (tgt - F)
+        del tgt
+    return np.clip(F, 0, 255).astype(np.uint8)
+
+
+def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0):
+    """🔪 ไล่เส้นด้วย VTracer เอง — คุมขั้นเตรียมภาพเองทั้งหมด เพื่อ "ความคมสูงสุด"
+
+    ⚠️ ทำไมไม่เรียกผ่าน trace_engine (ผู้ใช้ขอความคมสุด ๆ 2026-08-11):
+       ตัวนั้นย่อ/ขยายภาพเป็น 2000 px ซ้ำอีกครั้ง แล้วยัง bilateral filter ทับอีกชั้น
+       ภาพของเราผ่านการขยาย + คืนความชันขอบมาแล้ว การกรองซ้ำ = ลบความคมที่อุตส่าห์ทำมา
+    ✅ ตัวนี้: ปรับขนาดครั้งเดียวด้วย LANCZOS · ไม่กรองเลย · ความละเอียดพิกัดสูงขึ้น
+       แล้วหารพิกัดกลับมาที่สเกลภาพทำงานให้เรียบร้อย (ผู้เรียกใช้ได้พิกัดตรงเลย)
+    คืน [((b,g,r), [subpath...])] เรียงตามลำดับซ้อนของ VTracer เหมือน trace_engine เป๊ะ
+    """
+    import re as _re
+    import tempfile as _tf
+    import vtracer
+    from svgpathtools import parse_path
+    H0, W0 = img_rgb.shape[:2]
+    L0 = max(H0, W0)
+    _px = int(max(L0, px))                        # ห้ามย่อลง — ย่อ = ทิ้งรายละเอียดทิ้งเปล่า ๆ
+    if _px != L0:
+        _sc = float(_px) / float(L0)
+        _im = cv2.resize(img_rgb, (int(round(W0 * _sc)), int(round(H0 * _sc))),
+                         interpolation=cv2.INTER_LANCZOS4)
+    else:
+        _im = img_rgb
+    if bilat and int(bilat) > 0:
+        _im = cv2.bilateralFilter(_im, 5, int(bilat), int(bilat))
+    _f = float(W0) / float(_im.shape[1])           # ตัวคูณกลับสู่สเกลภาพทำงาน
+    _p1 = _tf.mktemp(suffix=".png")
+    _p2 = _tf.mktemp(suffix=".svg")
+    cv2.imwrite(_p1, cv2.cvtColor(_im, cv2.COLOR_RGB2BGR))
+    del _im
+    vtracer.convert_image_to_svg_py(
+        _p1, _p2, colormode="color", mode="spline", hierarchical="stacked",
+        filter_speckle=int(spk), color_precision=int(cp), layer_difference=int(ld),
+        corner_threshold=int(cor), path_precision=int(pp))
+    svg = open(_p2, encoding="utf-8").read()
+    for _q in (_p1, _p2):
+        try:
+            os.unlink(_q)
+        except Exception:
+            pass
+    out = []
+    for pm in _re.finditer(r'<path\b([^>]*?)/>', svg, _re.S):
+        tag = pm.group(1)
+        dm = _re.search(r'd="([^"]+)"', tag)
+        fm = _re.search(r'fill="#([0-9a-fA-F]{6})"', tag)
+        if not dm or not fm:
+            continue
+        hx = fm.group(1)
+        r_, g_, b_ = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
+        tx = ty = 0.0
+        sx = sy = 1.0
+        tt = _re.search(r'translate\(\s*([-\d.eE]+)[ ,]+([-\d.eE]+)', tag)
+        if tt:
+            tx, ty = float(tt.group(1)), float(tt.group(2))
+        sm = _re.search(r'scale\(\s*([-\d.eE]+)(?:[ ,]+([-\d.eE]+))?', tag)
+        if sm:
+            sx = float(sm.group(1)); sy = float(sm.group(2)) if sm.group(2) else sx
+
+        def X(pt, sx=sx, sy=sy, tx=tx, ty=ty, f=_f):
+            return ((pt.real * sx + tx) * f, (pt.imag * sy + ty) * f)
+
+        try:
+            path = parse_path(dm.group(1))
+        except Exception:
+            continue
+        subs = []
+        for sub in path.continuous_subpaths():
+            if len(sub) < 1:
+                continue
+            segs = []
+            for seg in sub:
+                cn = type(seg).__name__
+                if cn == "Line":
+                    segs.append(("L", X(seg.end)))
+                elif cn == "CubicBezier":
+                    segs.append(("C", X(seg.control1), X(seg.control2), X(seg.end)))
+                elif cn == "QuadraticBezier":
+                    c1 = seg.start + (2.0 / 3.0) * (seg.control - seg.start)
+                    c2 = seg.end + (2.0 / 3.0) * (seg.control - seg.end)
+                    segs.append(("C", X(c1), X(c2), X(seg.end)))
+                elif cn == "Arc":
+                    for t in (0.25, 0.5, 0.75, 1.0):
+                        segs.append(("L", X(seg.point(t))))
+            if segs:
+                subs.append({"start": X(sub[0].start), "segs": segs, "closed": True})
+        if subs:
+            out.append(((b_, g_, r_), subs))
+    return out
+
+
 def to_bezier(polys, tol=0.5, corner_deg=45.0, look=6, budget=0.25):
     """แนวจุด -> เส้นโค้งเบซิเยร์ · ตัดที่มุมคมก่อน แล้วฟิตทีละช่วงแบบเส้นเปิด
 
@@ -1901,16 +2060,44 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                                  interpolation=cv2.INTER_NEAREST).astype(np.float32)
                 _hi = cv2.resize(cv2.dilate(img0u, _k3), (_nw, _nh),
                                  interpolation=cv2.INTER_NEAREST).astype(np.float32)
-                _U = img.astype(np.float32)
-                for _ in range(int(IBP_ITERS)):
-                    _D = cv2.resize(_U, (W0, H0), interpolation=cv2.INTER_AREA)
-                    _E = img0f - _D
-                    if float(np.abs(_E).mean()) < 0.35:
-                        break
-                    _U += (IBP_LAM * _w) * cv2.resize(_E, (_nw, _nh),
-                                                      interpolation=cv2.INTER_LANCZOS4)
-                    if IBP_CLAMP:
-                        np.clip(_U, _lo, _hi, out=_U)
+                def _ibp(_U, _n):
+                    for _ in range(int(_n)):
+                        _D = cv2.resize(_U, (W0, H0), interpolation=cv2.INTER_AREA)
+                        _E = img0f - _D
+                        if float(np.abs(_E).mean()) < 0.35:
+                            break
+                        _U += (IBP_LAM * _w) * cv2.resize(_E, (_nw, _nh),
+                                                          interpolation=cv2.INTER_LANCZOS4)
+                        if IBP_CLAMP:
+                            np.clip(_U, _lo, _hi, out=_U)
+                    return _U
+
+                # 🧽 เก็บกวาด "คลื่นรบกวน JPEG" ในย่านที่ควรเรียบ ก่อนจะไปยุบขอบ
+                #    ถ้าไม่ทำ: รอยด่างจาง ๆ รอบตัวอักษรจะถูกยุบให้ "คมขึ้น" ไปด้วย
+                #    กลายเป็นคราบเป็นรูปเป็นร่างในพื้นขาว แล้ว VTracer ก็ไล่เส้นมันออกมาจริง ๆ
+                #    ใช้น้ำหนักกลับด้าน (1 - _w) -> ขอบจริงไม่โดนแตะแม้แต่นิดเดียว
+                if FLAT_MED >= 3:
+                    _fm = cv2.medianBlur(img, int(FLAT_MED) | 1).astype(np.float32)
+                    _fw = (1.0 - _w) * float(FLAT_AMT)
+                    img = np.clip(img.astype(np.float32) * (1.0 - _fw)
+                                  + _fm * _fw, 0, 255).astype(np.uint8)
+                    del _fm, _fw
+                _U = _ibp(img.astype(np.float32), IBP_ITERS)
+                # ⚡ ยุบทางลาดของขอบให้เป็นขั้นบันได (ดูหมายเหตุยาวใน _shock_rgb)
+                #    ใช้น้ำหนัก _w ตัวเดียวกับขั้นฉายกลับ -> พื้นไล่สีไม่โดนแตะ
+                #
+                # 🔗 ทำไมต้องสลับ "ยุบขอบ -> ฉายกลับ" ทีละรอบ ไม่ใช่ยุบรวดเดียวจบ:
+                #    วัดจริง (ยุบรวดเดียว) 1 รอบ โลโก้ 5.99 · 2 รอบ 7.83 · 3 รอบ 8.74
+                #    เพราะเส้นตัวอักษรบาง ๆ ถูก "ไสให้ผอมลง" เรื่อย ๆ ทุกรอบ — ไหล่ของ
+                #    ทางลาดโดนดูดไปเป็นพื้นขาว รอบแล้วรอบเล่า จนเส้นบางกว่าของจริง
+                #    การฉายกลับคั่นกลางบังคับเงื่อนไข "ย่อกลับแล้วต้องได้ต้นฉบับ" อีกครั้ง
+                #    -> ขอบยังชันขึ้นได้ แต่ความหนา/น้ำหนักหมึกของเส้นถูกดึงกลับที่เดิม
+                if SHOCK_ITERS > 0:
+                    for _ in range(int(SHOCK_ITERS)):
+                        _U = _shock_rgb(np.clip(_U, 0, 255).astype(np.uint8), _w,
+                                        iters=1, amt=SHOCK_AMT,
+                                        sig=SHOCK_SIG).astype(np.float32)
+                        _U = _ibp(_U, SHOCK_IBP)
                 img = np.clip(_U, 0, 255).astype(np.uint8)
                 del _U, _w, _lp, _lo, _hi
             if SHARP_AMT > 0:
@@ -2386,9 +2573,12 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     _vt_used = False
     if grad and VT_MIX and keep is None:
         try:
-            import tempfile as _tmpf
-            from vectorcnc import trace_engine as _TE9
+            # ⚠️ ห้ามใส่ import ของ vectorcnc.trace_engine ตรงนี้อีก — _vt_items เรียก
+            #    vtracer เองโดยตรง ไม่ได้ใช้ trace_engine เลย แต่ถ้า import แล้วพัง
+            #    (เช่นสภาพแวดล้อมไหนไม่มีแพ็กเกจนั้น) except ด้านล่างจะกลืนทั้งบล็อก
+            #    -> โหมดผสม VTracer ปิดเงียบ ๆ ทั้งก้อน โดยไม่มีใครรู้
             _im9 = np.ascontiguousarray(img)
+            _MK_C = None
             if _u_raw is not None:
                 # 🩷 ทาสีมาสก์ทับ "เนื้อใน" ของพื้นไล่สี (ไม่แตะแถบรอบขอบงาน ~8-10 px)
                 #    - VTracer ไม่ต้องเสียโควตาสีให้พื้นรุ้ง -> ลาย/โลโก้ได้สีเต็ม ๆ (วัดจริง
@@ -2403,17 +2593,23 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                                   cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_rq8, _rq8)))
                 _mk9 = (cv2.GaussianBlur(_mk9.astype(np.float32), (0, 0),
                                          max(1.5, _rq8 / 3.0)) > 0.5)
-                _im9 = _im9.copy(); _im9[_mk9] = (255, 0, 255)
-            _tf9 = _tmpf.mktemp(suffix=".png")
-            cv2.imwrite(_tf9, cv2.cvtColor(_im9, cv2.COLOR_RGB2BGR))
-            _r9 = _TE9.trace_color_vtracer(_tf9, clip_to_silhouette=False, **VT_OPTS)
-            _its9 = _r9[0] if isinstance(_r9, tuple) else _r9
-            try:
-                os.unlink(_tf9)
-            except Exception:
-                pass
-            _long9 = float(max(H, W))
-            _f9 = 1.0 if _long9 >= 2000.0 else _long9 / 2000.0
+                # 🎯 สีมาสก์ต้องเป็นสีที่ "ไม่มีอยู่ในภาพนี้เลย" — เดิมตั้งตายตัวเป็นม่วงแดง
+                #    ผลคือขอบมาสก์ถูก VTracer ไล่เส้นออกมาเป็นชั้นสีม่วงแดงจริง ๆ แล้วโผล่
+                #    เป็นเส้นม่วงบาง ๆ ตรงมุมภาพ (เห็นชัดขึ้นมากหลังใส่ขั้นยุบขอบ เพราะ
+                #    ขอบมาสก์ก็ถูกทำให้คมไปด้วย) จึงเลือกจากมุมลูกบาศก์สีที่ไกลจากสีในภาพสุด
+                _sm9 = img[::7, ::7].reshape(-1, 3).astype(np.float32)
+                _cand9 = [(255, 0, 255), (0, 255, 0), (0, 255, 255), (255, 0, 0),
+                          (0, 0, 255), (255, 255, 0)]
+                _MK_C = max(_cand9, key=lambda c: float(
+                    np.abs(_sm9 - np.float32(c)).sum(1).min()))
+                del _sm9
+                _im9 = _im9.copy(); _im9[_mk9] = _MK_C
+            _its9 = _vt_items(_im9, px=VT_PX, cp=VT_OPTS["color_precision"],
+                              ld=VT_OPTS["layer_difference"],
+                              spk=VT_OPTS["filter_speckle"],
+                              cor=VT_OPTS["corner_threshold"],
+                              pp=VT_OPTS["path_precision"], bilat=VT_BILAT)
+            _f9 = 1.0                              # _vt_items คืนพิกัดสเกลภาพทำงานมาแล้ว
             # ย่านพื้นไล่สี (ขยายถึงใต้ขอบงาน) สำหรับตัดสินว่า path ไหนคือ "แถบสีของพื้น"
             _ds9 = 4
             _bg9 = None
@@ -2425,6 +2621,11 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             _pend9 = []                              # (layer, rings) รอตัดสินว่าเป็นแถบพื้นไหม
             for _col9, _subs9 in _its9:
                 _b9, _g9, _r9c = int(_col9[0]), int(_col9[1]), int(_col9[2])
+                # 🚫 ทิ้งชั้นที่เป็น "สีมาสก์" (และสีที่เพี้ยนออกมาจากขอบมาสก์เล็กน้อย)
+                #    ไม่งั้นจะได้เส้นสีแปลกปลอมทับงานจริง
+                if _MK_C is not None and (abs(_r9c - _MK_C[0]) + abs(_g9 - _MK_C[1])
+                                          + abs(_b9 - _MK_C[2])) <= MASK_DROP_D:
+                    continue
                 _itl9 = []
                 _ar9 = 0.0
                 _rings9 = []
