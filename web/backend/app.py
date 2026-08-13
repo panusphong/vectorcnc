@@ -45,7 +45,7 @@ def _psd_ok():
         return False
 
 
-BUILD_TAG = "2026-08-13-probe"
+BUILD_TAG = "2026-08-13-rayon"
 # 📌 สรุปอัปเดตล่าสุดแบบ "หนึ่งบรรทัด" สำหรับโชว์บนหัวเว็บ
 #    (build_note ตัวเต็มยาวเป็นหน้ากระดาษ เอาไปขึ้นหัวเว็บไม่ได้)
 BUILD_SHORT = "หน้าแตกชิ้น = ที่สร้างโลโก้แบรนด์ครบจบ: ✍️ พิมพ์ข้อความฟอนต์จริง (ไทย 23 ตัว) + 🎨 ใส่พื้นหลัง/artwork"
@@ -251,8 +251,15 @@ def health():
             _x += _i
         _bench = round(_t2.perf_counter() - _t, 3)   # เครื่องทดสอบของเราได้ ~0.09 วิ
         _q = _qfm()
+        import cv2 as _cv3
         _memq = {"mem_mb": int(_mlm()), "cpu_seen": _os2.cpu_count(),
                  "cpu_quota": round(_cq(), 2), "bench_sec": _bench,
+                 # 🧵 ต้องเท่ากับ cpu_quota — ถ้าเท่ากับ cpu_seen แปลว่าการจำกัดเธรดไม่ทำงาน
+                 #    (เธรดเกินโควตา = คอนเทนเนอร์โดนแช่แข็งเป็นช่วง ๆ ช้าลง 5-10 เท่า)
+                 "cv_threads": _cv3.getNumThreads(),
+                 "omp": _os2.environ.get("OMP_NUM_THREADS", "-"),
+                 # 🦀 ตัวนี้คุม VTracer (Rust/rayon) — ต้องเท่า cpu_quota ไม่ใช่ cpu_seen
+                 "rayon": _os2.environ.get("RAYON_NUM_THREADS", "-"),
                  "work_long": int(_q[0]), "trace_px": int(_q[1])}
     except Exception as _e:
         _memq = {"mem_mb": "?", "err": str(_e)[:80]}

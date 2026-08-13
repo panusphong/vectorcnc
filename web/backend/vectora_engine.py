@@ -17,9 +17,59 @@ import math
 import os
 import time
 
+# ══════════════════════════════════════════════════════════════════
+# 🧵 จำกัดจำนวนเธรดให้เท่ากับ "โควตา CPU จริง" — ต้องทำก่อน import numpy/cv2
+# ══════════════════════════════════════════════════════════════════
+# ⚠️ ต้นเหตุตัวจริงของอาการ "แปลงนานเป็นสิบนาที" (จับได้ 2026-08-13 จาก /api/health):
+#    เครื่องจริงรายงาน cpu_seen = 32 · cpu_quota = 2.0
+#    -> Python/OpenCV/OpenBLAS มองเห็นคอร์ของ "เครื่องแม่" 32 ตัว แล้วเปิดเธรด 32 เส้น
+#       ทั้งที่คอนเทนเนอร์ถูกอนุญาตให้ใช้จริงแค่ 2 คอร์
+#    -> 32 เธรดแย่งกันวิ่ง กินโควตา (200 ms ต่อรอบ 100 ms) หมดภายในไม่กี่มิลลิวินาที
+#       แล้วระบบ "แช่แข็ง" ทั้งคอนเทนเนอร์ตลอดเวลาที่เหลือของรอบนั้น (cgroup throttling)
+#    -> งานที่ควรเสร็จใน 1 นาที กลายเป็น 10 นาที · และมองไม่เห็นเลยถ้าไม่วัด
+#    หลักฐานยืนยัน: bench_sec (ลูป Python ล้วน เธรดเดียว ไม่แตะ OpenCV) = 0.053 วิ
+#    ซึ่ง **เร็วกว่าเครื่องทดสอบของเรา 2.5 เท่า** -> CPU ไม่ได้ช้า แต่ถูกแช่แข็งเป็นช่วง ๆ
+# ✅ ตั้งจำนวนเธรดให้เท่าโควตา -> ไม่มีการแย่งกัน ไม่โดนแช่แข็ง
+#    ต้องตั้ง env ก่อน import numpy/cv2 เพราะไลบรารีอ่านค่าตอนโหลดครั้งเดียวเท่านั้น
+def _cpu_quota_early():
+    for p in ("/sys/fs/cgroup/cpu.max",):
+        try:
+            with open(p) as f:
+                q, per = f.read().split()
+            if q != "max":
+                return max(1, int(float(q) / float(per)))
+        except Exception:
+            pass
+    try:
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+            q = float(f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+            per = float(f.read().strip())
+        if q > 0 and per > 0:
+            return max(1, int(q / per))
+    except Exception:
+        pass
+    return max(1, int(os.cpu_count() or 2))
+
+
+_NTHREADS = _cpu_quota_early()
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+           "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+           # 🦀 RAYON_NUM_THREADS = ตัวที่ **สำคัญที่สุด** สำหรับงานนี้
+           #    VTracer เขียนด้วย Rust ใช้ไลบรารี rayon ซึ่งเปิดเธรดตามคอร์ที่ "มองเห็น"
+           #    (ตรวจแล้วว่าไบนารีของ vtracer อ่านตัวแปรนี้จริง) — รอบก่อนอลิซตั้งแต่
+           #    ของ OpenCV/OpenBLAS จึงยังค้างที่ขั้นไล่เส้นเหมือนเดิม เพราะคนละไลบรารีกัน
+           "RAYON_NUM_THREADS"):
+    os.environ.setdefault(_v, str(_NTHREADS))
+
 import cv2
 import numpy as np
 from skimage import measure
+
+try:
+    cv2.setNumThreads(_NTHREADS)          # ตัวนี้ตั้งหลัง import ได้ (ไม่ใช่ env)
+except Exception:
+    pass
 
 # 🚨 กติกาข้อแรกของโมดูลนี้: **ห้ามย่อภาพของผู้ใช้เงียบ ๆ**
 #    จุดขายของเครื่องมือคือ 'คมกว่าต้นฉบับ' — ถ้าแอบย่อก่อนคำนวณก็ขัดกันเองตั้งแต่ต้น
@@ -1065,6 +1115,9 @@ IBP_ITERS, IBP_LAM = 6, 0.7
 #    รอบ / ความแรงต่อรอบ / ความฟุ้งที่ใช้หาทิศของขอบ (0 รอบ = ปิด)
 SHOCK_ITERS, SHOCK_AMT, SHOCK_SIG = 2, 1.0, 1.2
 SHOCK_IBP = 2                  # จำนวนรอบ "ฉายกลับ" ที่คั่นหลังยุบขอบแต่ละรอบ (กันเส้นผอม)
+VT_TIMEOUT = 60.0              # เพดานเวลาของขั้นไล่เส้น (วินาที) เกินแล้วทิ้ง ใช้ผลปกติแทน
+#  วัดจริงเมื่อเธรดถูกจำกัดถูกต้อง ขั้นนี้ใช้ ~4-10 วิ · ตั้ง 60 = เผื่อไว้ 6 เท่า
+#  ถ้าชนเพดานนี้เมื่อไหร่ แปลว่ามีอะไรผิดปกติที่เครื่อง ไม่ใช่เรื่องปกติของงาน
 SHOCK_R = 1                    # รัศมีเพื่อนบ้านที่ดูดเข้าหา (1 = 3x3 · 2 = 5x5 ยุบไวขึ้นเท่าตัว)
 WORK_LONG = 0.0                # 0 = เลือกอัตโนมัติตามแรมที่เครื่องมีจริง (quality_for_mem)
 #  ⚠️ อย่าตั้งเป็นเลขตายตัวอีก — เครื่องแต่ละแพลนแรมไม่เท่ากัน ตั้งตายตัวแล้วเครื่องเล็ก
@@ -1955,10 +2008,35 @@ def _vt_items(img_rgb, px=2000, cp=8, ld=16, spk=2, cor=60, pp=8, bilat=0,
     _p2 = _tf.mktemp(suffix=".svg")
     cv2.imwrite(_p1, cv2.cvtColor(_im, cv2.COLOR_RGB2BGR))
     del _im
-    vtracer.convert_image_to_svg_py(
-        _p1, _p2, colormode="color", mode="spline", hierarchical="stacked",
-        filter_speckle=int(spk), color_precision=int(cp), layer_difference=int(ld),
-        corner_threshold=int(cor), path_precision=int(pp))
+    # ══════════════════════════════════════════════════════════════
+    # ⏱️ เรียก VTracer ใน "โปรเซสลูก" พร้อมนาฬิกาจับเวลา — กันค้างถาวร
+    # ══════════════════════════════════════════════════════════════
+    # ⚠️ ปัญหาที่ผู้ใช้เจอซ้ำ ๆ: แถบค้างที่ 55% เป็นสิบนาที
+    #    55% คือจุดที่อยู่ "ข้างใน" VTracer ซึ่งเป็นโค้ด Rust — เรียกแล้วสั่งหยุดไม่ได้เลย
+    #    ต่อให้ผู้ใช้ปิดหน้าเว็บ งานก็ยังวิ่งกินเครื่องต่อไปจนจบ
+    # ✅ ย้ายไปโปรเซสลูก -> สั่งฆ่าได้จริงเมื่อเกินเวลา
+    #    และจังหวะที่เรียกตัวนี้ ชั้นลายแบบปกติ "คำนวณเสร็จอยู่ในมือแล้ว"
+    #    เกินเวลาเมื่อไหร่จึงแค่ทิ้ง VTracer แล้วใช้ผลปกติ = ผู้ใช้ได้งานเสมอ ไม่มีค้าง
+    #    (บวกกับตั้ง RAYON_NUM_THREADS ให้พอดีโควตาแล้ว ปกติจะไม่แตะเพดานนี้เลย)
+    _code = ("import vtracer,sys;a=sys.argv;"
+             "vtracer.convert_image_to_svg_py(a[1],a[2],colormode='color',mode='spline',"
+             "hierarchical='stacked',filter_speckle=int(a[3]),color_precision=int(a[4]),"
+             "layer_difference=int(a[5]),corner_threshold=int(a[6]),path_precision=int(a[7]))")
+    _env = dict(os.environ)
+    _env["RAYON_NUM_THREADS"] = str(_NTHREADS)       # ย้ำอีกชั้นให้โปรเซสลูกแน่ ๆ
+    import subprocess as _sp, sys as _sys
+    try:
+        _sp.run([_sys.executable, "-c", _code, _p1, _p2, str(int(spk)), str(int(cp)),
+                 str(int(ld)), str(int(cor)), str(int(pp))],
+                timeout=float(VT_TIMEOUT), env=_env, check=True,
+                stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    except Exception:
+        for _q in (_p1, _p2):                        # เก็บกวาดแล้วโยนต่อ
+            try:
+                os.unlink(_q)
+            except Exception:
+                pass
+        raise                                        # ผู้เรียกจะถอยไปใช้ชั้นลายปกติเอง
     svg = open(_p2, encoding="utf-8").read()
     for _q in (_p1, _p2):
         try:
