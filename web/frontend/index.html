@@ -12448,7 +12448,16 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       return r.json();
     }).then(function(j){
       TOKEN=j.token; SVG=j.svg; LAST=j;
-      $('vecSide').innerHTML=j.svg.replace('<svg ','<svg preserveAspectRatio="xMidYMid meet" ');
+      /* 🖼️ แสดงผลด้วย <img> จาก Blob แทนการฝัง SVG ดิบเข้า DOM
+         ⚠️ ผลลัพธ์ความคมสูงมีเส้นแสนกว่าจุด (ไฟล์ ~9 MB) — ถ้าฝังดิบ เบราว์เซอร์ต้องสร้าง
+            วัตถุทีละเส้นเป็นแสน = หน้าค้างเป็นนาที (ผู้ใช้เจอจริง) · ใช้ <img> เร็วกว่าหลายสิบเท่า */
+      try{
+        if(window._vecPvURL)URL.revokeObjectURL(window._vecPvURL);
+        window._vecPvURL=URL.createObjectURL(new Blob([j.svg],{type:'image/svg+xml'}));
+        $('vecSide').innerHTML='<img src="'+window._vecPvURL+'" style="width:100%;height:100%;object-fit:contain;display:block">';
+      }catch(_e){
+        $('vecSide').innerHTML=j.svg.replace('<svg ','<svg preserveAspectRatio="xMidYMid meet" ');
+      }
       $('vecPal').innerHTML=(j.palette||[]).map(function(c){
         return '<i title="rgb('+c.join(',')+')" style="background:rgb('+c.join(',')+')"></i>';}).join('');
       $('vecCmp').style.aspectRatio=j.size[0]+'/'+j.size[1];
