@@ -967,7 +967,13 @@ IBP_ITERS, IBP_LAM = 6, 0.7
 SHOCK_ITERS, SHOCK_AMT, SHOCK_SIG = 2, 1.0, 1.2
 SHOCK_IBP = 2                  # จำนวนรอบ "ฉายกลับ" ที่คั่นหลังยุบขอบแต่ละรอบ (กันเส้นผอม)
 SHOCK_R = 1                    # รัศมีเพื่อนบ้านที่ดูดเข้าหา (1 = 3x3 · 2 = 5x5 ยุบไวขึ้นเท่าตัว)
-WORK_LONG = 1800.0             # ความละเอียดภาพทำงาน (ด้านยาว) ก่อนไล่เส้น
+WORK_LONG = 2400.0             # ความละเอียดภาพทำงาน (ด้านยาว) ก่อนไล่เส้น
+#  🔁 เคยตั้ง 1800 เพราะ 2400 วัดแล้วแย่ลง (คลื่นรบกวน JPEG ถูกขยายตาม) — พอมีขั้น
+#     "เก็บกวาดพื้นเรียบ" (FLAT_MED) แล้ว ข้อเสียนั้นหายไป วัดใหม่ดีขึ้นทุกช่อง:
+#     ใบไม้ 3.14->3.06 · หัวข้อ 4.54->3.94 · โลโก้ 5.68->4.69 · ทั้งภาพ 2.54->2.48
+WORK_UP = 4.0                  # เพดาน "ขยายได้กี่เท่า" จากไฟล์ต้นฉบับ
+# ⛔ อย่าดันเกิน 4 — วัดจริง 6 และ 8 เท่า: โหมดผสม VTracer แพ้การให้คะแนนแล้วถอยกลับ
+#    ชั้นลายธรรมดา (เหลือ 32,885 จุด) ผลเลยพังยกแผง โลโก้ 4.69->8.98 · ทั้งภาพ 2.48->2.97
 # 🧽 เก็บกวาดคลื่นรบกวนในย่านเรียบก่อนยุบขอบ (ขนาดหน้าต่าง 0/1 = ปิด, ความแรง 0-1)
 FLAT_MED, FLAT_AMT = 7, 1.0
 MASK_DROP_D = 150              # ระยะสีที่ถือว่าเป็น "เศษสีมาสก์" แล้วทิ้ง (ผลรวม |ΔR|+|ΔG|+|ΔB|)
@@ -995,7 +1001,7 @@ GRAD_BLEND_CUT = False         # (เคยเปิด: หัวข้อ 8.11
 # 🔧 ค่าละเอียดของตัวไล่เส้น VTracer (กวาดหาค่าที่คมที่สุดได้โดยไม่ต้องแตะตรรกะ)
 VT_OPTS = {"color_precision": 8, "layer_difference": 16, "filter_speckle": 2,   # วัดจริง 6→2: ใบไม้ 4.16→3.80 · โลโก้ 6.93→6.25 · ทั้งภาพ 2.86→2.78
            "corner_threshold": 60, "path_precision": 8}
-VT_PX = 3200     # วัดจริง 2000→2600→3200→4000: ทั้งภาพ 2.82→2.71→2.66→2.60
+VT_PX = 4000     # วัดจริง 2000→2600→3200→4000: ทั้งภาพ 2.82→2.71→2.66→2.60
                  # เลือก 3200 = คมเกือบสุด แต่ไฟล์/เวลายังไม่บาน (4000 จุดเพิ่ม 37% แลกกับ 0.06)
                  # ความละเอียดที่ป้อนให้ตัวไล่เส้น (ยิ่งสูงยิ่งคม แลกกับเวลา)
 VT_BILAT = 0     # 0 = ไม่กรองเลย (ภาพผ่านการคืนความชันขอบมาแล้ว กรองซ้ำ = ลบความคมทิ้ง)
@@ -1997,11 +2003,19 @@ def resolve(preset="general", **over):
 # ตัวหลัก
 # ══════════════════════════════════════════════════════════════════
 def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=None,
-              min_area=None, transparent=None, seed=0, grad=False):
+              min_area=None, transparent=None, seed=0, grad=False, progress=None):
     """img_rgba = ndarray HxWx3 (RGB) หรือ HxWx4 (RGBA)
 
     คืน dict: layers · size (กว้าง,สูง หน่วยพิกเซลต้นฉบับ) · bg · stats
+    progress = ฟังก์ชัน (เปอร์เซ็นต์, ข้อความ) สำหรับรายงานความคืบหน้าจริงให้หน้าเว็บ
+               (ไม่ส่งมาก็ได้ — โค้ดเดิมทุกที่เรียกโดยไม่ส่ง จึงไม่กระทบอะไรเลย)
     """
+    def _pg(p, s):
+        if progress is not None:
+            try:
+                progress(p, s)
+            except Exception:
+                pass
     t0 = time.time()
     cfg = resolve(preset, k=k, smooth=smooth, tol=tol, gap=gap, min_area=min_area)
     img = np.asarray(img_rgba)
@@ -2046,11 +2060,13 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     #    ด้วยกลไก sc / _scale_items ที่มีอยู่แล้ว ผลลัพธ์จึงอยู่ในหน่วยภาพต้นฉบับเป๊ะ
     # ══════════════════════════════════════════════════════════════════
     _long = float(max(H0, W0))
-    _tgt_long = float(WORK_LONG)             # ความละเอียดทำงานที่พอดี (คม แต่ไม่ช้าเกิน)
+    # 🔒 ดันความละเอียดเฉพาะโหมดไล่สีเท่านั้น — โหมดปกติจูนมาทั้งชุดตรวจ 11 ไฟล์แล้ว
+    #    และมีข้อตกลงว่าต้องได้ผลเหมือนเดิมเป๊ะ (reg.py เทียบ md5) ห้ามขยับเด็ดขาด
+    _tgt_long = float(WORK_LONG) if grad else 1800.0
     #  ⚠️ อย่าขยับขึ้น 2400 — ทดสอบแล้วแย่ลงทุกตัว (คลื่นรบกวน JPEG ถูกขยายตาม)
     #     วัดจริง: โลโก้ 12.8→15.7 · ใบไม้ 2.91→3.33 · ทั้งภาพ 2.19→2.93 · เวลา 61→75 วิ
     if _long > 0 and _long < _tgt_long * 0.95:
-        _up = min(4.0, _tgt_long / _long)                     # ขยายไม่เกิน 4 เท่า
+        _up = min(float(WORK_UP), _tgt_long / _long)          # เพดานการขยาย
         _mp_up = (W0 * _up) * (H0 * _up) / 1e6
         if _mp_up > MAX_MP * 0.55:                            # กันแรมบาน
             _up = max(1.0, ((MAX_MP * 0.55 * 1e6) / max(1.0, W0 * H0)) ** 0.5)
@@ -2074,6 +2090,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
             #    ต่างจากหน้ากากคมชัดตรงที่ไม่ได้เดาว่าขอบควรชันแค่ไหน แต่บังคับเงื่อนไขจริง:
             #    "ถ้าย่อภาพที่ขยายแล้วกลับลงมา ต้องได้ต้นฉบับเป๊ะ" แล้วไล่แก้ส่วนต่างทีละรอบ
             #    จึงไม่เกิดขอบเว่อร์ (overshoot) แบบหน้ากากคมชัด — ข้อมูลมาจากไฟล์จริงล้วน ๆ
+            _pg(10, "คืนความคมของขอบ")
             if IBP_ITERS > 0 and grad:
                 # 🔒 เปิดเฉพาะโหมดไล่สี — โหมดปกติจูนมาทั้งชุดตรวจ 11 ไฟล์แล้ว ห้ามขยับเงียบ ๆ
                 # ⚠️ วัดจริง: ถ้าฉายกลับ "ทั้งภาพ" โลโก้ดีขึ้น (12.69→11.66) แต่พื้นไล่สี
@@ -2132,6 +2149,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 #    ทางลาดโดนดูดไปเป็นพื้นขาว รอบแล้วรอบเล่า จนเส้นบางกว่าของจริง
                 #    การฉายกลับคั่นกลางบังคับเงื่อนไข "ย่อกลับแล้วต้องได้ต้นฉบับ" อีกครั้ง
                 #    -> ขอบยังชันขึ้นได้ แต่ความหนา/น้ำหนักหมึกของเส้นถูกดึงกลับที่เดิม
+                _pg(18, "ยุบขอบให้เป็นขั้นบันได")
                 if SHOCK_ITERS > 0:
                     for _ in range(int(SHOCK_ITERS)):
                         _U = _shock_rgb(_U, _w, iters=1, amt=SHOCK_AMT,
@@ -2645,6 +2663,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                     np.abs(_sm9 - np.float32(c)).sum(1).min()))
                 del _sm9
                 _im9 = _im9.copy(); _im9[_mk9] = _MK_C
+            _pg(55, "ไล่เส้นลายละเอียด")
             _its9 = _vt_items(_im9, px=VT_PX, cp=VT_OPTS["color_precision"],
                               ld=VT_OPTS["layer_difference"],
                               spk=VT_OPTS["filter_speckle"],
@@ -2767,6 +2786,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                          for _g9x in grad_layers]
                 for _g9x in _glv9:
                     _g9x.pop("_items_v", None)
+                _pg(82, "ให้คะแนนแล้วเลือกแบบที่ดีกว่า")
                 _eo9 = _err9(layers)
                 _en9 = _err9(_glv9 + _mg9)
                 if _en9 <= _eo9 * 0.97:
@@ -2777,6 +2797,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     for _L in layers:
         _L.pop("_items_v", None)
     # ขยายพิกัดคืนขนาดจริง
+    _pg(88, "ปรับพิกัดกลับขนาดจริง")
     if sc != 1.0:
         inv = 1.0 / sc
         for L in layers:

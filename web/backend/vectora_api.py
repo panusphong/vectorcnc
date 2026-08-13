@@ -87,6 +87,28 @@ def _sweep():
         CACHE.pop(min(CACHE, key=lambda k: CACHE[k]["t"]), None)
 
 
+# ══════════════════════════════════════════════════════════════════
+# 🏃 งานเบื้องหลัง — แก้อาการ "แปลงไม่สำเร็จ Unexpected token '<'"
+# ⚠️ ต้นเหตุจริง (จับได้ 2026-08-13 หลังลองแก้ผิดทางมาสองรอบ):
+#    ตัวหน้าเว็บของโฮสต์ตัดการเชื่อมต่อทิ้งเมื่อคำขอ "เงียบ" นานเกินราว 50 วินาที
+#    งานแปลงจริงใช้ 1-3 นาที และไม่มีไบต์ไหนถูกส่งออกเลยระหว่างนั้น -> โดนตัด
+#    -> เบราว์เซอร์ได้หน้า error HTML แทน JSON (ผู้ใช้เจอที่ 49-50 วิ ทุกครั้ง ตรงเป๊ะ)
+#    วัดแล้วไม่ใช่แรม (ใช้ 551 MB จาก 4 GB) และไม่ใช่ขั้นหลังแปลง (รวมกันแค่ 1.4 วิ)
+# ✅ เลิกถือคำขอเดียวยาว ๆ: กดแปลง -> ได้เลขงานกลับทันที -> หน้าเว็บถามความคืบหน้า
+#    ทุก 2 วินาที (คำขอละไม่ถึงวินาที ไม่มีทางโดนตัด) -> เสร็จแล้วค่อยรับผลลัพธ์
+#    ผลพลอยได้: แถบความคืบหน้าเป็นของจริง ไม่ใช่แถบหลอกที่วิ่งตามเวลา
+#    และงานจะนานแค่ไหนก็ได้ — เปิดทางให้ดันความคมได้เต็มที่โดยไม่ชนเพดานเวลา
+# ══════════════════════════════════════════════════════════════════
+JOBS = {}                                           # job -> {state, pct, step, t, ...}
+JOB_TTL = 1800.0
+
+
+def _job_sweep():
+    now = time.time()
+    for k in [k for k, v in JOBS.items() if now - v["t"] > JOB_TTL]:
+        JOBS.pop(k, None)
+
+
 def _open(raw, name=""):
     try:
         im = Image.open(io.BytesIO(raw))
@@ -244,19 +266,11 @@ async def convert(file: UploadFile = File(...),
     tok = uuid.uuid4().hex[:16]
     CACHE[tok] = {"res": res, "t": time.time(), "name": (file.filename or "image")}
     _disk_put(tok, CACHE[tok])
-    # 📄 สร้าง PDF ทิ้งไว้เลยตั้งแต่ตอนนี้ (ใช้เวลาแค่เศษวินาที)
-    #    ⚠️ ผู้ใช้เจอซ้ำหลายรอบ: กดดาวน์โหลด PDF แล้ว "Internal Server Error"
-    #       เพราะตอนกดโหลด ต้องประกอบไฟล์ใหม่ทั้งก้อน ซึ่งพลาดได้หลายทาง (แรม/รีสตาร์ต/หมดอายุ)
-    #    ✅ ทำตอนนี้ที่ข้อมูลอยู่ในมือครบแล้ว -> ตอนกดโหลดแค่ส่งไบต์ออกไป ไม่มีอะไรให้พลาด
-    try:
-        _pb = await run_in_threadpool(VX.to_pdf, res)
-        with open(os.path.join(VEC_DISK, "%s.pdf" % tok), "wb") as _f:
-            _f.write(_pb)
-        with open(os.path.join(VEC_DISK, "%s.name" % tok), "w", encoding="utf-8") as _f:
-            _f.write(file.filename or "vector")
-        del _pb
-    except Exception:
-        pass                                     # ทำไม่ได้ก็ค่อยไปประกอบตอนกดโหลดตามเดิม
+    # 📄 PDF ไม่ต้องทำเผื่อไว้ตั้งแต่ตอนนี้แล้ว (พี่สั่ง 2026-08-13: "ใช้หลักการพิมพ์
+    #    ปกติเลย ไม่ต้องคิดอะไรให้ซับซ้อน") — ตอนกดโหลดค่อยพิมพ์ทีเดียว วัดจริงแค่ 0.9 วิ
+    #    ที่เคยต้องทำเผื่อ เพราะสมัยเครื่องแรม 512 MB การกู้ผลลัพธ์ตอนกดโหลดแล้วแรมหมด
+    #    ตอนนี้เครื่องเป็น Pro 4 GB — ข้อจำกัดนั้นหมดไป จึงตัดกลไกเผื่อทิ้งทั้งชุด
+    #    (ไฟล์ .pdf/.name ที่ค้างอยู่ ถูก _sweep() เก็บกวาดตามอายุอยู่แล้ว)
     st = dict(res["stats"])
     st["svg_bytes"] = len(svg.encode("utf-8"))
     return JSONResponse({"ok": True, "token": tok, "svg": svg, "stats": st,
@@ -266,39 +280,86 @@ async def convert(file: UploadFile = File(...),
 
 
 # ══════════════════════════════════════════════════════════════════
+# 🏃 แปลงแบบงานเบื้องหลัง — ทางที่หน้าเว็บใช้จริง (ดูหมายเหตุยาวตรง JOBS)
+#    /start  -> ส่งไฟล์ ได้เลขงานกลับทันที (ไม่ถึงวินาที)
+#    /status -> ถามความคืบหน้า · เสร็จแล้วได้ผลลัพธ์เต็มก้อนในครั้งเดียว
+# ══════════════════════════════════════════════════════════════════
+@router.post("/start")
+async def start(file: UploadFile = File(...),
+                preset: str = Form("general"),
+                k: int = Form(0), smooth: int = Form(-1),
+                tol: float = Form(-1.0), gap: float = Form(-1.0),
+                transparent: int = Form(-1), grad: int = Form(0)):
+    raw = await file.read()
+    if len(raw) > MAX_BYTES:
+        raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
+    arr = _rgba(_open(raw, file.filename or ""))
+    name = file.filename or "image"
+    job = uuid.uuid4().hex[:16]
+    _job_sweep()
+    JOBS[job] = {"state": "run", "pct": 2, "step": "เตรียมภาพ", "t": time.time()}
+
+    def _run():
+        J = JOBS.get(job)
+        try:
+            def _tick(pct, step):                # 📶 ความคืบหน้าจริงจากตัวเครื่องแปลง
+                if J is not None:
+                    J["pct"] = int(pct); J["step"] = step
+            _tick(6, "กำลังทำพื้นไล่สี + ลายเส้นคม")
+            _r = VE.vectorize(arr, preset=preset,
+                              k=(int(k) if int(k) > 0 else (0 if preset == "general" else None)),
+                              smooth=(int(smooth) if int(smooth) >= 0 else None),
+                              tol=(float(tol) if float(tol) >= 0 else None),
+                              gap=(float(gap) if float(gap) >= 0 else None),
+                              transparent=(None if int(transparent) < 0 else bool(int(transparent))),
+                              grad=bool(int(grad or 0)), progress=_tick)
+            _tick(92, "ประกอบไฟล์เวกเตอร์")
+            _s = VX.to_svg(_r)
+            _sweep()
+            _tk = uuid.uuid4().hex[:16]
+            CACHE[_tk] = {"res": _r, "t": time.time(), "name": name}
+            _disk_put(_tk, CACHE[_tk])
+            _st = dict(_r["stats"]); _st["svg_bytes"] = len(_s.encode("utf-8"))
+            if J is not None:
+                J.update(state="done", pct=100, step="เสร็จแล้ว", t=time.time(),
+                         out={"ok": True, "token": _tk, "svg": _s, "stats": _st,
+                              "size": list(_r["size"]),
+                              "palette": list(dict.fromkeys(
+                                  tuple(L["rgb"]) for L in _r["layers"]))[:64]})
+        except Exception as _e:
+            if J is not None:
+                J.update(state="err", t=time.time(), msg=str(_e)[:300])
+
+    import threading as _th
+    _th.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"ok": True, "job": job})
+
+
+@router.get("/status")
+def status(job: str):
+    J = JOBS.get(job)
+    if not J:
+        raise HTTPException(404, "ไม่พบงานนี้ — อาจหมดอายุแล้ว กดแปลงใหม่อีกครั้งค่ะ")
+    if J["state"] == "err":
+        JOBS.pop(job, None)
+        raise HTTPException(500, "แปลงไม่สำเร็จ: %s" % J.get("msg", ""))
+    if J["state"] == "done":
+        out = J.get("out") or {}
+        JOBS.pop(job, None)                      # ส่งครั้งเดียวแล้วปล่อยแรมทิ้งเลย
+        return JSONResponse(dict(out, state="done"))
+    return JSONResponse({"ok": True, "state": "run", "pct": int(J.get("pct", 5)),
+                         "step": J.get("step", ""),
+                         "seconds": round(time.time() - J["t"], 1)})
+
+
+# ══════════════════════════════════════════════════════════════════
 @router.get("/export")
 def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 0.0):
     fmt = (fmt or "svg").lower()
     if fmt not in VX.EXT:
         raise HTTPException(400, "นามสกุลนี้ยังไม่รองรับ")
-    # ══════════════════════════════════════════════════════════════
-    # 📄 ทางลัด PDF — ต้องอยู่ "ก่อน" การกู้ผลลัพธ์เสมอ
-    # ⚠️ ต้นเหตุจริงที่ผู้ใช้เจอซ้ำ ๆ (2026-08-11): การกู้ผลลัพธ์จากดิสก์ต้องคลายก้อนข้อมูล
-    #    ทั้งชั้นสี 2,476 ชั้น 6 หมื่นจุดขึ้นมาในแรมก่อน ทั้งที่ไฟล์ PDF ทำเสร็จรออยู่แล้ว
-    #    -> แรมเซิร์ฟเวอร์หมดตั้งแต่ขั้นนั้น โปรเซสโดนฆ่า = "Internal Server Error"
-    # ✅ อ่านไฟล์ PDF ที่ทำไว้แล้วส่งออกไปตรง ๆ ไม่แตะก้อนข้อมูลใหญ่เลยแม้แต่นิดเดียว
-    # ══════════════════════════════════════════════════════════════
-    if fmt == "pdf":
-        try:
-            import re as _re2
-            if _re2.fullmatch(r"[0-9a-f]{16}", token or ""):
-                _pp = os.path.join(VEC_DISK, "%s.pdf" % token)
-                if os.path.exists(_pp) and time.time() - os.path.getmtime(_pp) <= CACHE_TTL:
-                    _bn = "vector"
-                    try:                          # ชื่อไฟล์เก็บแยกไว้ในไฟล์เล็ก ๆ
-                        with open(os.path.join(VEC_DISK, "%s.name" % token),
-                                  encoding="utf-8") as _f:
-                            _bn = (_f.read().rsplit(".", 1)[0] or "vector")[:60]
-                    except Exception:
-                        pass
-                    with open(_pp, "rb") as _f:
-                        _pd = _f.read()
-                    return Response(content=_pd, media_type=VX.MIME["pdf"],
-                                    headers={"Content-Disposition":
-                                             'attachment; filename="%s.pdf"' % _bn,
-                                             "Cache-Control": "no-store"})
-        except Exception:
-            pass
+    # 📄 PDF เดินทางเดียวกับนามสกุลอื่นแล้ว — กู้ผลลัพธ์ แล้ว "พิมพ์" ออกมาเป็นหน้ากระดาษ
+    #    (พี่สั่ง 2026-08-13: ใช้หลักการพิมพ์ปกติ ไม่ต้องมีทางลัด/ไฟล์เผื่อให้ซับซ้อน)
     e = CACHE.get(token)
     if not e:
         e = _disk_get(token)                     # 💾 แรมโดนล้าง (รีสตาร์ต) -> กู้จากดิสก์
