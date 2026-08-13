@@ -12406,12 +12406,16 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       w.querySelector('.vecProgTxt').textContent='อัปโหลด + วิเคราะห์ภาพ...'; });
     /* 📶 แถบนี้เดินตาม "ความคืบหน้าจริง" ที่เซิร์ฟเวอร์รายงานกลับมา (progSet)
        ถ้ายังไม่มีรายงานเข้ามา ค่อยเดินตามเวลาไปพลาง ๆ เพื่อไม่ให้แถบนิ่งสนิท */
-    window._vecPct=0;
+    /* ⚠️ ห้ามให้แถบ "เดินเอง" แซงความจริงเด็ดขาด — ของเดิมเอาค่ามากสุดระหว่าง
+       ค่าจริงกับค่าที่เดาจากเวลา ผลคือพี่เห็น 95% ทั้งที่งานจริงเพิ่ง 55%
+       แล้วมันก็ค้างอยู่ 95% เป็นสิบนาที = อ่านสถานะผิดไปคนละเรื่อง
+       ตอนนี้: มีค่าจริงเมื่อไหร่ ใช้ค่าจริงเสมอ · เดาจากเวลาเฉพาะตอนยังไม่มีรายงาน */
+    window._vecPct=-1;
     window._vecTick=setInterval(function(){
       var sec=Math.round((Date.now()-t0)/1000);
       var T=gd?120:45;
-      var p=Math.max(window._vecPct||0,
-                     Math.min(95, Math.round(95*(1-Math.exp(-sec/(T/3.0))))));
+      var p=(window._vecPct>=0)? window._vecPct
+            : Math.min(40, Math.round(40*(1-Math.exp(-sec/(T/3.0)))));
       var tx=(window._vecStep?('🌈 '+window._vecStep+'... '+sec+' วิ')
         :(sec<=3)?'อัปโหลด + วิเคราะห์ภาพ...':'กำลังไล่เส้นเวกเตอร์... '+sec+' วิ');
       progAll(function(w){ w.querySelector('.vecProgBar').style.width=p+'%';
