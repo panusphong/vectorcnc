@@ -237,6 +237,8 @@ async def convert(file: UploadFile = File(...),
         _pb = VX.to_pdf(res)
         with open(os.path.join(VEC_DISK, "%s.pdf" % tok), "wb") as _f:
             _f.write(_pb)
+        with open(os.path.join(VEC_DISK, "%s.name" % tok), "w", encoding="utf-8") as _f:
+            _f.write(file.filename or "vector")
         del _pb
     except Exception:
         pass                                     # ทำไม่ได้ก็ค่อยไปประกอบตอนกดโหลดตามเดิม
@@ -251,6 +253,37 @@ async def convert(file: UploadFile = File(...),
 # ══════════════════════════════════════════════════════════════════
 @router.get("/export")
 def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 0.0):
+    fmt = (fmt or "svg").lower()
+    if fmt not in VX.EXT:
+        raise HTTPException(400, "นามสกุลนี้ยังไม่รองรับ")
+    # ══════════════════════════════════════════════════════════════
+    # 📄 ทางลัด PDF — ต้องอยู่ "ก่อน" การกู้ผลลัพธ์เสมอ
+    # ⚠️ ต้นเหตุจริงที่ผู้ใช้เจอซ้ำ ๆ (2026-08-11): การกู้ผลลัพธ์จากดิสก์ต้องคลายก้อนข้อมูล
+    #    ทั้งชั้นสี 2,476 ชั้น 6 หมื่นจุดขึ้นมาในแรมก่อน ทั้งที่ไฟล์ PDF ทำเสร็จรออยู่แล้ว
+    #    -> แรมเซิร์ฟเวอร์หมดตั้งแต่ขั้นนั้น โปรเซสโดนฆ่า = "Internal Server Error"
+    # ✅ อ่านไฟล์ PDF ที่ทำไว้แล้วส่งออกไปตรง ๆ ไม่แตะก้อนข้อมูลใหญ่เลยแม้แต่นิดเดียว
+    # ══════════════════════════════════════════════════════════════
+    if fmt == "pdf":
+        try:
+            import re as _re2
+            if _re2.fullmatch(r"[0-9a-f]{16}", token or ""):
+                _pp = os.path.join(VEC_DISK, "%s.pdf" % token)
+                if os.path.exists(_pp) and time.time() - os.path.getmtime(_pp) <= CACHE_TTL:
+                    _bn = "vector"
+                    try:                          # ชื่อไฟล์เก็บแยกไว้ในไฟล์เล็ก ๆ
+                        with open(os.path.join(VEC_DISK, "%s.name" % token),
+                                  encoding="utf-8") as _f:
+                            _bn = (_f.read().rsplit(".", 1)[0] or "vector")[:60]
+                    except Exception:
+                        pass
+                    with open(_pp, "rb") as _f:
+                        _pd = _f.read()
+                    return Response(content=_pd, media_type=VX.MIME["pdf"],
+                                    headers={"Content-Disposition":
+                                             'attachment; filename="%s.pdf"' % _bn,
+                                             "Cache-Control": "no-store"})
+        except Exception:
+            pass
     e = CACHE.get(token)
     if not e:
         e = _disk_get(token)                     # 💾 แรมโดนล้าง (รีสตาร์ต) -> กู้จากดิสก์
@@ -258,24 +291,6 @@ def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 
             CACHE[token] = e
     if not e:
         raise HTTPException(404, "ผลลัพธ์หมดอายุแล้ว — กดแปลงใหม่อีกครั้งค่ะ")
-    fmt = (fmt or "svg").lower()
-    if fmt not in VX.EXT:
-        raise HTTPException(400, "นามสกุลนี้ยังไม่รองรับ")
-    if fmt == "pdf":                             # 📄 มีไฟล์ที่ทำไว้ตั้งแต่ตอนแปลง -> ส่งไปเลย
-        try:
-            import re as _re2
-            if _re2.fullmatch(r"[0-9a-f]{16}", token or ""):
-                _pp = os.path.join(VEC_DISK, "%s.pdf" % token)
-                if os.path.exists(_pp) and time.time() - os.path.getmtime(_pp) <= CACHE_TTL:
-                    with open(_pp, "rb") as _f:
-                        _pd = _f.read()
-                    _bn = (e["name"].rsplit(".", 1)[0] or "vector")[:60]
-                    return Response(content=_pd, media_type=VX.MIME["pdf"],
-                                    headers={"Content-Disposition":
-                                             'attachment; filename="%s.pdf"' % _bn,
-                                             "Cache-Control": "no-store"})
-        except Exception:
-            pass
     try:
         data = VX.render(e["res"], fmt, png_scale=max(0.25, min(8.0, float(scale))),
                          mm_per_px=(float(mm_per_px) or None))
