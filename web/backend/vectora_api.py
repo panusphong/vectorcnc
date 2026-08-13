@@ -229,6 +229,17 @@ async def convert(file: UploadFile = File(...),
     tok = uuid.uuid4().hex[:16]
     CACHE[tok] = {"res": res, "t": time.time(), "name": (file.filename or "image")}
     _disk_put(tok, CACHE[tok])
+    # 📄 สร้าง PDF ทิ้งไว้เลยตั้งแต่ตอนนี้ (ใช้เวลาแค่เศษวินาที)
+    #    ⚠️ ผู้ใช้เจอซ้ำหลายรอบ: กดดาวน์โหลด PDF แล้ว "Internal Server Error"
+    #       เพราะตอนกดโหลด ต้องประกอบไฟล์ใหม่ทั้งก้อน ซึ่งพลาดได้หลายทาง (แรม/รีสตาร์ต/หมดอายุ)
+    #    ✅ ทำตอนนี้ที่ข้อมูลอยู่ในมือครบแล้ว -> ตอนกดโหลดแค่ส่งไบต์ออกไป ไม่มีอะไรให้พลาด
+    try:
+        _pb = VX.to_pdf(res)
+        with open(os.path.join(VEC_DISK, "%s.pdf" % tok), "wb") as _f:
+            _f.write(_pb)
+        del _pb
+    except Exception:
+        pass                                     # ทำไม่ได้ก็ค่อยไปประกอบตอนกดโหลดตามเดิม
     st = dict(res["stats"])
     st["svg_bytes"] = len(svg.encode("utf-8"))
     return JSONResponse({"ok": True, "token": tok, "svg": svg, "stats": st,
@@ -250,6 +261,21 @@ def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 
     fmt = (fmt or "svg").lower()
     if fmt not in VX.EXT:
         raise HTTPException(400, "นามสกุลนี้ยังไม่รองรับ")
+    if fmt == "pdf":                             # 📄 มีไฟล์ที่ทำไว้ตั้งแต่ตอนแปลง -> ส่งไปเลย
+        try:
+            import re as _re2
+            if _re2.fullmatch(r"[0-9a-f]{16}", token or ""):
+                _pp = os.path.join(VEC_DISK, "%s.pdf" % token)
+                if os.path.exists(_pp) and time.time() - os.path.getmtime(_pp) <= CACHE_TTL:
+                    with open(_pp, "rb") as _f:
+                        _pd = _f.read()
+                    _bn = (e["name"].rsplit(".", 1)[0] or "vector")[:60]
+                    return Response(content=_pd, media_type=VX.MIME["pdf"],
+                                    headers={"Content-Disposition":
+                                             'attachment; filename="%s.pdf"' % _bn,
+                                             "Cache-Control": "no-store"})
+        except Exception:
+            pass
     try:
         data = VX.render(e["res"], fmt, png_scale=max(0.25, min(8.0, float(scale))),
                          mm_per_px=(float(mm_per_px) or None))

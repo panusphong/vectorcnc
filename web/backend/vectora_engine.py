@@ -973,6 +973,9 @@ INK_LEVEL = False              # ⛔ ตัดตามครึ่งยอด 
 #    โค้ดเก็บไว้ครบ เผื่อกลับมาจูนใหม่แบบระวังกว่านี้ แต่ห้ามเปิดโดยไม่ให้ผู้ใช้ดูภาพก่อน
 HARD_ADD, HARD_D, HARD_TIGHT = 0, 18.0, 5.0
 GRAD_BLEND_CUT = False         # (เคยเปิด: หัวข้อ 8.11→6.01 แต่ผู้ใช้เห็นภาพรวมแย่ลง)
+# 🔧 ค่าละเอียดของตัวไล่เส้น VTracer (กวาดหาค่าที่คมที่สุดได้โดยไม่ต้องแตะตรรกะ)
+VT_OPTS = {"color_precision": 8, "layer_difference": 16, "filter_speckle": 2,   # วัดจริง 6→2: ใบไม้ 4.16→3.80 · โลโก้ 6.93→6.25 · ทั้งภาพ 2.86→2.78
+           "corner_threshold": 60, "path_precision": 6}
 VT_MIX = True                  # 🤝 ชั้นลายใช้ VTracer (จากปุ่ม .ai) + พื้นไล่สีของเรา
 GRAD_CORE_FIT = False          # ฟิตไล่สีของชั้นลายจากเนื้อใน (กร่อนขอบผสมทิ้งก่อน)         # ตัด "สีผสม" ในจานรายละเอียดของโหมดไล่สีด้วย               # ตัดเส้นชั้นแบบรักษาปริมาณสี (แก้เส้นบางออกมาจาง)
 SLIVER_W = 0.0                 # ความหนาขั้นต่ำของชิ้นงาน (พิกเซลของไฟล์ต้นฉบับ)
@@ -2403,8 +2406,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 _im9 = _im9.copy(); _im9[_mk9] = (255, 0, 255)
             _tf9 = _tmpf.mktemp(suffix=".png")
             cv2.imwrite(_tf9, cv2.cvtColor(_im9, cv2.COLOR_RGB2BGR))
-            _r9 = _TE9.trace_color_vtracer(_tf9, color_precision=8, layer_difference=16,
-                                           filter_speckle=6, clip_to_silhouette=False)
+            _r9 = _TE9.trace_color_vtracer(_tf9, clip_to_silhouette=False, **VT_OPTS)
             _its9 = _r9[0] if isinstance(_r9, tuple) else _r9
             try:
                 os.unlink(_tf9)
