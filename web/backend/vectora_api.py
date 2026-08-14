@@ -410,7 +410,9 @@ def export(token: str, fmt: str = "svg", scale: float = 2.0, mm_per_px: float = 
     if not e:
         raise HTTPException(404, "ผลลัพธ์หมดอายุแล้ว — กดแปลงใหม่อีกครั้งค่ะ")
     try:
-        data = VX.render(e["res"], fmt, png_scale=max(0.25, min(8.0, float(scale))),
+        # 🔍 เพดานเดิม 8 เท่า -> 16 เท่า · โหมด "คมกริบ" ของหน้าเว็บเล็งด้านยาว ~5500 px
+        #    ไฟล์ต้นทาง 554 px จึงขอตัวคูณ ~10 เท่า ซึ่งเกินเพดานเดิม แล้วโดนหั่นเหลือ 8
+        data = VX.render(e["res"], fmt, png_scale=max(0.25, min(16.0, float(scale))),
                          mm_per_px=(float(mm_per_px) or None))
     except MemoryError:
         # 🛟 PNG ใหญ่ + ผลลัพธ์โหมดผสม (เส้น 5 หมื่นจุด) อาจกินแรมเกินเครื่องเซิร์ฟเวอร์
