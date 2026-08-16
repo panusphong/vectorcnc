@@ -45,7 +45,7 @@ def _psd_ok():
         return False
 
 
-BUILD_TAG = "2026-08-13-cleanpal"
+BUILD_TAG = "2026-08-15-planar"
 # 📌 สรุปอัปเดตล่าสุดแบบ "หนึ่งบรรทัด" สำหรับโชว์บนหัวเว็บ
 #    (build_note ตัวเต็มยาวเป็นหน้ากระดาษ เอาไปขึ้นหัวเว็บไม่ได้)
 BUILD_SHORT = "หน้าแตกชิ้น = ที่สร้างโลโก้แบรนด์ครบจบ: ✍️ พิมพ์ข้อความฟอนต์จริง (ไทย 23 ตัว) + 🎨 ใส่พื้นหลัง/artwork"
@@ -244,6 +244,7 @@ def health():
     try:
         from vectora_engine import (mem_limit_mb as _mlm, quality_for_mem as _qfm,
                                     cpu_quota as _cq)
+        import vectora_engine as _VE9
         import os as _os2, time as _t2
         _t = _t2.perf_counter()                      # วัดความเร็วจริงของ CPU เครื่องนี้
         _x = 0
@@ -260,7 +261,10 @@ def health():
                  "omp": _os2.environ.get("OMP_NUM_THREADS", "-"),
                  # 🦀 ตัวนี้คุม VTracer (Rust/rayon) — ต้องเท่า cpu_quota ไม่ใช่ cpu_seen
                  "rayon": _os2.environ.get("RAYON_NUM_THREADS", "-"),
-                 "work_long": int(_q[0]), "trace_px": int(_q[1])}
+                 "work_long": int(_q[0]), "trace_px": int(_q[1]),
+                 # 🗺️ แผนที่ภูมิภาคระนาบ + ขอบร่วม (ถ้า note ไม่ว่าง = ตกกลับไปใช้ชั้นเดิม)
+                 "planar": bool(getattr(_VE9, "PLANAR", False)),
+                 "planar_note": (getattr(_VE9, "PLANAR_NOTE", [""])[0] or "-")}
     except Exception as _e:
         _memq = {"mem_mb": "?", "err": str(_e)[:80]}
     return {"ok": True, "service": "VectorCNC",
