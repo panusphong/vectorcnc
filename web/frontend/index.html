@@ -2450,7 +2450,13 @@ select.numin{cursor:pointer}
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;justify-content:center;min-height:calc(100% - 8px)">
+      <!-- ⚠️ ต้องมี min-width/min-height: min-content — ไม่งั้นตอนซูมเกินจอ ส่วนที่ล้น
+           "ทางซ้ายกับด้านบน" จะเลื่อนไปดูไม่ได้เลย (scrollLeft/Top ติดลบไม่ได้)
+           safe center = กันซ้ำอีกชั้นสำหรับเบราว์เซอร์ที่รองรับ -->
+      <div id="wCenter" style="display:flex;align-items:center;justify-content:center;
+           justify-content:safe center;min-height:calc(100% - 8px);
+           min-width:-webkit-min-content;min-width:min-content;
+           min-height:-webkit-min-content;min-height:min-content">
         <canvas id="wCanvas" style="max-width:100%;max-height:calc(90vh - 130px);box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:grab;background:#fff"></canvas>
       </div>
     </div>
@@ -8456,6 +8462,85 @@ function wZoomSet(z, anchor){
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',hook);
   else hook();
+})();
+/* ══════════════════ ✋ ลากเลื่อนภาพตอนซูม (pan) ══════════════════
+   ⚠️ ผู้ใช้แจ้ง 2026-08-16: "ซูมแล้วขยับภาพไม่ได้"
+   เดิมมีแค่แถบเลื่อน (scrollbar) อย่างเดียว · ตัวชี้เป็นรูปมือ (grab) ด้วย
+   ทำให้ทุกคนคิดว่าลากได้ แต่ลากแล้วไม่มีอะไรเกิดขึ้น
+   ✅ เพิ่มการลากเลื่อนบนพื้นที่ว่าง — โดย **ไม่แตะตัวจับเดิมสักบรรทัด**
+      อาศัยว่าตัวจับของ canvas ทำงานก่อน (bubbling) แล้วค่อยเช็คว่ามีใคร
+      "จับงานไปแล้ว" หรือยัง (e.defaultPrevented / ธงต่าง ๆ) ถ้ายัง = เลื่อนภาพ  */
+(function(){
+  var st=$('wStage'), cv=$('wCanvas');
+  if(!st||!cv) return;
+  var pan=null;
+
+  function busy(e){                       // มีตัวจับอื่นรับงานนี้ไปแล้วหรือยัง
+    if(e && e.defaultPrevented) return true;
+    return !!(window._wBoxAct || window._shpAct || window._wDimDrag || window._armDrag
+              || (typeof wallDrag!=='undefined' && wallDrag)
+              || (typeof _lgDrag!=='undefined' && _lgDrag)
+              || (typeof _txtDrag!=='undefined' && _txtDrag));
+  }
+  function scrollable(){
+    return (st.scrollWidth - st.clientWidth > 1) || (st.scrollHeight - st.clientHeight > 1);
+  }
+  function pt(e){ var t=(e.touches&&e.touches[0])||e; return {x:t.clientX, y:t.clientY}; }
+
+  function down(e){
+    if(e.button!=null && e.button!==0 && e.button!==1) return;   // ซ้าย/กลางเท่านั้น
+    if(busy(e) || !scrollable()) return;
+    var p=pt(e);
+    pan={x:p.x, y:p.y, sl:st.scrollLeft, sti:st.scrollTop, moved:false};
+    cv.style.cursor='grabbing';
+  }
+  function move(e){
+    if(!pan) return;
+    var p=pt(e), dx=p.x-pan.x, dy=p.y-pan.y;
+    if(!pan.moved && Math.abs(dx)+Math.abs(dy) < 3) return;      // กันคลิกธรรมดากลายเป็นลาก
+    pan.moved=true;
+    st.scrollLeft = pan.sl  - dx;
+    st.scrollTop  = pan.sti - dy;
+    if(e.cancelable) e.preventDefault();
+  }
+  function up(){
+    if(!pan) return;
+    pan=null;
+    try{ cv.style.cursor = (typeof _wSplit==='function' && _wSplit()) ? 'crosshair' : 'grab'; }
+    catch(err){ cv.style.cursor='grab'; }
+  }
+
+  /* ผูกที่ตัวเวที (พ่อ) -> ตัวจับของ canvas ได้ทำงานไปก่อนแล้วเสมอ */
+  st.addEventListener('mousedown', down);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+  st.addEventListener('touchstart', down, {passive:true});
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('touchend', up);
+  st.addEventListener('mouseleave', function(){ if(pan && !pan.moved) up(); });
+
+  /* 🎯 ปุ่ม +/−/1:1 ให้ยึด "กลางจอที่มองเห็น" ไม่งั้นซูมแล้วภาพกระเด็นไปมุม */
+  function ctr(){ var r=st.getBoundingClientRect();
+                  return {clientX:r.left+r.width/2, clientY:r.top+r.height/2}; }
+  function re(id, fn){ var b=$(id); if(b) b.onclick=fn; }
+  if(typeof wZoomSet==='function'){
+    re('wzIn',  function(){ wZoomSet(wZoomNow()*1.25, ctr()); });
+    re('wzOut', function(){ wZoomSet(wZoomNow()/1.25, ctr()); });
+    re('wz100', function(){ wZoomSet(1, ctr()); });
+  }
+
+  /* บอกผู้ใช้ว่าลากได้ — โชว์เฉพาะตอนที่ซูมจนเกินจอจริง ๆ */
+  function hintCursor(){
+    if(pan) return;
+    try{ if(typeof _wSplit==='function' && _wSplit()){ cv.style.cursor='crosshair'; return; } }catch(e){}
+    cv.style.cursor='grab';
+    st.style.cursor = scrollable() ? 'grab' : '';
+  }
+  st.addEventListener('mousemove', hintCursor);
+  var _ap=window.wZoomApply;
+  if(typeof _ap==='function'){
+    window.wZoomApply=function(){ var r=_ap.apply(this,arguments); try{ hintCursor(); }catch(e){} return r; };
+  }
 })();
 
 (function(){ var cv=$('wCanvas'); if(!cv) return; var act=null,corner=-1,bi=-1,st=null;
