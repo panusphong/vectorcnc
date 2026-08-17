@@ -3026,7 +3026,15 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     _vt_used = False
     # 🗺️ ถ้าจะใช้แผนที่ภูมิภาคระนาบอยู่แล้ว ก็ไม่ต้องเสียเวลาเรียก VTracer
     #    (ชั้นลายที่ได้จากตรงนี้จะถูกแทนที่ทั้งหมดอยู่ดี — วัดจริงประหยัด ~40 วินาที)
-    _planar_on = bool(PLANAR and grad and _smr and _q_keep is not None)
+    # ⚠️ เดิมบังคับว่า "ต้องตรวจเจอพื้นไล่สี" ถึงจะใช้ planar (_smr ต้องไม่ว่าง)
+    #    วัดจริงกับชุดตรวจ 8 ภาพ (2026-08-16): planar ทำงานแค่ 3 ใน 8
+    #    ภาพพื้นขาวล้วน (โลโก้/ลายเส้น ซึ่งเป็นงานส่วนใหญ่) ไม่ได้ประโยชน์อะไรเลย
+    #    และ 3 ใน 5 ตัวนั้นคือตัวที่แตกเป็นเศษ: 52,839 / 2,261 / 1,475 ชิ้น
+    #    (ตราสมอ 2362px = 52,839 ชิ้น · 596,494 จุด · ไฟล์ 35.8 MB · 502 วินาที
+    #     เครื่องโปรดักชัน 2 CPU/4GB จะค้างหรือถูกฆ่ากลางคัน)
+    # ✅ เปิดให้ทุกภาพในโหมดไล่สี: มีพื้นไล่สีก็กันพื้นไว้ · ไม่มีก็ทำทั้งภาพ
+    _pkeep = _q_keep if _q_keep is not None else np.ones((H, W), bool)
+    _planar_on = bool(PLANAR and grad)
     if grad and VT_MIX and keep is None and not _planar_on:
         try:
             # ⚠️ ห้ามใส่ import ของ vectorcnc.trace_engine ตรงนี้อีก — _vt_items เรียก
@@ -3351,11 +3359,65 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                 from . import vectora_planar as _VP
             except Exception:
                 import vectora_planar as _VP
-            _pl = _VP.planar_layers(img, _q_keep, seed=seed, progress=_pg)
+            # 🎨 งานลายเส้น/โลโก้แบน (ไม่มีพื้นไล่สี) -> ดึงสีเข้าจานให้สะอาด
+            #    งานที่มีพื้นไล่สีจริง -> ใช้สีเฉลี่ยของแต่ละชิ้น เก็บเฉดละเอียดไว้
+            #    วัดจริง: ตราสมอ สแนป 239->6 สี ค่าคลาดดีขึ้นทุกตัว
+            #             badge สแนปแล้วแย่ลง (เนื้อ 1.97->2.16 ขอบ 8.13->8.96)
+            _pl = _VP.planar_layers(img, _pkeep, seed=seed, progress=_pg,
+                                    pal_lab=pal_lab, stroke=float(_sw),
+                                    snap=(not _smr))
             if _pl:
                 _gl = [L for L in layers if L.get("grad")]
-                layers = _gl + _pl
-                _vt_used = False
+                _new = _gl + _pl
+                # ══════════════════════════════════════════════════════
+                # ⚖️ ตัดสินเองว่าจะใช้แบบไหน — planar ไม่ได้ดีกว่าทุกภาพ
+                # ⚠️ วัดจริงกับชุดตรวจ 8 ภาพ (2026-08-16):
+                #      กรอบเส้นบาง  2,261 -> 23 ชิ้น · ขอบ 20.19 -> 12.10  ✅
+                #      baron        1,475 -> 36 ชิ้น · ขอบ 13.67 ->  8.94  ✅
+                #      ตัวอักษรเยอะ     3 -> 60 ชิ้น · ขอบ 15.33 -> 17.68  ❌
+                #    ของเดิมชนะบางภาพจริง จึงต้องวัดแล้วเลือก ไม่ใช่บังคับใช้
+                # 🚨 ยกเว้นกรณีของเดิม "แตกเป็นเศษ" (> 3,000 ชิ้น) ให้ planar ชนะทันที
+                #    เพราะของเดิมใช้งานจริงไม่ได้ (ตราสมอ 52,839 ชิ้น · 35.8 MB · 502 วิ
+                #    บนเครื่อง 2 CPU/4GB = ค้างหรือถูกฆ่ากลางคัน) ต่อให้ค่าคลาดดีกว่า
+                # ══════════════════════════════════════════════════════
+                def _pcnt(_ls):
+                    return sum(len(L.get("items") or ()) for L in _ls)
+                _n_old, _n_new = _pcnt(layers), _pcnt(_new)
+                _pick, _why = None, ""
+                if _n_old > 3000:
+                    _pick, _why = _new, "ของเดิมแตกเป็นเศษ %d ชิ้น" % _n_old
+                else:
+                    try:
+                        # 🔍 ให้คะแนนที่ 700 px — 280 px หยาบเกินจนมองไม่เห็นคุณภาพขอบ
+                        #    (วัดจริง: ที่ 280 px ตัดสินว่า planar ชนะทุกภาพ ทั้งที่ภาพ
+                        #     "ตัวอักษรเยอะ" ของเดิมดีกว่าเมื่อดูที่ความละเอียดจริง)
+                        _sc9 = min(1.0, 700.0 / max(W, H))
+                        def _e9(_ls):
+                            _p = _VX9.raster_png({"layers": _ls, "size": (W, H),
+                                                  "bg": None, "stats": {}}, px_scale=_sc9)
+                            _o = cv2.imdecode(np.frombuffer(_p, np.uint8), cv2.IMREAD_COLOR)
+                            _r = cv2.resize(cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
+                                            (_o.shape[1], _o.shape[0]))
+                            _a = cv2.cvtColor(_o, cv2.COLOR_BGR2LAB).astype(np.float32)
+                            _b = cv2.cvtColor(_r, cv2.COLOR_BGR2LAB).astype(np.float32)
+                            return float(np.sqrt(((_a - _b) ** 2).sum(2)).mean())
+                        try:
+                            from . import vectora_export as _VX9
+                        except Exception:
+                            import vectora_export as _VX9
+                        _eo, _en = _e9(layers), _e9(_new)
+                        if _en <= _eo * 1.08:
+                            _pick, _why = _new, "planar ดีกว่า/เท่า (%.2f vs %.2f)" % (_en, _eo)
+                        else:
+                            _pick, _why = None, "ของเดิมดีกว่า (%.2f vs %.2f)" % (_eo, _en)
+                    except Exception as _e8:
+                        _pick, _why = _new, "ให้คะแนนไม่ได้ (%s) — ใช้ planar" % _e8
+                if _pick is not None:
+                    layers = _pick
+                    _vt_used = False
+                PLANAR_NOTE[0] = ("planar %s · %s · ชิ้น %d -> %d"
+                                  % ("ใช้" if _pick is not None else "ไม่ใช้",
+                                     _why, _n_old, _n_new))
             else:
                 PLANAR_NOTE[0] = "planar: ไม่ได้ชั้นลายกลับมา — ใช้ชั้นเดิม"
         except Exception as _e9:

@@ -47,6 +47,7 @@ DE_MERGE = 22.0        # รวมเพื่อนบ้านที่สี�
 THIN = 1.4             # เกณฑ์ "วงแหวนเงา" (พื้นที่ ÷ เส้นรอบรูป)
 REGUL = 10             # จำนวนรอบเกลาแผนที่ภูมิภาคระดับพิกเซล
 REGUL_THR = 5          # ต้องมีเพื่อนบ้านกี่เสียงจาก 8 ถึงจะพลิกตาม
+PAL_SNAP = 1           # ดึงสีทุกชิ้นเข้าจานสีของเอนจิ้น (0 = ใช้สีเฉลี่ยจริง)
 SLIVER = 0.0           # ⛔ ปิดไว้ — วัดแล้วกินรายละเอียดจริง (ΔE ขอบ 7.10 -> 7.41)
 
 LOOK = 10              # หน้าต่างหามุม (จุด)
@@ -95,15 +96,18 @@ DIRS = {}
 
 
 def build(work, keep=None, dom=None, K=16, min_area_frac=1.0 / 40000.0, de_merge=9.0,
-          target=140, de_hard=26.0, thin=0.0, seed=0):
+          target=140, de_hard=26.0, thin=0.0, seed=0, cen=None, min_area_px=0.0):
     H, W = work.shape[:2]
     t0 = time.time()
     lab = VE.labf(cv2.cvtColor(work, cv2.COLOR_RGB2LAB).reshape(-1, 3).astype(np.uint8))
     rng = np.random.default_rng(seed)
     pool = (np.flatnonzero(keep.reshape(-1)) if keep is not None
             else np.arange(len(lab)))
-    take = pool if len(pool) <= 300000 else pool[rng.choice(len(pool), 300000, replace=False)]
-    cen, _ = VE._kmeans_lab(lab[take].astype(np.float32), K, seed=seed)
+    if cen is None:
+        take = (pool if len(pool) <= 300000
+                else pool[rng.choice(len(pool), 300000, replace=False)])
+        cen, _ = VE._kmeans_lab(lab[take].astype(np.float32), K, seed=seed)
+    cen = np.asarray(cen, np.float32)
     q = np.empty(len(lab), np.int32)
     for s in range(0, len(lab), 400000):
         e = min(len(lab), s + 400000)
@@ -180,7 +184,8 @@ def build(work, keep=None, dom=None, K=16, min_area_frac=1.0 / 40000.0, de_merge
         return a
 
     # 2a: กลืนภูมิภาคจิ๋ว (ขอบร่วมยาวสุดชนะ)
-    min_area = max(6.0, float(H) * W * min_area_frac)
+    min_area = (float(min_area_px) if min_area_px > 0
+                else max(6.0, float(H) * W * min_area_frac))
     order = sorted((r for r in range(1, N) if area[r] > 0), key=lambda r: area[r])
     for r in order:
         if find(r) != r or area[r] >= min_area or not adj[r]:
@@ -1197,7 +1202,8 @@ def g1_join(start, segs, deg=34.0):
     return start, [tuple(s) for s in S]
 
 
-def planar_layers(img_rgb, keep, seed=0, progress=None):
+def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0,
+                  snap=None):
     """ทางเข้าหลัก — คืน list ของชั้นสี (พิกัดหน่วยภาพงาน) ของ "ย่านลาย"
 
     img_rgb : ภาพที่ผ่านการเตรียมของเอนจิ้นแล้ว (ขยาย + ฉายกลับ + ยุบขอบ)
@@ -1212,9 +1218,19 @@ def planar_layers(img_rgb, keep, seed=0, progress=None):
                 pass
     H, W = img_rgb.shape[:2]
     _pg(56, "แบ่งภาพเป็นภูมิภาค")
+    # 🎨 ใช้จานสีที่เอนจิ้นเลือกไว้แล้ว (auto_k) แทนการตั้ง 20 สีตายตัว
+    #    ⚠️ วัดจริง 2026-08-16: ภาพลายเส้นขาวดำถูกบังคับ 20 สี -> เส้นบางกลายเป็น
+    #       ปื้นเทาหลายเฉด ค่าคลาดที่ขอบพุ่ง 21 -> 36 (ตราสมอ)
+    #    เอนจิ้นเลือกสีมาแล้วอย่างเหมาะสมกับภาพนั้น ๆ ใช้ของเดิมดีที่สุด
+    _cen = None
+    if pal_lab is not None and len(pal_lab) >= 2:
+        _cen = np.asarray(pal_lab, np.float32)
+    # 📏 เกณฑ์ชิ้นจิ๋วต้องผูกกับ "ความหนาเส้นจริงในภาพ" ไม่ใช่สัดส่วนพื้นที่ตายตัว
+    #    เส้นหนา s พิกเซล ยาว s พิกเซล มีพื้นที่ s² -> เกณฑ์ต้องต่ำกว่านั้นมาก
+    _map = (max(6.0, (float(stroke) * 0.30) ** 2) if stroke and stroke > 0 else 0.0)
     res = build(img_rgb, keep=keep, dom=None, K=K_COLORS,
                 min_area_frac=MIN_AREA_FRAC, de_merge=DE_MERGE,
-                target=10 ** 9, thin=THIN, seed=seed)
+                target=10 ** 9, thin=THIN, seed=seed, cen=_cen, min_area_px=_map)
     reg = res["reg"]
     if reg is None or int(reg.max()) <= 0:
         return []
@@ -1233,7 +1249,17 @@ def planar_layers(img_rgb, keep, seed=0, progress=None):
                       minlength=n)
     tot = np.bincount(reg.reshape(-1), minlength=n)
     frac = ins / np.maximum(tot, 1)
-    rgbs = cv2.cvtColor(VE.unlabf(res["mean"].astype(np.float32)).reshape(-1, 1, 3),
+    # 🎨 ดึงสีของทุกชิ้นเข้าจานสีของเอนจิ้น — ห้ามมีสีนอกจาน
+    #    ⚠️ เดิมใช้ "สีเฉลี่ยของภูมิภาค" ตรง ๆ -> ภาพลายเส้นขาวดำได้ 239 สี
+    #       เส้นบางที่เกลี่ยขอบกลายเป็นปื้นเทาหลายเฉด (เห็นชัดที่ตราสมอ)
+    #    ✅ สแนปเข้าจานที่เอนจิ้นเลือกไว้ = สีสะอาด เท่าที่ภาพมีจริง
+    _mean = res["mean"]
+    _snap = PAL_SNAP if snap is None else snap
+    if _snap and pal_lab is not None and len(pal_lab) >= 2:
+        _p = np.asarray(pal_lab, np.float64)
+        _d = ((_mean[:, None, :] - _p[None, :, :]) ** 2).sum(2)
+        _mean = _p[_d.argmin(1)]
+    rgbs = cv2.cvtColor(VE.unlabf(_mean.astype(np.float32)).reshape(-1, 1, 3),
                         cv2.COLOR_LAB2RGB).reshape(-1, 3)
     area = res["area"]
     out = []
