@@ -12251,20 +12251,19 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         <div style="flex:1;min-width:300px"><div class="vinfo" id="vecInfo"></div></div>
       </div>
       <div id="vecNotes"></div>
-      <!-- 🌈 โหมดภาพไล่สี (ผู้ใช้สั่ง 2026-08-09)
-           ⚠️ ระบบเลือกจำนวนสีเองด้วย auto_k ซึ่งหยุดเมื่อ 'เพิ่มสีแล้วไม่คุ้ม'
-              ภาพพื้นหลังไล่เฉด (gradient) จึงเหลือแค่ 8-9 สี -> ไล่สีกลายเป็นก้อนสีแบน
-           ✅ ติ๊กแล้วบังคับใช้ 32 สี -> เฉดต่อเนื่องขึ้นมาก · งานเดิมไม่ติ๊กก็เหมือนเดิมทุกประการ -->
-      <label id="vecGradWrap" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:9px 11px;
-             border:1px dashed #a78bfa;border-radius:10px;background:#faf5ff;cursor:pointer">
-        <input type="checkbox" id="vecGrad" style="margin-top:2px">
-        <span style="font-size:12.5px;color:#6d28d9;line-height:1.55">🌈 <b>ภาพไล่สี / ภาพถ่าย</b><br>
+      <!-- 🌈 เดิมมีช่องติ๊ก "ภาพไล่สี / ภาพถ่าย" ตรงนี้
+           ⚠️ 2026-08-17 ผู้ใช้สั่งตัดออก: "ไม่ต้องให้ติ๊กเลือกแล้ว กดปุ่มแปลงอย่างเดียว
+              หลังบ้านไปเช็คเอาเองว่าเป็นภาพชนิดไหน"
+           ✅ หลังบ้านเปิดเส้นทางไล่สีให้ทุกภาพ แล้วตรวจเองว่ามีพื้นไล่สีจริงไหม
+              (วัดแล้วดีกว่าทุกภาพในชุดตรวจ 8 ภาพ — ดูหมายเหตุใน vectora_api._auto_grad) -->
+      <div id="vecGradWrap" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:9px 11px;
+             border:1px dashed #a78bfa;border-radius:10px;background:#faf5ff">
+        <span style="font-size:12.5px;color:#6d28d9;line-height:1.55">🔎 <b>ระบบตรวจชนิดภาพให้เอง</b><br>
           <span style="font-size:11.5px;color:#7c3aed;line-height:1.6">
-          หา <b>พื้นไล่สี</b> ก่อน แล้วทำเป็น <b>รูปเดียวไล่สี 28 จุด</b> (ไม่แบ่งเป็นก้อน จึงไม่มีรอยต่อ)<br>
-          พื้นที่ไล่สี <b>สองทิศพร้อมกัน</b> (เช่นพื้นรุ้ง) ก็ได้ — ใช้ตาข่ายไล่สีสองมิติ<br>
-          <b>โควตาสีที่เหลือทุ่มให้โลโก้/ตัวอักษรทั้งหมด</b> รายละเอียดจึงคมขึ้นด้วย<br>
-          <span style="color:#a78bfa">ติ๊กเมื่อภาพมีพื้นหลังไล่เฉด/เงานุ่ม ๆ แล้วผลลัพธ์ออกมาเป็นก้อนสีแบน</span></span></span>
-      </label>
+          ภาพไล่เฉด/ภาพถ่าย -> ทำพื้นเป็น <b>รูปเดียวไล่สี</b> ไม่มีรอยต่อ<br>
+          โลโก้/ลายเส้น -> ไล่เส้นเป็น <b>สีแบนคม ๆ</b> ตามปกติ<br>
+          <span style="color:#a78bfa">กดปุ่มแปลงได้เลย ไม่ต้องเลือกอะไรเพิ่ม</span></span></span>
+      </div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
         <button class="vbtn go" id="vecGo">⚡ <span data-i18n="vec.convert">แปลงเป็นเวกเตอร์</span></button>
         <button class="vbtn alt" id="vecBack1">← <span data-i18n="vec.change">เปลี่ยนไฟล์</span></button>
@@ -12522,15 +12521,14 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     if(!F||BUSY)return; BUSY=true;
     var b=$('vecGo'), b2=$('vecRe'), old=b.innerHTML;
     b.disabled=b2.disabled=true; b.innerHTML='⏳ กำลังแปลง…';
-    try{ var _vg0=document.getElementById('vecGrad'); progStart(!!(_vg0&&_vg0.checked)); }catch(_e){ progStart(false); }
+    progStart(true);          /* 🌈 หลังบ้านตัดสินเอง — แถบความคืบหน้าใช้แบบยาวเสมอ */
     var fd=new FormData();
     // 🌈 ติ๊ก 'ภาพไล่สี' -> 48 สี + บอกหลังบ้านว่าห้ามตัดสีผสมทิ้ง
     //    ⚠️ รอบแรกส่งแค่ k=32 แต่ได้ออกมา 14 สี เพราะ merge_blends ตัดสีผสมไป 18 สี
     //       ซึ่ง 'สีผสม' คือเนื้อของไล่เฉดเอง — ต้องส่ง grad=1 ไปปิดตัวตัดด้วย
     // ⚠️ โหมดไล่สี: ห้ามดันจำนวนสีขึ้น! (อลิซพลาดมาแล้ว — ดัน 48 สีแล้วเละหนัก)
     //    แต่ละก้อนไล่สีในตัวเองได้แล้ว จึงต้องการก้อน 'ใหญ่และน้อย' -> ปล่อยระบบเลือกเอง (~9 สี)
-    var _kk=CFG.k, _gd=0;
-    try{ var _vg=document.getElementById('vecGrad'); if(_vg&&_vg.checked)_gd=1; }catch(_e){}
+    var _kk=CFG.k, _gd=-1;    /* -1 = ให้หลังบ้านตัดสินเองว่าเป็นภาพชนิดไหน */
     fd.append('file',F); fd.append('preset',CFG.preset); fd.append('k',_kk); fd.append('grad',_gd);
     fd.append('smooth',CFG.smooth); fd.append('tol',CFG.tol); fd.append('gap',CFG.gap);
     fd.append('transparent',CFG.tr);
@@ -12635,8 +12633,8 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     /* 🌈 โหมดไล่สี — ต้องเห็นชัดว่า "ทำงานจริงหรือไม่"
        เคยเกิดเคสผู้ใช้ลืมติ๊กช่อง แล้วเข้าใจว่าโค้ดไล่สีใช้ไม่ได้ */
     if(s.grad_bg){ w.innerHTML+='<div class="vnote ok">🌈 '+esc(s.grad_bg)+'</div>'; }
-    else if(s.grad_on){ w.innerHTML+='<div class="vnote">🌈 '+(en?'Gradient mode is on, but no smooth gradient area was found in this image — traced as flat colours.':'เปิดโหมดไล่สีไว้ แต่ภาพนี้ไม่มีย่านไล่สีเนียนให้จับ — ไล่เส้นเป็นสีแบนตามปกติ')+'</div>'; }
-    else { w.innerHTML+='<div class="vnote">🌈 '+(en?'Gradient mode is OFF. Tick “gradient image” if the artwork has a smooth colour blend.':'ยังไม่ได้ติ๊ก 🌈 “ภาพไล่สี” — ถ้างานมีพื้นไล่เฉด ให้ติ๊กช่องนี้แล้วแปลงใหม่')+'</div>'; }
+    else if(s.grad_on){ w.innerHTML+='<div class="vnote">🔎 '+(en?'Checked automatically: this image has no smooth gradient area — traced as flat colours.':'ระบบตรวจแล้ว: ภาพนี้ไม่มีย่านไล่สีเนียน — ไล่เส้นเป็นสีแบนตามปกติ')+'</div>'; }
+    else { w.innerHTML+='<div class="vnote">🔎 '+(en?'Checked automatically: no smooth gradient area found — traced as flat colours.':'ระบบตรวจแล้ว: ภาพนี้ไม่มีย่านไล่สี — ไล่เส้นเป็นสีแบนตามปกติ')+'</div>'; }
   }
   function paintLangBtns(){
     document.querySelectorAll('#vecLang button').forEach(function(b){
