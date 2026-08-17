@@ -51,6 +51,26 @@ except Exception:
     pass
 
 
+# ══════════════════════════════════════════════════════════════════
+# 🤖 ตัดสินเองว่าจะใช้เส้นทาง "ไล่สี" หรือไม่ (ผู้ใช้สั่งตัดปุ่มติ๊กออก 2026-08-17)
+# ══════════════════════════════════════════════════════════════════
+# ⚠️ วัดจริงกับชุดตรวจ 8 ภาพ ก่อนตัดสินใจ — เส้นทางไล่สี "ดีกว่าทุกภาพ" ไม่ใช่แค่ภาพไล่สี
+#      กรอบเส้นบาง  ขอบ 14.98 -> 12.23   ·  อักษรลายมือ  9.14 -> 8.29
+#      baron        ขอบ 11.59 ->  9.05   ·  badge รุ้ง  19.68 -> 7.43
+#    เพราะเส้นทางนี้พ่วง "แผนที่ระนาบ + ขอบร่วม" และค่าความละเอียดที่แน่นกว่า
+#    ซึ่งช่วยงานลายเส้นด้วย ไม่ได้ช่วยแค่พื้นไล่สี
+# ✅ จึงเปิดเส้นทางนี้ให้ทุกภาพ แล้วให้ "ตัวตรวจพื้นไล่สี" ในเอนจิ้นเป็นคนตัดสินอีกทีว่า
+#    ภาพนี้มีพื้นไล่สีจริงไหม (ไม่มี = ไล่เส้นเป็นสีแบนตามปกติ ไม่มีชั้นไล่สีโผล่มา)
+# 💸 ต้นทุน: ช้าขึ้น 4-6 เท่า (baron 5 -> 21 วิ) — ยอมแลก เพราะระบบทำงานเบื้องหลัง
+#    มีแถบความคืบหน้าจริงอยู่แล้ว และคุณภาพคือสิ่งที่ผู้ใช้ขอมาตลอด
+def _auto_grad(v):
+    try:
+        v = int(v)
+    except Exception:
+        v = -1
+    return True if v < 0 else bool(v)
+
+
 def _disk_put(tok, e):
     try:
         import pickle
@@ -276,8 +296,10 @@ async def convert(file: UploadFile = File(...),
                   k: int = Form(0), smooth: int = Form(-1),
                   tol: float = Form(-1.0), gap: float = Form(-1.0),
                   transparent: int = Form(-1),
-                  # 🌈 โหมดไล่สี/ภาพถ่าย — ไม่ตัดสีผสม + เพดาน 64 สี (ผู้ใช้สั่ง 2026-08-09)
-                  grad: int = Form(0)):
+                  # 🌈 โหมดไล่สี/ภาพถ่าย
+                  #    ⚠️ 2026-08-17 ผู้ใช้สั่งตัดปุ่มติ๊กออก — ให้หลังบ้านตัดสินเอง
+                  #    -1 (ค่าตั้งต้นใหม่) = อัตโนมัติ · 0/1 = บังคับ (เผื่อเรียก API ตรง)
+                  grad: int = Form(-1)):
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
@@ -290,7 +312,7 @@ async def convert(file: UploadFile = File(...),
                           tol=(float(tol) if float(tol) >= 0 else None),
                           gap=(float(gap) if float(gap) >= 0 else None),
                           transparent=(None if int(transparent) < 0 else bool(int(transparent))),
-                          grad=bool(int(grad or 0)))
+                          grad=_auto_grad(grad))
         return _r, VX.to_svg(_r)
 
     try:
@@ -326,7 +348,7 @@ async def start(file: UploadFile = File(...),
                 preset: str = Form("general"),
                 k: int = Form(0), smooth: int = Form(-1),
                 tol: float = Form(-1.0), gap: float = Form(-1.0),
-                transparent: int = Form(-1), grad: int = Form(0)):
+                transparent: int = Form(-1), grad: int = Form(-1)):
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
@@ -350,7 +372,7 @@ async def start(file: UploadFile = File(...),
                               tol=(float(tol) if float(tol) >= 0 else None),
                               gap=(float(gap) if float(gap) >= 0 else None),
                               transparent=(None if int(transparent) < 0 else bool(int(transparent))),
-                              grad=bool(int(grad or 0)), progress=_tick)
+                              grad=_auto_grad(grad), progress=_tick)
             _tick(92, "ประกอบไฟล์เวกเตอร์")
             _s = VX.to_svg(_r)
             _sweep()

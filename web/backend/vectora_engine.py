@@ -958,11 +958,12 @@ def smooth_regions(img_rgb, keep=None, min_frac=0.05, max_regions=4, k_thr=3.0):
     r = int(max(3, round(max(W, H) / 220.0))) | 1        # โตตามความละเอียดภาพ
     sm = cv2.morphologyEx(sm.astype(np.uint8), cv2.MORPH_OPEN,
                           np.ones((r, r), np.uint8))
+    rg = int(max(3, round(r * SHAPE_GROW))) | 1          # ดันขอบ 'รูป' เข้าไปใต้ลายให้ลึกพอ
     n, lbl, st, _ = cv2.connectedComponentsWithStats(sm, 8)
     cand = sorted(((int(st[i, cv2.CC_STAT_AREA]), i) for i in range(1, n)), reverse=True)
     out = []
     er = np.ones((r + 4, r + 4), np.uint8)
-    dl = np.ones((r, r), np.uint8)
+    dl = np.ones((rg, rg), np.uint8)
     for a, i in cand[:int(max_regions)]:
         if a < float(min_frac) * H * W:
             break
@@ -1268,6 +1269,16 @@ CLEAN_MERGE = False            # ⛔ ขั้น B (รวมชิ้นสี
 # 🛟 พังเมื่อไหร่ตกกลับไปใช้ชั้นเดิมอัตโนมัติ (ครอบ try/except ทั้งก้อน)
 PLANAR = True
 PLANAR_NOTE = [""]             # เก็บเหตุผลตอนตกกลับ ไว้ดูที่ /api/health
+# ⚪ ย่านพื้นเนียนที่ "ช่วงสีแคบกว่านี้" ถือว่าเป็นสีเดียว ไม่ใช่พื้นไล่สี (หน่วย Lab)
+#    วัดจริง: วงกลมขาวป้าย USERS' CHOICE = 1.7 · พื้นรุ้งของภาพเดียวกัน = 226.9
+FLAT_SPREAD = 8.0
+# 🍩 ใต้ชั้น planar ให้เหลือเฉพาะ "พื้นไล่สี" (ชั้นลายที่มีไล่สีในตัวถูกวาดทับอยู่แล้ว)
+GL_BG_ONLY = True
+# 🕳️ ดัน "ขอบรูป" ของพื้นไล่สีให้มุดเข้าไปใต้ลายลึกขึ้นกี่เท่า
+#    ⚠️ วัดจริง 2026-08-17: ขอบรูของพื้นอยู่ในวงกลมขาวแค่ 2.3 px แต่ขอบรูหยัก ±8 px
+#       (มาจากหน้ากาก MORPH_OPEN) จึงโผล่พ้นวงขาวออกมาเป็น 'ฟันเลื่อย' รอบวง
+#       = ต้นเหตุจริงของ "ขอบวงกลมขาวยึกยือ" ที่ผู้ใช้ทัก — ไม่ใช่ตัวเส้นวงกลมเอง
+SHAPE_GROW = 2.6
 # ══════════════════════════════════════════════════════════════════
 CLEAN_PAL = 16                 # ยุบสีทั้งงานให้เหลือกี่สี (0 = ปิด) — ทำเฉพาะโหมดไล่สี
 # ── ผลวัดจริง (2026-08-13) · แยก "สีเนื้อ" (ต้องตรงกับต้นฉบับ) ออกจาก "ขอบ" (ตั้งใจไม่ลอก JPEG)
@@ -2360,6 +2371,49 @@ def resolve(preset="general", **over):
 
 
 # ══════════════════════════════════════════════════════════════════
+# 🤖 ตรวจเองว่าภาพนี้ "เป็นภาพไล่สี/ภาพถ่าย" หรือไม่ (ผู้ใช้สั่งตัดปุ่มติ๊กออก 2026-08-17)
+# ══════════════════════════════════════════════════════════════════
+AUTO_GRAD_AREA = 0.06      # ย่านเนียนต้องใหญ่อย่างน้อยกี่ส่วนของภาพ
+AUTO_GRAD_SPREAD = 14.0    # และช่วงสีในย่านนั้นต้องกว้างกว่านี้ (หน่วย Lab)
+
+
+def wants_grad(img_rgba, seed=0):
+    """ภาพนี้ควรใช้โหมดไล่สีไหม -> True/False  (ตรวจที่ภาพย่อ ใช้เวลาไม่ถึงวินาที)
+
+    เกณฑ์เดียวกับที่เอนจิ้นใช้จริง: มี "ย่านพื้นเนียน" ที่ใหญ่พอ **และ** สีในย่านนั้น
+    ไล่เฉดจริง ๆ (ช่วงสีกว้าง) — ไม่ใช่แค่พื้นสีเดียวเรียบ ๆ ของโลโก้/ลายเส้น
+    ⚠️ ต้องแยก "พื้นขาวของลายเส้น" (ช่วงสี ~2) ออกจาก "พื้นรุ้ง" (ช่วงสี ~227) ให้ได้
+    """
+    try:
+        a = np.asarray(img_rgba)
+        if a.ndim == 2:
+            a = cv2.cvtColor(a, cv2.COLOR_GRAY2RGB)
+        if a.shape[2] == 4:                      # พื้นโปร่ง -> ทาขาวก่อน แล้วดูเฉพาะเนื้อ
+            al = a[:, :, 3:4].astype(np.float32) / 255.0
+            a = (a[:, :, :3].astype(np.float32) * al + 255.0 * (1 - al)).astype(np.uint8)
+        else:
+            a = a[:, :, :3]
+        H, W = a.shape[:2]
+        s = min(1.0, 700.0 / max(H, W))
+        if s < 1.0:
+            a = cv2.resize(a, (max(1, int(W * s)), max(1, int(H * s))),
+                           interpolation=cv2.INTER_AREA)
+        h2, w2 = a.shape[:2]
+        lab = cv2.cvtColor(a, cv2.COLOR_RGB2LAB).astype(np.float32)
+        for _rg in smooth_regions(a, min_frac=AUTO_GRAD_AREA):
+            m = _rg["fit"]
+            if int(m.sum()) < AUTO_GRAD_AREA * h2 * w2 or int(m.sum()) < 200:
+                continue
+            v = lab[m]
+            p = np.percentile(v, 98, axis=0) - np.percentile(v, 2, axis=0)
+            if float(np.sqrt((p * p).sum())) >= AUTO_GRAD_SPREAD:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════
 # ตัวหลัก
 # ══════════════════════════════════════════════════════════════════
 def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=None,
@@ -2606,7 +2660,28 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
     _anchor = []                                   # สีตัวแทนของพื้น (กัน k-means ต้องเดาสีพื้น)
     if grad:
         try:
+            # ══════════════════════════════════════════════════════════════
+            # ⚪ ย่าน "เนียนแต่สีเดียว" ไม่ใช่พื้นไล่สี — ห้ามยึดไปทำชั้นไล่สี
+            # ⚠️ วัดจริง 2026-08-17 (ผู้ใช้ทัก "ขอบวงกลมขาวยังยึกยืออยู่เลย"):
+            #    วงกลมขาวกลางป้าย = พื้นเรียบ ค่าคลาดเชิงสี 1.7 หน่วย (พื้นรุ้ง 226.9)
+            #    ตัวตรวจพื้นเนียนใช้อนุพันธ์อันดับสอง -> "แบนราบ" กับ "ไล่สีเชิงเส้น"
+            #    ได้คะแนนเท่ากัน วงขาวจึงถูกจับเป็นพื้นไล่สีไปด้วย
+            #    ผลคือขอบวงถูกวาดจาก "เส้นรอบหน้ากาก" ที่ผ่าน MORPH_OPEN+dilate 9x9
+            #    -> ขอบหยักเป็นลอน วัดได้รัศมีแกว่ง sd 26.8 px (ต้นฉบับ 1.35)
+            # ✅ ปล่อยให้ย่านสีเดียวตกไปทางลายปกติ ที่นั่นมีตัวทาบวงกลม
+            #    (วัดแล้ว ฟิตวงกลมได้ค่าคลาดสูงสุด 1.12 px = กลมจริง)
+            #    และไม่เสียอะไรเลย เพราะสีเดียวจะระบายเป็นไล่สีหรือถมสีทึบก็เหมือนกัน
+            # ══════════════════════════════════════════════════════════════
+            _lab9 = cv2.cvtColor(img, cv2.COLOR_RGB2LAB).astype(np.float32)
             for _rg in smooth_regions(img, keep=keep):
+                try:
+                    _v9 = _lab9[_rg["fit"]]
+                    if len(_v9) >= 50:
+                        _p9 = np.percentile(_v9, 98, axis=0) - np.percentile(_v9, 2, axis=0)
+                        if float(np.sqrt((_p9 * _p9).sum())) < FLAT_SPREAD:
+                            continue
+                except Exception:
+                    pass
                 _g = fit_gradient_field(img, _rg["fit"], seed=seed)
                 if not _g:
                     continue
@@ -2627,9 +2702,10 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                         _rg["core"] = _cl
                         _rg["fit"] = _fit2 if _fit2.sum() >= 400 else _cl
                         _rg["n"] = int(_cl.sum())
+                        _rgg = int(max(3, round(max(H, W) / 220.0 * SHAPE_GROW))) | 1
                         _rg["shape"] = cv2.dilate(
                             _fill_holes(_cl).astype(np.uint8),
-                            np.ones((int(max(3, round(max(H, W) / 220.0))) | 1,) * 2, np.uint8)
+                            np.ones((_rgg,) * 2, np.uint8)
                         ).astype(bool)
                 except Exception:
                     pass
@@ -2868,7 +2944,7 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                     "rgb": tuple(int(v) for v in _mid), "n": int(_rg["n"]),
                     "area": sum(abs(_area(c)) for c in _cs),
                     "items": to_bezier(grow(_cs, gap_e), tol_e, budget=budget_e),
-                    "grad": _rg["grad"]}
+                    "grad": _rg["grad"], "bgfill": True}
                 # 🤝 เผื่อโหมดผสม VTracer: เตรียม "รูปทรงยืดขอบ" ไว้อีกชุด (เข้าใต้ขอบงาน ~10px)
                 #    ชั้นลาย VTracer ไม่ถมแถบรอบขอบงานเหมือนชั้นลายเดิม ต้องให้พื้นมุดเข้าไปปิดแทน
                 #    ⚠️ ใช้เฉพาะเมื่อ VTracer ชนะจริงเท่านั้น — ชุดปกติห้ามยืด (วัดแล้ว
@@ -3367,7 +3443,17 @@ def vectorize(img_rgba, preset="general", k=None, smooth=None, tol=None, gap=Non
                                     pal_lab=pal_lab, stroke=float(_sw),
                                     snap=(not _smr))
             if _pl:
-                _gl = [L for L in layers if L.get("grad")]
+                # ══════════════════════════════════════════════════════
+                # 🍩 เก็บไว้ใต้ชั้น planar เฉพาะ "พื้นไล่สี" เท่านั้น
+                # ⚠️ วัดจริง 2026-08-17 (ตามที่ผู้ใช้ทักเรื่องขอบวงกลม):
+                #    เดิมเก็บทุกชั้นที่มีไล่สีในตัว รวมชั้นวงกลมขาวของทางเดิมด้วย
+                #    ชั้นนั้นถูก planar วาดทับอยู่แล้ว แต่ขอบของมันหยักกว่า
+                #    -> ขอบที่ตาเห็นคือ "ขอบนอกสุดของสองชั้นรวมกัน" = หยักกว่าทั้งคู่
+                #    วัดที่ขอบวงกลม: แต่ละชั้นเดี่ยว ๆ sd 1.46/1.56 px
+                #                    แต่พอซ้อนกัน sd พุ่งเป็น 3.91 px
+                # ══════════════════════════════════════════════════════
+                _gl = [L for L in layers
+                       if L.get("grad") and (L.get("bgfill") or not GL_BG_ONLY)]
                 _new = _gl + _pl
                 # ══════════════════════════════════════════════════════
                 # ⚖️ ตัดสินเองว่าจะใช้แบบไหน — planar ไม่ได้ดีกว่าทุกภาพ

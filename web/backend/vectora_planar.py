@@ -47,6 +47,7 @@ DE_MERGE = 22.0        # รวมเพื่อนบ้านที่สี�
 THIN = 1.4             # เกณฑ์ "วงแหวนเงา" (พื้นที่ ÷ เส้นรอบรูป)
 REGUL = 10             # จำนวนรอบเกลาแผนที่ภูมิภาคระดับพิกเซล
 REGUL_THR = 5          # ต้องมีเพื่อนบ้านกี่เสียงจาก 8 ถึงจะพลิกตาม
+BG_ID = [-1]           # id ของ 'พื้นไล่สีที่รวมเป็นก้อนเดียว' (-1 = ไม่มี)
 PAL_SNAP = 1           # ดึงสีทุกชิ้นเข้าจานสีของเอนจิ้น (0 = ใช้สีเฉลี่ยจริง)
 SLIVER = 0.0           # ⛔ ปิดไว้ — วัดแล้วกินรายละเอียดจริง (ΔE ขอบ 7.10 -> 7.41)
 
@@ -84,6 +85,20 @@ STEP_MAX = 2.5         # รวมเส้นตรงสองท่อนท�
 STEP_ANG = 4.0
 STEP_GAP = 24
 CIRC_TOL = 1.6         # เกณฑ์ทาบวงกลม
+# ⭕ เกณฑ์ "ทาบวงแบบทนจุดหลุด" — วงกลมจริงที่มีจุดสะดุดไม่กี่จุดต้องยังทาบได้
+#    ⚠️ วัดจริง 2026-08-17: ขอบในของวงแหวนขอบวงกลมขาว ค่าคลาดสูงสุด 3.55
+#       แต่ควอนไทล์ 90 แค่ 0.91 -> คือวงกลมจริงที่มีจุดหลุดไม่กี่จุด
+#       เกณฑ์เดิมดูค่าสูงสุดอย่างเดียว จึงไม่ทาบ ปล่อยขอบกระเพื่อมทั้งวง
+# ⛔ ปิดไว้ (0) — วัดจริงแล้วงานลายเส้นแย่ลง: baron ขอบ 9.05 -> 10.30 ·
+#    อักษรลายมือ 8.29 -> 9.08 (เส้นโค้งมือเขียนถูกบังคับให้กลมเกินจริง)
+#    และพอแก้ต้นเหตุจริงได้แล้ว (SHAPE_GROW) ขอบวงกลมก็เนียนโดยไม่ต้องใช้ข้อนี้
+CIRC_Q = 0.0           # ใช้ควอนไทล์นี้แทนค่าสูงสุดในการตัดสิน (0 = ปิด)
+CIRC_MAX = 6.0         # แต่จุดที่หลุดสุดก็ต้องไม่เกินนี้
+CIRC_OUT = 0.06        # สัดส่วนจุดหลุดสูงสุดที่ยอมได้
+CIRC_RUN = 10          # จุดหลุดต่อกันยาวเกินนี้ = ของจริง (บิ่น/เว้า) ห้ามทาบ
+# 🤝 "วงเดียวกัน" ที่ถูกจุดต่อหั่นเป็นหลายท่อน ต้องกลับมาใช้วงกลมวงเดียวกัน
+CIRC_SAME = 2.0        # ศูนย์กลาง/รัศมีต่างกันไม่เกินนี้ = วงเดียวกัน
+CIRC_MINPTS = 60       # โซ่สั้นกว่านี้ไม่เอามาร่วมตัดสิน
 ARC_MIN = 8
 ARC_TURN = 6.0
 ARC_SPAN = 60
@@ -428,7 +443,8 @@ def _bil(img, X, Y):
             + c * (1 - fx) * fy + d * fx * fy)
 
 
-def subpixel(P, LA, LB, lab, closed, span=1.6, ns=17, cap=1.25, osm=None):
+def subpixel(P, LA, LB, lab, closed, span=1.6, ns=17, cap=1.25, osm=None,
+             lb_local=False):
     if not SUBPIX:
         return P
     """เลื่อนจุดขอบไปที่ 'ตำแหน่งจริงระดับย่อยพิกเซล'
@@ -438,9 +454,7 @@ def subpixel(P, LA, LB, lab, closed, span=1.6, ns=17, cap=1.25, osm=None):
     ✅ ฉายสีของภาพลงบนแกน A→B แล้วหาจุดที่ข้าม 0.5 ตามแนวตั้งฉาก
        = ตำแหน่งขอบจริงที่ตาเห็น (สิ่งที่ vectorizer.ai เรียกว่า sub-pixel edge)
     """
-    u = LB - LA
-    L2 = float((u * u).sum())
-    if L2 < 4.0 or len(P) < 4:
+    if len(P) < 4:
         return P
     T = np.roll(P, -1, 0) - np.roll(P, 1, 0)
     if not closed:
@@ -448,11 +462,26 @@ def subpixel(P, LA, LB, lab, closed, span=1.6, ns=17, cap=1.25, osm=None):
     n = np.stack([-T[:, 1], T[:, 0]], 1)
     ln = np.hypot(n[:, 0], n[:, 1])
     n = n / np.maximum(ln, 1e-9)[:, None]
+    # 🌈 ฝั่งที่เป็นพื้นไล่สี: สีเฉลี่ยของทั้งภูมิภาคใช้ไม่ได้ เพราะสีเปลี่ยนไปทั้งวง
+    #    ⚠️ นี่คือเหตุที่ขอบวงกลมขาว "ยึกยือ" — จุดข้าม 0.5 ถูกคำนวณจากสีที่ผิด
+    #       และผิดคนละแบบในแต่ละช่วง -> ขอบเลื่อนไปคนละทิศรอบวง
+    # ✅ อ่านสีของอีกฝั่งจากภาพจริง ณ จุดนั้น ๆ (ถอยออกไปตามแนวตั้งฉาก)
+    if lb_local:
+        LBv = _bil(lab, P[:, 0] + n[:, 0] * 3.0 - 0.5, P[:, 1] + n[:, 1] * 3.0 - 0.5)
+        LAv = np.broadcast_to(np.asarray(LA, np.float64), LBv.shape)
+    else:
+        LBv = np.broadcast_to(np.asarray(LB, np.float64), (len(P), 3))
+        LAv = np.broadcast_to(np.asarray(LA, np.float64), (len(P), 3))
+    u = LBv - LAv
+    L2 = (u * u).sum(1)
+    if float(np.median(L2)) < 4.0:
+        return P
+    L2 = np.maximum(L2, 1e-6)
     ts = np.linspace(-span, span, ns)
     X = P[:, 0][:, None] + n[:, 0][:, None] * ts[None, :] - 0.5
     Y = P[:, 1][:, None] + n[:, 1][:, None] * ts[None, :] - 0.5
     S = _bil(lab, X, Y)                                  # (n, ns, 3)
-    f = ((S - LA[None, None, :]) * u[None, None, :]).sum(2) / L2 - 0.5
+    f = ((S - LAv[:, None, :]) * u[:, None, :]).sum(2) / L2[:, None] - 0.5
     off = np.zeros(len(P))
     mid = ns // 2
     for k in range(1, mid + 1):
@@ -492,7 +521,8 @@ def subpixel(P, LA, LB, lab, closed, span=1.6, ns=17, cap=1.25, osm=None):
     return Q
 
 
-def refine(P, LA, LB, lab, closed, look=None, deg=40.0, free_ends=False):
+def refine(P, LA, LB, lab, closed, look=None, deg=40.0, free_ends=False,
+           lb_local=False):
     """🐍 สลับ "เกลาให้เนียน" กับ "ดึงกลับไปเกาะขอบจริง" ทีละรอบ
 
     ⚠️ ทำทีเดียวจบไม่พอ: เกาะขอบครั้งเดียวแล้วเกลา = เกลาดึงเส้นหลุดออกจากขอบ
@@ -503,10 +533,11 @@ def refine(P, LA, LB, lab, closed, look=None, deg=40.0, free_ends=False):
     Q = np.asarray(P, np.float64)
     n = int(SNAKE_IT)
     if n <= 0 or len(Q) < 6:
-        return subpixel(Q, LA, LB, lab, closed)
+        return subpixel(Q, LA, LB, lab, closed, lb_local=lb_local)
     for k in range(n):
         sp = 1.6 if k == 0 else max(0.6, 1.6 - 0.35 * k)
-        Q = subpixel(Q, LA, LB, lab, closed, span=sp, cap=min(1.25, sp))
+        Q = subpixel(Q, LA, LB, lab, closed, span=sp, cap=min(1.25, sp),
+                     lb_local=lb_local)
         bd = SNAKE_BD * (1.0 - 0.12 * k)
         Q = smooth_open(Q, closed, budget=bd, passes=SNAKE_PS, deg=deg, look=look,
                         free_ends=free_ends)
@@ -516,7 +547,8 @@ def refine(P, LA, LB, lab, closed, look=None, deg=40.0, free_ends=False):
     if TH_SIG > 0:
         Q = theta_smooth(Q, closed)
     # 🎯 จังหวะสุดท้าย: ดึงกลับไปเกาะขอบจริงอีกครั้ง (ห้ามเกลาต่อ ไม่งั้นหลุดอีก)
-    return subpixel(Q, LA, LB, lab, closed, span=FINAL_SPAN, cap=FINAL_CAP)
+    return subpixel(Q, LA, LB, lab, closed, span=FINAL_SPAN, cap=FINAL_CAP,
+                    lb_local=lb_local)
 
 
 def _corners(P, deg=40.0, look=None):
@@ -660,12 +692,53 @@ def _circ(Q):
     return cx, cy, r, float(np.abs(d - r).max())
 
 
+def _fit_ok(Q):
+    """ทาบวงกลมแบบทนจุดหลุด -> (cx, cy, r) หรือ None
+
+    ⭕ วงกลมจริงในภาพจริงมักมีจุดสะดุดไม่กี่จุด (คลื่น JPEG · จุดต่อภูมิภาค)
+       ถ้าตัดสินด้วย "ค่าคลาดสูงสุด" อย่างเดียว จุดเดียวก็ล้มทั้งวง
+       -> ตัดสินด้วยควอนไทล์ แล้วฟิตซ้ำโดยตัดจุดหลุดทิ้ง
+    ⚠️ แต่ต้องกันไม่ให้ลบของจริง: ถ้าจุดหลุด "ต่อกันยาว" นั่นคือรูปทรงจริง
+       (บิ่น เว้า หยัก) ไม่ใช่เสียงรบกวน -> ห้ามทาบ
+    """
+    c = _circ(Q)
+    if c is None:
+        return None
+    cx, cy, r, mx = c
+    if mx <= CIRC_TOL:
+        return (cx, cy, r)
+    if CIRC_Q <= 0 or mx > CIRC_MAX:
+        return None
+    d = np.abs(np.hypot(Q[:, 0] - cx, Q[:, 1] - cy) - r)
+    if float(np.percentile(d, CIRC_Q)) > CIRC_TOL:
+        return None
+    bad = d > CIRC_TOL
+    if float(bad.mean()) > CIRC_OUT:
+        return None
+    # จุดหลุดที่ต่อกันยาว = รูปทรงจริง ไม่ใช่เสียงรบกวน
+    run = best = 0
+    for v in bad:
+        run = run + 1 if v else 0
+        if run > best:
+            best = run
+    if best > CIRC_RUN:
+        return None
+    c2 = _circ(Q[~bad])
+    if c2 is None:
+        return None
+    cx, cy, r, _ = c2
+    d2 = np.abs(np.hypot(Q[:, 0] - cx, Q[:, 1] - cy) - r)
+    if float(np.percentile(d2, CIRC_Q)) > CIRC_TOL or float(d2.max()) > CIRC_MAX:
+        return None
+    return (cx, cy, r)
+
+
 def _to_circ(B, i, j, closed, n):
     """ถ้าช่วงนี้เป็นส่วนโค้งจริง ดึงจุดเข้าวงกลมพอดี -> โค้งได้สัดส่วนถูกต้อง"""
-    c = _circ(B[i:j + 1])
-    if c is None or c[3] > CIRC_TOL:
+    c = _fit_ok(B[i:j + 1])
+    if c is None:
         return False
-    cx, cy, r, _ = c
+    cx, cy, r = c
     a0 = i if (closed or i > 0) else 1
     a1 = j if (closed or j < n - 1) else n - 2
     if a1 < a0:
@@ -677,6 +750,96 @@ def _to_circ(B, i, j, closed, n):
         return False
     B[a0:a1 + 1] = np.array([cx, cy]) + V * (r / L)[:, None]
     return True
+
+
+def circ_consensus(pts):
+    """🤝 ท่อนโค้งที่เป็น 'วงกลมวงเดียวกัน' ต้องใช้วงร่วมกัน — แก้ 'รอยสะดุด' ที่จุดต่อ
+
+    ⚠️ วัดจริง 2026-08-17 (ผู้ใช้ทัก "ขอบวงกลมขาวยังยึกยืออยู่เลย" รอบที่สาม):
+       ขอบวงกลมขาวถูกจุดต่อหั่นเป็น 6 ท่อน แต่ละท่อนทาบวงกลมของตัวเอง
+       ได้รัศมี 584.7 / 584.7 / 584.8 / 584.8 / 584.9 / 585.0 — ต่างกันไม่ถึง 0.3 px
+       แต่ศูนย์กลางก็เลื่อนคนละนิด รวมแล้วเห็นเป็น 'ขั้นบันได' ที่รอยต่อ 6 จุดรอบวง
+       (ท่อนเดี่ยว ๆ วัดได้เรียบ 0.16 px แต่พอต่อกันจริงเห็นสะดุดชัดด้วยตา)
+    ✅ จับท่อนที่ได้วงใกล้กันมารวมกัน ฟิตใหม่ครั้งเดียวจากจุดทั้งหมด แล้วดึงทุกท่อนเข้าวงนั้น
+    🔒 ปลายท่อนที่ไปต่อกับเส้นที่ไม่ได้อยู่ในวง ห้ามขยับ (ไม่งั้นรูปแตกเป็นรู)
+    """
+    if CIRC_SAME <= 0 or len(pts) < 2:
+        return
+    cand = {}
+    for k, P in pts.items():
+        if len(P) < CIRC_MINPTS:
+            continue
+        c = _fit_ok(P)
+        if c is not None:
+            cand[k] = c
+    if len(cand) < 2:
+        return
+    # โหนดปลาย -> รายการ (โซ่, ตำแหน่งในโซ่) เอาไว้ขยับปลายพร้อมกันทุกเส้น
+    ends = {}
+    for k in pts:
+        if k[0] == k[-1]:
+            continue
+        ends.setdefault(k[0], []).append((k, 0))
+        ends.setdefault(k[-1], []).append((k, -1))
+    ks = sorted(cand, key=lambda k: -len(pts[k]))
+    used = set()
+    for k0 in ks:
+        if k0 in used:
+            continue
+        cx, cy, r = cand[k0]
+        grp = [k0]
+        used.add(k0)
+        for k2 in ks:
+            if k2 in used:
+                continue
+            x2, y2, r2 = cand[k2]
+            if abs(r2 - r) <= CIRC_SAME and math.hypot(x2 - cx, y2 - cy) <= CIRC_SAME:
+                grp.append(k2)
+                used.add(k2)
+        if len(grp) < 2:
+            continue
+        Q = np.concatenate([pts[k] for k in grp], 0)
+        c = _circ(Q)
+        if c is None:
+            continue
+        cx, cy, r = c[0], c[1], c[2]
+        # 🧲 ดูดท่อนสั้น ๆ ที่นอนอยู่บนวงนี้อยู่แล้วเข้ามาด้วย
+        #    ⚠️ วัดจริง: ขอบวงกลมขาวมี 22 ท่อนที่ทาบวงได้ แต่ยังมีท่อนสั้นคั่นอยู่
+        #       ท่อนสั้นไม่ถึงเกณฑ์ยาวขั้นต่ำ เลยถูกฟิตอิสระ -> เห็นเป็นขั้นบันไดคั่นเป็นช่วง ๆ
+        for k2, P2 in pts.items():
+            if k2 in used or len(P2) < 8:
+                continue
+            d2 = np.abs(np.hypot(P2[:, 0] - cx, P2[:, 1] - cy) - r)
+            if float(d2.max()) <= CIRC_TOL:
+                grp.append(k2)
+                used.add(k2)
+        C = np.array([cx, cy])
+        for k in grp:
+            P = pts[k]
+            V = P - C
+            L = np.hypot(V[:, 0], V[:, 1])
+            ok = L > 1e-6
+            if not ok.any():
+                continue
+            NP = P.copy()
+            NP[ok] = C + V[ok] * (r / L[ok])[:, None]
+            if k[0] == k[-1]:
+                NP[-1] = NP[0]
+            pts[k] = NP
+        # 🔗 ปลายท่อนคือ "จุดต่อ" ที่เส้นอื่นมาชนด้วย -> ต้องลากเส้นอื่นตามมาให้ตรงจุดเดียวกัน
+        #    ⚠️ วัดจริง 2026-08-17: ถ้าไม่ขยับตาม จะเหลือ 'ฟันเลื่อย' เล็ก ๆ ที่จุดต่อรอบวง
+        #       (ผู้ใช้เห็นเป็นรอยสะดุด 4-6 จุดรอบขอบวง แม้ตัวเส้นจะกลมสนิทแล้ว)
+        for k in grp:
+            if k[0] == k[-1]:
+                continue
+            for idx, nd in ((0, k[0]), (-1, k[-1])):
+                q = pts[k][idx]
+                for (k2, i2) in ends.get(nd, ()):
+                    if k2 == k:
+                        continue
+                    P2 = pts[k2]
+                    if math.hypot(P2[i2][0] - q[0], P2[i2][1] - q[1]) <= CIRC_SAME * 2.0:
+                        P2[i2] = q
 
 
 def _turn(P, i, j):
@@ -1003,9 +1166,20 @@ def build_paths(reg, tol=None, deg=40.0, mean=None, lab=None):
                     if mean is not None and lab is not None and len(key) > 2:
                         a, b = _flank(reg, key[0], key[1])
                         if a > 0 and b > 0 and a != b:
-                            P = refine(P, mean[a], mean[b], lab, cl,
+                            _bg = (a == BG_ID[0] or b == BG_ID[0])
+                            if b == BG_ID[0]:
+                                _la, _lb = mean[a], mean[b]
+                            elif a == BG_ID[0]:
+                                _la, _lb = mean[b], mean[a]
+                                # กลับด้าน -> ต้องกลับทิศเส้นด้วยถึงจะถอยออกถูกฝั่ง
+                                P = P[::-1].copy()
+                            else:
+                                _la, _lb = mean[a], mean[b]
+                            P = refine(P, _la, _lb, lab, cl,
                                        look=int(np.clip(len(P) // 10, LOOK_MIN, LOOK)),
-                                       free_ends=FREE_ENDS)
+                                       free_ends=FREE_ENDS, lb_local=_bg)
+                            if a == BG_ID[0]:
+                                P = P[::-1].copy()
                     pts[key] = P
             rows.append(row)
         plan[r] = rows
@@ -1026,6 +1200,12 @@ def build_paths(reg, tol=None, deg=40.0, mean=None, lab=None):
             P[0] = fix[key[0]]
         if key[-1] in fix:
             P[-1] = fix[key[-1]]
+
+    # ── จังหวะ 2.5: ท่อนที่เป็นวงกลมวงเดียวกัน ให้ใช้วงร่วมกัน ──
+    try:
+        circ_consensus(pts)
+    except Exception:
+        pass
 
     # ── จังหวะ 3: ฟิตเส้นโค้ง (เส้นละครั้งเดียว ใช้ร่วมกันสองฝั่ง) ──
     cache = {}
@@ -1234,6 +1414,34 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     reg = res["reg"]
     if reg is None or int(reg.max()) <= 0:
         return []
+    # ══════════════════════════════════════════════════════════════
+    # 🔗 รวม "พื้นไล่สี" ทุกก้อนเป็นก้อนเดียวก่อนไล่เส้น
+    # ⚠️ วัดจริง 2026-08-17: พื้นรุ้งถูกแบ่งเป็น 11 ภูมิภาคที่มาแตะขอบวงกลมขาว
+    #    ขอบวงยาว 5,740 จุด แต่มีจุดต่อ 21 จุด -> ถูกหั่นเป็น 21 ท่อน ฟิตแยกกัน
+    #    แต่ละท่อนได้วงกลมของตัวเอง ไม่ตรงกัน -> รัศมีแกว่ง ±25 px (ต้นฉบับ ±5)
+    #    = อาการ "ขอบวงกลมยึกยือ" ที่ผู้ใช้ทักซ้ำ
+    # ✅ ยังไงพื้นไล่สีก็ถูกทิ้งอยู่แล้ว (ปล่อยชั้นไล่สีเดิมโชว์) ไม่มีเหตุผลต้องแยก
+    #    พอรวมเป็นก้อนเดียว จุดต่อหายหมด ขอบวงเป็นเส้นปิดเส้นเดียว
+    #    -> ตัวทาบวงกลมจับได้ทั้งวง = กลมจริง
+    # ══════════════════════════════════════════════════════════════
+    BG_ID[0] = -1
+    n0 = int(reg.max()) + 1
+    _ins = np.bincount(reg.reshape(-1), weights=keep.reshape(-1).astype(np.float64),
+                       minlength=n0)
+    _tot = np.bincount(reg.reshape(-1), minlength=n0)
+    _fr = _ins / np.maximum(_tot, 1)
+    _bg = [r for r in range(1, n0) if _tot[r] > 0 and _fr[r] < 0.5]
+    if len(_bg) > 1:
+        _tgt = max(_bg, key=lambda r: _tot[r])
+        _lut = np.arange(n0, dtype=reg.dtype)
+        for r in _bg:
+            _lut[r] = _tgt
+        reg = _lut[reg]
+        res["reg"] = reg
+        _w = np.array([_tot[r] for r in _bg], np.float64)
+        res["mean"][_tgt] = (res["mean"][_bg] * _w[:, None]).sum(0) / max(1.0, _w.sum())
+        res["area"][_tgt] = float(_w.sum())
+        BG_ID[0] = int(_tgt)
     _pg(66, "ไล่ขอบร่วม")
     lab = VE.labf(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).reshape(-1, 3)
                   ).reshape(H, W, 3).astype(np.float64)

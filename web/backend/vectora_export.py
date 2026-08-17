@@ -237,14 +237,25 @@ def raster_png(res, px_scale=1.0):
         # ⚡ ทำงานเฉพาะกรอบของชั้นนี้ ไม่กางเต็มผืนทุกชั้น (2,476 ชั้น × ผืนเต็ม = 36 วิ)
         polys = []
         x0 = y0 = 10 ** 9; x1 = y1 = -10 ** 9
+        # ══════════════════════════════════════════════════════════════
+        # ⭕ ความละเอียดของ "การกางเส้นโค้ง" และ "พิกัดตอนถม" ต้องอิงภาพปลายทาง
+        # ⚠️ วัดจริง 2026-08-17 (ต้นเหตุจริงของ "ขอบวงกลมยึกยือ" ที่ผู้ใช้ทัก 3 รอบ):
+        #    เส้นเวกเตอร์กลมสนิทอยู่แล้ว (ค่าคลาดจากวงกลม 0.04-0.09 px)
+        #    แต่ตัววาด PNG กางโค้งหยาบ 0.15 หน่วยภาพ + ปัดพิกัดเป็นจำนวนเต็ม
+        #    -> วงรัศมี 180 ถูกซอยเป็นเหลี่ยมทุก ๆ 15 หน่วย ท้องเหลี่ยมลึก 0.15
+        #       เห็นเป็น "ขั้นบันได" ชัดมากตอนซูฒ (ไฟล์ SVG/PDF ไม่มีปัญหานี้เลย)
+        # ✅ กางละเอียดตามอัตราขยายจริง + ถมด้วยพิกัดเศษ 1/16 พิกเซล (shift=4)
+        # ══════════════════════════════════════════════════════════════
         for it in L["items"]:
-            pts = _flat(it, tol=max(0.15, 0.45 / f))
+            pts = _flat(it, tol=max(0.02, 0.12 / f))
             if len(pts) < 3:
                 continue
-            arr = np.round(np.asarray(pts, np.float64) * f).astype(np.int32)
+            arr = np.asarray(pts, np.float64) * f
             polys.append(arr)
-            x0 = min(x0, int(arr[:, 0].min())); x1 = max(x1, int(arr[:, 0].max()))
-            y0 = min(y0, int(arr[:, 1].min())); y1 = max(y1, int(arr[:, 1].max()))
+            x0 = min(x0, int(np.floor(arr[:, 0].min())))
+            x1 = max(x1, int(np.ceil(arr[:, 0].max())))
+            y0 = min(y0, int(np.floor(arr[:, 1].min())))
+            y1 = max(y1, int(np.ceil(arr[:, 1].max())))
         if not polys:
             continue
         x0 = max(0, x0); y0 = max(0, y0)
@@ -254,10 +265,12 @@ def raster_png(res, px_scale=1.0):
         bw, bh = x1 - x0 + 1, y1 - y0 + 1
         m = np.zeros((bh, bw), np.uint8)
         t = np.zeros((bh, bw), np.uint8)
-        off = np.array([[x0, y0]], np.int32)
+        off = np.array([[x0, y0]], np.float64)
+        _SH = 4                                       # เศษพิกเซล 1/16
         for arr in polys:
             t[:] = 0
-            cv2.fillPoly(t, [arr - off], 1)
+            cv2.fillPoly(t, [np.round((arr - off) * (1 << _SH)).astype(np.int32)],
+                         1, lineType=cv2.LINE_8, shift=_SH)
             np.bitwise_xor(m, t, out=m)               # even-odd -> รูโปร่งถูกต้อง
         if not m.any():
             continue
