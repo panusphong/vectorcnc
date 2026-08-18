@@ -12251,6 +12251,41 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
         <div style="flex:1;min-width:300px"><div class="vinfo" id="vecInfo"></div></div>
       </div>
       <div id="vecNotes"></div>
+      <!-- ══════════════════════════════════════════════════════════
+           ✂️ ตัดพื้นหลัง — ขั้นเริ่มต้นของการทำ source file (พี่สั่ง 2026-08-18)
+           "ส่วนใหญ่จะมาภาพไม่คม ไม่ชัด และมีพื้นหลังติดมา"
+           หลังบ้านเลือกวิธีเอง: พื้นสีเดียว -> ไล่สีระดับพิกเซล · ภาพถ่าย -> โมเดล AI
+           แล้วขัดขอบ + ล้างคราบสีพื้นเก่าทั้งสองทาง (ดู vectora_cutout.py)
+           ══════════════════════════════════════════════════════════ -->
+      <div id="vecCutWrap" style="margin-top:14px;padding:10px 12px;border:1px dashed #34d399;
+           border-radius:10px;background:#f0fdf4">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="vbtn alt" id="vecCut" style="border-color:#10b981;color:#047857">✂️ ตัดพื้นหลัง</button>
+          <label style="font-size:12px;color:#047857;cursor:pointer;display:flex;align-items:center;gap:5px">
+            <input type="checkbox" id="vecCutHole" checked> เจาะไส้ในที่เป็นสีพื้น</label>
+          <label style="font-size:12px;color:#047857;cursor:pointer;display:flex;align-items:center;gap:5px">
+            <input type="checkbox" id="vecCutTrim"> ตัดขอบว่างรอบนอก</label>
+          <span id="vecCutMsg" style="font-size:11.5px;color:#065f46"></span>
+        </div>
+        <div id="vecCutBox" style="display:none;margin-top:10px">
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+            <div style="width:190px;height:190px;border:1px solid var(--line);border-radius:10px;
+                 display:grid;place-items:center;overflow:hidden;
+                 background-color:#fff;background-size:18px 18px;background-position:0 0,9px 9px;
+                 background-image:linear-gradient(45deg,#dfe5ec 25%,transparent 25%,transparent 75%,#dfe5ec 75%),linear-gradient(45deg,#dfe5ec 25%,transparent 25%,transparent 75%,#dfe5ec 75%)">
+              <img id="vecCutImg" style="max-width:100%;max-height:100%;display:block">
+            </div>
+            <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">
+              <div id="vecCutWhy" style="font-size:11.5px;color:#065f46;line-height:1.6"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="vbtn go" id="vecCutUse" style="background:#10b981">✅ ใช้ภาพนี้แปลงต่อ</button>
+                <a class="vbtn alt" id="vecCutDl" download="cutout.png" style="text-decoration:none">⬇️ PNG โปร่ง</a>
+                <button class="vbtn alt" id="vecCutUndo">↩︎ กลับไปใช้ภาพเดิม</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <!-- 🌈 เดิมมีช่องติ๊ก "ภาพไล่สี / ภาพถ่าย" ตรงนี้
            ⚠️ 2026-08-17 ผู้ใช้สั่งตัดออก: "ไม่ต้องให้ติ๊กเลือกแล้ว กดปุ่มแปลงอย่างเดียว
               หลังบ้านไปเช็คเอาเองว่าเป็นภาพชนิดไหน"
@@ -12809,6 +12844,58 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
     fi.onchange=function(){ if(fi.files[0])take(fi.files[0]); };
 
     $('vecGo').onclick=convert; $('vecRe').onclick=convert;
+    /* ✂️ ตัดพื้นหลัง — ทั้งก้อนแยกอิสระ ไม่แตะโค้ดแปลงเวกเตอร์เดิมเลย */
+    (function(){
+      var ORIG=null, PNG=null;
+      function msg(t,c){ var e=$('vecCutMsg'); if(e){ e.textContent=t||''; e.style.color=c||'#065f46'; } }
+      function go(){
+        if(!F){ msg('ยังไม่ได้เลือกไฟล์','#b91c1c'); return; }
+        if(!ORIG) ORIG=F;
+        var b=$('vecCut'), old=b.innerHTML;
+        b.disabled=true; b.innerHTML='⏳ กำลังตัด…'; msg('กำลังวิเคราะห์พื้นหลัง…');
+        var fd=new FormData();
+        fd.append('file',ORIG); fd.append('mode','auto');
+        fd.append('holes',$('vecCutHole').checked?'1':'0');
+        fd.append('trim',$('vecCutTrim').checked?'1':'0');
+        fetch(API+'/api/vec/cutout',{method:'POST',body:fd}).then(function(r){
+          return r.text().then(function(t){
+            var j=null; try{ j=JSON.parse(t); }catch(_e){}
+            if(!r.ok||!j) throw new Error((j&&j.detail)||('HTTP '+r.status));
+            return j; });
+        }).then(function(j){
+          PNG=j.png; $('vecCutImg').src=PNG; $('vecCutDl').href=PNG;
+          $('vecCutBox').style.display='';
+          var i=j.info||{};
+          $('vecCutWhy').innerHTML='<b>'+(i.mode==='ai'?'ใช้โมเดลแยกวัตถุ':'พื้นสีเดียว — ไล่สีระดับพิกเซล')+'</b><br>'
+            +esc(i.why||'')+'<br>เหลือเนื้องาน '+(i.kept_pct||0)+'% ของภาพ · ขอบเกลี่ยละเอียด '+(i.soft_px||0).toLocaleString()+' จุด'
+            +'<br>ไฟล์ '+kb(j.bytes||0);
+          msg('ตัดเสร็จแล้ว — ดูผลด้านล่าง ถ้าพอใจกด "ใช้ภาพนี้แปลงต่อ"');
+        }).catch(function(e){
+          msg('ตัดพื้นหลังไม่สำเร็จ — '+(e.message||e),'#b91c1c');
+        }).then(function(){ b.disabled=false; b.innerHTML=old; });
+      }
+      function dataURLtoFile(u,name){
+        var p=u.split(','), bin=atob(p[1]), n=bin.length, a=new Uint8Array(n);
+        while(n--) a[n]=bin.charCodeAt(n);
+        return new File([a],name,{type:'image/png'});
+      }
+      $('vecCut').onclick=go;
+      $('vecCutUse').onclick=function(){
+        if(!PNG)return;
+        if(!ORIG) ORIG=F;
+        take(dataURLtoFile(PNG,'cutout.png'));
+        msg('ใช้ภาพที่ตัดพื้นหลังแล้วเป็นไฟล์ตั้งต้น');
+        $('vecCutBox').style.display='none';
+      };
+      $('vecCutUndo').onclick=function(){
+        if(ORIG) take(ORIG);
+        $('vecCutBox').style.display='none'; msg('กลับไปใช้ภาพเดิมแล้ว');
+      };
+      $('vecCutHole').onchange=$('vecCutTrim').onchange=function(){ if(PNG) go(); };
+      var _t=take;
+      take=function(f){ if(f && f.name!=='cutout.png'){ ORIG=f; PNG=null;
+        try{ $('vecCutBox').style.display='none'; msg(''); }catch(_e){} } return _t(f); };
+    })();
     $('vecBack1').onclick=function(){ step(1); }; $('vecBack2').onclick=function(){ step(2); };
     $('vecDl').onclick=dl; $('vecToApp').onclick=toApp;
 
