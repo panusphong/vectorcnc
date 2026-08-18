@@ -35,6 +35,14 @@ except Exception:                                   # รันแบบไฟ�
     import vectora_engine as VE
     import vectora_export as VX
 
+try:
+    from . import vectora_cutout as CU
+except Exception:
+    try:
+        import vectora_cutout as CU
+    except Exception:
+        CU = None
+
 router = APIRouter(prefix="/api/vec", tags=["vectora"])
 
 MAX_BYTES = 30 * 1024 * 1024
@@ -222,6 +230,45 @@ def _blur_pct(arr):
 
 
 # ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════
+# ✂️ ตัดพื้นหลัง — ขั้นแรกของการทำ source file (พี่สั่ง 2026-08-18)
+#    คืน PNG โปร่งกลับไปเป็น base64 เพื่อให้หน้าเว็บเอาไปทั้งพรีวิว ทั้งดาวน์โหลด
+#    และทั้ง "ใช้เป็นไฟล์ตั้งต้นแทนของเดิม" ได้โดยไม่ต้องยิงซ้ำ
+# ══════════════════════════════════════════════════════════════════
+@router.post("/cutout")
+async def cutout(file: UploadFile = File(...),
+                 mode: str = Form("auto"),      # auto | flat | ai
+                 holes: int = Form(1),          # เจาะพื้นที่สีพื้นที่ถูกลายล้อมไว้
+                 trim: int = Form(0)):          # ตัดขอบโปร่งรอบนอกทิ้ง
+    if CU is None:
+        raise HTTPException(503, "ตัวตัดพื้นหลังยังไม่พร้อมใช้งานบนเครื่องนี้")
+    raw = await file.read()
+    if len(raw) > MAX_BYTES:
+        raise HTTPException(413, "ไฟล์ใหญ่เกิน 30 MB")
+    im = _open(raw, file.filename or "")
+    arr = np.asarray(im.convert("RGB"), np.uint8)
+
+    def _work():
+        out, info = CU.cutout(arr, mode=str(mode or "auto"), holes=bool(int(holes)))
+        if int(trim):
+            out = CU.trim(out, pad=2)
+            info["trimmed"] = [int(out.shape[1]), int(out.shape[0])]
+        buf = io.BytesIO()
+        Image.fromarray(out, "RGBA").save(buf, "PNG", optimize=True)
+        return buf.getvalue(), info
+
+    try:
+        png, info = await run_in_threadpool(_work)
+    except MemoryError:
+        raise HTTPException(507, "ภาพใหญ่เกินกำลังเครื่องตอนนี้ ลองย่อภาพก่อน")
+    except Exception as e:
+        raise HTTPException(500, "ตัดพื้นหลังไม่สำเร็จ: %s" % e)
+    import base64
+    return JSONResponse({"ok": True, "info": info, "bytes": len(png),
+                         "png": "data:image/png;base64,"
+                                + base64.b64encode(png).decode("ascii")})
+
+
 @router.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     raw = await file.read()

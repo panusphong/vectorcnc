@@ -49,6 +49,14 @@ REGUL = 10             # จำนวนรอบเกลาแผนที่�
 REGUL_THR = 5          # ต้องมีเพื่อนบ้านกี่เสียงจาก 8 ถึงจะพลิกตาม
 BG_ID = [-1]           # id ของ 'พื้นไล่สีที่รวมเป็นก้อนเดียว' (-1 = ไม่มี)
 PAL_SNAP = 1           # ดึงสีทุกชิ้นเข้าจานสีของเอนจิ้น (0 = ใช้สีเฉลี่ยจริง)
+CORE_FIT = 2           # กร่อนขอบกี่ชั้นก่อนเฉลี่ยสีของภูมิภาค (0 = ปิด)
+CORE_MIN = 12          # ต้องเหลือเนื้อในกี่พิกเซลถึงจะใช้สีใหม่
+SNAP_SMALL = 0.0006    # ชิ้นที่เล็กกว่าสัดส่วนนี้ของภาพ ให้ดึงสีเข้าจานเสมอ (0 = ปิด)
+# 🧽 กลืนเศษ "สีผสมที่ขอบ" (ดูหมายเหตุยาวใน planar_layers)
+BLEND_AREA = 0.00025   # ชิ้นเล็กกว่าสัดส่วนนี้ของภาพเท่านั้นที่พิจารณา (0 = ปิด)
+BLEND_COVER = 0.85     # เพื่อนบ้านสองรายแรกต้องกินขอบรวมกันอย่างน้อยเท่านี้
+BLEND_T = 0.18         # สีต้องอยู่ "กลาง ๆ" ระหว่างสองราย ไม่ใช่ชิดปลาย
+BLEND_DE = 9.0         # และห่างจากเส้นเชื่อมสองสีไม่เกินนี้ (หน่วย Lab)
 SLIVER = 0.0           # ⛔ ปิดไว้ — วัดแล้วกินรายละเอียดจริง (ΔE ขอบ 7.10 -> 7.41)
 
 LOOK = 10              # หน้าต่างหามุม (จุด)
@@ -752,6 +760,85 @@ def _to_circ(B, i, j, closed, n):
     return True
 
 
+def _dissolve_blend(reg, res, lim):
+    """ยุบชิ้นจิ๋วที่ 'สีเป็นส่วนผสมของเพื่อนบ้านสองข้าง' เข้ากับข้างที่ใกล้กว่า"""
+    n = int(reg.max()) + 1
+    if n < 3:
+        return reg
+    area = np.asarray(res["area"], np.float64)
+    mean = np.asarray(res["mean"], np.float64)
+    small = [r for r in range(1, n) if 0 < area[r] <= lim]
+    if not small:
+        return reg
+    # นับความยาวขอบที่ติดกันของทุกคู่ (4 ทิศ)
+    pairs = {}
+    for A, B in ((reg[:, :-1], reg[:, 1:]), (reg[:-1, :], reg[1:, :])):
+        d = A != B
+        if not d.any():
+            continue
+        a = A[d].reshape(-1).astype(np.int64)
+        b = B[d].reshape(-1).astype(np.int64)
+        lo = np.minimum(a, b); hi = np.maximum(a, b)
+        k = lo * n + hi
+        u, c = np.unique(k, return_counts=True)
+        for kk, cc in zip(u.tolist(), c.tolist()):
+            pairs[kk] = pairs.get(kk, 0) + int(cc)
+    nb = {}
+    for kk, cc in pairs.items():
+        a, b = divmod(kk, n)
+        if a <= 0 or b <= 0:
+            continue
+        nb.setdefault(a, []).append((cc, b))
+        nb.setdefault(b, []).append((cc, a))
+    lut = np.arange(n, dtype=np.int64)
+
+    def _root(r):
+        while lut[r] != r:
+            r = lut[r]
+        return r
+
+    hit = 0
+    for r in sorted(small, key=lambda q: area[q]):
+        ns = sorted(nb.get(r, ()), reverse=True)
+        if len(ns) < 2:
+            continue
+        tot = float(sum(c for c, _ in ns))
+        (c1, a1), (c2, a2) = ns[0], ns[1]
+        if tot <= 0 or (c1 + c2) / tot < BLEND_COVER:
+            continue
+        a1 = _root(a1); a2 = _root(a2)
+        if a1 == a2 or a1 == _root(r) or a2 == _root(r):
+            continue
+        P, Q, X = mean[a1], mean[a2], mean[r]
+        u = Q - P
+        L2 = float((u * u).sum())
+        if L2 < 25.0:                     # เพื่อนบ้านสองรายสีใกล้กันเกินไป ตัดสินไม่ได้
+            continue
+        t = float(((X - P) * u).sum()) / L2
+        if not (BLEND_T <= t <= 1.0 - BLEND_T):
+            continue
+        perp = X - (P + u * t)
+        if float(np.sqrt((perp * perp).sum())) > BLEND_DE:
+            continue
+        lut[_root(r)] = a1 if t < 0.5 else a2
+        hit += 1
+    if not hit:
+        return reg
+    for r in range(n):
+        lut[r] = _root(r)
+    new = lut[reg].astype(reg.dtype)
+    # รวมพื้นที่/สีของชิ้นที่ถูกกลืนเข้าไปในเจ้าบ้าน
+    w = np.bincount(lut, weights=area, minlength=n)
+    m2 = np.zeros_like(mean)
+    for c in range(3):
+        m2[:, c] = np.bincount(lut, weights=area * mean[:, c], minlength=n)
+    ok = w > 0
+    m2[ok] /= w[ok, None]
+    res["mean"] = np.where(ok[:, None], m2, mean)
+    res["area"] = np.where(ok, w, area)
+    return new
+
+
 def circ_consensus(pts):
     """🤝 ท่อนโค้งที่เป็น 'วงกลมวงเดียวกัน' ต้องใช้วงร่วมกัน — แก้ 'รอยสะดุด' ที่จุดต่อ
 
@@ -1415,6 +1502,24 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     if reg is None or int(reg.max()) <= 0:
         return []
     # ══════════════════════════════════════════════════════════════
+    # 🧽 กลืน "เศษสีผสม" — ชิ้นจิ๋วที่สีของมันคือสีของเพื่อนบ้านสองข้างผสมกัน
+    # ⚠️ วัดจริง 2026-08-17 (ผู้ใช้วงโลโก้เล็กว่า "ยังไม่ชัด ยังบิดเบี้ยว"):
+    #    ตัวอักษร LINEMAN สูงจริง ~7 px · ช่องว่างระหว่างตัวอักษรกว้าง 1-2 px
+    #    ขอบเกลี่ยของ JPEG ทำให้ช่องว่างกลายเป็น "เทากลาง" ซึ่งเป็นสีของมันเอง
+    #    -> เกิดเป็นก้อนเทาเกาะอยู่ระหว่างตัวอักษร (ผู้ใช้เห็นเป็นรอยเปื้อน)
+    #    เช่นเดียวกับไส้ตัว o ของ wongnai ที่กลายเป็นฟ้าอ่อนแทนที่จะเป็นขาว
+    # ✅ ถ้าชิ้นเล็ก + มีเพื่อนบ้านหลักแค่สองราย + สีมันนอนอยู่บนเส้นเชื่อมสีสองราย
+    #    = มันคือ 'สีผสมที่ขอบ' ไม่ใช่ของจริง -> ยุบเข้ากับข้างที่ใกล้กว่า
+    # ⛔ ต่างจาก 'ลบเศษเสี้ยนตามความบาง' ที่เคยลองแล้วพัง (ΔE 7.10 -> 7.41)
+    #    อันนั้นตัดสินด้วยรูปร่างอย่างเดียว จึงกินรายละเอียดจริงไปด้วย
+    # ══════════════════════════════════════════════════════════════
+    if BLEND_AREA > 0:
+        try:
+            reg = _dissolve_blend(reg, res, float(BLEND_AREA) * H * W)
+            res["reg"] = reg
+        except Exception:
+            pass
+    # ══════════════════════════════════════════════════════════════
     # 🔗 รวม "พื้นไล่สี" ทุกก้อนเป็นก้อนเดียวก่อนไล่เส้น
     # ⚠️ วัดจริง 2026-08-17: พื้นรุ้งถูกแบ่งเป็น 11 ภูมิภาคที่มาแตะขอบวงกลมขาว
     #    ขอบวงยาว 5,740 จุด แต่มีจุดต่อ 21 จุด -> ถูกหั่นเป็น 21 ท่อน ฟิตแยกกัน
@@ -1445,6 +1550,38 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     _pg(66, "ไล่ขอบร่วม")
     lab = VE.labf(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).reshape(-1, 3)
                   ).reshape(H, W, 3).astype(np.float64)
+    # ══════════════════════════════════════════════════════════════
+    # 🎯 เอาสีจาก "เนื้อใน" ของภูมิภาค ไม่ใช่ทั้งก้อน
+    # ⚠️ วัดจริง 2026-08-17 (ผู้ใช้วงโลโก้เล็ก LINEMAN/wongnai ว่า "ยังไม่ชัด"):
+    #    ตัวอักษร "nai" ในวงส้ม สูงจริงแค่ ~8 px ในไฟล์ต้นฉบับ ขอบเกลี่ยกินเกือบทั้งตัว
+    #    ค่าเฉลี่ยทั้งก้อนจึงเป็น "ขาวผสมส้ม" = สีครีม (245,213,176) แทนที่จะเป็นขาว
+    #    -> ตาเห็นเป็นตัวหนังสือจาง ๆ ไม่คม ทั้งที่รูปทรงถูกแล้ว
+    # ✅ กร่อนขอบทิ้งก่อนแล้วค่อยเฉลี่ย = ได้สีจริงของตัวอักษร (ขาว)
+    #    ก้อนที่เล็กจนกร่อนแล้วไม่เหลือ ใช้ค่าเดิม (ไม่เสี่ยง)
+    # ══════════════════════════════════════════════════════════════
+    if CORE_FIT > 0:
+        try:
+            _in = np.ones(reg.shape, bool)
+            for _ in range(int(CORE_FIT)):
+                _e = _in.copy()
+                for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1),
+                               (-1, -1), (-1, 1), (1, -1), (1, 1)):
+                    _s = np.roll(np.roll(reg, dy, 0), dx, 1)
+                    _e &= (_s == reg)
+                _e[0, :] = _e[-1, :] = _e[:, 0] = _e[:, -1] = False
+                _in = _e
+            _n9 = int(reg.max()) + 1
+            _idx = reg[_in].reshape(-1)
+            _cnt = np.bincount(_idx, minlength=_n9).astype(np.float64)
+            _sum = np.stack([np.bincount(_idx, weights=lab[:, :, _c][_in],
+                                         minlength=_n9) for _c in range(3)], 1)
+            _ok = _cnt >= CORE_MIN
+            if _ok.any():
+                _m2 = res["mean"].copy()
+                _m2[_ok] = _sum[_ok] / _cnt[_ok, None]
+                res["mean"] = _m2
+        except Exception:
+            pass
     items, _, _ = build_paths(reg, mean=res["mean"], lab=lab)
     if not items:
         return []
@@ -1463,10 +1600,25 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     #    ✅ สแนปเข้าจานที่เอนจิ้นเลือกไว้ = สีสะอาด เท่าที่ภาพมีจริง
     _mean = res["mean"]
     _snap = PAL_SNAP if snap is None else snap
-    if _snap and pal_lab is not None and len(pal_lab) >= 2:
+    if pal_lab is not None and len(pal_lab) >= 2:
         _p = np.asarray(pal_lab, np.float64)
         _d = ((_mean[:, None, :] - _p[None, :, :]) ** 2).sum(2)
-        _mean = _p[_d.argmin(1)]
+        _sn = _p[_d.argmin(1)]
+        if _snap:
+            _mean = _sn
+        elif SNAP_SMALL > 0:
+            # ══════════════════════════════════════════════════════
+            # 🔍 ภาพที่มีพื้นไล่สีจริง ห้ามสแนปทั้งกระดาน (วัดแล้วพื้นรุ้งเสียเฉด)
+            #    แต่ "ชิ้นจิ๋ว" ต่างออกไป — เล็กจนขอบเกลี่ยกินเกือบทั้งชิ้น
+            #    ค่าเฉลี่ยจึงเป็นสีผสม ไม่ใช่สีจริง (ตัว nai ในวงส้ม ได้สีครีมแทนขาว)
+            # ✅ สแนปเฉพาะชิ้นที่เล็กกว่าเกณฑ์ = ตัวอักษร/โลโก้จิ๋วได้สีจริงคืนมา
+            #    พื้นไล่สีก้อนใหญ่ไม่ถูกแตะเลย
+            # ══════════════════════════════════════════════════════
+            _lim = float(SNAP_SMALL) * H * W
+            _sm = np.asarray(res["area"], np.float64) <= _lim
+            if _sm.any():
+                _mean = _mean.copy()
+                _mean[_sm] = _sn[_sm]
     rgbs = cv2.cvtColor(VE.unlabf(_mean.astype(np.float32)).reshape(-1, 1, 3),
                         cv2.COLOR_LAB2RGB).reshape(-1, 3)
     area = res["area"]

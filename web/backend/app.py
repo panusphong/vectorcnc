@@ -45,7 +45,7 @@ def _psd_ok():
         return False
 
 
-BUILD_TAG = "2026-08-17-circle-edge"
+BUILD_TAG = "2026-08-18-cutout"
 # 📌 สรุปอัปเดตล่าสุดแบบ "หนึ่งบรรทัด" สำหรับโชว์บนหัวเว็บ
 #    (build_note ตัวเต็มยาวเป็นหน้ากระดาษ เอาไปขึ้นหัวเว็บไม่ได้)
 BUILD_SHORT = "หน้าแตกชิ้น = ที่สร้างโลโก้แบรนด์ครบจบ: ✍️ พิมพ์ข้อความฟอนต์จริง (ไทย 23 ตัว) + 🎨 ใส่พื้นหลัง/artwork"
@@ -215,6 +215,24 @@ def api_appinfo(request: Request):
     return out
 
 
+def _cut_state():
+    """✂️ สถานะตัวตัดพื้นหลัง — ดูได้ที่ /api/health ว่าโมเดลพร้อมหรือยัง"""
+    try:
+        try:
+            from . import vectora_cutout as _CU
+        except Exception:
+            import vectora_cutout as _CU
+    except Exception as _e:
+        return "โมดูลโหลดไม่ได้: %s" % str(_e)[:60]
+    try:
+        import importlib
+        importlib.import_module("rembg")
+        return "พร้อม · โมเดล %s%s" % (
+            _CU.MODEL, " (โหลดเข้าแรมแล้ว)" if _CU._SESS[1] is not None else "")
+    except Exception:
+        return "ไม่มี rembg — ใช้ทางอัลกอริทึม (พื้นสีเดียว) ได้ตามปกติ"
+
+
 @app.get("/api/health")
 def health():
     try:
@@ -264,7 +282,9 @@ def health():
                  "work_long": int(_q[0]), "trace_px": int(_q[1]),
                  # 🗺️ แผนที่ภูมิภาคระนาบ + ขอบร่วม (ถ้า note ไม่ว่าง = ตกกลับไปใช้ชั้นเดิม)
                  "planar": bool(getattr(_VE9, "PLANAR", False)),
-                 "planar_note": (getattr(_VE9, "PLANAR_NOTE", [""])[0] or "-")}
+                 "planar_note": (getattr(_VE9, "PLANAR_NOTE", [""])[0] or "-"),
+                 # ✂️ ตัดพื้นหลัง — บอกว่าโมเดลพร้อมไหม (ไม่พร้อมก็ยังตัดแบบอัลกอริทึมได้)
+                 "cutout": _cut_state()}
     except Exception as _e:
         _memq = {"mem_mb": "?", "err": str(_e)[:80]}
     return {"ok": True, "service": "VectorCNC",
