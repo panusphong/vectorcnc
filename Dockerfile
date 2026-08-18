@@ -19,6 +19,16 @@ WORKDIR /app
 COPY web/backend/requirements.txt ./req.txt
 RUN pip install --no-cache-dir -r req.txt
 
+# ══════════════════════════════════════════════════════════════════
+# ✂️ อบโมเดลตัดพื้นหลังลงในอิมเมจตั้งแต่ตอน build
+# ⚠️ ถ้าไม่ทำ: ดิสก์ของ Render เป็นชั่วคราว ทุกครั้งที่ deploy/รีสตาร์ต โมเดล 179 MB
+#    จะถูกโหลดใหม่ตอนผู้ใช้กดปุ่มครั้งแรก = ผู้ใช้คนแรกรอ 10-20 วิ แถมถ้าเน็ตขาไม่ถึง
+#    GitHub จะตัดพื้นหลังด้วยโมเดลไม่ได้เลย
+# ✅ อบไว้ในอิมเมจ = พร้อมใช้ทันทีทุกครั้ง ไม่พึ่งเน็ตตอนรัน
+# 🛟 || true เพื่อว่าถ้าโหลดไม่สำเร็จตอน build ก็ยัง build ผ่าน (ระบบมีทางสำรองอยู่แล้ว)
+ENV REMBG_HOME=/opt/rembg
+RUN python -c "from rembg import new_session; new_session('isnet-general-use')" || true
+
 # ก๊อป engine + เว็บ
 COPY vectorcnc ./vectorcnc
 COPY web ./web
@@ -34,6 +44,10 @@ ENV PORT=8000
 # ⚠️ ตั้งตามแรมของแพ็กเกจจริง: งานเวกเตอร์หนักกินแรม ~1.3GB/คำขอ (วัดจริง 2026-07-29)
 #    free/starter (512MB) -> 1 worker ก็ยังไม่พอสำหรับงานใหญ่ (ต้องอัปเกรดแผน)
 #    Standard 2GB -> 1 · Pro 4GB -> 2 · Pro Plus 8GB -> 4 (ปรับที่ Environment ของ Render ได้ ไม่ต้อง build ใหม่)
+# ⚠️ เพิ่มเติมหลังใส่ตัวตัดพื้นหลัง (2026-08-18): แต่ละ worker ที่เคยเรียกตัดพื้นหลัง
+#    จะอมโมเดลไว้ในแรมของตัวเองราว 350-450 MB (โหลดครั้งเดียวแล้วค้างไว้ให้เร็ว)
+#    -> Pro 4GB ตั้งได้ไม่เกิน 2 · Pro Plus 8GB ตั้งได้ 4 เหมือนเดิม
+#    ถ้าไม่อยากให้กินแรม ตั้ง CUTOUT_MODEL=u2netp (โมเดลเล็ก 4.7 MB) แทนได้
 ENV WEB_CONCURRENCY=1
 # โฮสต์ (Render/Railway/Fly) จะ inject $PORT ให้เอง
 CMD uvicorn app:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY} --timeout-keep-alive 65
