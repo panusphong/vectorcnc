@@ -8490,6 +8490,9 @@ function wZoomSet(z, anchor){
   function down(e){
     if(e.button!=null && e.button!==0 && e.button!==1) return;   // ซ้าย/กลางเท่านั้น
     if(busy(e) || !scrollable()) return;
+    // 🖱️ ปุ่มกลางบน Windows = ตัวเลื่อนอัตโนมัติของเบราว์เซอร์ ต้องปิดก่อน
+    //    ไม่งั้นจะขึ้นไอคอนลูกศรสี่ทิศแล้วแย่งการลากไปทั้งดุ้น
+    if(e.button===1 && e.preventDefault) e.preventDefault();
     var p=pt(e);
     pan={x:p.x, y:p.y, sl:st.scrollLeft, sti:st.scrollTop, moved:false};
     cv.style.cursor='grabbing';
@@ -8512,6 +8515,7 @@ function wZoomSet(z, anchor){
 
   /* ผูกที่ตัวเวที (พ่อ) -> ตัวจับของ canvas ได้ทำงานไปก่อนแล้วเสมอ */
   st.addEventListener('mousedown', down);
+  st.addEventListener('auxclick', function(e){ if(e.button===1 && e.preventDefault) e.preventDefault(); });
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
   st.addEventListener('touchstart', down, {passive:true});
@@ -8547,7 +8551,7 @@ function wZoomSet(z, anchor){
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,M=WALL_M,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:M,ww:Wc*ppm,wh:Hc*ppm}; }
   function BR(b){ var g=G(); return {x:g.M+b.fx*g.ww,y:g.M+b.fy*g.wh,w:b.fw*g.ww,h:b.fh*g.wh}; }
-  cv.addEventListener('mousedown',function(e){ if(window._shpAct)return; if(typeof _txtHitDrag==='function'&&_txtHitDrag(P(e)))return; if(!_wSplit())return; var p=P(e); act=null;corner=-1;bi=-1;
+  cv.addEventListener('mousedown',function(e){ if(e&&e.button!=null&&e.button!==0)return; if(window._shpAct)return; if(typeof _txtHitDrag==='function'&&_txtHitDrag(P(e)))return; if(!_wSplit())return; var p=P(e); act=null;corner=-1;bi=-1;
     for(var k=0;k<measBoxes.length&&!act;k++){ var b=BR(measBoxes[k]),cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]]; for(var i=0;i<4;i++){ if(Math.abs(p.x-cs[i][0])<13&&Math.abs(p.y-cs[i][1])<13){bi=k;corner=i;act='resize';break;} } }
     if(!act){ for(var ke=0;ke<measBoxes.length&&!act;ke++){ var be=BR(measBoxes[ke]); var inX=p.x>=be.x-9&&p.x<=be.x+be.w+9, inY=p.y>=be.y-9&&p.y<=be.y+be.h+9;
       if(Math.abs(p.y-be.y)<9&&inX){bi=ke;corner=4;act='resize';} else if(Math.abs(p.x-(be.x+be.w))<9&&inY){bi=ke;corner=5;act='resize';} else if(Math.abs(p.y-(be.y+be.h))<9&&inX){bi=ke;corner=6;act='resize';} else if(Math.abs(p.x-be.x)<9&&inY){bi=ke;corner=7;act='resize';} } }
@@ -8564,7 +8568,7 @@ var WALL_M=70, WALL_TARGET=1100;
   function P(e){ var r=cv.getBoundingClientRect(); return {x:((e.touches?e.touches[0].clientX:e.clientX)-r.left)*cv.width/r.width, y:((e.touches?e.touches[0].clientY:e.clientY)-r.top)*cv.height/r.height}; }
   function G(){ var Wc=parseFloat($('wWall').value)||1,Hc=parseFloat($('hWall').value)||1,ppm=WALL_TARGET/Math.max(Wc,Hc); return {M:WALL_M,ww:Wc*ppm,wh:Hc*ppm}; }
   function SR(sp){ var gg=G(); return {x:gg.M+sp.fx*gg.ww,y:gg.M+sp.fy*gg.wh,w:sp.fw*gg.ww,h:sp.fh*gg.wh}; }
-  cv.addEventListener('mousedown',function(e){ if(!shapes.length)return; var p=P(e); act=null;corner=-1;si=-1;
+  cv.addEventListener('mousedown',function(e){ if(e&&e.button!=null&&e.button!==0)return; if(!shapes.length)return; var p=P(e); act=null;corner=-1;si=-1;
     for(var k=shapes.length-1;k>=0;k--){ var b=SR(shapes[k]);
       var cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]];
       for(var c=0;c<4;c++){ if(Math.abs(p.x-cs[c][0])<13&&Math.abs(p.y-cs[c][1])<13){si=k;corner=c;act='resize';break;} }
@@ -10072,7 +10076,12 @@ function _wallPickPieces(pieces, f){
 (function(){ var cv=$('wCanvas'); if(!cv) return;
   function pos(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; var X=(e.touches?e.touches[0].clientX:e.clientX)-r.left, Y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x:X*sx,y:Y*sy}; }
   function inSign(p){ var s=wallSignReal(),M=WALL_M,ppm=s.ppm; var ww=s.Wm*ppm,wh=s.Hm*ppm,sw=s.w*ppm,sh=s.h*ppm; var cx=M+wallPos.fx*ww,cy=M+wallPos.fy*wh; return Math.abs(p.x-cx)<=sw/2 && Math.abs(p.y-cy)<=sh/2; }
-  var _wDown=function(e){ if(typeof _lgHitDrag==='function'&&_lgHitDrag(pos(e))){ if(e.preventDefault)e.preventDefault(); return; } if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e))){ if(e.preventDefault)e.preventDefault(); return; }
+  // 🖱️ ปุ่มกลาง (และปุ่มขวา) = ไม่ใช่การจับวัตถุ — ปล่อยผ่านให้ตัวเลื่อนจอทำงาน
+  //    ผู้ใช้แจ้ง 2026-08-23: พอซูมเข้าไปมาก ๆ ตัวป้ายกินพื้นที่เกือบเต็มจอ
+  //    กดตรงไหนก็โดนป้าย = กลายเป็น "ย้ายป้าย" ตลอด เลยรู้สึกว่าเลื่อนจอไม่ได้
+  //    ตอนนี้จึงมีทางหนีเสมอ: ลากด้วยปุ่มกลางเมาส์ = เลื่อนจอ ไม่ว่าจะกดตรงไหน
+  var _wDown=function(e){ if(e && e.button!=null && e.button!==0) return;
+    if(typeof _lgHitDrag==='function'&&_lgHitDrag(pos(e))){ if(e.preventDefault)e.preventDefault(); return; } if(typeof _txtHitDrag==='function'&&_txtHitDrag(pos(e))){ if(e.preventDefault)e.preventDefault(); return; }
     var _pd=pos(e);
     if(window._wDimHit){ for(var _i=window._wDimHit.length-1;_i>=0;_i--){ var _hb=window._wDimHit[_i];
       if(_pd.x>=_hb.x&&_pd.x<=_hb.x+_hb.w&&_pd.y>=_hb.y&&_pd.y<=_hb.y+_hb.h){ var _o=window._wDimOff[_hb.id]||{dx:0,dy:0};
@@ -11008,7 +11017,16 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       // ===== โซนบน: ออกแบบ =====
       // กลาง = พื้นที่แสดงแบบงาน (เต็มพื้นที่ + จัดกึ่งกลาง)
       var dTop=document.createElement('div'); dTop.id='designPane';
-      dTop.style.cssText='min-height:64vh;max-height:80vh;padding:16px;overflow:auto;background:var(--panel2);display:grid;place-items:center;position:relative';
+      // 🛡️ กันไว้: place-items:center บนกล่องที่ต้องเลื่อนดู คือกับดักเดียวกับกล่องผนัง
+      //    (ของที่ใหญ่กว่ากล่องถูกจัดกึ่งกลางจนล้นออกทั้งสองฝั่ง แต่ scroll ติดลบไม่ได้
+      //     -> ฝั่งต้นเลื่อนไปดูไม่ได้เลย · เคสจริงที่กล่องผนัง: ขอบบนหายไป 291 px)
+      // 📏 วัดจริงกับกล่องนี้แล้ว (ยัดของขนาด 1800x1400 เข้าไป) ตอนนี้ยัง "ไม่เป็น" บั๊ก
+      //    เพราะช่องตารางของมันกว้างตามเนื้อสูงสุดอยู่แล้ว — ตัวเลขก่อน/หลังเท่ากันเป๊ะ
+      //    เปลี่ยนเป็น safe center ไว้เป็นตาข่ายกันเหนียว (กึ่งกลางถ้าใส่พอดี · ชิดขอบต้นถ้าล้น)
+      dTop.style.cssText='min-height:64vh;max-height:80vh;padding:16px;overflow:auto;'
+                        +'background:var(--panel2);display:grid;position:relative;'
+                        +'justify-items:center;justify-items:safe center;'
+                        +'align-items:center;align-items:safe center';
       Array.prototype.slice.call(stage.children).forEach(function(c){ if(c!==wStage) dTop.appendChild(c); });
 
       // ✂️ แยกเมนู: ซ้าย = ออกแบบล้วน (อัปโหลด/ประเภทป้าย/พิมพ์ข้อความ-โลโก้) · ขวา = เตรียมไฟล์ผลิต
@@ -11068,7 +11086,26 @@ if($('wTxtDel'))$('wTxtDel').onclick=function(){
       wk.slice(mid).forEach(function(c){ wRight.appendChild(c); });
       wallCtrl.id='wallMenuL'; wallCtrl.style.cssText='padding:16px;border-right:1px solid var(--line);overflow:auto;max-height:82vh;width:100%';
       // กลาง = canvas ผนัง (เต็ม + กึ่งกลาง)
-      wStage.style.cssText='min-height:64vh;max-height:82vh;padding:16px;overflow:auto;background:#eef1f6;display:grid;place-items:center';
+      // ⛔ ห้ามใช้ place-items:center กับกล่องที่ต้องเลื่อนดู (overflow:auto)
+      //    ของที่ใหญ่กว่ากล่องจะถูกจัดกึ่งกลางจนล้นออก "ทั้งบนและล่าง" พร้อมกัน
+      //    แต่ scrollTop ติดลบไม่ได้ -> ส่วนที่ล้นด้านบนเลื่อนไปดูไม่ได้เลย
+      //    ผู้ใช้แจ้ง 2026-08-23 "ซูมแล้วขยับ ลากไป ไม่ได้อีกแล้ว" — วัดจริงตอนซูม 100%:
+      //      ขอบบนของ canvas อยู่สูงกว่าขอบบนของกล่องถึง 146 px และเลื่อนขึ้นไปดูไม่ได้
+      //      (scrollHeight 819 ทั้งที่เนื้อจริงสูง 997 = เบราว์เซอร์ไม่นับส่วนที่ล้นด้านบน)
+      // ⛔ ทำ wStage เป็น flex แนวนอนแทนก็ไม่ได้ — ในกล่องนี้มี "แถบซูมแบบลอย"
+      //    (position:sticky สูง 0) เป็นลูกอีกตัว พอเป็น flex แถวเดียวกันมันจะไปกิน
+      //    ความกว้าง แล้วดันภาพเลื่อนไปทางขวา 210 px (วัดได้จริง)
+      // ✅ ปล่อย wStage เป็นบล็อกธรรมดาเหมือนตอนไม่ขยายจอ แล้วให้ #wCenter จัดกึ่งกลางเอง
+      //    ด้วย safe center = "กึ่งกลางถ้าใส่พอดี · ชิดขอบต้นถ้าล้น" -> เลื่อนถึงทุกจุด
+      //    วัดหลังแก้ (ซูม 130%): เลื่อนสุดบนแล้วเห็นขอบบนของผนังครบ (เดิมโดนกิน 291 px)
+      //    ตอนพอดีจอยังอยู่กึ่งกลางเป๊ะเหมือนเดิม (เว้นบน 54.5 px ล่าง 54.5 px)
+      wStage.style.cssText='min-height:64vh;max-height:82vh;padding:16px;overflow:auto;background:#eef1f6;position:relative';
+      (function(){ var wc=H('wCenter'); if(!wc) return;
+        wc.style.minWidth='min-content';
+        wc.style.minHeight='100%';
+        wc.style.alignItems='center';     wc.style.alignItems='safe center';
+        wc.style.justifyContent='center'; wc.style.justifyContent='safe center';
+      })();
 
       var botHead=document.createElement('div');
       botHead.style.cssText='background:linear-gradient(90deg,#fff7ed,#eef2ff);border-top:5px solid #ea580c;border-bottom:2px solid #fed7aa;padding:9px 16px;font-weight:800;color:#ea580c;font-size:13px';
