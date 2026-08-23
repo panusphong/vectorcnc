@@ -29,6 +29,7 @@
 import math
 import time
 import heapq
+import os
 import numpy as np
 import cv2
 
@@ -47,11 +48,74 @@ DE_MERGE = 22.0        # รวมเพื่อนบ้านที่สี�
 THIN = 1.4             # เกณฑ์ "วงแหวนเงา" (พื้นที่ ÷ เส้นรอบรูป)
 REGUL = 10             # จำนวนรอบเกลาแผนที่ภูมิภาคระดับพิกเซล
 REGUL_THR = 5          # ต้องมีเพื่อนบ้านกี่เสียงจาก 8 ถึงจะพลิกตาม
+# 🛡️ ยอมให้สีเพี้ยนขึ้นได้กี่หน่วย Lab ตอนพลิกตามเสียงข้างมาก (0 = ปิดด่านหลักฐาน)
+REGUL_TOL = 6.0
 BG_ID = [-1]           # id ของ 'พื้นไล่สีที่รวมเป็นก้อนเดียว' (-1 = ไม่มี)
 PAL_SNAP = 1           # ดึงสีทุกชิ้นเข้าจานสีของเอนจิ้น (0 = ใช้สีเฉลี่ยจริง)
 CORE_FIT = 2           # กร่อนขอบกี่ชั้นก่อนเฉลี่ยสีของภูมิภาค (0 = ปิด)
 CORE_MIN = 12          # ต้องเหลือเนื้อในกี่พิกเซลถึงจะใช้สีใหม่
+# 🔪 ความคมของ "สำเนาที่ใช้แบ่งภูมิภาค" (0 = ปิด) — ไม่กระทบสีที่ระบายจริง
+SEG_NATIVE = 1         # 1 = แบ่งภูมิภาคที่ความละเอียดต่ำกว่าภาพขยาย (ดู SEG_SCALE) · 0 = ปิด
+# ══════════════════════════════════════════════════════════════════
+# ⛔ 2026-08-23 — ปิด "แบ่งภูมิภาคที่ความละเอียดต้นฉบับ"
+#    เขียนไว้ตอนที่ภาพเล็กถูกขยายด้วยตัวคูณเศษ (3.25 เท่า) ซึ่งภาพขยายมัว
+#    การถอยไปตัดสินที่ต้นฉบับจึงดีกว่า · แต่พอเปลี่ยนไปขยายด้วยจำนวนเต็ม (UP_SNAP)
+#    ภาพขยายคมพอที่จะเห็นรายละเอียดที่ต้นฉบับ "ไม่มีทางเห็น" ได้แล้ว
+#    ตัวอย่างชัด ๆ: ช่องว่างในตัว M ของ LINEMAN กว้างไม่ถึง 1 พิกเซลของต้นฉบับ
+#    ตัดสินที่ต้นฉบับ = ช่องนั้นหายไปตั้งแต่ต้น ตัว M เลยกลายเป็นก้อนตัน
+#    วัดจริง (ตัวคูณจำนวนเต็มแล้ว): ป้ายรุ้ง ขอบ 7.65 -> 7.43 · ลายมือ 7.13 -> 7.09
+#    หมายเหตุ: ตัวนี้ทำงานเฉพาะภาพที่ถูกขยาย (>1.15 เท่า) ภาพใหญ่ไม่เคยเข้าทางนี้
+# ══════════════════════════════════════════════════════════════════
+SEG_REFINE = 3         # ขยับขอบของแผนที่ป้ายให้เกาะขอบจริงกี่รอบ (0 = ปิด)
+SEG_SCALE = 2.0        # ตัดสินที่กี่เท่าของความละเอียดต้นฉบับ (1 = ต้นฉบับ · 2 = สองเท่า)
+# ══════════════════════════════════════════════════════════════════
+# 🎚️ ทำไมต้องเป็น "สองเท่า" ไม่ใช่ต้นฉบับ และไม่ใช่ภาพขยายเต็ม (วัดจริง 2026-08-23)
+#    ตัดสินที่ต้นฉบับ (1 เท่า) — ช่องว่างในตัว M ของ LINEMAN กว้างไม่ถึง 1 พิกเซล
+#      ของต้นฉบับ มันเลยหายไปตั้งแต่ต้น ตัว M กลายเป็นก้อนตัน (ผู้ใช้ชี้ 2026-08-23)
+#    ตัดสินที่ภาพขยายเต็ม (4 เท่า) — ตัว M ถูกต้อง แต่ภาพถ่ายที่มีคลื่นรบกวนพังยับ
+#      (ไฟล์ตรวจ src.png: ขอบ 7.84 -> 11.05 · จุด 2,809 -> 14,764 · ไฟล์ 134 -> 715 KB)
+#    ตัดสินที่สองเท่า — ได้ทั้งคู่:  ตัว M ถูกต้อง · src.png ขอบ 7.77 (ดีกว่าเดิมด้วย)
+#      ป้ายรุ้ง ขอบ 7.68 · เร็วกว่าแบบขยายเต็ม 13% · ไฟล์เล็กกว่า 8%
+# ══════════════════════════════════════════════════════════════════
+# ✏️ วาดชิ้นจิ๋วใหม่จากแกนเส้นหลัก (ดูหมายเหตุยาวใน stroke_rebuild)
+STROKE_AREA = 0.0      # ⛔ ปิดถาวร (0 = ปิด) · ค่าที่เคยใช้คือ 0.0009
+# ══════════════════════════════════════════════════════════════════
+# ⛔ 2026-08-22 — ปิด "วาดโลโก้จิ๋วใหม่จากแกนเส้น" ทั้งชุด
+#    เขียนขึ้นมาเพื่อแก้ตัว M ของ LINEMAN ที่เละ แต่พอแก้ต้นเหตุจริง
+#    (ตัวคูณขยายภาพต้องเป็นจำนวนเต็ม — ดู UP_SNAP ใน vectora_engine.py) ตัว M
+#    ก็ออกมาถูกต้องเองโดยไม่ต้องวาดใหม่ · วัดเทียบเปิด/ปิดกับป้ายรุ้งและตราสมอ:
+#      ป้ายรุ้ง  เปิด ขอบ 7.66 · 93 วิ  |  ปิด ขอบ 7.65 · 89 วิ   (ภาพซูมเท่ากันด้วยตา)
+#      ตราสมอ   เปิด ขอบ 24.62 · 243 วิ |  ปิด ขอบ 24.62 · 229 วิ
+#    -> ไม่ได้อะไรเพิ่ม แต่เป็นทางเดินโค้ดที่เคยทำตราสมอพังยับมาแล้ว (24.62 -> 33.71)
+#    เก็บโค้ดไว้เป็นสวิตช์เฉย ๆ ตั้งกลับเป็น 0.0009 ถ้าอยากลองใหม่
+# ══════════════════════════════════════════════════════════════════
+STROKE_MIN = 60        # เล็กกว่านี้ไม่ต้องยุ่ง (เศษ)
+STROKE_LEN = 10        # แกนกลางต้องยาวอย่างน้อยกี่พิกเซล
+STROKE_WMAX = 16.0     # เส้นหนาเกินนี้ = ปื้น ไม่ใช่เส้น
+# ⚠️ ค่านี้ต่ำ = เก็บมุมหักของแกนไว้ครบ (ยอดแหลมกลางตัว M ไม่ถูกปาด)
+STROKE_RDP = 0.22      # ความคลาดที่ยอมตอนย่อแกนเป็นเส้นตรง (เท่าของความหนาเส้น)
+STROKE_HOST = 40.0     # เจ้าบ้าน (กล่อง/วงที่ล้อมอยู่) ต้องใหญ่กว่าตัวอักษรไม่เกินกี่เท่า
+STROKE_SOLID = 0.55    # เจ้าบ้านต้องตันแค่ไหน (พื้นที่ ÷ กรอบสี่เหลี่ยม)
+STROKE_DRAW = 0        # 0 = ใช้หน้ากากจากภาพจริง (แนะนำ) · 1 = วาดกลับจากแกนเส้น
+SHARP_AMT = 1.0        # ความแรงหน้ากากคมชัด (ใช้เมื่อ SEG_NATIVE = 0)
+SHARP_SIG = 0.55       # รัศมี = upscale x ค่านี้ (ขอบฟุ้งกว้างตามอัตราขยาย)
 SNAP_SMALL = 0.0006    # ชิ้นที่เล็กกว่าสัดส่วนนี้ของภาพ ให้ดึงสีเข้าจานเสมอ (0 = ปิด)
+SNAP_LOCAL = 0         # 1 = ชิ้นจิ๋วเลือกสีได้เฉพาะ "สีที่มีอยู่จริงแถวนั้น"
+# ⛔ ปิดไว้ — วัดแล้วไม่ได้อะไรเพิ่ม (ป้ายรุ้ง ขอบ 7.43 เท่าเดิมเป๊ะ ภาพก็เหมือนกันทุกจุด)
+#    เข้มขึ้นเป็น SNAP_LOCAL_DE = 7 ลบจุดสีเขียวอมฟ้ากลางตัว M ได้จริง แต่ไปเปลี่ยน
+#    ตัว M เองจากสีมิ้นต์เป็นขาวอมฟ้าแทน = ย้ายที่ผิดเฉย ๆ ไม่ได้แก้
+#    เก็บโค้ดไว้เป็นสวิตช์ ถ้าจะรื้อมาใช้ต้องวัดใหม่ทั้งชุด
+SNAP_LOCAL_G = 2.0     # ขยายหน้าต่างรอบชิ้นกี่เท่าของขนาดชิ้น
+SNAP_LOCAL_DE = 12.0   # พิกเซลจะนับว่าเป็นสีในจาน ต้องห่างไม่เกินนี้ (Lab)
+SNAP_RAY = 0           # 1 = สแนปสีชิ้นจิ๋วแบบ "ถอดสีที่ปนมาจากเพื่อนบ้าน" · 0 = หาสีใกล้สุดเฉย ๆ
+SNAP_RAY_T = 4.0       # ยืดตามแนวได้ไกลสุดกี่เท่าของระยะ (สีเพื่อนบ้าน -> สีเฉลี่ยของชิ้น)
+SNAP_RAY_D = 45.0      # และต้องอยู่ห่างจากแนวไม่เกินนี้ (หน่วย RGB) ไม่งั้นถอยไปใช้สีใกล้สุด
+SNAP_DE = 0.0          # ...แต่ต้องมีสีในจานอยู่ใกล้กว่านี้ (หน่วย Lab · 0 = ไม่จำกัด)
+# ⛔ วัดแล้วใช้ไม่ได้ (2026-08-23) ปิดไว้ อย่ารื้อมาเปิดอีกโดยไม่วัดใหม่:
+#    ตั้งใจจะกันตัว M ของ LINEMAN ไม่ให้ถูกดึงไปเป็นสีเขียวอมฟ้า (ระยะ 12.6 หน่วย)
+#    แต่เคสที่ 'ต้องดึง' คือตัว nai สีครีม -> ขาว ซึ่งระยะไกลกว่า (25.7-30.8 หน่วย)
+#    เกณฑ์ระยะจึงตัดผิดตัวเสมอ ไม่ว่าจะตั้งเท่าไหร่ · ทางแก้ที่ถูกคือ "กลืนเศษสีผสม"
+#    (BLEND_*) ซึ่งดูรูปร่าง/เพื่อนบ้าน ไม่ได้ดูแค่ระยะสี
 # 🧽 กลืนเศษ "สีผสมที่ขอบ" (ดูหมายเหตุยาวใน planar_layers)
 # ⛔ ปิดทางเลือก "ยุบตามพื้นที่" ไว้ (0) — วัดจริง 2026-08-18 กับภาพเส้นหนา (test-06)
 #    ชิ้นเล็กที่เป็นรายละเอียดจริงถูกกลืนไปด้วย: ชิ้น 119 -> 7 · ΔE ขอบ 14.62 -> 17.62
@@ -323,13 +387,39 @@ def build(work, keep=None, dom=None, K=16, min_area_frac=1.0 / 40000.0, de_merge
     lut[0] = 0
     reg2 = lut[reg]
     if REGUL > 0:
-        reg2 = regularize(reg2, REGUL, REGUL_THR)
+        # ══════════════════════════════════════════════════════════
+        # 🛡️ เกลาแผนที่ได้ แต่ห้ามเกลา "สวนหลักฐานในภาพ"
+        # ⚠️ วัดจริง 2026-08-18 (ผู้ใช้ชี้ว่า "เราเห็นเส้นหลักของมันไม่ใช่เหรอ" — ถูกต้อง):
+        #    กางค่าพิกเซลจริงของกล่อง M ออกดู เส้นตัว M อยู่ครบทุกเส้น ชัดเจน
+        #    แต่ในแผนที่ภูมิภาค ช่องสามเหลี่ยมสองช่องของตัว M (สีเขียว กว้าง ~8 px)
+        #    ถูกโหวตเสียงข้างมากกินจนเหลือแค่จุดกลม 22 px กับ 14 px
+        #    -> ตัว M กลายเป็น "หน้าแมว" ที่ผู้ใช้เห็น
+        #    เพราะโหวต 3x3 สิบรอบ กินขอบเข้ามารอบละ ~1 px ทุกด้าน
+        # ✅ ให้พิกเซลพลิกตามเสียงข้างมากได้ ก็ต่อเมื่อ "สีของภูมิภาคใหม่
+        #    ไม่ได้ห่างจากสีจริงของพิกเซลนั้นมากกว่าเดิม" — พิกเซลเขียวในช่อง M
+        #    จึงไม่มีวันพลิกไปเป็นสีขาวของตัว M ต่อให้เพื่อนบ้านล้อมหมด
+        # 🔒 ปุ่ม/รอยแหว่งจากคลื่น JPEG ยังถูกลบเหมือนเดิม เพราะสีมันก็ก้ำกึ่งอยู่แล้ว
+        # ══════════════════════════════════════════════════════════
+        _g9 = None
+        if REGUL_TOL > 0:
+            try:
+                _w9 = np.bincount(lut, weights=area, minlength=N)
+                _m9 = np.zeros((N, 3), np.float64)
+                for _c9 in range(3):
+                    _m9[:, _c9] = np.bincount(lut, weights=area * mean[:, _c9],
+                                              minlength=N)
+                _o9 = _w9 > 0
+                _m9[_o9] /= _w9[_o9, None]
+                _g9 = (np.asarray(lab, np.float64).reshape(H, W, 3), _m9)
+            except Exception:
+                _g9 = None
+        reg2 = regularize(reg2, REGUL, REGUL_THR, guard=_g9)
     return dict(reg=reg2, mean=mean, area=area, n=live, n_cc=n_cc, n_small=n_small,
                 n_thin=n_thin,
                 t=(t1 - t0, t2 - t1, t3 - t2, t4 - t3))
 
 
-def regularize(reg, iters=2, thr=5):
+def regularize(reg, iters=2, thr=5, guard=None):
     """เกลา 'แผนที่ภูมิภาค' ระดับพิกเซล — ลบปุ่ม/รอยแหว่งขนาด 1 พิกเซลออกก่อนไล่เส้น
 
     ⚠️ ที่ตัวอักษรจิ๋วยังหยัก ไม่ใช่เพราะฟิตเส้นไม่ดี แต่เพราะ 'แผนที่ภูมิภาค' หยักเอง
@@ -364,6 +454,15 @@ def regularize(reg, iters=2, thr=5):
             cnt = np.where(up, run, cnt)
             best = np.where(up, cur, best)
         take = (cnt >= thr) & (best != R[edge])
+        if guard is not None and take.any():
+            # 🛡️ ด่านหลักฐาน: ห้ามพลิกถ้าสีใหม่ห่างจากสีจริงของพิกเซลมากกว่าเดิม
+            _L9, _M9 = guard
+            _idx9 = np.flatnonzero(edge.reshape(-1))
+            _px9 = _L9.reshape(-1, 3)[_idx9]
+            _cu9 = R[edge]
+            _do9 = np.sqrt(((_px9 - _M9[_cu9]) ** 2).sum(1))
+            _dn9 = np.sqrt(((_px9 - _M9[best]) ** 2).sum(1))
+            take &= (_dn9 <= _do9 + REGUL_TOL)
         if not take.any():
             break
         idx = np.flatnonzero(edge.reshape(-1))[take]
@@ -786,6 +885,533 @@ def _to_circ(B, i, j, closed, n):
         return False
     B[a0:a1 + 1] = np.array([cx, cy]) + V * (r / L)[:, None]
     return True
+
+
+def _thin(m):
+    """แกนกลางของรูป (Zhang-Suen) — คืนหน้ากากเส้นหนา 1 พิกเซล"""
+    I = (m > 0).astype(np.uint8)
+    for _ in range(200):
+        ch = False
+        for step in (0, 1):
+            P = np.zeros((I.shape[0] + 2, I.shape[1] + 2), np.uint8)
+            P[1:-1, 1:-1] = I
+            p2 = P[:-2, 1:-1]; p3 = P[:-2, 2:]; p4 = P[1:-1, 2:]; p5 = P[2:, 2:]
+            p6 = P[2:, 1:-1]; p7 = P[2:, :-2]; p8 = P[1:-1, :-2]; p9 = P[:-2, :-2]
+            B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9
+            seq = [p2, p3, p4, p5, p6, p7, p8, p9, p2]
+            A = sum(((seq[k] == 0) & (seq[k + 1] == 1)).astype(np.uint8)
+                    for k in range(8))
+            if step == 0:
+                c1 = (p2 * p4 * p6) == 0
+                c2 = (p4 * p6 * p8) == 0
+            else:
+                c1 = (p2 * p4 * p8) == 0
+                c2 = (p2 * p6 * p8) == 0
+            kill = (I == 1) & (B >= 2) & (B <= 6) & (A == 1) & c1 & c2
+            if kill.any():
+                I[kill] = 0
+                ch = True
+        if not ch:
+            break
+    return I.astype(bool)
+
+
+def _rdp(P, tol):
+    """ย่อแนวจุดให้เหลือเฉพาะจุดหักมุมจริง (Ramer-Douglas-Peucker)"""
+    P = np.asarray(P, np.float64)
+    if len(P) < 3:
+        return P
+    keep = np.zeros(len(P), bool)
+    keep[0] = keep[-1] = True
+    st = [(0, len(P) - 1)]
+    while st:
+        a, b = st.pop()
+        if b <= a + 1:
+            continue
+        v = P[b] - P[a]
+        L = math.hypot(v[0], v[1])
+        seg = P[a + 1:b]
+        if L < 1e-9:
+            d = np.hypot(seg[:, 0] - P[a][0], seg[:, 1] - P[a][1])
+        else:
+            d = np.abs((seg[:, 0] - P[a][0]) * v[1]
+                       - (seg[:, 1] - P[a][1]) * v[0]) / L
+        k = int(d.argmax())
+        if d[k] > tol:
+            keep[a + 1 + k] = True
+            st.append((a, a + 1 + k)); st.append((a + 1 + k, b))
+    return P[keep]
+
+
+def _branches(sk):
+    """แตกแกนกลางออกเป็น 'ก้าน' — แต่ละก้านคือแนวจุดจากปลาย/แยก ไปปลาย/แยก"""
+    ys, xs = np.nonzero(sk)
+    if not len(ys):
+        return []
+    pts = set(zip(ys.tolist(), xs.tolist()))
+    def nbrs(p):
+        y, x = p
+        return [q for q in ((y-1,x-1),(y-1,x),(y-1,x+1),(y,x-1),
+                            (y,x+1),(y+1,x-1),(y+1,x),(y+1,x+1)) if q in pts]
+    deg = {p: len(nbrs(p)) for p in pts}
+    nodes = [p for p in pts if deg[p] != 2]
+    out = []
+    used = set()
+    starts = nodes if nodes else [next(iter(pts))]
+    for s0 in starts:
+        for n0 in nbrs(s0):
+            e = (s0, n0)
+            if e in used:
+                continue
+            path = [s0, n0]
+            used.add(e); used.add((n0, s0))
+            cur, prev = n0, s0
+            while deg.get(cur, 0) == 2:
+                nx = [q for q in nbrs(cur) if q != prev]
+                if not nx:
+                    break
+                prev, cur = cur, nx[0]
+                used.add((prev, cur)); used.add((cur, prev))
+                path.append(cur)
+            out.append(np.array([[x, y] for (y, x) in path], np.float64))
+    return [b for b in out if len(b) >= 2]
+
+
+def stroke_rebuild(reg, res, lim_area, wmax, lab=None):
+    """✏️ วาด 'ตัวอักษร/โลโก้จิ๋วในกล่อง' ใหม่จากแกนเส้นหลัก
+
+    ⚠️ ผู้ใช้ขีดเส้นแดงทับตัว M ในต้นฉบับให้ดู (2026-08-18): สิ่งที่ตาคนเห็นคือ
+       "เส้นหลัก 4 เส้น" (ตั้งสอง เฉียงสอง) ไม่ใช่รูปร่างของขอบ
+       ตัวอักษรสูง 8 พิกเซล ขอบของมันคือเสียงรบกวนล้วน แต่ 'แกนกลาง' นิ่งมาก
+    ⛔ รอบแรกหาแกนจาก 'แผนที่ภูมิภาค' ซึ่งเละอยู่แล้ว -> ได้แกนเละตาม
+       (ผู้ใช้ทักว่า "ไม่ตรงตามเส้นแกนกลาง") — ขยะเข้า ขยะออก
+    ✅ รอบนี้สร้างหน้ากากใหม่จาก **ภาพจริง** ตรงนั้น: พิกเซลไหนใกล้สีตัวอักษร
+       มากกว่าสีกล่อง = ตัวอักษร เป็นการตัดสินสองทางล้วน ๆ ไม่ผ่าน k-means
+       ไม่ผ่านการเกลาแผนที่ ไม่ผ่านการรวมภูมิภาค -> ได้ตัว M ที่คมจริง
+       แล้วค่อยหาแกน -> ย่อเป็นเส้นตรง -> วาดกลับเป็นเส้นหนาสม่ำเสมอ
+    🔒 ทำเฉพาะ "ตัวอักษรที่ถูกล้อมสนิทด้วยกล่อง/วงเล็ก ๆ" เท่านั้น
+       ⛔ เคยเปิดกว้างให้ทุกชิ้นเล็กที่เป็นเส้น -> ตราสมอพังยับ ΔE 24.62 -> 33.71
+          (ลายวิจิตรก็ 'เล็กและเป็นเส้น' เหมือนกัน แต่แกนมันไม่ใช่เส้นตรง)
+    """
+    n = int(reg.max()) + 1
+    area = np.bincount(reg.reshape(-1), minlength=n)
+    mean = np.asarray(res["mean"], np.float64)
+    if len(mean) < n:
+        mean = np.concatenate([mean, np.zeros((n - len(mean), 3))])
+    cand = [r for r in range(1, n) if STROKE_MIN <= area[r] <= lim_area]
+    if not cand or lab is None:
+        return reg, 0
+    R = reg
+    hit = 0
+    for r in cand:
+        ys, xs = np.nonzero(R == r)
+        if not len(ys):
+            continue
+        y0, y1 = max(0, ys.min() - 3), min(R.shape[0], ys.max() + 4)
+        x0, x1 = max(0, xs.min() - 3), min(R.shape[1], xs.max() + 4)
+        sub = R[y0:y1, x0:x1]
+        m0 = (sub == r)
+        inv = (~m0).astype(np.uint8)
+        nn0, lb0, st0, _ = cv2.connectedComponentsWithStats(inv, 4)
+        edge0 = set(np.unique(np.concatenate(
+            [lb0[0], lb0[-1], lb0[:, 0], lb0[:, -1]])).tolist())
+        holes = [i for i in range(1, nn0)
+                 if i not in edge0 and st0[i, cv2.CC_STAT_AREA] < m0.sum() * 0.45]
+        mf = m0.copy()
+        if holes:
+            mf |= np.isin(lb0, np.array(holes, np.int32))
+        ring = (cv2.dilate(mf.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+                & ~mf)
+        hv = sub[ring]
+        hv = hv[hv > 0]
+        if not len(hv):
+            continue
+        _u, _c = np.unique(hv, return_counts=True)
+        # ⚠️ เพื่อนบ้านที่เป็น "เศษจิ๋ว" ไม่นับ — ตัว M มีจุดกลมค้างอยู่ 29 px
+        #    ทำให้ความบริสุทธิ์ตกเหลือ 0.91 แล้วถูกปฏิเสธ ทั้งที่มันคือขยะที่จะถูกลบอยู่แล้ว
+        _big = [int(q) for q in _u if area[int(q)] >= area[r] * 0.15]
+        if len(_big) != 1:
+            continue                       # ต้องถูกล้อมด้วยเจ้าบ้านรายเดียวจริง ๆ
+        host = _big[0]
+        if area[host] > area[r] * STROKE_HOST:
+            continue                       # เจ้าบ้านใหญ่เกิน = พื้นหน้ากระดาษ ไม่ใช่กล่อง
+        hy, hx = np.nonzero(R == host)
+        if not len(hy):
+            continue
+        _hb = (hx.max() - hx.min() + 1) * (hy.max() - hy.min() + 1)
+        if float(area[host]) / max(1.0, _hb) < STROKE_SOLID:
+            continue                       # เจ้าบ้านต้องเป็นปื้นตัน (กล่อง/วง)
+        # ── หน้ากากจากภาพจริง: ใกล้สีตัวอักษร หรือ ใกล้สีกล่อง ──
+        L = lab[y0:y1, x0:x1]
+        dg = ((L - mean[r]) ** 2).sum(2)
+        dh = ((L - mean[host]) ** 2).sum(2)
+        own = mf | (sub == host)
+        m = (dg < dh) & own
+        if int(m.sum()) < STROKE_MIN:
+            continue
+        nn1, lb1 = cv2.connectedComponents(m.astype(np.uint8), 8)
+        keep = set(np.unique(lb1[m0]).tolist()) - {0}
+        if not keep:
+            continue
+        m = np.isin(lb1, np.array(sorted(keep), np.int32))
+        inv = (~m).astype(np.uint8)
+        nn2, lb2, st2, _ = cv2.connectedComponentsWithStats(inv, 4)
+        e2 = set(np.unique(np.concatenate(
+            [lb2[0], lb2[-1], lb2[:, 0], lb2[:, -1]])).tolist())
+        h2 = [i for i in range(1, nn2)
+              if i not in e2 and st2[i, cv2.CC_STAT_AREA] < m.sum() * 0.12]
+        if h2:
+            m |= np.isin(lb2, np.array(h2, np.int32))
+        if not STROKE_DRAW:
+            # ══════════════════════════════════════════════════════
+            # 🎯 หน้ากากจากภาพจริงดีอยู่แล้ว — ใช้มันเป็นรูปตัวอักษรเลย
+            # ⚠️ วัดจริง 2026-08-18: กางหน้ากากออกดู ได้ตัว M ที่อ่านออกชัดเจน
+            #    (สองขา + ยอดแหลมกลาง + ช่องสองช่อง) ต่างจากหน้ากากของแผนที่ภูมิภาค
+            #    ที่เละจนเป็น 'หน้าแมว' — เพราะอันนี้ตัดสินสองทางจากสีจริง ไม่ผ่าน
+            #    k-means / การเกลาแผนที่ / การรวมภูมิภาค ที่กินรายละเอียดไปทีละชั้น
+            # ⛔ เคยลองวาดกลับจากแกน (skeleton) แล้วยังไม่ดี — แกนของหน้ากากหนา 6.7 px
+            #    มีก้านขยะ 34 ก้าน ยอดแหลมกลางถูกปาดหาย (ผู้ใช้ทักว่ายังไม่ตรงแกน)
+            #    เก็บทางนั้นไว้เป็นตัวเลือก (STROKE_DRAW = 1) แต่ค่าตั้งต้นใช้หน้ากากตรง ๆ
+            # ══════════════════════════════════════════════════════
+            if float(m.sum()) < area[r] * 0.5 or float(m.sum()) > area[r] * 2.2:
+                continue
+            sub2 = sub.copy()
+            sub2[(mf | m) & ~m] = host
+            sub2[m] = r
+            R[y0:y1, x0:x1] = sub2
+            hit += 1
+            continue
+        sk = _thin(m)
+        Ln = int(sk.sum())
+        if Ln < STROKE_LEN:
+            continue
+        w = float(m.sum()) / float(Ln)
+        if w > wmax or w < 1.2:
+            continue
+        if math.hypot(x1 - x0, y1 - y0) < w * 2.5:
+            continue
+        segs = [_rdp(b, max(0.8, w * STROKE_RDP)) for b in _branches(sk)]
+        segs = [q for q in segs if len(q) >= 2]
+        if not segs:
+            continue
+
+        def _draw(th):
+            g = np.zeros(m.shape, np.uint8)
+            for q in segs:
+                pts = np.round(q).astype(np.int32).reshape(-1, 1, 2)
+                cv2.polylines(g, [pts], False, 1, th, cv2.LINE_8)
+            return g
+
+        th = max(1, int(round(w)))
+        new = _draw(th)
+        for _ in range(4):
+            a0, a1 = float(m.sum()), float(new.sum())
+            if a1 <= 0 or abs(a1 - a0) / a0 < 0.10:
+                break
+            th = max(1, th + (1 if a1 < a0 else -1))
+            new = _draw(th)
+        nb = new.astype(bool)
+        if not nb.any():
+            continue
+        a0, a1 = float(m.sum()), float(nb.sum())
+        if a1 < a0 * 0.65 or a1 > a0 * 1.5:
+            continue
+        if float((nb & m).sum()) / max(1.0, a1) < 0.75:
+            continue
+        nn3, _ = cv2.connectedComponents(nb.astype(np.uint8), 8)
+        if nn3 - 1 != 1:
+            continue
+        sub2 = sub.copy()
+        sub2[(mf | m) & ~nb] = host
+        sub2[nb] = r
+        R[y0:y1, x0:x1] = sub2
+        hit += 1
+    return R, hit
+
+
+def label_refine(reg, lab, mean, iters=3):
+    """ขยายแผนที่ป้ายจากความละเอียดต้นฉบับ -> ความละเอียดงาน แบบเกาะขอบจริง
+
+    ⚠️ ปัญหาของการขยายแผนที่ป้ายด้วย NEAREST: ขอบจะเป็นบันไดขนาดพิกเซลต้นฉบับ
+       (มุมมนของกล่องโลโก้กลายเป็นมุมตัด เพราะรัศมีมนแค่ ~2 พิกเซลของไฟล์จริง)
+    ✅ ให้พิกเซลที่อยู่ริมขอบ "เลือกเจ้าของใหม่" จากเพื่อนบ้าน โดยดูว่าสีจริงของมัน
+       ใกล้สีของภูมิภาคไหนที่สุด — ทำซ้ำไม่กี่รอบ ขอบก็ขยับไปนอนบนขอบจริง
+       ได้ทั้ง 'รูปทรงถูก' จากการตัดสินที่ความละเอียดต้นฉบับ
+       และ 'ขอบละเอียด' จากภาพความละเอียดงาน
+    """
+    R = reg.copy()
+    H, W = R.shape
+    M = np.asarray(mean, np.float64)
+    n = int(R.max()) + 1
+    if len(M) < n:
+        M = np.concatenate([M, np.zeros((n - len(M), 3))])
+    L = lab.reshape(-1, 3)
+    for _ in range(max(1, int(iters))):
+        P = np.zeros((H + 2, W + 2), R.dtype)
+        P[1:-1, 1:-1] = R
+        P[0, 1:-1] = R[0]; P[-1, 1:-1] = R[-1]
+        P[:, 0] = P[:, 1]; P[:, -1] = P[:, -2]
+        nb = np.stack([P[a:a + H, b:b + W]
+                       for a in (0, 1, 2) for b in (0, 1, 2)
+                       if not (a == 1 and b == 1)], -1)
+        edge = (nb != R[:, :, None]).any(-1)
+        if not edge.any():
+            break
+        idx = np.flatnonzero(edge.reshape(-1))
+        px = L[idx]                                   # (M,3)
+        cand = np.concatenate([R.reshape(-1)[idx][:, None],
+                               nb.reshape(-1, 8)[idx]], 1)   # (M,9)
+        d = ((M[cand] - px[:, None, :]) ** 2).sum(2)
+        best = cand[np.arange(len(cand)), d.argmin(1)]
+        Rf = R.reshape(-1)
+        if not (best != Rf[idx]).any():
+            break
+        Rf[idx] = best
+        R = Rf.reshape(H, W)
+    return R
+
+
+def true_mean(reg, lab, old, core=2, cmin=8):
+    """สีจริงของแต่ละภูมิภาค อ่านจาก 'ภาพเดิม' ที่เนื้อในของภูมิภาค
+
+    ⚠️ ต้องอ่านจากภาพเดิมเสมอ ไม่ใช่สำเนาที่คมแล้ว — สำเนาคมมีรอยกระเพื่อม (ringing)
+       ที่ขอบ ถ้าเอาสีจากตรงนั้นจะได้สีเข้ม/จางเกินจริงเป็นริ้ว ๆ
+    """
+    n = int(reg.max()) + 1
+    out = np.asarray(old, np.float64)[:n].copy()
+    if len(out) < n:
+        out = np.concatenate([out, np.zeros((n - len(out), 3))])
+    inn = np.ones(reg.shape, bool)
+    for _ in range(max(1, int(core))):
+        e = inn.copy()
+        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1),
+                       (-1, -1), (-1, 1), (1, -1), (1, 1)):
+            e &= (np.roll(np.roll(reg, dy, 0), dx, 1) == reg)
+        e[0, :] = e[-1, :] = e[:, 0] = e[:, -1] = False
+        inn = e
+        idx = reg[inn].reshape(-1)
+        cnt = np.bincount(idx, minlength=n).astype(np.float64)
+        sm = np.stack([np.bincount(idx, weights=lab[:, :, c][inn], minlength=n)
+                       for c in range(3)], 1)
+        ok = cnt >= cmin
+        if ok.any():
+            out[ok] = sm[ok] / cnt[ok, None]
+    # ก้อนที่เล็กจนกร่อนแล้วไม่เหลือ -> ใช้ค่าเฉลี่ยทั้งก้อนจากภาพเดิม
+    idx = reg.reshape(-1)
+    cnt = np.bincount(idx, minlength=n).astype(np.float64)
+    sm = np.stack([np.bincount(idx, weights=lab[:, :, c].reshape(-1), minlength=n)
+                   for c in range(3)], 1)
+    need = (cnt > 0) & ~(np.bincount(reg[inn].reshape(-1), minlength=n) >= cmin)
+    if need.any():
+        out[need] = sm[need] / cnt[need, None]
+    return out
+
+
+def merge_similar(reg, mean, area, de):
+    """รวมภูมิภาคที่ติดกันและ 'สีจริงใกล้กัน' — ใช้หลังแบ่งจากสำเนาที่คมแล้ว
+
+    ⚠️ ทำไมต้องมี: สำเนาที่คมทำให้ช่องเล็ก ๆ (เช่นช่องสามเหลี่ยมของตัว M) ถูกดันไกล
+       จากสีเดิมจนกลายเป็นภูมิภาคของตัวเอง คนละก้อนกับพื้นกล่องทั้งที่สีจริงเหมือนกัน
+       และรอยกระเพื่อมที่ขอบก็แตกเป็นชิ้นเล็ก ๆ (วัดจริง: ชิ้น 212 -> 416 สี 124 -> 237)
+    ✅ พอวัดด้วย 'สีจริงจากภาพเดิม' ชิ้นพวกนี้จะกลับไปรวมกับเจ้าของที่ถูกต้องเอง
+    """
+    n = int(reg.max()) + 1
+    pairs = {}
+    for A, B in ((reg[:, :-1], reg[:, 1:]), (reg[:-1, :], reg[1:, :])):
+        d = A != B
+        if not d.any():
+            continue
+        a = A[d].reshape(-1).astype(np.int64); b = B[d].reshape(-1).astype(np.int64)
+        lo = np.minimum(a, b); hi = np.maximum(a, b)
+        u, c = np.unique(lo * n + hi, return_counts=True)
+        for kk, cc in zip(u.tolist(), c.tolist()):
+            pairs[kk] = pairs.get(kk, 0) + int(cc)
+    par = np.arange(n, dtype=np.int64)
+
+    def find(x):
+        while par[x] != x:
+            par[x] = par[par[x]]; x = par[x]
+        return x
+
+    M = np.asarray(mean, np.float64)[:n].copy()
+    if len(M) < n:
+        M = np.concatenate([M, np.zeros((n - len(M), 3))])
+    A9 = np.asarray(area, np.float64)[:n].copy()
+    if len(A9) < n:
+        A9 = np.concatenate([A9, np.zeros(n - len(A9))])
+    order = []
+    for kk in pairs:
+        a, b = divmod(kk, n)
+        if a <= 0 or b <= 0:
+            continue
+        order.append((float(np.sqrt(((M[a] - M[b]) ** 2).sum())), a, b))
+    order.sort()
+    hit = 0
+    for d0, a, b in order:
+        if d0 > de:
+            break
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            continue
+        if float(np.sqrt(((M[ra] - M[rb]) ** 2).sum())) > de:
+            continue
+        wa, wb = max(A9[ra], 1.0), max(A9[rb], 1.0)
+        keep, gone = (ra, rb) if wa >= wb else (rb, ra)
+        M[keep] = (M[ra] * wa + M[rb] * wb) / (wa + wb)
+        A9[keep] = A9[ra] + A9[rb]
+        par[gone] = keep
+        hit += 1
+    if not hit:
+        return reg, mean, area
+    lut = np.array([find(i) for i in range(n)], np.int64)
+    lut[0] = 0
+    return lut[reg].astype(reg.dtype), M, A9
+
+
+def _dom_nb(reg, n):
+    """เพื่อนบ้านที่กินขอบของแต่ละชิ้นมากที่สุด (0 = ไม่มี)"""
+    best = np.zeros(n, np.int64)
+    bestc = np.zeros(n, np.float64)
+    for A, B in ((reg[:, :-1], reg[:, 1:]), (reg[:-1, :], reg[1:, :])):
+        d = A != B
+        if not d.any():
+            continue
+        a = A[d].reshape(-1).astype(np.int64)
+        b = B[d].reshape(-1).astype(np.int64)
+        for x, y in ((a, b), (b, a)):
+            k = x * n + y
+            u, c = np.unique(k, return_counts=True)
+            xi, yi = np.divmod(u, n)
+            m = (xi > 0) & (xi < n) & (yi > 0) & (yi < n)
+            xi, yi, c = xi[m], yi[m], c[m].astype(np.float64)
+            for i in range(len(xi)):
+                if c[i] > bestc[xi[i]]:
+                    bestc[xi[i]] = c[i]
+                    best[xi[i]] = yi[i]
+    return best
+
+
+def _to_rgb(lab_arr):
+    return cv2.cvtColor(VE.unlabf(np.asarray(lab_arr, np.float32)).reshape(-1, 1, 3),
+                        cv2.COLOR_LAB2RGB).reshape(-1, 3).astype(np.float64)
+
+
+def snap_ray(mean, pal, area, lim, reg, tmax=4.0, dmax=45.0):
+    """🎨 คืน "สีจริง" ให้ชิ้นจิ๋ว โดยถอดสีที่ปนมาจากเพื่อนบ้านออก
+
+    ปัญหา: ชิ้นเล็กระดับตัวอักษร 8 พิกเซล ขอบเกลี่ยกินเกือบทั้งชิ้น
+      สีเฉลี่ยที่วัดได้จึงเป็น "ส่วนผสม" ระหว่างสีจริงกับสีของสิ่งที่อยู่รอบ ๆ
+        · ตัว nai ในวงส้ม  -> วัดได้สีครีม   ทั้งที่จริงเป็นสีขาว
+        · ช่องในตัว M      -> วัดได้เขียวกลาง ทั้งที่จริงเป็นเขียวของกล่อง
+
+    ⛔ วิธีเดิม "หาสีในจานที่ใกล้ที่สุด" ใช้ไม่ได้ เพราะมันไม่รู้ทิศ:
+       ครีมใกล้ขาวจริง (ผ่าน) แต่เขียวกลางดันไปใกล้ "เขียวอมฟ้า" ของใบไม้ล่างพวงหรีด
+       ซึ่งอยู่คนละที่ในภาพ -> ได้จุดสีแปลกปลอมกลางตัวอักษร (ผู้ใช้ชี้ 2026-08-23)
+    ⛔ และเกณฑ์ "ระยะสีต้องใกล้" ก็ใช้ไม่ได้ เพราะเคสที่ต้องดึง (ครีม->ขาว 25-31 หน่วย)
+       ไกลกว่าเคสที่ต้องห้าม (เขียวกลาง->เขียวอมฟ้า 12.6 หน่วย) เสมอ
+
+    ✅ วิธีนี้ใช้ "ทิศ": สีที่วัดได้ = a x สีจริง + (1-a) x สีเพื่อนบ้าน
+       สีจริงจึงต้องอยู่บนเส้นตรงที่ยิงจากสีเพื่อนบ้าน ผ่านสีที่วัดได้ แล้วเลยออกไป
+         ครีม: ยิงจาก 'ส้ม' ผ่าน 'ครีม'      -> ไปโดน 'ขาว' (ห่างแนว 24)
+         M   : ยิงจาก 'มิ้นต์' ผ่าน 'เขียวกลาง' -> 'เขียวกล่อง' ห่างแนว 32 · 'เขียวอมฟ้า' 40
+       🔑 ต้องคิดใน RGB ไม่ใช่ Lab — การเกลี่ยขอบ (alpha blend) เป็นเชิงเส้นใน RGB
+          ถ้าคิดใน Lab เส้นจะโค้ง แล้วสีที่ถูกต้องจะหลุดกรอบไปทั้งคู่ (วัดจริงแล้ว)
+       ถ้าไม่มีสีไหนอยู่บนแนวเลย ค่อยถอยไปใช้สีที่ใกล้ที่สุดแบบเดิม
+    """
+    n = len(mean)
+    out = np.asarray(mean, np.float64).copy()
+    d0 = ((out[:, None, :] - pal[None, :, :]) ** 2).sum(2)
+    nearest = d0.argmin(1)
+    ar = np.asarray(area, np.float64)
+    if len(ar) < n:
+        ar = np.concatenate([ar, np.zeros(n - len(ar))])
+    cand = np.flatnonzero((ar[:n] > 0) & (ar[:n] <= lim))
+    cand = cand[cand > 0]
+    if not len(cand):
+        return out
+    dom = _dom_nb(reg, n)
+    mrgb = _to_rgb(out)                       # สีของทุกชิ้น (RGB)
+    prgb = _to_rgb(pal)                       # สีในจาน (RGB)
+    for r in cand.tolist():
+        j = int(dom[r])
+        k = int(nearest[r])
+        if 0 < j < n:
+            v = mrgb[r] - mrgb[j]
+            L2 = float((v * v).sum())
+            if L2 >= 1.0:
+                w = prgb - mrgb[j]
+                t = (w @ v) / L2
+                perp = w - t[:, None] * v[None, :]
+                dd = np.sqrt((perp * perp).sum(1))
+                ok = (t >= 1.0) & (t <= float(tmax)) & (dd <= float(dmax))
+                if ok.any():
+                    k = int(np.flatnonzero(ok)[int(np.argmin(dd[ok]))])
+        out[r] = pal[k]
+    return out
+
+
+def snap_local(mean, pal, area, lim, reg, lab, grow=2.0, de=12.0, minpx=6):
+    """🎨 ชิ้นจิ๋วให้ดึงสีเข้าจาน — แต่เลือกได้เฉพาะ "สีที่มีอยู่จริงแถวนั้น"
+
+    ⛔ ของเดิมเลือกสีที่ใกล้ที่สุดจากจานทั้งใบ ซึ่งเป็นสีของทั้งภาพ
+       ช่องในตัว M (เขียวกลาง) จึงไปคว้า "เขียวอมฟ้า" ของใบไม้ล่างพวงหรีด
+       ซึ่งอยู่คนละมุมภาพ มาแปะกลางตัวอักษร (ผู้ใช้ชี้ 2026-08-23)
+    ⛔ เกณฑ์ระยะสี (SNAP_DE) ก็ไม่ได้ผล — เคสที่ต้องดึงอยู่ไกลกว่าเคสที่ต้องห้ามเสมอ
+    ⛔ เกณฑ์ทิศ (snap_ray) ก็ไม่ได้ผล — ดึงสีของชิ้นเล็กทุกชิ้นให้ "จัดจ้าน" เกินจริง
+       (วัดจริง ป้ายรุ้ง ขอบ 7.43 -> 7.69)
+    ✅ ตัวนี้ดูแค่ว่า "สีนั้นมีอยู่จริงในละแวกนี้ไหม" — เปิดหน้าต่างรอบชิ้นแล้วนับ
+       ว่าพิกเซลจริงในหน้าต่างมีสีไหนในจานบ้าง แล้วจำกัดให้เลือกได้เฉพาะสีเหล่านั้น
+         ช่องในตัว M : ละแวกมีมิ้นต์/เขียวกล่อง/ขาว ไม่มีเขียวอมฟ้า -> ได้เขียวกล่อง
+         ตัว nai     : ละแวกมีส้ม/ขาว -> ยังได้ขาวเหมือนเดิม (ไม่พัง)
+    """
+    n = len(mean)
+    out = np.asarray(mean, np.float64).copy()
+    d0 = ((out[:, None, :] - pal[None, :, :]) ** 2).sum(2)
+    nearest = d0.argmin(1)
+    ar = np.asarray(area, np.float64)
+    if len(ar) < n:
+        ar = np.concatenate([ar, np.zeros(n - len(ar))])
+    cand = np.flatnonzero((ar[:n] > 0) & (ar[:n] <= lim))
+    cand = cand[cand > 0]
+    if not len(cand) or lab is None:
+        for r in cand.tolist():
+            out[r] = pal[nearest[r]]
+        return out
+    H9, W9 = reg.shape
+    ys, xs = np.nonzero(np.isin(reg, cand))
+    ridx = reg[ys, xs]
+    order = np.argsort(ridx, kind="stable")
+    ys, xs, ridx = ys[order], xs[order], ridx[order]
+    bnd = np.searchsorted(ridx, cand)
+    bnd = np.append(bnd, len(ridx))
+    de2 = float(de) * float(de)
+    for i, r in enumerate(cand.tolist()):
+        a, b = bnd[i], bnd[i + 1]
+        if b <= a:
+            out[r] = pal[nearest[r]]
+            continue
+        y0, y1 = int(ys[a:b].min()), int(ys[a:b].max()) + 1
+        x0, x1 = int(xs[a:b].min()), int(xs[a:b].max()) + 1
+        g = int(max(3, round(max(y1 - y0, x1 - x0) * float(grow))))
+        y0, y1 = max(0, y0 - g), min(H9, y1 + g)
+        x0, x1 = max(0, x0 - g), min(W9, x1 + g)
+        sub = lab[y0:y1, x0:x1].reshape(-1, 3)
+        if len(sub) > 4000:                       # สุ่มพอประมาณ เร็วและพอสำหรับการ "มี/ไม่มี"
+            sub = sub[:: max(1, len(sub) // 4000)]
+        dloc = ((sub[:, None, :] - pal[None, :, :]) ** 2).sum(2)
+        hit = (dloc.min(1) <= de2)
+        idx = dloc.argmin(1)[hit]
+        if not len(idx):
+            out[r] = pal[nearest[r]]
+            continue
+        cnt = np.bincount(idx, minlength=len(pal))
+        okp = np.flatnonzero(cnt >= int(minpx))
+        if not len(okp):
+            out[r] = pal[nearest[r]]
+            continue
+        k = int(okp[int(np.argmin(d0[r][okp]))])
+        out[r] = pal[k]
+    return out
 
 
 def _dissolve_blend(reg, res, lim, bg_id=-1, lab=None):
@@ -1561,7 +2187,7 @@ def g1_join(start, segs, deg=34.0):
 
 
 def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0,
-                  snap=None):
+                  snap=None, upscale=1.0):
     """ทางเข้าหลัก — คืน list ของชั้นสี (พิกัดหน่วยภาพงาน) ของ "ย่านลาย"
 
     img_rgb : ภาพที่ผ่านการเตรียมของเอนจิ้นแล้ว (ขยาย + ฉายกลับ + ยุบขอบ)
@@ -1586,12 +2212,90 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     # 📏 เกณฑ์ชิ้นจิ๋วต้องผูกกับ "ความหนาเส้นจริงในภาพ" ไม่ใช่สัดส่วนพื้นที่ตายตัว
     #    เส้นหนา s พิกเซล ยาว s พิกเซล มีพื้นที่ s² -> เกณฑ์ต้องต่ำกว่านั้นมาก
     _map = (max(6.0, (float(stroke) * 0.30) ** 2) if stroke and stroke > 0 else 0.0)
-    res = build(img_rgb, keep=keep, dom=None, K=K_COLORS,
-                min_area_frac=MIN_AREA_FRAC, de_merge=DE_MERGE,
-                target=10 ** 9, thin=THIN, seed=seed, cen=_cen, min_area_px=_map)
+    # ══════════════════════════════════════════════════════════════
+    # 🔪 ภาพที่ถูกขยายมา ขอบทุกเส้นคือ "ทางลาดฟุ้ง" — แบ่งภูมิภาคจากภาพนั้นตรง ๆ ไม่ได้
+    # ⚠️ วัดจริง 2026-08-18 (ผู้ใช้ยืนยันว่า "เราเห็นเส้นหลักของมันไม่ใช่เหรอ"):
+    #    กางค่าพิกเซลจริง ตัว M ในกล่องเขียวมีครบทุกเส้น ช่องสามเหลี่ยมสองช่อง
+    #    กว้าง 3x3 พิกเซลของไฟล์ต้นฉบับ = ~95 พิกเซลหลังขยาย
+    #    แต่แผนที่ภูมิภาคได้แค่ 26 พิกเซล (หายไป 70%) ตั้งแต่ขั้นควอนไทซ์
+    #    ไม่ใช่ขั้นเกลาแผนที่ (ปิดตัวเกลาแล้วก็ยังได้ 26)
+    #    เพราะ Lanczos ทำให้พิกเซลในช่องกลายเป็นสีก้ำกึ่ง แล้วถูกจัดเข้ากลุ่มสีขาวของตัว M
+    # ✅ คมสำเนาหนึ่งชุดไว้ "ตัดสินว่าพิกเซลนี้เป็นของใคร" เท่านั้น
+    #    ส่วน "สีที่จะระบายจริง" ยังอ่านจากภาพเดิมเสมอ (CORE_FIT ด้านล่าง)
+    #    -> ได้รูปทรงคมตามต้นฉบับ โดยสีไม่เพี้ยนจากรอยกระเพื่อมของการคมภาพ
+    # ⛔ ต่างจาก "unsharp ทั้งท่อ" ที่เอนจิ้นเคยลองแล้วแย่ลง (ดูหมายเหตุใน vectorize)
+    #    อันนั้นคมทั้งภาพแล้วเอาไปใช้ทั้งสีทั้งรูป จึงได้ขอบเป็นริ้วและสีเพี้ยน
+    # ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # 🧬 ตัดสิน "พิกเซลนี้เป็นของใคร" ที่ความละเอียดต้นฉบับ ไม่ใช่ที่ภาพขยาย
+    # ⚠️ วัดจริง 2026-08-18: ช่องสามเหลี่ยมของตัว M กว้าง 3x3 พิกเซลของไฟล์จริง
+    #    ค่าพิกเซลชัดเจนมาก (เขียว 120-135 ล้อมด้วยขาว 210-242)
+    #    แต่พอ Lanczos ขยาย 3.25 เท่า ขอบกลายเป็นทางลาด พิกเซลรอบนอกของช่อง
+    #    ถูกจัดเข้ากลุ่มสีขาว -> ช่องเหลือแค่ 26 จาก ~95 พิกเซล = กลายเป็นจุดกลม
+    # ✅ ย่อกลับไปตัดสินที่ความละเอียดเดิม (ที่ข้อมูลยังสะอาด) แล้วขยายแผนที่ป้ายกลับมา
+    #    ตำแหน่งขอบที่หยาบระดับพิกเซลต้นฉบับ จะถูก refine() ดัดเข้าขอบจริง
+    #    ระดับเศษพิกเซลอีกทีอยู่แล้ว — ซึ่งคือหน้าที่ของมันตั้งแต่แรก
+    # ══════════════════════════════════════════════════════════════
+    _nat = None
+    _f9 = 1.0
+    if SEG_NATIVE and float(upscale) > 1.15:
+        # 🎚️ SEG_SCALE = จะตัดสินที่ "กี่เท่าของความละเอียดต้นฉบับ"
+        #    1 = ต้นฉบับเป๊ะ · 2 = สองเท่าต้นฉบับ · >= upscale = เท่าภาพขยาย (เท่ากับปิด)
+        _f9 = max(1.0, float(upscale) / max(1.0, float(SEG_SCALE)))
+        if _f9 > 1.02:
+            _nh, _nw = max(8, int(round(H / _f9))), max(8, int(round(W / _f9)))
+            _nat = (_nh, _nw)
+    _seg = img_rgb
+    if SHARP_AMT > 0 and float(upscale) > 1.15 and _nat is None:
+        try:
+            _sg = max(0.6, float(upscale) * SHARP_SIG)
+            _bl = cv2.GaussianBlur(img_rgb.astype(np.float32), (0, 0), _sg)
+            _seg = np.clip(img_rgb.astype(np.float32)
+                           + SHARP_AMT * (img_rgb.astype(np.float32) - _bl),
+                           0, 255).astype(np.uint8)
+        except Exception:
+            _seg = img_rgb
+    if _nat is not None:
+        _hh, _ww = _nat
+        _sm9 = cv2.resize(img_rgb, (_ww, _hh), interpolation=cv2.INTER_AREA)
+        _km9 = (None if keep is None else
+                cv2.resize(keep.astype(np.uint8), (_ww, _hh),
+                           interpolation=cv2.INTER_NEAREST).astype(bool))
+        _s9 = float(_f9) ** 2
+        res = build(_sm9, keep=_km9, dom=None, K=K_COLORS,
+                    min_area_frac=MIN_AREA_FRAC, de_merge=DE_MERGE,
+                    target=10 ** 9, thin=THIN, seed=seed, cen=_cen,
+                    min_area_px=_map / _s9)
+        res["reg"] = cv2.resize(res["reg"], (W, H), interpolation=cv2.INTER_NEAREST)
+        res["area"] = np.asarray(res["area"], np.float64) * _s9
+        if SEG_REFINE > 0:
+            try:
+                _lb9 = VE.labf(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).reshape(-1, 3)
+                               ).reshape(H, W, 3).astype(np.float64)
+                res["reg"] = label_refine(res["reg"], _lb9, res["mean"], SEG_REFINE)
+            except Exception:
+                pass
+    else:
+        res = build(_seg, keep=keep, dom=None, K=K_COLORS,
+                    min_area_frac=MIN_AREA_FRAC, de_merge=DE_MERGE,
+                    target=10 ** 9, thin=THIN, seed=seed, cen=_cen, min_area_px=_map)
     reg = res["reg"]
     if reg is None or int(reg.max()) <= 0:
         return []
+    lab = VE.labf(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).reshape(-1, 3)
+                  ).reshape(H, W, 3).astype(np.float64)
+    # ══════════════════════════════════════════════════════════════
+    # 🎨 อ่าน "สีจริง" ของทุกภูมิภาคจากภาพเดิม แล้วรวมก้อนที่สีจริงเหมือนกัน
+    #    (จำเป็นเมื่อแบ่งภูมิภาคจากสำเนาที่คมแล้ว — ดูหมายเหตุใน merge_similar)
+    # ══════════════════════════════════════════════════════════════
+    if _seg is not img_rgb or _nat is not None:
+        try:
+            res["mean"] = true_mean(reg, lab, res["mean"], core=CORE_FIT, cmin=CORE_MIN)
+            reg, _m8, _a8 = merge_similar(reg, res["mean"], res["area"], DE_MERGE)
+            res["reg"] = reg; res["mean"] = _m8; res["area"] = _a8
+            res["mean"] = true_mean(reg, lab, res["mean"], core=CORE_FIT, cmin=CORE_MIN)
+        except Exception:
+            pass
     # ══════════════════════════════════════════════════════════════
     # ══════════════════════════════════════════════════════════════
     # 🔗 รวม "พื้นไล่สี" ทุกก้อนเป็นก้อนเดียวก่อนไล่เส้น
@@ -1633,12 +2337,19 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
     #       เพราะขอบเกลี่ยของเส้นหนาก็ 'บาง + เป็นสีผสม' เหมือนกัน แต่มันคือของจริง
     #    ✅ ผูกกับพื้นไล่สีจึงปลอดภัย: ภาพลายเส้นไม่มีพื้นไล่สี (BG_ID = -1) = ไม่ถูกแตะเลย
     # ══════════════════════════════════════════════════════════════
-    lab = VE.labf(cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB).reshape(-1, 3)
-                  ).reshape(H, W, 3).astype(np.float64)
     if BLEND_THIN > 0 and BG_ID[0] >= 0:
         try:
             reg = _dissolve_blend(reg, res, float(BLEND_AREA) * H * W, BG_ID[0], lab)
             res["reg"] = reg
+        except Exception:
+            pass
+    # ✏️ วาดตัวอักษร/โลโก้จิ๋วใหม่จากแกนเส้นหลัก (ก่อนไล่ขอบ)
+    if STROKE_AREA > 0:
+        try:
+            reg, _hit9 = stroke_rebuild(reg, res, float(STROKE_AREA) * H * W,
+                                        STROKE_WMAX, lab)
+            if _hit9:
+                res["reg"] = reg
         except Exception:
             pass
     _pg(66, "ไล่ขอบร่วม")
@@ -1708,9 +2419,26 @@ def planar_layers(img_rgb, keep, seed=0, progress=None, pal_lab=None, stroke=0.0
             # ══════════════════════════════════════════════════════
             _lim = float(SNAP_SMALL) * H * W
             _sm = np.asarray(res["area"], np.float64) <= _lim
+            if SNAP_DE > 0:
+                # 🛡️ ด่านระยะสี: ชิ้นจิ๋วบางชิ้นเป็น "สีกลางทาง" จริง ๆ ที่ไม่มีในจาน
+                #    ถ้าดึงเข้าจานแบบไม่ดูระยะ มันจะกระโดดไปหาสีที่ใกล้ที่สุด "เท่าที่มี"
+                #    ซึ่งอาจเป็นคนละโทนไปเลย (ตัว M ของ LINEMAN ได้สีเขียวอมฟ้าของใบไม้
+                #    ล่างพวงหรีดมาแปะกลางตัวอักษร — ผู้ใช้ชี้จุดนี้ 2026-08-23)
+                _sm &= (np.sqrt(_d.min(1)) <= float(SNAP_DE))
             if _sm.any():
                 _mean = _mean.copy()
-                _mean[_sm] = _sn[_sm]
+                if SNAP_LOCAL:
+                    _ry = snap_local(np.asarray(_mean, np.float64), _p,
+                                     res["area"], _lim, reg, lab,
+                                     SNAP_LOCAL_G, SNAP_LOCAL_DE)
+                    _mean[_sm] = _ry[_sm]
+                elif SNAP_RAY:
+                    _ry = snap_ray(np.asarray(_mean, np.float64), _p,
+                                   res["area"], _lim, reg,
+                                   SNAP_RAY_T, SNAP_RAY_D)
+                    _mean[_sm] = _ry[_sm]
+                else:
+                    _mean[_sm] = _sn[_sm]
     rgbs = cv2.cvtColor(VE.unlabf(_mean.astype(np.float32)).reshape(-1, 1, 3),
                         cv2.COLOR_LAB2RGB).reshape(-1, 3)
     area = res["area"]
