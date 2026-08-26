@@ -10288,6 +10288,15 @@ function wIsMedia(k){
   if(k.indexOf('\u0e1f\u0e34\u0e25\u0e4c\u0e21')>=0) return true;                                  // \u0e1f\u0e34\u0e25\u0e4c\u0e21
   return false;
 }
+/* 🚫 กลุ่ม“ขนาดไม่จำกัด” — ตาม table CalPrice_1 ที่พี่ชี้ (2026-08-26)
+   เฉพาะรายการที่ "ชื่อมีคำว่า Print" (ละติน) 38 รายการเท่านั้น — พี่ยืนยันขอบเขตนี้เอง
+   ยกเว้นให้ทั้ง 3 เงื่อนไข:
+     • เพดานความสูงตัวอักษร 60 ซม.
+     • เพดานพื้นที่ 2.88 ตร.ม.
+     • ขั้นต่ำพื้นที่ 0.3 ตร.ม.
+   ⚠️ ห้ามเปลี่ยนไปใช้ wIsMedia() ซึ่งกว้างกว่า (49 รายการ)
+     -> จะลากรายการ "พิมพ์ UV" อีก 10 รายการ + "สติ๊กเกอร์กล่องไฟ (Blacklit)" เข้ามาด้วย ซึ่งพี่ไม่ต้องการ */
+function wNoSizeLimit(k){ return !!k && /print/i.test(k); }
 function wIsLight(k){
   if(!k)return false;
   if(wIsMedia(k))return false;                       // \u2b05 \u0e07\u0e32\u0e19\u0e1e\u0e34\u0e21\u0e1e\u0e4c/\u0e1f\u0e34\u0e25\u0e4c\u0e21/\u0e2a\u0e15\u0e34\u0e4a\u0e01\u0e40\u0e01\u0e2d\u0e23\u0e4c \u0e44\u0e21\u0e48\u0e04\u0e34\u0e14\u0e2b\u0e21\u0e49\u0e2d\u0e41\u0e1b\u0e25\u0e07
@@ -10313,21 +10322,29 @@ function wRowHcm(totalHcm){
 function wCalcPrice(itemKey,widthM,heightM,letterHeightCm,colorSpecial,frameKey,role){
   var item=WCAT[itemKey]; if(!item)return {error:'\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1b\u0e49\u0e32\u0e22'};
   var isText=(role==='text')||(!role&&wIsLetter(itemKey)), isLogo=(role==='logo');
+  var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey), isMedia=wIsMedia(itemKey);
+  var noLim=wNoSizeLimit(itemKey);
   /* \ud83d\udccf \u0e40\u0e1e\u0e14\u0e32\u0e19 "\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 > 60 \u0e0b\u0e21." \u0e15\u0e49\u0e2d\u0e07\u0e27\u0e31\u0e14\u0e17\u0e35\u0e48 '\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e08\u0e23\u0e34\u0e07' \u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e17\u0e31\u0e49\u0e07\u0e1b\u0e49\u0e32\u0e22
      \u0e40\u0e14\u0e34\u0e21\u0e43\u0e0a\u0e49\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e1b\u0e49\u0e32\u0e22 -> \u0e1b\u0e49\u0e32\u0e22 3 \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14\u0e2a\u0e39\u0e07\u0e23\u0e27\u0e21 60.8 \u0e0b\u0e21. (\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e08\u0e23\u0e34\u0e07\u0e41\u0e04\u0e48 ~12 \u0e0b\u0e21.)
      \u0e01\u0e47\u0e42\u0e14\u0e19\u0e15\u0e35\u0e40\u0e1b\u0e47\u0e19\u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19 \u0e41\u0e25\u0e49\u0e27\u0e23\u0e32\u0e04\u0e32\u0e02\u0e36\u0e49\u0e19 0 \u0e1a\u0e32\u0e17 \u0e42\u0e14\u0e22\u0e44\u0e21\u0e48\u0e1a\u0e2d\u0e01\u0e40\u0e2b\u0e15\u0e38\u0e1c\u0e25 */
   var _lh=parseFloat(letterHeightCm); if(!(_lh>0)) _lh=heightM*100;
-  if(isText && _lh>60) return {over60:true, hcm:_lh,
+  if(isText && _lh>60 && !noLim) return {over60:true, hcm:_lh,
     error:'\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e2a\u0e39\u0e07 '+_lh.toFixed(1)+' \u0e0b\u0e21. \u0e40\u0e01\u0e34\u0e19\u0e40\u0e1e\u0e14\u0e32\u0e19\u0e15\u0e32\u0e23\u0e32\u0e07\u0e23\u0e32\u0e04\u0e32 (\u0e2a\u0e39\u0e07\u0e2a\u0e38\u0e14 60 \u0e0b\u0e21.) '
          +'\u2014 \u0e07\u0e32\u0e19\u0e02\u0e19\u0e32\u0e14\u0e19\u0e35\u0e49\u0e15\u0e49\u0e2d\u0e07\u0e43\u0e2b\u0e49\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23\u0e01\u0e33\u0e2b\u0e19\u0e14\u0e23\u0e32\u0e04\u0e32\u0e40\u0e2d\u0e07 \u0e23\u0e30\u0e1a\u0e1a\u0e08\u0e30\u0e44\u0e21\u0e48\u0e04\u0e34\u0e14\u0e23\u0e32\u0e04\u0e32\u0e43\u0e2b\u0e49\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34 '
          +'\u00b7 \u0e17\u0e32\u0e07\u0e2d\u0e2d\u0e01: \u0e25\u0e14\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e39\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e31\u0e01\u0e29\u0e23\u0e43\u0e2b\u0e49 \u2264 60 \u0e0b\u0e21. \u0e2b\u0e23\u0e37\u0e2d\u0e01\u0e14 \u201c\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01\u0e43\u0e1a\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32\u201d \u0e2a\u0e48\u0e07\u0e43\u0e2b\u0e49\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23\u0e15\u0e35\u0e23\u0e32\u0e04\u0e32'};
-  var isPrint=wIsPrint(itemKey), isLight=wIsLight(itemKey);
-  if((isLogo||itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0) && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
+  /* 🖨️ กลุ่มงานพิมพ์ / ฟิล์ม / สติ๊กเกอร์ / Blacklit ขายเป็น "ตารางเมตร" ล้วน ๆ
+     -> ไม่ติดเงื่อนไขขนาดพื้นที่ใด ๆ ทั้งเพดานและขั้นต่ำ (พี่ยืนยัน 2026-08-23)
+     ⚠️ เดิมเช็คจาก "ชื่อรายการ" ตรง ๆ เลยพลาดสองทาง:
+        1) "สติ๊กเกอร์กล่องไฟ (Blacklit)" เป็นงานพิมพ์แท้ ๆ แต่ชื่อมีคำว่ากล่องไฟ
+           -> ติดทั้งเพดาน 2.88 ตร.ม. และขั้นต่ำ 0.3 ตร.ม. ของกล่องไฟไปด้วย
+        2) งานพิมพ์ที่ถูกวางในกล่องบทบาท "โลโก้" ก็ติดเพดาน 2.88 ตร.ม. ทั้งที่ไม่ควร
+     ✅ ใช้ wIsMedia() ซึ่งเป็นนิยาม "งานสื่อพิมพ์" ที่มีอยู่แล้วในไฟล์นี้เป็นตัวยกเว้น */
+  if(!noLim && (isLogo||itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0) && widthM*heightM>=2.88) return {error:'\u0e15\u0e49\u0e2d\u0e07\u0e02\u0e2d\u0e23\u0e32\u0e04\u0e32\u0e1c\u0e48\u0e32\u0e19\u0e1c\u0e39\u0e49\u0e1a\u0e23\u0e34\u0e2b\u0e32\u0e23 (\u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48 \u2265 2.88 \u0e15\u0e23.\u0e21.)'};
   var colorFee=(!isPrint&&colorSpecial)?1500:0;
   var transFee=isLight?1000:0;
   var frameRate={none:0,steel:1800,stainless:4800}[frameKey||'none']||0;
   var rawArea=widthM*heightM;
-  var isLBN=(itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0||itemKey.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0);
+  var isLBN=!noLim&&(itemKey.indexOf('\u0e01\u0e25\u0e48\u0e2d\u0e07\u0e44\u0e1f')>=0||itemKey.indexOf('\u0e19\u0e35\u0e2d\u0e2d\u0e19')>=0);   /* งานพิมพ์ไม่ติดขั้นต่ำพื้นที่ 0.3 ตร.ม. */
   var minA=isLBN&&rawArea>0&&rawArea<0.3; var billable=minA?0.3:rawArea;
   var per=0,tier='\u2014';
   if(item.t==='t'){ var ix=wTierIdx(parseFloat(letterHeightCm)||20); tier=WTIER[ix]+' cm'; per=item.ti[ix]||0; }
