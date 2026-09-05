@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>จัดการผู้ใช้ · CRM มดงานการป้าย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b1422;--bg2:#0f1c2e;--panel:rgba(255,255,255,.045);--brd:rgba(255,255,255,.10);
+  --txt:#eef4f5;--dim:#8ba0ad;--teal:#16b89b;--teal2:#2ee6c5;--red:#f0616d;--amber:#f5b544}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Prompt',system-ui,sans-serif;background:linear-gradient(160deg,var(--bg),var(--bg2));
+  color:var(--txt);min-height:100vh;padding:24px 20px 60px}
+.wrap{max-width:1120px;margin:0 auto}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.back{color:var(--dim);text-decoration:none;font-size:13px;border:1px solid var(--brd);
+  padding:8px 14px;border-radius:999px;transition:.2s;white-space:nowrap}
+.back:hover{color:var(--teal2);border-color:var(--teal)}
+h1{font-size:20px;font-weight:700}
+.sub{font-size:12.5px;color:var(--dim);margin-top:2px}
+.btn{background:linear-gradient(145deg,var(--teal),var(--teal2));color:#04130f;border:none;
+  border-radius:12px;padding:11px 18px;font:600 14px 'Prompt';cursor:pointer;transition:.2s}
+.btn:hover{filter:brightness(1.08)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:none;border:1px solid var(--brd);color:var(--txt)}
+.btn.ghost:hover{border-color:var(--teal)}
+.btn.danger{background:none;border:1px solid rgba(240,97,109,.45);color:var(--red)}
+.btn.sm{padding:7px 12px;font-size:12.5px;border-radius:10px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--brd);border-radius:14px;padding:11px 16px;min-width:104px}
+.stat b{display:block;font-size:20px;line-height:1.2}
+.stat span{font-size:11.5px;color:var(--dim)}
+.stat.warn b{color:var(--amber)}
+.bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+input,select{background:rgba(0,0,0,.28);border:1px solid var(--brd);color:var(--txt);
+  border-radius:12px;padding:11px 14px;font:400 14px 'Prompt';outline:none;transition:.2s}
+input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,184,155,.16)}
+select option{background:#0f1c2e}
+#q{flex:1;min-width:200px}
+.tbl{background:var(--panel);border:1px solid var(--brd);border-radius:18px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;padding:13px 14px;font-size:11.5px;color:var(--dim);font-weight:600;
+  background:rgba(0,0,0,.22);white-space:nowrap}
+td{padding:12px 14px;border-top:1px solid var(--brd);vertical-align:middle}
+tr:hover td{background:rgba(255,255,255,.02)}
+.u{display:flex;align-items:center;gap:10px}
+.av{width:34px;height:34px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(145deg,var(--teal),var(--teal2));color:#04130f;font-weight:700;font-size:14px}
+.nm{font-weight:600;line-height:1.25}
+.un{font-size:11.5px;color:var(--dim)}
+.tag{display:inline-block;font-size:11px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--brd);color:var(--dim);white-space:nowrap}
+.tag.on{color:var(--teal2);border-color:rgba(46,230,197,.4);background:rgba(46,230,197,.09)}
+.tag.off{color:var(--red);border-color:rgba(240,97,109,.4);background:rgba(240,97,109,.09)}
+.tag.warn{color:var(--amber);border-color:rgba(245,181,68,.4);background:rgba(245,181,68,.09)}
+.acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.me{font-size:10.5px;color:var(--teal2);margin-left:6px}
+.empty{padding:44px;text-align:center;color:var(--dim);font-size:14px}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.66);backdrop-filter:blur(4px);
+  display:none;place-items:center;padding:20px;z-index:50}
+.ov.show{display:grid}
+.modal{background:#101d2f;border:1px solid var(--brd);border-radius:20px;padding:26px;
+  width:100%;max-width:420px;max-height:90vh;overflow:auto}
+.modal h2{font-size:17px;margin-bottom:4px}
+.modal .mh{font-size:12.5px;color:var(--dim);margin-bottom:18px}
+.f{margin-bottom:13px}
+.f label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px;font-weight:600}
+.f input,.f select{width:100%}
+.hint{font-size:11.5px;color:var(--dim);margin-top:5px;line-height:1.5}
+.mf{display:flex;gap:10px;margin-top:20px}
+.mf .btn{flex:1}
+.msg{padding:11px 14px;border-radius:12px;font-size:13px;margin-bottom:14px;display:none;line-height:1.5}
+.msg.show{display:block}
+.msg.err{background:rgba(240,97,109,.12);border:1px solid rgba(240,97,109,.35);color:#ffb3b8}
+.msg.ok{background:rgba(46,230,197,.12);border:1px solid rgba(46,230,197,.35);color:#9ff0e0}
+@media(max-width:760px){
+  th:nth-child(3),td:nth-child(3),th:nth-child(5),td:nth-child(5){display:none}
+  body{padding:16px 12px 50px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="back" href="/">← หน้ารวมแอป</a>
+    <div><h1>👥 จัดการผู้ใช้</h1><div class="sub">เพิ่ม · แก้ไข · ปิดบัญชี · ตั้งรหัสผ่านใหม่</div></div>
+    <button class="btn" style="margin-left:auto" onclick="openCreate()">+ เพิ่มผู้ใช้</button>
+  </div>
+
+  <div class="msg" id="msg"></div>
+  <div class="stats" id="stats"></div>
+
+  <div class="bar">
+    <input id="q" placeholder="🔍 ค้นหา ชื่อ / username / สิทธิ์…">
+    <select id="fs">
+      <option value="">ทุกสถานะ</option>
+      <option value="active">เปิดใช้งาน</option>
+      <option value="inactive">ปิดใช้งาน</option>
+    </select>
+  </div>
+
+  <div class="tbl">
+    <table>
+      <thead><tr>
+        <th>ผู้ใช้</th><th>สิทธิ์</th><th>บทบาท</th><th>สถานะ</th><th>รหัสผ่าน</th><th></th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="empty">กำลังโหลด…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- กล่องเพิ่ม / แก้ไข -->
+<div class="ov" id="ovEdit">
+  <div class="modal">
+    <h2 id="edTitle">เพิ่มผู้ใช้</h2>
+    <div class="mh" id="edSub">กรอกข้อมูลให้ครบ</div>
+    <div class="msg err" id="edErr"></div>
+    <div class="f"><label>ชื่อ-นามสกุล</label><input id="edName"></div>
+    <div class="f"><label>ชื่อเล่น</label><input id="edNick"></div>
+    <div class="f" id="edUserWrap">
+      <label>ชื่อผู้ใช้ (username)</label>
+      <input id="edUser" autocapitalize="off" spellcheck="false">
+      <div class="hint">ใช้ได้เฉพาะ a-z 0-9 . _ - · ตั้งแล้วเปลี่ยนไม่ได้</div>
+    </div>
+    <div class="f" id="edPwWrap">
+      <label>รหัสผ่าน</label><input id="edPw" type="text" autocomplete="off">
+      <div class="hint"><span id="hintMin">อย่างน้อย 4 ตัวอักษร</span> · ระบบเก็บเป็น bcrypt ไม่มีใครอ่านย้อนได้</div>
+    </div>
+    <div class="f"><label>สิทธิ์ (Permission)</label>
+      <select id="edPerm"></select>
+      <div class="hint" id="edRoleHint"></div>
+    </div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeAll()">ยกเลิก</button>
+      <button class="btn" id="edSave" onclick="saveEdit()">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- กล่องตั้งรหัสผ่าน -->
+<div class="ov" id="ovPw">
+  <div class="modal">
+    <h2>ตั้งรหัสผ่านใหม่</h2>
+    <div class="mh" id="pwWho"></div>
+    <div class="msg err" id="pwErr"></div>
+    <div class="f"><label>รหัสผ่านใหม่</label><input id="pwVal" type="text" autocomplete="off">
+      <div class="hint"><span id="hintMin2">อย่างน้อย 4 ตัวอักษร</span> · แจ้งเจ้าตัวแล้วให้เปลี่ยนเองภายหลัง</div></div>
+    <div class="mf">
+      <button class="btn ghost" onclick="closeAll()">ยกเลิก</button>
+      <button class="btn" id="pwSave" onclick="savePw()">ตั้งรหัสผ่าน</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const B = '/m/users';
+let USERS = [], PERMS = [], ME = '', ROLE_OF = {}, editing = null, pwUser = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function note(text, kind) {
+  const m = $('msg');
+  m.className = 'msg show ' + (kind || 'ok');
+  m.textContent = text;
+  if (kind !== 'err') setTimeout(() => m.className = 'msg', 4000);
+}
+
+async function api(path, opt) {
+  const r = await fetch(B + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opt,
+  });
+  let j = {};
+  try { j = await r.json(); } catch { /* ไม่ใช่ JSON */ }
+  if (!r.ok || !j.ok) throw new Error(j.error || ('ผิดพลาด HTTP ' + r.status));
+  return j;
+}
+
+async function load() {
+  try {
+    const q = encodeURIComponent($('q').value.trim());
+    const s = encodeURIComponent($('fs').value);
+    const j = await api('/api/list?q=' + q + '&status=' + s);
+    USERS = j.users; PERMS = j.permissions; ME = j.me;
+    if (j.minPassword) {
+      const t = 'อย่างน้อย ' + j.minPassword + ' ตัวอักษร';
+      $('hintMin').textContent = t; $('hintMin2').textContent = t;
+    }
+    render(j.summary);
+  } catch (e) {
+    note(e.message, 'err');
+    $('rows').innerHTML = '<tr><td colspan="6" class="empty">โหลดข้อมูลไม่สำเร็จ</td></tr>';
+  }
+}
+
+function render(sm) {
+  $('stats').innerHTML = [
+    ['ทั้งหมด', sm.total, ''],
+    ['เปิดใช้งาน', sm.active, ''],
+    ['ปิดใช้งาน', sm.inactive, ''],
+    ['ยังไม่มีรหัสผ่าน', sm.noPassword, sm.noPassword ? 'warn' : ''],
+    ['รหัสยังไม่เข้ารหัส', sm.plainLeft, sm.plainLeft ? 'warn' : ''],
+  ].map(([l, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${l}</span></div>`).join('');
+
+  if (!USERS.length) {
+    $('rows').innerHTML = '<tr><td colspan="6" class="empty">ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข</td></tr>';
+    return;
+  }
+
+  $('rows').innerHTML = USERS.map(u => {
+    const initial = esc((u.nickname || u.name || u.username).charAt(0).toUpperCase());
+    const self = u.username.toLowerCase() === ME.toLowerCase();
+    const pw = !u.hasPassword
+      ? '<span class="tag warn">ยังไม่มี</span>'
+      : (u.plainLeft ? '<span class="tag warn">ยังไม่เข้ารหัส</span>'
+                     : '<span class="tag on">🔒 bcrypt</span>');
+    return `<tr>
+      <td><div class="u"><div class="av">${initial}</div><div>
+        <div class="nm">${esc(u.name || u.nickname || u.username)}${self ? '<span class="me">(คุณ)</span>' : ''}</div>
+        <div class="un">@${esc(u.username)}</div></div></div></td>
+      <td>${esc(u.permission) || '<span class="un">—</span>'}</td>
+      <td><span class="tag">${esc(u.role)}</span></td>
+      <td><span class="tag ${u.active ? 'on' : 'off'}">${u.active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</span></td>
+      <td>${pw}</td>
+      <td><div class="acts">
+        <button class="btn ghost sm" onclick="openEdit('${esc(u.username)}')">แก้ไข</button>
+        <button class="btn ghost sm" onclick="openPw('${esc(u.username)}')">ตั้งรหัส</button>
+        <button class="btn ${u.active ? 'danger' : 'ghost'} sm"
+          onclick="toggle('${esc(u.username)}',${u.active})"
+          ${self ? 'disabled title="ปิดบัญชีตัวเองไม่ได้"' : ''}>
+          ${u.active ? 'ปิดบัญชี' : 'เปิดบัญชี'}</button>
+      </div></td></tr>`;
+  }).join('');
+}
+
+/* ─── เพิ่ม / แก้ไข ─────────────────────────────────────────────── */
+function fillPerms(sel) {
+  $('edPerm').innerHTML = '<option value="">— ไม่ระบุ —</option>' +
+    PERMS.map(p => `<option value="${esc(p)}"${p === sel ? ' selected' : ''}>${esc(p)}</option>`).join('');
+}
+
+function openCreate() {
+  editing = null;
+  $('edTitle').textContent = 'เพิ่มผู้ใช้';
+  $('edSub').textContent = 'บัญชีใหม่จะเปิดใช้งานทันที';
+  $('edUserWrap').style.display = ''; $('edPwWrap').style.display = '';
+  $('edName').value = $('edNick').value = $('edUser').value = $('edPw').value = '';
+  fillPerms('');
+  $('edErr').className = 'msg err';
+  $('ovEdit').classList.add('show');
+  $('edName').focus();
+}
+
+function openEdit(username) {
+  const u = USERS.find(x => x.username === username);
+  if (!u) return;
+  editing = username;
+  $('edTitle').textContent = 'แก้ไขผู้ใช้';
+  $('edSub').textContent = '@' + username;
+  $('edUserWrap').style.display = 'none';   // username เปลี่ยนไม่ได้
+  $('edPwWrap').style.display = 'none';     // รหัสผ่านมีปุ่มแยก
+  $('edName').value = u.name; $('edNick').value = u.nickname;
+  fillPerms(u.permission);
+  $('edErr').className = 'msg err';
+  $('ovEdit').classList.add('show');
+  $('edName').focus();
+}
+
+async function saveEdit() {
+  const err = $('edErr'), btn = $('edSave');
+  const body = {
+    name: $('edName').value.trim(),
+    nickname: $('edNick').value.trim(),
+    permission: $('edPerm').value,
+  };
+  btn.disabled = true;
+  try {
+    if (editing) {
+      await api('/api/' + encodeURIComponent(editing), { method: 'PATCH', body: JSON.stringify(body) });
+      note('บันทึกข้อมูล @' + editing + ' แล้ว');
+    } else {
+      body.username = $('edUser').value.trim();
+      body.password = $('edPw').value;
+      await api('/api/create', { method: 'POST', body: JSON.stringify(body) });
+      note('เพิ่มผู้ใช้ @' + body.username + ' แล้ว');
+    }
+    closeAll(); load();
+  } catch (e) {
+    err.className = 'msg err show'; err.textContent = e.message;
+  } finally { btn.disabled = false; }
+}
+
+/* ─── ตั้งรหัสผ่าน ──────────────────────────────────────────────── */
+function openPw(username) {
+  pwUser = username;
+  $('pwWho').textContent = 'สำหรับ @' + username;
+  $('pwVal').value = '';
+  $('pwErr').className = 'msg err';
+  $('ovPw').classList.add('show');
+  $('pwVal').focus();
+}
+
+async function savePw() {
+  const err = $('pwErr'), btn = $('pwSave');
+  btn.disabled = true;
+  try {
+    await api('/api/' + encodeURIComponent(pwUser) + '/password',
+      { method: 'POST', body: JSON.stringify({ password: $('pwVal').value }) });
+    note('ตั้งรหัสผ่านใหม่ให้ @' + pwUser + ' แล้ว');
+    closeAll(); load();
+  } catch (e) {
+    err.className = 'msg err show'; err.textContent = e.message;
+  } finally { btn.disabled = false; }
+}
+
+/* ─── เปิด / ปิดบัญชี ───────────────────────────────────────────── */
+async function toggle(username, active) {
+  if (active && !confirm('ปิดบัญชี @' + username + ' ?\n\nคนนี้จะถูกเด้งออกจากทุกแอปทันที'))
+    return;
+  try {
+    await api('/api/' + encodeURIComponent(username) + '/status',
+      { method: 'POST', body: JSON.stringify({ status: active ? 'Logout' : 'Login' }) });
+    note((active ? 'ปิด' : 'เปิด') + 'บัญชี @' + username + ' แล้ว');
+    load();
+  } catch (e) { note(e.message, 'err'); }
+}
+
+function closeAll() {
+  $('ovEdit').classList.remove('show');
+  $('ovPw').classList.remove('show');
+}
+
+let t;
+$('q').oninput = () => { clearTimeout(t); t = setTimeout(load, 280); };
+$('fs').onchange = load;
+document.onkeydown = e => { if (e.key === 'Escape') closeAll(); };
+for (const id of ['ovEdit','ovPw'])
+  $(id).onclick = e => { if (e.target.id === id) closeAll(); };
+
+load();
+</script>
+</body>
+</html>

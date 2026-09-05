@@ -1,0 +1,11 @@
+{
+  "key": "projects",
+  "icon": "🗂️",
+  "color": "#4f46e5",
+  "order": 2,
+  "title": "Projects Management",
+  "subtitle": "เปิดโปรเจกต์ · งานย่อย (Requirements) · AI อ่านโน้ตงาน",
+  "status": "wip",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

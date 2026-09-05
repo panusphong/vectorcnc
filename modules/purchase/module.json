@@ -1,0 +1,11 @@
+{
+  "key": "purchase",
+  "icon": "🛒",
+  "color": "#ea580c",
+  "order": 9,
+  "title": "ใบขอซื้อ Purchase Request",
+  "subtitle": "เปิด PR · อนุมัติ · เปิด PO · เชื่อม PEAK 2 บริษัท",
+  "status": "planned",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

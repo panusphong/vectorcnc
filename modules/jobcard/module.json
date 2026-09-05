@@ -1,0 +1,11 @@
+{
+  "key": "jobcard",
+  "icon": "🏭",
+  "color": "#f59e0b",
+  "order": 3,
+  "title": "Job Card สั่งผลิต",
+  "subtitle": "ใบสั่งผลิต 16 สถานี · จัดส่ง · ซ่อมบำรุง · จัดซื้อ",
+  "status": "planned",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

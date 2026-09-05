@@ -1,0 +1,11 @@
+{
+  "key": "aftersale",
+  "icon": "🛠️",
+  "color": "#059669",
+  "order": 7,
+  "title": "บริการหลังการขาย",
+  "subtitle": "แจ้งซ่อม · ต่อประกันปี 2 · ใบรับประกัน",
+  "status": "planned",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

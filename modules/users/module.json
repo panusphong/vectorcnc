@@ -1,0 +1,11 @@
+{
+  "key": "users",
+  "icon": "👥",
+  "color": "#dc2626",
+  "order": 98,
+  "title": "จัดการผู้ใช้",
+  "subtitle": "เพิ่ม · แก้ไข · ปิดบัญชี · ตั้งรหัสผ่านใหม่",
+  "status": "ready",
+  "minRoleSee": "ADMIN",
+  "minRoleUse": "ADMIN"
+}
