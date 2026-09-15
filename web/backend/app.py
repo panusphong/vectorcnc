@@ -6,6 +6,7 @@ API : POST http://localhost:8000/api/vectorize   (multipart: file, n_colors)
 CORS เปิดหมด -> Claude Design / เว็บที่ไหนก็เรียกได้
 """
 import os, sys, tempfile, base64, re, json, traceback
+import hmac                     # 🔒 เทียบค่าลับแบบทนเวลา (_same_secret) — ห้ามใช้ == เทียบคีย์
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -9420,9 +9421,10 @@ def _gate_ok(request: Request) -> bool:
         return True
     q = request.query_params                              # ② คีย์ภายใน / แอดมิน
     ik = _internal_key(); ak = _admin_key()
-    if ik and str(request.headers.get("X-Internal-Key") or q.get("k", "")) == str(ik):
+    # ‼ เทียบค่าลับแบบทนเวลาเสมอ (เดิมเทียบด้วย == ซึ่งบอกใบ้เวลาไล่เดาทีละตัว)
+    if ik and _same_secret(request.headers.get("X-Internal-Key") or q.get("k", ""), ik):
         return True
-    if ak and str(q.get("ak", "")) == str(ak):
+    if ak and _same_secret(q.get("ak", ""), ak):
         return True
     ck = request.cookies.get("vc_acc", "")               # ③ คุกกี้เข้าถึง (ตั้งหลังเข้าถูก/หลัง login)
     if ck and A.role_of(ck) in ("internal", "admin", "user"):
@@ -11058,6 +11060,19 @@ def _internal_key():
     return os.environ.get("INTERNAL_KEY", "")
 
 
+def _same_secret(got, want) -> bool:
+    """เทียบค่าลับแบบ "ทนเวลา" — ใช้แทน == ทุกที่ที่เทียบคีย์
+
+    ‼ เทียบด้วย == จะหยุดทันทีที่ตัวอักษรแรกที่ต่างกัน เวลาที่ใช้จึงบอกใบ้ได้ว่า
+      "เดาถูกไปกี่ตัวแล้ว" ซึ่งพอไล่เดาทีละตัวจนครบได้จริง
+      (ท่าเดียวกับที่ auth.verify ใช้ hmac.compare_digest อยู่แล้ว)
+    """
+    try:
+        return hmac.compare_digest(str(got or ""), str(want or ""))
+    except Exception:
+        return False
+
+
 def _is_internal(request: Request):
     """คนใน = ตั๋ว SSO ถูกต้อง หรือ INTERNAL_KEY ถูกต้อง
 
@@ -11067,6 +11082,14 @@ def _is_internal(request: Request):
 
     🔒 พอเปิดขาย (SELL_MODE=1): กลับเป็น fail-closed ทันที
        -> ไม่มีตั๋ว/ไม่มีคีย์ = คนนอก ไม่มีข้อยกเว้น
+
+    🔴 แก้ 15 ก.ย. 69 (งานปิดช่องคนนอก):
+       บรรทัดสุดท้ายเดิมคือ  return not _sell_mode()
+       ซึ่ง SELL_MODE ค่าเริ่มต้นเป็น "0" ⇒ "ทุกคนบนอินเทอร์เน็ตคือคนใน"
+       ตารางราคา/ต้นทุนบริษัท (/api/price-catalog) จึงเปิดโล่งมาตลอด
+       ⇒ เปลี่ยนเป็น fail-closed จริง ๆ ไม่ผูกกับสวิตช์ SELL_MODE อีกแล้ว
+       ‼ ทีมงานไม่กระทบ — เข้าผ่านการ์ด CRM Hub แล้วได้ role internal/admin
+         จากตั๋ว SSO (sso_gate.py ออกคุกกี้ vc_acc ให้ตอนตรวจตั๋วผ่าน)
     """
     if _role_of(request) in ("internal", "admin"):
         return True                      # ① ตั๋วจาก CRM Hub
@@ -11075,10 +11098,11 @@ def _is_internal(request: Request):
     if key:
         got = (request.headers.get("X-Internal-Key")
                or request.query_params.get("k") or "")
-        if got and str(got) == str(key):
+        # ‼ เทียบค่าลับแบบทนเวลาเสมอ (เทียบด้วย == บอกใบ้ว่าเดาถูกไปกี่ตัวแล้ว)
+        if got and _same_secret(got, key):
             return True
 
-    return not _sell_mode()              # ③ ยังไม่เปิดขาย -> ทีมใช้กันเองได้ปกติ
+    return False                         # ③ 🔴 ไม่มีตั๋ว/ไม่มีคีย์ = คนนอก ไม่มีข้อยกเว้น
 
 
 def _admin_key():
@@ -11086,11 +11110,19 @@ def _admin_key():
 
 
 def _is_admin(request: Request):
-    """แอดมิน = ตั๋ว SSO role=admin · ADMIN_KEY ถูกต้อง · หรือ ?u=admin (เฉพาะตอนยังไม่เปิดขาย)
+    """แอดมิน = ตั๋ว SSO role=admin · หรือ ADMIN_KEY ถูกต้อง
 
-    ⚠️ ?u=admin ปลอมได้ (ใครก็พิมพ์เอง) — ยอมรับเฉพาะตอน SELL_MODE=0
-       ซึ่งเป็นช่วงที่ยังใช้กันในทีม เข้าผ่าน CRM Hub เท่านั้น
-       พอตั้ง SELL_MODE=1 -> ปิดเองอัตโนมัติ ต้องใช้ตั๋ว SSO หรือ ADMIN_KEY
+    🔴 แก้ 15 ก.ย. 69 (งานปิดช่องคนนอก) — ปิดช่อง ?u=admin ทิ้งถาวร
+       ของเดิมยอมรับ ?u=admin เวลา SELL_MODE=0 ซึ่งเป็น "ค่าเริ่มต้น"
+       ⇒ ใครพิมพ์  https://vectorcnc.onrender.com/?u=admin  ก็เป็นแอดมินทันที
+         เห็นสถิติ · เห็นหน้าอนุมัติสลิป · เห็นแพลนเครื่อง
+       ไฟล์ auth.py เขียนเตือนตัวเองไว้ตั้งแต่แรกแล้วว่า
+         "เดิมเราดูว่าใครเป็นใครจาก ?u=admin ใน URL ซึ่งใครก็พิมพ์เองได้"
+       แต่ช่องนั้นยังไม่เคยถูกปิดจริง — รอบนี้ปิดแล้ว
+
+    ‼ ของเดิมไม่พัง: แอดมินตัวจริงเข้าผ่านการ์ด CRM Hub แล้วได้ role=admin
+      จากตั๋ว SSO · หน้าเว็บยังส่ง ?u= มาเหมือนเดิมได้ เซิร์ฟเวอร์แค่ไม่เชื่อมันแล้ว
+      (จึงไม่ต้องแก้ index.html แม้แต่บรรทัดเดียว — หน้าจอเดิมทุกอย่าง)
     """
     if _role_of(request) == "admin":
         return True
@@ -11099,13 +11131,8 @@ def _is_admin(request: Request):
     if key:
         got = (request.headers.get("X-Admin-Key")
                or request.query_params.get("ak") or "")
-        if got and str(got) == str(key):
-            return True
-
-    # ยังไม่เปิดขาย -> เชื่อ ?u=admin จาก CRM Hub ได้
-    if not _sell_mode():
-        u = str(request.query_params.get("u", "")).strip().lower()
-        if u in ("admin", "administrator"):
+        # ‼ เทียบค่าลับแบบทนเวลาเสมอ
+        if got and _same_secret(got, key):
             return True
 
     return False
@@ -12886,7 +12913,16 @@ padding:12px 26px;border-radius:10px}} code{{background:#f1f5f9;padding:2px 8px;
 
 
 @app.get("/admin/payments")
-def admin_pay_page():
+def admin_pay_page(request: Request):
+    """🔴 แก้ 15 ก.ย. 69 — เดิมเส้นนี้ "ไม่มีด่านเลยแม้แต่ชั้นเดียว"
+
+    ใครพิมพ์ /admin/payments ตรง ๆ ก็เปิดหน้าอนุมัติสลิปได้ทันที
+    (API ข้างในมีด่าน _is_admin อยู่ แต่ตัวหน้าเว็บโล่ง = บทเรียนเดิมของโปรเจกต์
+     "ใส่ด่านแค่ที่ API แล้วพิมพ์ URL ไฟล์ตรง ๆ ยังเข้าได้")
+    ⇒ ใส่ด่านเดียวกับ API ที่หน้านี้เรียกใช้ ให้ตรงกันทั้งสองชั้น
+    """
+    if not (_is_internal(request) and _is_admin(request)):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
     p = os.path.join(os.path.dirname(FRONTEND), "admin_payments.html")
     if os.path.exists(p):
         return FileResponse(p)
@@ -12944,3 +12980,20 @@ try:
     app.include_router(_vectora_router)
 except Exception as _e:                                          # pragma: no cover
     print("[vectora] ปิดใช้งาน:", _e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔒 ด่าน "ต้องเข้าผ่านการ์ด CRM Hub เท่านั้น" (พี่เอสั่ง 13 ก.ย. 69)
+#
+# 🔴 ต้องอยู่ "ท้ายสุดของไฟล์" จริง ๆ — หลังประกาศ route ครบทุกเส้น
+#    รวมถึงหลัง include_router ของ Vectora ข้างบนด้วย
+#    เพราะ middleware ที่เพิ่มทีหลังจะอยู่ชั้นนอกสุด = คลุมทุกเส้นที่ประกาศไปแล้ว
+#    ถ้าเผลอย้ายขึ้นไปไว้ก่อนหน้านี้ เส้นที่ประกาศทีหลังจะ "ไม่ถูกคลุม"
+#    แล้วพิมพ์ URL ตรง ๆ เข้าได้เหมือนเดิม (บทเรียนเดิมของโปรเจกต์)
+#
+# ‼ ไม่ห่อ try เหมือน Vectora ข้างบนโดยตั้งใจ — โมดูลนี้คือ "ตัวล็อกประตู"
+#   ถ้ามันโหลดไม่ได้แล้วแอปยังขึ้นตามปกติ = ประตูเปิดโล่งโดยไม่มีใครรู้
+#   ⇒ ยอมให้แอปไม่ขึ้นดีกว่าเปิดให้คนนอกเข้า (fail-closed)
+# ══════════════════════════════════════════════════════════════════════════
+from sso_gate import install as _sso_install
+_sso_install(app)
