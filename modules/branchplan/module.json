@@ -1,0 +1,11 @@
+{
+  "key": "branchplan",
+  "icon": "🏬",
+  "color": "#16a34a",
+  "order": 9.6,
+  "title": "ระบบจัดตารางสาขา",
+  "subtitle": "จัดตารางการทำงานของสาขา · แอปภายนอก (Google Apps Script) เปิดในแท็บใหม่",
+  "status": "ready",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

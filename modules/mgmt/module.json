@@ -1,0 +1,11 @@
+{
+  "key": "mgmt",
+  "icon": "📊",
+  "color": "#12a78c",
+  "order": 0.5,
+  "title": "Management Report",
+  "subtitle": "สุขภาพองค์กรหน้าเดียว · ขาย · ช่องทาง · รับเงิน · ลูกหนี้ · Cashflow · ค่าใช้จ่าย · คลัง · ผลิต · ติดตั้ง",
+  "status": "ready",
+  "minRoleSee": "ADMIN",
+  "minRoleUse": "ADMIN"
+}

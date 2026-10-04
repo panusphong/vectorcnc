@@ -1,0 +1,11 @@
+{
+  "key": "ledqueue",
+  "icon": "💡",
+  "color": "#f59e0b",
+  "order": 9.7,
+  "title": "ระบบจองคิว LED",
+  "subtitle": "จองคิวงาน LED · แอปภายนอก (Google Apps Script) เปิดในแท็บใหม่",
+  "status": "ready",
+  "minRoleSee": "VIEWER",
+  "minRoleUse": "VIEWER"
+}

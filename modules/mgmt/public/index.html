@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Management Report</title>
+<!-- แอป Management Report — สุขภาพองค์กรหน้าเดียว (รอบ 220 · 3 ต.ค. 69)
+     พี่เอ: "นำ ทุก app ใน CRM Hub มาสร้างเป็น Dash board ที่มีสรุปจบทุกอย่างในหน้าเดียว เพื่อตรวจสอบสุขภาพองค์กร"
+            "เกณฑ์ เขียว เหลือง แดง ดูที่ Cash flow และแนวโน้มยอดขายที่เพิ่มขึ้น หรือลดลงเป็นหลัก"
+            "คนที่เปิดดูได้มีแค่ permission : administrator เท่านั้น"
+     ‼ หน้านี้ไม่มีตัวเลขฝังไว้สักตัว — ทุกตัวเลขมาจาก /m/mgmt/api/part/* (ข้อมูลจริงของทุกแอป อ่านอย่างเดียว)
+     ‼ เลขเวอร์ชันมาจากเซิร์ฟเวอร์ (modules/mgmt/version.js) ห้ามพิมพ์ฝังในหน้านี้
+     ‼ ธีมเดียวกับหน้ารวมแอป (public/hub.html) · ฟอนต์กลาง Prompt -->
+<link rel="stylesheet" href="/brand/font.css">
+<script src="/brand/logo-badge.js" defer></script>
+<style>
+:root{
+  --bg0:#060b14; --bg2:#0f1d2e; --card:#12202f; --card2:#172a3d; --brd:rgba(255,255,255,.09);
+  --teal:#2ee6c5; --teal2:#12a78c; --txt:#eef4f5; --txt2:#b9c7cf; --dim:#8ba0ad; --grid:rgba(255,255,255,.07);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --mute:#52657a;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --good-t:#5fd97a; --warn-t:#fbc24d; --crit-t:#f08a8a;
+  --r:16px;
+}
+*{box-sizing:border-box}
+html{background:#060b14}
+html,body{margin:0}
+body{font-family:var(--font-app);color:var(--txt);font-size:14px;line-height:1.5;min-height:100vh;
+  background:radial-gradient(900px 500px at 85% -10%,rgba(56,189,248,.13),transparent 55%),
+             radial-gradient(1000px 560px at 78% 8%,rgba(46,230,197,.12),transparent 58%),
+             linear-gradient(180deg,var(--bg2) 0,var(--bg0) 1400px);background-repeat:no-repeat;background-color:var(--bg0)}
+.wrap{max-width:1440px;margin:0 auto;padding:22px 24px 48px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.logo{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,var(--teal),var(--teal2));box-shadow:0 8px 26px rgba(46,230,197,.3);flex:0 0 auto}
+header h1{font-size:21px;font-weight:600;margin:0;line-height:1.2;display:flex;align-items:center;gap:8px}
+.ver{font-size:11.5px;font-weight:500;color:var(--teal);border:1px solid rgba(46,230,197,.35);border-radius:999px;padding:0 8px}
+header .sub{font-size:12.5px;color:var(--dim)}
+.hright{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sel,.btn{font-size:13px;border:1px solid var(--brd);background:rgba(255,255,255,.05);border-radius:999px;padding:7px 14px;color:var(--txt2);cursor:pointer;text-decoration:none;display:inline-block}
+.btn:hover,.sel:hover{border-color:rgba(46,230,197,.5);color:var(--txt)}
+.btn:focus-visible,.sel:focus-visible,.mark:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.btn.pri{background:var(--teal);color:#04130f;font-weight:600;border-color:transparent}
+.sel option{color:#0f172a}
+.metaRow{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--dim)}
+.admin{background:rgba(46,230,197,.10);border:1px solid rgba(46,230,197,.35);color:var(--teal);border-radius:999px;padding:2px 12px;font-weight:500}
+.notice{background:rgba(250,178,25,.10);border:1px solid rgba(250,178,25,.35);color:var(--warn-t);border-radius:12px;padding:8px 14px;font-size:13px;margin:0 0 14px;display:none}
+
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:16px 18px;min-width:0;box-shadow:0 10px 30px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04)}
+.c12{grid-column:span 12}.c8{grid-column:span 8}.c7{grid-column:span 7}.c6{grid-column:span 6}.c5{grid-column:span 5}.c4{grid-column:span 4}.c3{grid-column:span 3}
+.card h2{font-size:15px;font-weight:600;margin:0 0 2px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card .desc{font-size:12.5px;color:var(--dim);margin:0 0 12px;min-height:1px}
+.src{margin-left:auto;font-size:11px;font-weight:400;color:var(--dim)}
+.sect{grid-column:span 12;display:flex;align-items:center;gap:12px;margin:14px 2px -2px;flex-wrap:wrap}
+.sect .n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;background:linear-gradient(145deg,var(--teal),var(--teal2));color:#04130f;font-size:13px;font-weight:700}
+.sect b{font-size:16px;font-weight:600}
+.sect span.t{font-size:12.5px;color:var(--dim)}
+.sect::after{content:"";flex:1;height:1px;background:var(--brd);min-width:20px}
+.sub2{font-size:13px;font-weight:600;color:var(--txt);margin:16px 0 6px;display:flex;align-items:baseline;gap:8px}
+.sub2 span{font-weight:400;font-size:12px;color:var(--dim)}
+.ld{color:var(--dim);font-size:13px;padding:14px 0}
+.errbox{color:var(--crit-t);font-size:13px;padding:10px 0;line-height:1.5}
+.none{color:var(--dim);font-size:13px;padding:10px 0}
+
+.healthWrap{display:grid;grid-template-columns:250px minmax(0,1fr);gap:20px;align-items:start}
+.gauge{display:flex;align-items:center;gap:14px}
+.gauge .num{font-size:44px;font-weight:600;line-height:1}
+.gauge .num small{font-size:15px;font-weight:400;color:var(--dim)}
+.gauge .cap{font-size:12.5px;color:var(--dim);margin-top:4px;line-height:1.4}
+.prim{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.health{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.hc{background:var(--card2);border:1px solid var(--brd);border-radius:12px;padding:10px 12px 10px 14px;min-width:0;position:relative;overflow:hidden}
+.hc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mute)}
+.hc.good::before{background:var(--good)}.hc.warn::before{background:var(--warn)}.hc.crit::before{background:var(--crit)}
+.hc.big{padding:14px 16px 14px 18px}.hc.big .t{font-size:14px;font-weight:600;color:var(--txt)}.hc.big .st{font-size:17px}.hc.big .why{font-size:13px;color:var(--txt2)}
+.hc .t{font-size:12.5px;color:var(--txt2)}
+.hc .st{display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px;margin:3px 0}
+.hc .why{font-size:12px;color:var(--dim);line-height:1.4}
+.hc .rule{font-size:11px;color:var(--dim);margin-top:5px;padding-top:5px;border-top:1px solid var(--grid);line-height:1.35}
+.chk{list-style:none;margin:6px 0 0;padding:0;font-size:12.5px;color:var(--txt2)}
+.chk li{display:flex;gap:6px;align-items:baseline}
+.lights{display:flex;gap:8px 16px;flex-wrap:wrap;font-size:12.5px;color:var(--txt2);margin-top:12px}
+.lights span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font-size:11px;font-weight:700;flex:0 0 auto;background:var(--mute)}
+.dot.good{background:var(--good)}.dot.warn{background:var(--warn);color:#3d2a00}.dot.crit{background:var(--crit)}
+.st.good{color:var(--good-t)}.st.warn{color:var(--warn-t)}.st.crit{color:var(--crit-t)}.st.na{color:var(--dim)}
+
+.kpi .lb{font-size:12.5px;color:var(--txt2)}
+.kpi .v{font-size:26px;font-weight:600;line-height:1.2;margin-top:2px}
+.kpi .v small{font-size:13px;font-weight:400;color:var(--dim);margin-left:4px}
+.hero{position:relative;overflow:hidden;background:linear-gradient(160deg,#16314a 0%,var(--card) 62%)}
+.hero::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--teal),rgba(46,230,197,0))}
+.hero .v{font-size:50px;line-height:1.05}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap;background:rgba(255,255,255,.07);color:var(--txt2)}
+.badge.up{background:rgba(12,163,12,.16);color:var(--good-t)}.badge.down{background:rgba(208,59,59,.18);color:var(--crit-t)}
+.kpi .d{font-size:12.5px;margin-top:5px;color:var(--dim)}
+.mini{display:flex;gap:22px;flex-wrap:wrap;padding-bottom:4px}
+.mini div{font-size:12.5px;color:var(--dim)}
+.mini b{display:block;font-size:18px;font-weight:600;color:var(--txt)}
+.kpiGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tile{background:var(--card2);border:1px solid var(--brd);border-radius:12px;padding:12px 14px;min-width:0}
+
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12.5px;color:var(--txt2);margin:0 0 6px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+svg text{font-family:var(--font-app)}
+.ax{font-size:11.5px;fill:#8ba0ad;font-variant-numeric:tabular-nums}
+.vl{font-size:12px;fill:#eef4f5;font-weight:500}
+.nm{font-size:12.5px;fill:#b9c7cf}
+.mark{transition:opacity .12s}
+.mark:hover,.mark:focus{opacity:.75}
+
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-weight:500;color:var(--dim);text-align:right;padding:6px 8px;border-bottom:1px solid var(--brd);font-size:12px;white-space:nowrap}
+td{padding:8px 8px;border-bottom:1px solid var(--grid);text-align:right;font-variant-numeric:tabular-nums;color:var(--txt2);white-space:nowrap}
+td:first-child{color:var(--txt);white-space:normal}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:0}
+tr.tot td{color:var(--txt);font-weight:600;border-top:1px solid var(--brd)}
+tr.sub td{color:var(--dim);font-size:12.5px}
+.bar{display:inline-block;height:8px;border-radius:0 4px 4px 0;background:var(--s1);vertical-align:middle;margin-right:8px}
+.chdot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:0}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;border-radius:999px;padding:1px 9px;border:1px solid var(--brd);color:var(--txt2);white-space:nowrap}
+.pill.good{border-color:rgba(12,163,12,.5);background:rgba(12,163,12,.14);color:var(--good-t)}
+.pill.crit{border-color:rgba(208,59,59,.5);background:rgba(208,59,59,.14);color:var(--crit-t)}
+.pill.warn{border-color:rgba(250,178,25,.45);background:rgba(250,178,25,.12);color:var(--warn-t)}
+.dl.up{color:var(--good-t)}.dl.down{color:var(--crit-t)}
+
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px;margin-top:4px}
+.stats.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.stats.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.stats.six{grid-template-columns:repeat(6,minmax(0,1fr))}
+.stats.seven{grid-template-columns:repeat(7,minmax(0,1fr))}
+.stats div{font-size:12.5px;color:var(--dim);min-width:0}
+.stats b{display:block;font-size:20px;font-weight:600;color:var(--txt);line-height:1.25}
+.stats b small{font-size:12px;font-weight:400;color:var(--dim)}
+.stats b.bad{color:var(--crit-t)}.stats b.ok{color:var(--good-t)}
+.onl{background:linear-gradient(160deg,rgba(57,135,229,.16),rgba(18,32,47,0) 60%),var(--card)}
+.split{display:grid;grid-template-columns:92px minmax(0,1fr) minmax(0,1fr);gap:8px 14px;align-items:center;font-size:12.5px}
+.split .h{font-size:12px;color:var(--dim)}
+.sb{display:flex;height:16px;gap:2px;min-width:60px}
+.sb i{display:block;height:100%;min-width:2px}
+.sb i:first-child{border-radius:4px 0 0 4px}.sb i:last-child{border-radius:0 4px 4px 0}
+.sb.empty{background:rgba(255,255,255,.06);border-radius:4px}
+.sbl{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums}
+.cycle{display:flex;gap:2px;height:26px;margin:26px 0 6px}
+.cycle div{position:relative;min-width:0}
+.cycle div span{position:absolute;left:0;top:-22px;font-size:12px;color:var(--txt2);white-space:nowrap}
+.cycle div:first-child{border-radius:6px 0 0 6px}.cycle div:last-child{border-radius:0 6px 6px 0}
+.cyl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 14px;margin-top:10px}
+.cyl div{font-size:12.5px;color:var(--txt2);line-height:1.35}
+.cyl i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.cyl b{font-weight:600;color:var(--txt)}
+.ins{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px}
+.ins li{display:flex;gap:10px;font-size:13.5px;line-height:1.5;color:var(--txt2)}
+.ins li .dot{margin-top:2px}
+.ins b{font-weight:600;color:var(--txt)}
+.ins em{font-style:normal;color:var(--teal)}
+.foot{font-size:12px;color:var(--dim);margin-top:16px;line-height:1.6}
+#tip{position:fixed;pointer-events:none;background:#eef4f5;color:#0b1622;border-radius:8px;padding:6px 10px;font-size:12.5px;line-height:1.4;display:none;z-index:9;max-width:260px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#tip b{font-weight:600;font-size:13.5px}
+
+/* ── ตั้งค่า ── */
+#cfgOv{position:fixed;inset:0;background:rgba(3,8,14,.78);z-index:20;display:none;align-items:flex-start;justify-content:center;padding:24px 14px;overflow:auto}
+#cfgBox{background:var(--card);border:1px solid var(--brd);border-radius:16px;max-width:860px;width:100%;padding:18px 20px}
+#cfgBox h2{margin:0 0 4px;font-size:17px}
+#cfgBox .desc{font-size:12.5px;color:var(--dim);margin:0 0 12px}
+.frow{display:grid;grid-template-columns:minmax(0,1.4fr) 150px minmax(0,1.6fr);gap:8px;align-items:center;margin-bottom:8px}
+.frow.h{font-size:12px;color:var(--dim)}
+.inp{font-size:13.5px;width:100%;background:rgba(255,255,255,.06);border:1px solid var(--brd);border-radius:10px;padding:7px 10px;color:var(--txt)}
+.fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px}
+.fgrid label{font-size:12px;color:var(--dim);display:block}
+
+@media (max-width:1100px){.c8,.c7,.c6,.c5,.c4,.c3{grid-column:span 12}.healthWrap{grid-template-columns:1fr}.health{grid-template-columns:repeat(2,1fr)}.prim{grid-template-columns:1fr}.kpiGrid{grid-template-columns:repeat(2,1fr)}.ins,.cyl{grid-template-columns:1fr}.stats.six,.stats.seven,.stats.five{grid-template-columns:repeat(2,1fr)}.wrap{padding:14px 16px 32px}.hero .v{font-size:40px}.frow{grid-template-columns:1fr}.fgrid{grid-template-columns:1fr}.hright{margin-left:0}}
+@media (prefers-reduced-motion:reduce){.mark{transition:none}}
+@media print{.noprint{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.card{box-shadow:none;break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header data-brand-logo>
+    <div class="logo" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#04130f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+    <div><h1>Management Report <span class="ver" id="ver" hidden></span></h1><div class="sub">สุขภาพองค์กรในหน้าเดียว · ตั้งแต่งานเข้าจนเก็บเงินครบ</div></div>
+    <div class="hright noprint">
+      <select class="sel" id="ym" aria-label="เลือกเดือนที่ดู"></select>
+      <button class="btn" type="button" id="btnFresh" title="อ่านข้อมูลใหม่จากฐาน (ปกติระบบจำผลไว้ 10 นาที)">อ่านใหม่</button>
+      <button class="btn" type="button" id="btnCfg">ตั้งค่างบโฆษณา / เกณฑ์</button>
+      <button class="btn" type="button" id="btnPrint">พิมพ์ / PDF</button>
+      <a class="btn" href="/">← หน้ารวมแอป</a>
+    </div>
+  </header>
+  <div class="metaRow"><span id="mRange">กำลังโหลด…</span><span id="mCmp"></span><span id="mAt"></span><span class="admin">เปิดดูได้เฉพาะสิทธิ์ Administrator</span><span>อ่านข้อมูลอย่างเดียว</span></div>
+  <div class="notice" id="notice"></div>
+
+  <div class="grid">
+    <div class="card c12">
+      <h2>สุขภาพองค์กร <span class="src">สีรวมดูจาก Cashflow และแนวโน้มยอดขายเป็นหลัก</span></h2>
+      <div class="healthWrap" style="margin-top:10px">
+        <div><div class="gauge"><div id="gauge"></div><div><div class="num" id="score">–</div><div class="cap" id="scoreCap">กำลังประเมิน…</div></div></div></div>
+        <div><div class="prim" id="prim"><div class="ld">กำลังโหลด…</div></div><div class="health" id="health"></div></div>
+      </div>
+      <div class="lights"><span><span class="dot good">✓</span>เขียว = อยู่ในเกณฑ์</span><span><span class="dot warn">!</span>เหลือง = เฝ้าระวัง</span><span><span class="dot crit">✕</span>แดง = ต้องแก้</span><span style="color:var(--dim)" id="hRule"></span></div>
+    </div>
+
+    <div class="card c4 kpi hero" id="heroCard"><div class="ld">กำลังโหลด…</div></div>
+    <div class="card c8"><div class="kpiGrid" id="kpis"><div class="ld">กำลังโหลด…</div></div></div>
+
+    <div class="sect"><span class="n">1</span><b>ขาย &amp; ปิดการขาย</b><span class="t">คีย์ยอดขาย · Cash Flow</span></div>
+    <div class="card c4"><h2>จากงานเข้า ถึงรับเงิน</h2><p class="desc" id="funnelD"></p><div id="funnel"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c8"><h2>ยอดขาย เทียบ เงินรับจริง 12 เดือน</h2>
+      <div class="legend"><span><i style="background:var(--s1)"></i>ยอดขายที่ปิดได้</span><span><i style="background:var(--s2)"></i>เงินรับจริง</span><span style="color:var(--dim)">หน่วย: ล้านบาท</span></div>
+      <div id="salesrecv"><div class="ld">กำลังโหลด…</div></div></div>
+
+    <div class="sect"><span class="n">2</span><b>วิเคราะห์ช่องทางการขาย</b><span class="t">คีย์ยอดขาย</span></div>
+    <div class="card c4"><h2>ส่วนแบ่งยอดขายตามช่องทาง</h2><p class="desc" id="donutD"></p><div id="donut"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c8"><h2>ผลงานแต่ละช่องทาง</h2><p class="desc">อัตราปิด = งานที่ปิดได้ในช่วงนี้ ÷ งานเข้าในช่วงนี้</p><div class="tw"><table id="chTable"></table></div></div>
+    <div class="card c4"><h2>งานเข้าช่วงนี้ จบแบบไหน</h2>
+      <div class="legend"><span><i style="background:var(--s1)"></i>ปิดการขาย</span><span><i style="background:var(--mute)"></i>Onprocess</span><span><i style="background:var(--s2)"></i>ไม่ซื้อ</span></div><div id="outcome"></div></div>
+    <div class="card c4"><h2>อัตราปิดแต่ละช่องทาง</h2><p class="desc">ตัวเลขขวา = ปิดได้ / งานเข้า</p><div id="rateBars"></div></div>
+    <div class="card c4"><h2>ลูกค้าใหม่ เทียบ ลูกค้าเก่า</h2><p class="desc" id="noD"></p><div class="tw"><table id="noTable"></table></div></div>
+    <div class="card c12"><h2>ลูกค้าใหม่ : ลูกค้าเก่า ในแต่ละช่องทาง</h2>
+      <div class="legend"><span><i style="background:var(--s1)"></i>ลูกค้าใหม่</span><span><i style="background:var(--s2)"></i>ลูกค้าเก่า</span><span style="color:var(--dim)" id="newoldN"></span></div>
+      <div class="split" id="newold"></div></div>
+
+    <div class="card c12 onl"><h2>เจาะลึกช่องทาง Online <span class="src">กลุ่มช่องทางเดียวกับรายงานยอดขาย Online ในคีย์ยอดขาย</span></h2><p class="desc" id="onlD"></p>
+      <div class="stats seven" id="onlKpi"></div>
+      <div class="grid" style="margin-top:6px">
+        <div class="c7"><div class="sub2">แยกตามกลุ่มช่องทาง Online <span>เรียงตามยอดขาย</span></div><div class="tw"><table id="onlTable"></table></div></div>
+        <div class="c5"><div class="sub2">งานเข้า Online ตามวันในสัปดาห์ <span id="onlDowN"></span></div><div id="onlDow"></div>
+          <div class="sub2">อัตราปิด Online 6 เดือน <span>%</span></div><div id="onlRate"></div></div>
+      </div></div>
+
+    <div class="card c12"><h2>งบโฆษณา ต่อ ยอดขายลูกค้าใหม่ <span class="src">งบต่อเดือนตามที่ตั้งไว้ · ยอดขายจากคีย์ยอดขาย</span></h2><p class="desc" id="adsD"></p>
+      <div class="stats six" style="margin-bottom:12px" id="adsKpi"></div>
+      <div class="tw"><table id="adsTable"></table></div>
+      <div class="sub2" style="margin-top:14px">ชื่อช่องของกลุ่ม Website ที่พบในช่วงนี้ <span>ใช้ตรวจว่าแยก 2 เว็บถูกไหม — แก้คำที่ใช้จับได้ที่ปุ่ม "ตั้งค่างบโฆษณา / เกณฑ์"</span></div>
+      <div class="tw"><table id="platTable"></table></div></div>
+
+    <div class="sect"><span class="n">3</span><b>รับเงิน · เก็บเงิน · ลูกหนี้</b><span class="t">ลูกหนี้ (คีย์ยอดขาย) · PEAK อ่านอย่างเดียว</span></div>
+    <div class="card c5"><h2>ลูกหนี้ค้างรับตามอายุหนี้</h2><p class="desc" id="agingD"></p><div id="aging"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c4"><h2>ลูกหนี้ที่ค้างนานที่สุด</h2><p class="desc" id="debtD"></p><div class="tw"><table id="debtors"></table></div></div>
+    <div class="card c3"><h2>การเก็บเงิน</h2><div class="stats two" style="margin-top:10px" id="collect"><div class="ld">กำลังโหลด…</div></div></div>
+
+    <div class="sect"><span class="n">4</span><b>Cashflow &amp; ค่าใช้จ่าย</b><span class="t">Cash Flow ในคีย์ยอดขาย · รายจ่ายที่ซิงก์จาก PEAK (อ่านอย่างเดียว)</span></div>
+    <div class="card c7"><h2>เงินสดเข้า เทียบ จ่ายออก 6 เดือน</h2>
+      <div class="legend"><span><i style="background:var(--s1)"></i>เงินสดเข้า</span><span><i style="background:var(--s2)"></i>จ่ายออก</span><span style="color:var(--dim)">หน่วย: ล้านบาท · ตัวเลขใต้เดือน = เงินสดสุทธิ</span></div>
+      <div id="cash6"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c5"><h2>เงินที่จะเข้า เทียบ ที่ต้องจ่าย</h2><p class="desc" id="fcD"></p><div id="cashFc"></div><div class="stats" style="margin-top:8px" id="fcStats"></div></div>
+    <div class="card c4"><h2>ภาพรวมค่าใช้จ่าย</h2><p class="desc" id="expD"></p><div class="stats two" id="expStats"></div>
+      <div class="sub2">จ่ายออกรวม 6 เดือน <span>ล้านบาท</span></div><div id="exp6"></div>
+      <div class="none" id="expLedger" style="font-size:12px;line-height:1.55;border-top:1px solid var(--grid);margin-top:8px"></div></div>
+    <div class="card c4"><h2>ค่าใช้จ่ายสูงสุด 5 ราย — มดงานการป้าย</h2><p class="desc" id="topD0"></p><div id="top0"></div></div>
+    <div class="card c4"><h2>ค่าใช้จ่ายสูงสุด 5 ราย — The 101</h2><p class="desc" id="topD1"></p><div id="top1"></div></div>
+
+    <div class="sect"><span class="n">5</span><b>คลังสินค้า &amp; จัดซื้อ</b><span class="t">คลังสินค้า Inventory · ใบขอซื้อ Purchase Request</span></div>
+    <div class="card c4"><h2>ภาพรวมคลังสินค้า</h2><p class="desc" id="stockD"></p><div class="stats two" id="stockStats"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c4"><h2>วัสดุที่เบิกใช้มากที่สุด 5 รายการ</h2><p class="desc" id="invTopD"></p><div id="invTop"></div></div>
+    <div class="card c4"><h2>ของค้างคลัง &amp; ใบขอซื้อ</h2><div class="stats two" style="margin-top:10px" id="slowStats"></div>
+      <div class="sub2">มูลค่าของในคลังตามหมวด <span>บาท</span></div><div id="invCat"></div></div>
+
+    <div class="sect"><span class="n">6</span><b>โปรเจกต์ &amp; การผลิต</b><span class="t">Projects Management · Job Card สั่งผลิต · ซ่อมบำรุง</span></div>
+    <div class="card c4"><h2>โปรเจกต์ตามสถานะ</h2><p class="desc" id="pjD"></p><div id="projects"><div class="ld">กำลังโหลด…</div></div><div class="stats" style="margin-top:6px" id="pjStats"></div></div>
+    <div class="card c4"><h2>ระยะเวลาผลิตเฉลี่ย</h2><p class="desc">จากเปิดใบสั่งผลิตถึงปิดงาน (ไม่นับใบเคลม)</p><div class="stats" id="leadStats"></div><div id="leadtime"></div><div class="stats" style="margin-top:6px" id="prodStats"></div></div>
+    <div class="card c4"><h2>งานรอรับตามสถานีผลิต</h2><p class="desc" id="stnD"></p><div id="stations"></div><div class="sub2">เครื่องจักร &amp; ซ่อมบำรุง</div><div class="stats" id="maintStats"></div></div>
+
+    <div class="sect"><span class="n">7</span><b>ติดตั้ง · ส่งมอบ · หลังการขาย</b><span class="t">จองคิวช่างติดตั้ง · แผนจัดส่ง · รีวิวช่าง · บริการหลังการขาย</span></div>
+    <div class="card c3"><h2>ติดตั้ง</h2><div class="stats two" style="margin-top:10px" id="instStats"><div class="ld">กำลังโหลด…</div></div></div>
+    <div class="card c3"><h2>ส่งมอบ</h2><div class="stats two" style="margin-top:10px" id="dlvStats"></div></div>
+    <div class="card c3"><h2>ความพึงพอใจลูกค้า</h2><div class="stats two" style="margin-top:10px" id="rvStats"></div><table style="margin-top:8px" id="reviews"></table></div>
+    <div class="card c3"><h2>บริการหลังการขาย</h2><div class="stats two" style="margin-top:10px" id="asStats"></div></div>
+
+    <div class="sect"><span class="n">8</span><b>เวลาตลอดสาย &amp; วิเคราะห์รวม</b><span class="t">รวมทุกแอป</span></div>
+    <div class="card c12"><h2>แต่ละช่วงของงานใช้เวลาเท่าไหร่</h2><p class="desc" id="cycleD"></p><div class="cycle" id="cycle"></div><div class="cyl" id="cycleLegend"></div></div>
+    <div class="card c12"><h2>วิเคราะห์ — สิ่งที่ควรดูต่อ <span class="src">ระบบสรุปจากตัวเลขด้านบน</span></h2><ul class="ins" id="insights" style="margin-top:10px"><li class="ld">กำลังโหลด…</li></ul></div>
+  </div>
+  <div class="foot">
+    ตัวเลขทุกตัวอ่านจากข้อมูลจริงของแอปใน CRM Hub (คีย์ยอดขาย · Cash Flow · ลูกหนี้ · Projects · Job Card · จองคิว · แผนจัดส่ง · รีวิว · หลังการขาย · คลัง · ใบขอซื้อ · ซ่อมบำรุง) ด้วยตัวคิดเลขตัวเดียวกับหน้าแอปนั้น ·
+    หน้านี้อ่านอย่างเดียว ไม่เขียนกลับไปที่แอปใดหรือ PEAK · ระบบจำผลไว้ 10 นาทีเพื่อไม่ให้ฐานข้อมูลหนัก กด "อ่านใหม่" เมื่อต้องการตัวเลขล่าสุด ·
+    เดือนที่ยังไม่จบจะเทียบกับช่วงวันเดียวกันของเดือนก่อน
+  </div>
+</div>
+<div id="tip"></div>
+
+<div id="cfgOv" class="noprint" role="dialog" aria-modal="true" aria-labelledby="cfgT"><div id="cfgBox">
+  <h2 id="cfgT">ตั้งค่างบโฆษณา / เกณฑ์</h2>
+  <p class="desc" id="cfgInfo">กำลังโหลด…</p>
+  <div class="sub2" style="margin-top:4px">งบโฆษณาต่อเดือน <span>บาท</span></div>
+  <div class="frow h"><div>ช่องทางโฆษณา</div><div>งบต่อเดือน (บาท)</div><div>คำที่ใช้จับจากชื่อช่อง (เฉพาะ Website · คั่นด้วยจุลภาค)</div></div>
+  <div id="cfgAds"></div>
+  <div class="sub2">เกณฑ์ <span>ตัวเลขที่ใช้ตัดสินสี</span></div>
+  <div class="fgrid" id="cfgNum"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap"><span id="cfgMsg" style="margin-right:auto;font-size:13px;color:var(--warn-t)"></span>
+    <button class="btn" type="button" id="cfgCancel">ยกเลิก</button><button class="btn pri" type="button" id="cfgSave">บันทึก</button></div>
+</div></div>
+
+<script>
+'use strict';
+/* ═══ เครื่องมือ ═══ */
+const API = '/m/mgmt/api';
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (t, a, txt) => { const e = document.createElementNS(NS, t); for (const k in (a || {})) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; };
+const svg = (w, h) => el('svg', { viewBox: '0 0 ' + w + ' ' + h, width: '100%', role: 'img' });
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const N = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const fmt = n => Math.round(N(n)).toLocaleString('en-US');
+const f1 = n => (n == null ? '–' : Number(n).toFixed(1));
+const mil = n => (N(n) / 1e6).toFixed(2);
+/** เงินแบบย่อ: ≥ 1 ล้าน → [x.xx, 'ล้านบาท'] · ต่ำกว่านั้น → [x,xxx, 'บาท'] */
+const money = n => (Math.abs(N(n)) >= 1e6 ? [mil(n), 'ล้าน'] : [fmt(n), 'บาท']);
+const moneyT = n => { const m = money(n); return m[0] + ' ' + (m[1] === 'ล้าน' ? 'ล้านบาท' : 'บาท'); };
+const pctT = (a, b, d) => (N(b) > 0 ? (N(a) / N(b) * 100).toFixed(d == null ? 1 : d) + '%' : '–');
+const short = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const CH_COL = { 'Online': '#3987e5', 'B2B': '#d95926', 'สาขา': '#199e70', 'Partner': '#c98500', 'ผู้บริหาร': '#d55181' };
+const RAMP = ['#184f95', '#1f5fae', '#2a72c8', '#3987e5', '#5598e9', '#6da7ec', '#86b6f0', '#9ec5f4', '#cde2fb'];   /* อายุหนี้ 9 ช่วง: ยิ่งค้างนาน ยิ่งสว่าง */
+const ICON = { good: '✓', warn: '!', crit: '✕', na: '–' }, WORD = { good: 'เขียว · ดี', warn: 'เหลือง · เฝ้าระวัง', crit: 'แดง · ต้องแก้', na: 'ประเมินไม่ได้' };
+const tip = $('tip');
+function hover(node, title, value){
+  node.classList.add('mark'); node.setAttribute('tabindex', '0');
+  const show = e => {
+    tip.textContent = ''; const b = document.createElement('b'); b.textContent = value; tip.appendChild(b);
+    tip.appendChild(document.createElement('br')); tip.appendChild(document.createTextNode(title));
+    tip.style.display = 'block';
+    const r = node.getBoundingClientRect(), x = (e && e.clientX) || (r.left + r.width / 2), y = (e && e.clientY) || r.top;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - 270, x + 12)) + 'px'; tip.style.top = Math.max(8, y - 44) + 'px';
+  };
+  node.addEventListener('pointermove', show); node.addEventListener('focus', () => show());
+  node.addEventListener('pointerleave', () => { tip.style.display = 'none'; }); node.addEventListener('blur', () => { tip.style.display = 'none'; });
+}
+const hbar = (x, y, w, h, fill) => el('path', { d: `M${x},${y}h${Math.max(0, w - 4)}a4,4 0 0 1 4,4v${h - 8}a4,4 0 0 1 -4,4h${-Math.max(0, w - 4)}z`, fill });
+const vbar = (x, y, w, h, fill) => (h < 4 ? el('rect', { x, y: y + h - Math.max(h, 1), width: w, height: Math.max(h, 1), fill })
+  : el('path', { d: `M${x},${y + h}v${-(h - 4)}a4,4 0 0 1 4,-4h${w - 8}a4,4 0 0 1 4,4v${h - 4}z`, fill }));
+/** แกนสวย: คืนค่าสูงสุดของแกนกับขีดบอกค่า */
+function axis(maxV){
+  const m = Math.max(N(maxV), 1e-9), p = Math.pow(10, Math.floor(Math.log10(m))), n = m / p;
+  const step = (n <= 1 ? .25 : n <= 2 ? .5 : n <= 5 ? 1 : 2) * p, top = Math.ceil(m / step - 1e-9) * step, t = [];
+  for (let v = 0; v <= top + step / 2; v += step) t.push(Math.round(v * 1e6) / 1e6);
+  return { max: top, ticks: t };
+}
+const tick = v => (Math.abs(v) >= 100 ? fmt(v) : String(Math.round(v * 100) / 100));
+const fill = (id, html) => { const h = $(id); if (h) h.innerHTML = html; };
+const clear = id => { const h = $(id); if (h) h.textContent = ''; return h; };
+const none = (id, t) => fill(id, '<div class="none">' + esc(t || 'ไม่มีข้อมูลในช่วงนี้') + '</div>');
+const errB = (id, t) => fill(id, '<div class="errbox">อ่านข้อมูลส่วนนี้ไม่ได้ — ' + esc(t || 'ไม่ทราบสาเหตุ') + '</div>');
+const stat = (v, lb, cls) => `<div><b class="${cls || ''}">${v}</b>${esc(lb)}</div>`;
+const mstat = (n, lb, cls) => { const m = money(n); return stat(esc(m[0]) + (m[1] === 'ล้าน' ? ' <small>ล้าน</small>' : ''), lb + (m[1] === 'ล้าน' ? '' : ' (บาท)'), cls); };
+const delta = (p, goodUp) => (p == null ? '<span class="badge">ไม่มีฐานเทียบ</span>' : `<span class="badge ${(p >= 0) === (goodUp !== false) ? 'up' : 'down'}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(1)}%</span>`);
+
+function spark(host, arr, w, h, o){
+  o = o || {}; const a = (arr || []).map(v => (v == null ? 0 : N(v))); if (a.length < 2) return;
+  const s = svg(w, h); const mn = Math.min(...a), mx = Math.max(...a), X = i => 4 + i * (w - 8) / (a.length - 1), Y = v => h - 5 - (v - mn) / ((mx - mn) || 1) * (h - 10);
+  const pts = a.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ');
+  if (o.area) s.appendChild(el('polygon', { points: X(0) + ',' + h + ' ' + pts + ' ' + X(a.length - 1) + ',' + h, fill: o.color || '#3987e5', opacity: .12 }));
+  s.appendChild(el('polyline', { points: pts, fill: 'none', stroke: o.line || '#52657a', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  s.appendChild(el('circle', { cx: X(a.length - 1), cy: Y(a[a.length - 1]), r: 4, fill: o.color || '#3987e5', stroke: '#12202f', 'stroke-width': 2 }));
+  s.style.maxWidth = w + 'px'; s.style.display = 'block'; host.appendChild(s);
+}
+/** แท่งนอน: rows = [[ชื่อ, ค่า]] */
+function hbars(host, rows, o){
+  o = o || {}; rows = (rows || []).filter(r => r && r[0] != null);
+  if (!rows.length || !rows.some(r => N(r[1]) > 0)) { host.innerHTML = '<div class="none">' + esc(o.empty || 'ไม่มีข้อมูลในช่วงนี้') + '</div>'; return; }
+  const W = o.w || 400, lab = o.lab || 150, rh = o.rh || 30, bh = Math.min(18, rh - 12), H = rows.length * rh + 4, mx = Math.max(...rows.map(r => N(r[1])), 1e-9), room = W - lab - (o.valRoom || 70);
+  const s = svg(W, H);
+  rows.forEach((r, i) => {
+    const y = i * rh + (rh - bh) / 2, w = Math.max(N(r[1]) > 0 ? 6 : 0, N(r[1]) / mx * room), col = o.fills ? o.fills[i % o.fills.length] : (o.fill || '#3987e5'), v = o.vf ? o.vf(r) : fmt(r[1]);
+    s.appendChild(el('text', { x: lab - 10, y: y + bh / 2 + 4.5, 'text-anchor': 'end', class: 'nm' }, short(r[0], o.cut || 24)));
+    if (w > 0) { const b = hbar(lab, y, w, bh, col); hover(b, String(r[0]), v); s.appendChild(b); }
+    s.appendChild(el('text', { x: lab + w + 8, y: y + bh / 2 + 4.5, class: 'vl' }, v));
+  });
+  host.textContent = ''; host.appendChild(s);
+}
+function stackHtml(parts){   /* parts = [[ค่า, สี, ชื่อ, ข้อความค่า]] */
+  const tot = parts.reduce((s, p) => s + N(p[0]), 0);
+  if (!(tot > 0)) return '<div class="sb empty"></div>';
+  return '<div class="sb">' + parts.filter(p => N(p[0]) > 0).map(p => `<i style="flex:${Math.round(N(p[0]) / tot * 1000)} 1 0;background:${p[1]}" data-t="${esc(p[2])}" data-v="${esc(p[3])} · ${Math.round(N(p[0]) / tot * 100)}%"></i>`).join('') + '</div>';
+}
+const bindStacks = host => host.querySelectorAll('.sb i').forEach(i => hover(i, i.dataset.t, i.dataset.v));
+/** แท่งคู่ (2 ชุด) หน่วยล้านบาท */
+function pairCols(host, labels, A, B, o){
+  host.textContent = '';
+  const a = A.map(v => N(v) / 1e6), b = B.map(v => N(v) / 1e6);
+  if (!a.some(v => v > 0) && !b.some(v => v > 0)) { host.innerHTML = '<div class="none">ไม่มีข้อมูลในช่วงนี้</div>'; return; }
+  const ax = axis(Math.max(...a, ...b)), W = o.w, H = o.h, L = 40, Bm = o.net ? 40 : 26, T = 18, pw = W - L - 8, ph = H - T - Bm, s = svg(W, H), band = pw / labels.length, bw = Math.min(o.bw || 18, band / 2 - 3);
+  ax.ticks.forEach(v => { const y = T + ph - v / ax.max * ph;
+    s.appendChild(el('line', { x1: L, x2: W - 8, y1: y, y2: y, stroke: v ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.2)' })); s.appendChild(el('text', { x: L - 6, y: y + 4, 'text-anchor': 'end', class: 'ax' }, tick(v))); });
+  labels.forEach((m, i) => { const cx = L + band * i + band / 2, ha = a[i] / ax.max * ph, hb = b[i] / ax.max * ph;
+    const ra = vbar(cx - bw - 1, T + ph - ha, bw, ha, '#3987e5'); hover(ra, o.na + ' · ' + m, a[i].toFixed(2) + ' ล้านบาท'); s.appendChild(ra);
+    const rb = vbar(cx + 1, T + ph - hb, bw, hb, '#d95926'); hover(rb, o.nb + ' · ' + m, b[i].toFixed(2) + ' ล้านบาท'); s.appendChild(rb);
+    s.appendChild(el('text', { x: cx, y: T + ph + 16, 'text-anchor': 'middle', class: 'ax' }, m));
+    if (o.net) { const n = a[i] - b[i]; s.appendChild(el('text', { x: cx, y: T + ph + 32, 'text-anchor': 'middle', class: 'vl', style: 'fill:' + (n >= 0 ? '#5fd97a' : '#f08a8a') }, (n >= 0 ? '+' : '') + n.toFixed(2))); }
+    if (o.labelAll || i === labels.length - 1) {
+      s.appendChild(el('text', { x: cx - bw / 2 - (o.labelAll ? 4 : 1), y: T + ph - ha - 6, 'text-anchor': 'middle', class: 'vl' }, a[i].toFixed(2)));
+      s.appendChild(el('text', { x: cx + bw / 2 + (o.labelAll ? 6 : 9), y: T + ph - hb - 6, 'text-anchor': 'middle', class: 'vl' }, b[i].toFixed(2))); } });
+  host.appendChild(s);
+}
+/** เส้นเดียว: arr มี null ได้ (จุดที่ไม่มีข้อมูลถูกข้าม) */
+function miniLine(host, arr, labels, o){
+  host.textContent = ''; o = o || {};
+  const pts = (arr || []).map((v, i) => (v == null ? null : [i, N(v)])).filter(Boolean);
+  if (pts.length < 2) { host.innerHTML = '<div class="none">' + esc(o.empty || 'ข้อมูลยังไม่พอวาดเส้น') + '</div>'; return; }
+  const vs = pts.map(p => p[1]); let mn = Math.min(...vs), mx = Math.max(...vs); const pad = (mx - mn) * .25 || Math.max(Math.abs(mx) * .1, 1); mn = Math.max(0, mn - pad); mx = mx + pad;
+  const W = o.w || 400, H = o.h || 108, L = 40, T = 14, B = 22, pw = W - L - 44, ph = H - T - B, s = svg(W, H), dp = o.dp == null ? 1 : o.dp;
+  [mn, (mn + mx) / 2, mx].forEach(v => { const y = T + ph - (v - mn) / (mx - mn) * ph; s.appendChild(el('line', { x1: L, x2: W - 40, y1: y, y2: y, stroke: 'rgba(255,255,255,.07)' })); s.appendChild(el('text', { x: L - 6, y: y + 4, 'text-anchor': 'end', class: 'ax' }, v.toFixed(dp))); });
+  const X = i => L + 10 + i * (pw - 20) / Math.max(1, arr.length - 1), Y = v => T + ph - (v - mn) / (mx - mn) * ph;
+  s.appendChild(el('polyline', { points: pts.map(p => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' '), fill: 'none', stroke: '#3987e5', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  pts.forEach(p => { const c = el('circle', { cx: X(p[0]), cy: Y(p[1]), r: 4, fill: '#3987e5', stroke: '#12202f', 'stroke-width': 2 }); hover(c, (o.name || '') + ' · ' + labels[p[0]], p[1].toFixed(dp) + (o.unit ? ' ' + o.unit : '')); s.appendChild(c); });
+  labels.forEach((m, i) => s.appendChild(el('text', { x: X(i), y: H - 6, 'text-anchor': 'middle', class: 'ax' }, m)));
+  const lp = pts[pts.length - 1]; s.appendChild(el('text', { x: X(lp[0]) + 9, y: Y(lp[1]) + 4, class: 'vl' }, lp[1].toFixed(dp)));
+  host.appendChild(s);
+}
+function listIns(id, arr){
+  fill(id, (arr || []).length ? arr.map(x => `<li><span class="dot ${x.s}">${ICON[x.s] || ''}</span><span><b>${esc(x.b)}</b>${x.t ? ' — ' + esc(x.t) : ''}${x.a ? ' <em>→ ' + esc(x.a) + '</em>' : ''}</span></li>`).join('') : '<li class="none">ยังไม่มีข้อสังเกตในช่วงนี้</li>');
+}
+
+/* ═══ สถานะหน้า ═══ */
+const S = { ym: '', meta: null, sales: null, cash: null, ar: null, ops: null, stock: null, health: null, seq: 0 };
+async function getJSON(url, opt){
+  const r = await fetch(url, Object.assign({ credentials: 'same-origin', headers: { 'Accept': 'application/json' } }, opt || {}));
+  let j = null; try { j = await r.json(); } catch (e) { j = null; }
+  if (r.status === 401) { location.href = '/login'; throw new Error('ยังไม่ได้เข้าสู่ระบบ'); }
+  if (!j) throw new Error('เซิร์ฟเวอร์ตอบไม่เป็นข้อมูล (รหัส ' + r.status + ')');
+  if (r.status === 403) { const e = new Error(j.error || 'ไม่มีสิทธิ์เปิดหน้านี้'); e.denied = true; throw e; }
+  return j;
+}
+const ok = p => !!(p && p.ok !== false);
+
+/* ═══ สุขภาพองค์กร ═══ */
+function drawHealth(h){
+  if (!ok(h)) { errB('prim', h && h.err); fill('health', ''); $('score').textContent = '–'; $('scoreCap').textContent = 'ประเมินไม่ได้'; return; }
+  const col = { good: ['#0ca30c', 'rgba(12,163,12,.18)', '#5fd97a'], warn: ['#fab219', 'rgba(250,178,25,.18)', '#fbc24d'], crit: ['#d03b3b', 'rgba(208,59,59,.2)', '#f08a8a'], na: ['#52657a', 'rgba(255,255,255,.08)', '#8ba0ad'] }[h.color] || ['#52657a', 'rgba(255,255,255,.08)', '#8ba0ad'];
+  const g = clear('gauge'), s = svg(96, 96), R = 40, C = 2 * Math.PI * R, v = N(h.score);
+  s.appendChild(el('circle', { cx: 48, cy: 48, r: R, fill: 'none', stroke: col[1], 'stroke-width': 10 }));
+  if (v > 0) s.appendChild(el('circle', { cx: 48, cy: 48, r: R, fill: 'none', stroke: col[0], 'stroke-width': 10, 'stroke-linecap': 'round', 'stroke-dasharray': (C * v / 100) + ' ' + C, transform: 'rotate(-90 48 48)' }));
+  s.appendChild(el('text', { x: 48, y: 46, 'text-anchor': 'middle', style: 'font-size:11.5px;font-weight:600;fill:' + col[2] }, (ICON[h.color] || '') + ' ' + (h.word || '')));
+  s.appendChild(el('text', { x: 48, y: 61, 'text-anchor': 'middle', class: 'ax' }, 'โดยรวม'));
+  s.style.width = '96px'; g.appendChild(s);
+  $('score').innerHTML = (h.score == null ? '–' : h.score) + ' <small>/ 100</small>';
+  $('scoreCap').innerHTML = 'เขียว ' + h.count.good + ' · เหลือง ' + h.count.warn + ' · แดง ' + h.count.crit + (h.count.na ? ' · ประเมินไม่ได้ ' + h.count.na : '') + '<br>คะแนน = Cashflow 40% + แนวโน้มยอดขาย 40% + ด้านอื่น 20%';
+  const tile = (t, big) => `<div class="hc ${t.s}${big ? ' big' : ''}"><div class="t">${esc(t.t)}${big ? ' <span style="font-weight:400;color:var(--dim);font-size:12px">· ตัวหลัก</span>' : ''}</div><div class="st ${t.s}"><span class="dot ${t.s}">${ICON[t.s]}</span>${WORD[t.s]}</div><div class="why">${esc(t.w)}</div>` +
+    (t.checks ? '<ul class="chk">' + t.checks.map(c => `<li><span style="color:${c[1] ? 'var(--good-t)' : 'var(--crit-t)'}">${c[1] ? '✓' : '✕'}</span>${esc(c[0])}</li>`).join('') + '</ul>' : '') +
+    (t.note ? `<div class="rule tnote" style="color:var(--warn-t)">⚠ ${esc(t.note)}</div>` : '') +
+    (t.info ? `<div class="rule tinfo">${esc(t.info)}</div>` : '') +
+    (t.r ? `<div class="rule">${esc(t.r)}</div>` : '') + '</div>';
+  fill('prim', h.tiles.filter(t => t.primary).map(t => tile(t, true)).join(''));
+  fill('health', h.tiles.filter(t => !t.primary).map(t => tile(t, false)).join(''));
+  $('hRule').textContent = h.rule || '';
+  /* เวลาตลอดสาย */
+  const cy = h.cycle || [], host = clear('cycle');
+  if (!cy.length) { $('cycleD').textContent = 'ยังไม่มีข้อมูลพอจะคิดเวลาในช่วงนี้'; fill('cycleLegend', ''); }
+  else {
+    const tot = cy.reduce((a, c) => a + N(c[1]), 0), C2 = ['#256abf', '#3987e5', '#6da7ec', '#9ec5f4'];
+    $('cycleD').textContent = 'รวมทุกช่วงที่วัดได้ ' + tot.toFixed(1) + ' วัน · แต่ละช่วงวัดจากแอปของช่วงนั้น (ไม่ได้ไล่ตามงานเดียวกัน)';
+    cy.forEach((c, i) => { const d = document.createElement('div'); d.style.cssText = 'flex:' + Math.max(N(c[1]), .2) + ' 1 0;background:' + C2[i % 4];
+      if (N(c[1]) / (tot || 1) > 0.07) { const sp = document.createElement('span'); sp.textContent = N(c[1]).toFixed(1) + ' วัน'; d.appendChild(sp); }
+      hover(d, c[0], N(c[1]).toFixed(1) + ' วัน'); host.appendChild(d); });
+    fill('cycleLegend', cy.map((c, i) => `<div><i style="background:${C2[i % 4]}"></i>${esc(c[0])}<br><b>${N(c[1]).toFixed(1)} วัน</b></div>`).join(''));
+  }
+  listIns('insights', h.insights);
+}
+
+/* ═══ ตัวเลขหลัก (ต้องใช้หลายก้อน — วาดใหม่ทุกครั้งที่มีก้อนมาถึง) ═══ */
+function drawKpis(){
+  const sa = S.sales, ca = S.cash, ar = S.ar, op = S.ops;
+  if (ok(sa)) {
+    const T = sa.total, m = money(T.amt);
+    fill('heroCard', `<div class="lb">ยอดขายที่ปิดได้ · ${esc(sa.win.full ? sa.win.label : 'เดือนนี้ถึงวันนี้')}</div><div class="v">${m[0]} <small>${m[1] === 'ล้าน' ? 'ล้านบาท' : 'บาท'}</small></div>` +
+      `<div class="d">${delta(T.diffPct)} จาก ${esc(moneyT(T.prevAmt))} ${sa.win.full ? 'เดือนก่อน' : 'ช่วงเดียวกันเดือนก่อน'}</div><div id="spk0" style="margin:10px 0 8px"></div>` +
+      `<div class="mini"><div><b>${fmt(T.cnt)}</b>งานที่ปิดได้</div><div><b>${T.avg == null ? '–' : fmt(T.avg)}</b>บาทต่องาน</div><div><b>${sa.newPct == null ? '–' : Math.round(sa.newPct) + '%'}</b>ลูกค้าใหม่</div></div>`);
+    spark($('spk0'), sa.sales, 420, 70, { area: true, line: '#3987e5' });
+  } else if (sa) errB('heroCard', sa.err);
+  const K = [];
+  const kp = (lb, v, u, d, ref, sp) => K.push({ lb, v, u, d, ref, sp });
+  if (ok(sa)) {
+    const T = sa.total;
+    kp('งานเข้า (ลูกค้าติดต่อ)', fmt(T.lead), 'งาน', delta(T.prevLead > 0 ? (T.lead - T.prevLead) / T.prevLead * 100 : null), 'จาก ' + fmt(T.prevLead), sa.leads);
+    kp('อัตราปิดการขาย', T.rate == null ? '–' : T.rate, '%', T.prevRate == null || T.rate == null ? '<span class="badge">ไม่มีฐานเทียบ</span>' : `<span class="badge ${T.rate >= T.prevRate ? 'up' : 'down'}">${T.rate >= T.prevRate ? '▲' : '▼'} ${Math.abs(T.rate - T.prevRate).toFixed(1)} จุด</span>`, T.prevRate == null ? '' : 'จาก ' + T.prevRate + '%', sa.rate);
+  } else { kp('งานเข้า (ลูกค้าติดต่อ)', '–', '', '', sa ? 'อ่านไม่ได้' : 'กำลังโหลด…'); kp('อัตราปิดการขาย', '–', '', '', sa ? 'อ่านไม่ได้' : 'กำลังโหลด…'); }
+  if (ok(ca)) { const m = money(ca.cur.cashIn);
+    kp('เงินรับจริง' + (ca.win.full ? '' : ' (ถึงวันนี้)'), m[0], m[1] === 'ล้าน' ? 'ล้านบาท' : 'บาท', ca.win.full && ca.prev ? delta(ca.prev.cashIn > 0 ? (ca.cur.cashIn - ca.prev.cashIn) / ca.prev.cashIn * 100 : null) : '', ca.prev ? 'เดือนก่อนทั้งเดือน ' + moneyT(ca.prev.cashIn) : '', ca.cashIn);
+  } else kp('เงินรับจริง', '–', '', '', ca ? 'อ่านไม่ได้' : 'กำลังโหลด…');
+  if (ok(ar)) { const m = money(ar.total); kp('ลูกหนี้ค้างรับ (ณ วันนี้)', m[0], m[1] === 'ล้าน' ? 'ล้านบาท' : 'บาท', `<span class="badge ${N(ar.overduePct) >= 50 ? 'down' : ''}">เกินกำหนด ${ar.overduePct == null ? '–' : ar.overduePct + '%'}</span>`, fmt(ar.n) + ' ใบ'); }
+  else kp('ลูกหนี้ค้างรับ', '–', '', '', ar ? 'อ่านไม่ได้' : 'กำลังโหลด…');
+  if (ok(ca)) kp('เก็บเงินเฉลี่ย (วางบิล → รับเงิน)', ca.dso == null ? '–' : ca.dso, 'วัน', '', (ca.dso != null && ca.dso < 0 ? 'ติดลบ = รับเงินก่อนวางบิล · ' : '') + (ca.dsoPrev == null ? '' : 'เดือนก่อน ' + ca.dsoPrev + ' วัน'));
+  else kp('เก็บเงินเฉลี่ย', '–', '', '', ca ? 'อ่านไม่ได้' : 'กำลังโหลด…');
+  if (ok(op) && ok(op.lead)) kp('ระยะเวลาผลิตเฉลี่ย', op.lead.avg == null ? '–' : op.lead.avg, 'วัน', '', op.lead.prev == null ? fmt(op.lead.n) + ' ใบที่ปิด' : 'เดือนก่อน ' + op.lead.prev + ' วัน · ' + fmt(op.lead.n) + ' ใบ', op.lead.series);
+  else kp('ระยะเวลาผลิตเฉลี่ย', '–', '', '', op ? 'อ่านไม่ได้' : 'กำลังโหลด…');
+  fill('kpis', K.map((k, i) => `<div class="tile kpi"><div class="lb">${esc(k.lb)}</div><div class="v">${esc(k.v)} <small>${esc(k.u)}</small></div><div class="d">${k.d} ${esc(k.ref || '')}</div><div id="spk${i + 1}" style="margin-top:8px"></div></div>`).join(''));
+  K.forEach((k, i) => { if (k.sp) spark($('spk' + (i + 1)), k.sp, 230, 30); });
+  /* ยอดขาย เทียบ เงินรับ 12 เดือน — ต้องมีทั้งสองก้อน */
+  if (ok(sa)) {
+    const recv = ok(ca) ? sa.ms.map(m => { const i = ca.ms.indexOf(m); return i >= 0 ? ca.cashIn[i] : 0; }) : sa.ms.map(() => 0);
+    pairCols($('salesrecv'), sa.months.map(m => m.split(' ')[0]), sa.sales, recv, { w: 860, h: 250, na: 'ยอดขายที่ปิดได้', nb: 'เงินรับจริง', bw: 16 });
+    if (!ok(ca) && ca) $('salesrecv').insertAdjacentHTML('beforeend', '<div class="errbox">เงินรับจริง: อ่านข้อมูล Cash Flow ไม่ได้ — ' + esc(ca.err) + '</div>');
+  } else if (sa) errB('salesrecv', sa.err);
+}
+
+/* ═══ ① ② ขาย & ช่องทาง ═══ */
+function drawSales(d){
+  const ids = ['funnel', 'donut', 'outcome', 'rateBars', 'newold', 'onlKpi', 'onlDow', 'onlRate', 'adsKpi'];
+  if (!ok(d)) { ids.forEach(i => errB(i, d && d.err)); ['chTable', 'noTable', 'onlTable', 'adsTable', 'platTable'].forEach(i => fill(i, '')); return; }
+  const T = d.total, CH = d.ch;
+  /* ทางเดินงาน */
+  $('funnelD').textContent = T.lead ? ('งานเข้า ' + fmt(T.lead) + ' งาน · ปิดได้ในช่วงนี้ ' + fmt(T.cnt) + ' งาน') : 'ยังไม่มีงานเข้าในช่วงนี้';
+  hbars($('funnel'), d.funnel, { w: 400, lab: 150, rh: 46, valRoom: 96, cut: 26, fills: ['#9ec5f4', '#6da7ec', '#3987e5', '#256abf'], vf: r => fmt(r[1]) + (r[0] === 'งานเข้า' || !d.funnel[0][1] ? '' : ' · ' + Math.round(r[1] / d.funnel[0][1] * 100) + '%') });
+  /* วงส่วนแบ่ง */
+  (function(){
+    const host = clear('donut'), rows = CH.filter(c => c.amt > 0);
+    if (!rows.length) { none('donut', 'ยังไม่มียอดขายที่ปิดได้ในช่วงนี้'); $('donutD').textContent = ''; return; }
+    const top2 = rows.slice().sort((a, b) => b.amt - a.amt).slice(0, 2);
+    $('donutD').textContent = top2.map(c => c.n).join(' และ ') + ' รวมกัน ' + Math.round(top2.reduce((s, c) => s + c.amt, 0) / T.amt * 100) + '% ของยอดขาย';
+    const W = 400, H = 232, cx = 108, cy = 116, R = 92, r = 58, s = svg(W, H); let a0 = -Math.PI / 2; const gap = rows.length > 1 ? 0.022 : 0;
+    rows.forEach(c => {
+      const full = c.amt / T.amt >= 0.9999, a1 = a0 + c.amt / T.amt * 2 * Math.PI, A = a0 + gap / 2, B = full ? a0 + 2 * Math.PI - 0.0001 : a1 - gap / 2, big = (B - A) > Math.PI ? 1 : 0;
+      const p = (rad, ang) => (cx + rad * Math.cos(ang)).toFixed(2) + ',' + (cy + rad * Math.sin(ang)).toFixed(2);
+      const path = el('path', { d: `M${p(R, A)}A${R},${R} 0 ${big} 1 ${p(R, B)}L${p(r, B)}A${r},${r} 0 ${big} 0 ${p(r, A)}Z`, fill: CH_COL[c.n] || '#52657a' });
+      hover(path, c.n, moneyT(c.amt) + ' · ' + pctT(c.amt, T.amt, 0)); s.appendChild(path); a0 = a1;
+    });
+    const m = money(T.amt);
+    s.appendChild(el('text', { x: cx, y: cy - 2, 'text-anchor': 'middle', style: 'font-size:22px;font-weight:600;fill:#eef4f5' }, m[0]));
+    s.appendChild(el('text', { x: cx, y: cy + 17, 'text-anchor': 'middle', class: 'ax' }, m[1] === 'ล้าน' ? 'ล้านบาท' : 'บาท'));
+    CH.forEach((c, i) => { const y = 34 + i * 38;
+      s.appendChild(el('rect', { x: 226, y: y - 10, width: 11, height: 11, rx: 3, fill: CH_COL[c.n] || '#52657a' }));
+      s.appendChild(el('text', { x: 244, y: y, class: 'nm' }, c.n));
+      s.appendChild(el('text', { x: 392, y: y, 'text-anchor': 'end', class: 'vl' }, pctT(c.amt, T.amt, 0)));
+      s.appendChild(el('text', { x: 244, y: y + 15, class: 'ax' }, moneyT(c.amt) + ' · ' + fmt(c.cnt) + ' งาน')); });
+    host.appendChild(s);
+  })();
+  /* ตารางช่องทาง */
+  (function(){
+    const mx = Math.max(...CH.map(c => c.amt), 1), dl = c => (c.diffPct == null ? '<td>–</td>' : `<td class="dl ${c.diffPct >= 0 ? 'up' : 'down'}">${c.diffPct >= 0 ? '▲' : '▼'} ${Math.abs(c.diffPct).toFixed(1)}%</td>`);
+    fill('chTable', '<tr><th>ช่องทาง</th><th>งานเข้า</th><th>ปิดได้</th><th>อัตราปิด</th><th style="text-align:left;width:22%">ยอดขาย</th><th>เทียบช่วงก่อน</th><th>บาทต่องาน</th><th>วันปิดเฉลี่ย</th><th>6 เดือน</th></tr>' +
+      CH.map((c, i) => `<tr><td><span class="chdot" style="background:${CH_COL[c.n] || '#52657a'}"></span>${esc(c.n)}</td><td>${fmt(c.lead)}</td><td>${fmt(c.cnt)}</td><td>${c.rate == null ? '–' : c.rate + '%'}</td><td style="text-align:left"><span class="bar" style="width:${(c.amt / mx * 52).toFixed(1)}%;background:${CH_COL[c.n] || '#52657a'}"></span>${esc(moneyT(c.amt))}</td>${dl(c)}<td>${c.avg == null ? '–' : fmt(c.avg)}</td><td>${f1(c.days)}</td><td><span id="chs${i}" style="display:inline-block;width:92px"></span></td></tr>`).join('') +
+      `<tr class="tot"><td>รวม</td><td>${fmt(T.lead)}</td><td>${fmt(T.cnt)}</td><td>${T.rate == null ? '–' : T.rate + '%'}</td><td style="text-align:left">${esc(moneyT(T.amt))}</td>${dl(T)}<td>${T.avg == null ? '–' : fmt(T.avg)}</td><td>${f1(T.days)}</td><td></td></tr>`);
+    CH.forEach((c, i) => spark($('chs' + i), c.tr, 92, 24, { color: CH_COL[c.n] }));
+  })();
+  /* จบแบบไหน */
+  fill('outcome', '<div class="split" style="grid-template-columns:78px minmax(0,1fr);margin-top:10px">' + CH.map(c =>
+    `<div>${esc(c.n)}</div><div>${stackHtml([[c.won, '#3987e5', c.n + ' · ปิดการขาย', c.won + ' งาน'], [c.open, '#52657a', c.n + ' · Onprocess', c.open + ' งาน'], [c.lost, '#d95926', c.n + ' · ไม่ซื้อ', c.lost + ' งาน']])}<div class="sbl"><span>${fmt(c.lead)} งาน · ปิด ${pctT(c.won, c.lead, 0)}</span><span>ไม่ซื้อ ${pctT(c.lost, c.lead, 0)}</span></div></div>`).join('') + '</div>' +
+    (d.win.full ? '' : '<div class="none" style="padding-bottom:0">งานที่ยังตามอยู่ (Onprocess) จะทยอยปิดในวันถัดไป</div>'));
+  bindStacks($('outcome'));
+  /* อัตราปิด */
+  (function(){
+    const rows = CH.filter(c => c.lead > 0).sort((x, y) => N(y.rate) - N(x.rate)), host = clear('rateBars');
+    if (!rows.length) { none('rateBars', 'ยังไม่มีงานเข้าในช่วงนี้'); return; }
+    const W = 400, lab = 78, rh = 44, bh = 18, Tm = 26, H = Tm + rows.length * rh + 4, room = W - lab - 104, mx = Math.max(...rows.map(c => N(c.rate)), N(T.rate), 10) * 1.1, s = svg(W, H), ax = lab + N(T.rate) / mx * room;
+    rows.forEach((c, i) => { const r = N(c.rate), y = Tm + i * rh + (rh - bh) / 2, w = Math.max(r > 0 ? 6 : 0, r / mx * room);
+      s.appendChild(el('text', { x: lab - 10, y: y + bh / 2 + 4.5, 'text-anchor': 'end', class: 'nm' }, c.n));
+      if (w > 0) { const b = hbar(lab, y, w, bh, '#3987e5'); hover(b, c.n + ' · ปิดได้ ' + c.cnt + ' จากงานเข้า ' + c.lead + ' งาน', 'อัตราปิด ' + r.toFixed(1) + '%'); s.appendChild(b); }
+      const lx = (lab + w + 8 < ax + 4 && lab + w + 52 > ax) ? ax + 8 : lab + w + 8;
+      s.appendChild(el('text', { x: lx, y: y + bh / 2 + 4.5, class: 'vl' }, r.toFixed(1) + '%'));
+      s.appendChild(el('text', { x: W - 2, y: y + bh / 2 + 4.5, 'text-anchor': 'end', class: 'ax' }, c.cnt + ' / ' + c.lead)); });
+    if (T.rate != null) { s.appendChild(el('line', { x1: ax, x2: ax, y1: Tm - 6, y2: H - 2, stroke: '#eef4f5', 'stroke-width': 1, 'stroke-opacity': .55 }));
+      s.appendChild(el('text', { x: Math.min(W - 70, Math.max(70, ax)), y: 12, 'text-anchor': 'middle', class: 'ax' }, 'เฉลี่ยทั้งบริษัท ' + T.rate + '%')); }
+    host.appendChild(s);
+  })();
+  /* ลูกค้าใหม่ : เก่า */
+  (function(){
+    const oldN = T.cnt - T.nw, oldA = T.amt - T.nwAmt;
+    $('newoldN').textContent = 'นับจากงานที่ปิดได้ ' + fmt(T.cnt) + ' งาน';
+    $('noD').textContent = T.cnt ? ('ลูกค้าเก่า ' + pctT(oldN, T.cnt, 0) + ' ของงาน ทำยอดขาย ' + pctT(oldA, T.amt, 0)) : 'ยังไม่มีงานที่ปิดได้ในช่วงนี้';
+    fill('noTable', '<tr><th></th><th>ลูกค้าใหม่</th><th>ลูกค้าเก่า</th></tr>' +
+      `<tr><td>งานที่ปิดได้</td><td>${fmt(T.nw)} · ${pctT(T.nw, T.cnt, 0)}</td><td>${fmt(oldN)} · ${pctT(oldN, T.cnt, 0)}</td></tr>` +
+      `<tr><td>ยอดขาย</td><td>${esc(moneyT(T.nwAmt))} · ${pctT(T.nwAmt, T.amt, 0)}</td><td>${esc(moneyT(oldA))} · ${pctT(oldA, T.amt, 0)}</td></tr>` +
+      `<tr><td>บาทต่องาน</td><td>${T.nw ? fmt(T.nwAmt / T.nw) : '–'}</td><td>${oldN ? fmt(oldA / oldN) : '–'}</td></tr>`);
+    fill('newold', '<div class="h">ช่องทาง</div><div class="h">จำนวนงานที่ปิดได้</div><div class="h">ยอดขาย</div>' + CH.map(c => { const od = c.cnt - c.nw, oa = c.amt - c.nwAmt;
+      return `<div>${esc(c.n)}</div>
+        <div>${stackHtml([[c.nw, '#3987e5', c.n + ' · ลูกค้าใหม่', c.nw + ' งาน'], [od, '#d95926', c.n + ' · ลูกค้าเก่า', od + ' งาน']])}<div class="sbl"><span>ใหม่ ${fmt(c.nw)} · ${pctT(c.nw, c.cnt, 0)}</span><span>เก่า ${fmt(od)} · ${pctT(od, c.cnt, 0)}</span></div></div>
+        <div>${stackHtml([[c.nwAmt, '#3987e5', c.n + ' · ยอดลูกค้าใหม่', moneyT(c.nwAmt)], [oa, '#d95926', c.n + ' · ยอดลูกค้าเก่า', moneyT(oa)]])}<div class="sbl"><span>ใหม่ ${esc(moneyT(c.nwAmt))} · ${pctT(c.nwAmt, c.amt, 0)}</span><span>เก่า ${esc(moneyT(oa))} · ${pctT(oa, c.amt, 0)}</span></div></div>`; }).join(''));
+    bindStacks($('newold'));
+  })();
+  /* Online */
+  (function(){
+    const o = CH.find(c => c.n === 'Online') || {};
+    $('onlD').textContent = T.lead ? ('งานเข้า ' + pctT(o.lead, T.lead, 0) + ' ของทั้งบริษัท · ทำยอดขาย ' + pctT(o.amt, T.amt, 0) + ' · จบที่ "ไม่ซื้อ" ' + pctT(o.lost, o.lead, 0) + ' ของงานเข้า Online') : '';
+    fill('onlKpi', [stat(fmt(o.lead), 'งานเข้า · ' + pctT(o.lead, T.lead, 0) + ' ของทั้งหมด'), stat(fmt(o.cnt), 'งานที่ปิดได้'), stat(o.rate == null ? '–' : o.rate + '%', 'อัตราปิด (เฉลี่ยบริษัท ' + (T.rate == null ? '–' : T.rate + '%') + ')', (o.rate != null && T.rate != null && o.rate < T.rate) ? 'bad' : ''),
+      mstat(o.amt, 'ยอดขาย' + (o.diffPct == null ? '' : ' · ' + (o.diffPct >= 0 ? '▲' : '▼') + ' ' + Math.abs(o.diffPct) + '%')), stat(o.avg == null ? '–' : fmt(o.avg), 'บาทต่องาน'), stat(f1(o.days) + ' <small>วัน</small>', 'ติดต่อ → ปิดการขาย'), stat(pctT(o.lost, o.lead, 0), 'จบที่ไม่ซื้อ · ' + fmt(o.lost) + ' งาน', N(o.lost) / (N(o.lead) || 1) >= .35 ? 'bad' : '')].join(''));
+    const rows = d.onl.filter(r => r.lead || r.cnt || r.amt).sort((a, b) => b.amt - a.amt || b.lead - a.lead), mx = Math.max(...rows.map(r => r.amt), 1);
+    fill('onlTable', rows.length ? ('<tr><th>กลุ่มช่องทาง</th><th>งานเข้า</th><th>ปิดได้</th><th>อัตราปิด</th><th style="text-align:left;width:22%">ยอดขาย</th><th>ลูกค้าใหม่</th><th>วันปิด</th><th style="text-align:left;width:17%">ปิด · ตาม · ไม่ซื้อ</th></tr>' +
+      rows.map(r => `<tr><td>${esc(r.n)}</td><td>${fmt(r.lead)}</td><td>${fmt(r.cnt)}</td><td>${r.rate == null ? '–' : r.rate + '%'}</td><td style="text-align:left"><span class="bar" style="width:${(r.amt / mx * 46).toFixed(1)}%"></span>${esc(moneyT(r.amt))}</td><td>${pctT(r.nw, r.cnt, 0)}</td><td>${f1(r.days)}</td><td>${stackHtml([[r.won, '#3987e5', r.n + ' · ปิดการขาย', r.won + ' งาน'], [r.open, '#52657a', r.n + ' · Onprocess', r.open + ' งาน'], [r.lost, '#d95926', r.n + ' · ไม่ซื้อ', r.lost + ' งาน']])}</td></tr>`).join('') +
+      `<tr class="tot"><td>รวม Online</td><td>${fmt(o.lead)}</td><td>${fmt(o.cnt)}</td><td>${o.rate == null ? '–' : o.rate + '%'}</td><td style="text-align:left">${esc(moneyT(o.amt))}</td><td>${pctT(o.nw, o.cnt, 0)}</td><td>${f1(o.days)}</td><td></td></tr>`) : '<tr><td class="none">ไม่มีงาน Online ในช่วงนี้</td></tr>');
+    bindStacks($('onlTable'));
+    $('onlDowN').textContent = fmt(o.lead) + ' งาน';
+    (function(){ const host = clear('onlDow'), dw = d.onlDow, mxv = Math.max(...dw.map(x => x[1]), 1);
+      if (!dw.some(x => x[1] > 0)) { none('onlDow'); return; }
+      const W = 500, H = 132, L = 8, B = 22, Tm = 18, pw = W - L - 8, ph = H - Tm - B, s = svg(W, H), band = pw / 7, bw = 22;
+      s.appendChild(el('line', { x1: L, x2: W - 8, y1: Tm + ph, y2: Tm + ph, stroke: 'rgba(255,255,255,.2)' }));
+      dw.forEach((x, i) => { const cx = L + band * i + band / 2, h = x[1] / mxv * ph;
+        const b = vbar(cx - bw / 2, Tm + ph - h, bw, h, '#3987e5'); hover(b, 'งานเข้า Online วัน' + x[0], x[1] + ' งาน'); s.appendChild(b);
+        s.appendChild(el('text', { x: cx, y: Tm + ph - h - 6, 'text-anchor': 'middle', class: 'vl' }, x[1]));
+        s.appendChild(el('text', { x: cx, y: H - 6, 'text-anchor': 'middle', class: 'ax' }, x[0])); });
+      host.appendChild(s); })();
+    miniLine($('onlRate'), d.onlRate, d.m6.map(m => m.split(' ')[0]), { w: 500, h: 112, name: 'อัตราปิด Online', unit: '%' });
+  })();
+  /* งบโฆษณา */
+  (function(){
+    const A = d.ads, rows = A.rows, ro = A.roas;
+    const TT = rows.reduce((a, x) => ({ budget: a.budget + x.budget, used: a.used + x.used, lead: a.lead + x.lead, nw: a.nw + x.nw, nwAmt: a.nwAmt + x.nwAmt }), { budget: 0, used: 0, lead: 0, nw: 0, nwAmt: 0 });
+    const roasAll = TT.used > 0 ? TT.nwAmt / TT.used : null;
+    $('adsD').textContent = (TT.budget ? ('งบ ' + fmt(TT.budget) + ' บาทต่อเดือน' + (A.prorated ? ' · เดือนยังไม่จบ จึงเทียบกับงบตามจำนวนวันที่ผ่านมา ' + A.days + '/' + A.daysInMonth + ' วัน = ' + fmt(TT.used) + ' บาท' : '') +
+      ' · ได้ยอดขายลูกค้าใหม่ ' + moneyT(TT.nwAmt) + (roasAll == null ? '' : ' — ทุก 1 บาทได้ยอดขายกลับ ' + roasAll.toFixed(1) + ' บาท')) : 'ยังไม่ได้ตั้งงบโฆษณา');
+    const light = r => (r == null ? ['', '–'] : r >= ro.good ? ['good', '✓ เขียว'] : (r >= ro.warn ? ['warn', '! เหลือง'] : ['crit', '✕ แดง']));
+    const mx = Math.max(...rows.map(x => N(x.roas)), 1);
+    const row = (x, tot) => { const r = x.used > 0 ? x.nwAmt / x.used : null, l = light(r);
+      return `<tr${tot ? ' class="tot"' : ''}><td>${esc(x.name)}</td><td>${fmt(x.budget)}</td>${A.prorated ? `<td>${fmt(x.used)}</td>` : ''}<td>${fmt(x.lead)}</td><td>${x.lead ? fmt(x.used / x.lead) : '–'}</td><td>${fmt(x.nw)}</td><td>${x.nw ? fmt(x.used / x.nw) : '–'}</td><td>${fmt(x.nwAmt)}</td><td style="text-align:left">${tot || r == null ? '' : `<span class="bar" style="width:${(r / mx * 40).toFixed(1)}%"></span>`}${r == null ? '–' : r.toFixed(1) + ' เท่า'}</td><td>${x.nwAmt > 0 ? pctT(x.used, x.nwAmt, 0) : '–'}</td><td>${tot || !l[0] ? '' : `<span class="pill ${l[0]}">${l[1]}</span>`}</td></tr>`; };
+    const wo = A.webOther || {};
+    fill('adsTable', '<tr><th>ช่องทางโฆษณา</th><th>งบต่อเดือน</th>' + (A.prorated ? '<th>งบถึงวันนี้</th>' : '') + '<th>งานเข้า</th><th>บาทต่องานเข้า</th><th>ลูกค้าใหม่</th><th>บาทต่อลูกค้าใหม่</th><th>ยอดขายลูกค้าใหม่</th><th style="text-align:left;width:16%">ยอดขายต่องบ 1 บาท</th><th>งบเป็น % ของยอด</th><th>เกณฑ์</th></tr>' +
+      rows.map(x => row(x)).join('') + row(Object.assign({ name: 'รวม ' + rows.length + ' ช่องทาง' }, TT), true) +
+      ((wo.lead || wo.cnt) ? `<tr class="sub"><td>Website ที่ยังแยกเว็บไม่ได้ (ไม่นับในตารางข้างบน)</td><td>–</td>${A.prorated ? '<td>–</td>' : ''}<td>${fmt(wo.lead)}</td><td>–</td><td>${fmt(wo.nw)}</td><td>–</td><td>${fmt(wo.nwAmt)}</td><td style="text-align:left">–</td><td>–</td><td></td></tr>` : ''));
+    fill('adsKpi', [stat(fmt(TT.used), A.prorated ? 'งบถึงวันนี้ (บาท)' : 'งบโฆษณาเดือนนี้ (บาท)'), mstat(TT.nwAmt, 'ยอดขายลูกค้าใหม่'), stat(roasAll == null ? '–' : roasAll.toFixed(1) + ' <small>เท่า</small>', 'ยอดขายต่องบ 1 บาท', roasAll == null ? '' : (roasAll >= ro.good ? 'ok' : (roasAll < ro.warn ? 'bad' : ''))),
+      stat(TT.nw ? fmt(TT.used / TT.nw) : '–', 'บาทต่อลูกค้าใหม่ 1 ราย'), stat(TT.lead ? fmt(TT.used / TT.lead) : '–', 'บาทต่องานเข้า 1 งาน'), stat(T.amt > 0 ? pctT(TT.used, T.amt, 1) : '–', 'งบโฆษณาต่อยอดขายรวม')].join(''));
+    fill('platTable', A.platforms.length ? ('<tr><th>ชื่อช่อง / Platform</th><th>งานเข้า</th><th>ยอดขาย (บาท)</th><th style="text-align:left">นับเข้าเว็บ</th></tr>' +
+      A.platforms.map(p => `<tr><td>${esc(p.name)}</td><td>${fmt(p.lead)}</td><td>${fmt(p.amt)}</td><td style="text-align:left">${p.line ? esc(p.line) : '<span class="pill warn">ยังไม่เข้าเว็บไหน</span>'}</td></tr>`).join('')) : '<tr><td class="none">ไม่มีงานจากกลุ่ม Website ในช่วงนี้</td></tr>');
+  })();
+}
+
+/* ═══ ③ ลูกหนี้ ═══ */
+function drawAr(a){
+  if (!ok(a)) { errB('aging', a && a.err); fill('debtors', ''); $('agingD').textContent = ''; $('debtD').textContent = ''; return; }
+  $('agingD').textContent = a.total > 0 ? ('ค้างรับรวม ' + moneyT(a.total) + ' · ' + fmt(a.n) + ' ใบ · เกินกำหนดแล้ว ' + moneyT(a.overdue) + ' (' + (a.overduePct == null ? '–' : a.overduePct + '%') + ')') : 'ไม่มีลูกหนี้ค้างรับ';
+  hbars($('aging'), a.buckets.map(b => [b.t, b.amt, b.n]), { w: 500, lab: 124, rh: 30, valRoom: 150, fills: RAMP, empty: 'ไม่มีลูกหนี้ค้างรับ', vf: r => moneyT(r[1]) + ' · ' + fmt(r[2]) + ' ใบ' });
+  const rows = a.topOld || [];
+  $('debtD').textContent = rows.length ? (rows.length + ' รายแรก รวม ' + moneyT(rows.reduce((s, x) => s + x.amt, 0)) + ' · ลูกหนี้ทั้งหมด ' + fmt(a.custN) + ' ราย') : '';
+  fill('debtors', rows.length ? ('<tr><th>ลูกค้า</th><th>ค้างรับ (บาท)</th><th>เกินกำหนด</th></tr>' + rows.map(x =>
+    `<tr><td>${esc(short(x.name, 34))}</td><td>${fmt(x.amt)}</td><td><span class="pill ${x.oldest > 90 ? 'crit' : (x.oldest > 30 ? 'warn' : '')}">${x.oldest > 90 ? '✕ ' : (x.oldest > 30 ? '! ' : '')}${fmt(x.oldest)} วัน</span></td></tr>`).join('')) : '<tr><td class="none">ไม่มีลูกหนี้ที่เกินกำหนด</td></tr>');
+}
+
+/* ═══ ④ Cashflow & ค่าใช้จ่าย ═══ */
+function drawCash(c){
+  if (S.led !== undefined) drawLedger(S.led);      /* รอบ 235 — ที่มาของเงินเข้า–ออกขึ้นกับก้อน cash */
+  if (!ok(c)) { ['collect', 'cash6', 'cashFc', 'expStats', 'top0', 'top1'].forEach(i => errB(i, c && c.err)); ['fcStats', 'exp6'].forEach(i => fill(i, '')); return; }
+  const cur = c.cur;
+  fill('collect', [mstat(cur.cashIn, 'รับเงินจริง' + (c.win.full ? ' ทั้งเดือน' : ' (ถึงวันนี้)')), mstat(cur.cashOut, 'จ่ายออก' + (c.win.full ? ' ทั้งเดือน' : ' (ถึงวันนี้)')),
+    mstat(cur.net, 'เงินสดสุทธิ', cur.net >= 0 ? 'ok' : 'bad'), stat((c.dso == null ? '–' : c.dso) + ' <small>วัน</small>', 'วางบิล → รับเงิน เฉลี่ย' + (c.dso != null && c.dso < 0 ? ' (ติดลบ = รับเงินก่อนวางบิล)' : '')),
+    mstat((c.forecast.find(x => x.k === 'w1') || {}).amt, 'ลูกหนี้ครบกำหนดใน 7 วัน'), mstat(c.forecast30, 'คาดว่าจะเข้าใน 30 วัน')].join(''));
+  const n6 = c.months.length >= 6 ? 6 : c.months.length, lab6 = c.months.slice(-n6).map(m => m.split(' ')[0]);
+  pairCols($('cash6'), lab6, c.cashIn.slice(-n6), c.cashOut.slice(-n6), { w: 760, h: 250, net: true, na: 'เงินสดเข้า', nb: 'จ่ายออก', bw: 22 });
+  if (!c.hasExp) $('cash6').insertAdjacentHTML('beforeend', '<div class="none">ยังไม่มีข้อมูลรายจ่ายจาก PEAK ในระบบ — แท่งจ่ายออกจึงเป็น 0</div>');
+  /* จะเข้า vs ต้องจ่าย: ลูกหนี้ครบกำหนด เทียบ เจ้าหนี้ครบกำหนด */
+  const w1 = N((c.forecast.find(x => x.k === 'w1') || {}).amt), in30 = N(c.forecast30);
+  $('fcD').textContent = 'ลูกหนี้ที่ครบกำหนดรับ เทียบ เจ้าหนี้ที่ครบกำหนดจ่าย (ใบที่เลยกำหนดแล้วนับรวม)';
+  fill('cashFc', '<div class="legend"><span><i style="background:var(--s1)"></i>จะเข้า</span><span><i style="background:var(--s2)"></i>ต้องจ่าย</span><span style="color:var(--dim)">หน่วย: ล้านบาท</span></div><div id="cashFcG"></div>');
+  pairCols($('cashFcG'), ['ใน 7 วัน', 'ใน 30 วัน'], [w1, in30], [c.ap.due7, c.ap.due30], { w: 500, h: 160, na: 'จะเข้า', nb: 'ต้องจ่าย', bw: 34, labelAll: true });
+  fill('fcStats', [mstat(c.fc15.net, 'สุทธิ 15 วันข้างหน้า', c.fc15.net >= 0 ? 'ok' : 'bad'), mstat(c.ap.total, 'เจ้าหนี้ค้างจ่าย · ' + fmt(c.ap.n) + ' ใบ'), mstat(c.ap.overdue, 'เลยกำหนดจ่ายแล้ว', c.ap.overdue > 0 ? 'bad' : '')].join('') );
+  /* ค่าใช้จ่าย */
+  const b0 = c.byBiz['มดงานการป้าย'] || {}, b1 = c.byBiz['The 101'] || {}, tot = N(cur.cashOut);
+  $('expD').textContent = c.hasExp ? ('จ่ายออก' + (c.win.full ? 'ทั้งเดือน ' : 'ถึงวันนี้ ') + moneyT(tot) + (c.prev && c.win.full && c.prev.cashOut > 0 ? ' · ' + ((tot - c.prev.cashOut) >= 0 ? 'เพิ่ม ' : 'ลด ') + Math.abs((tot - c.prev.cashOut) / c.prev.cashOut * 100).toFixed(1) + '% จากเดือนก่อน' : '')) : 'ยังไม่มีข้อมูลรายจ่ายจาก PEAK ในระบบ';
+  fill('expStats', [mstat(b0.out, 'มดงานการป้าย · ' + pctT(b0.out, tot, 0)), mstat(b1.out, 'The 101 · ' + pctT(b1.out, tot, 0)),
+    stat(cur.cashIn > 0 ? pctT(tot, cur.cashIn, 0) : '–', 'จ่ายออกต่อเงินรับ'), mstat(c.ap.total, 'ยังค้างจ่าย (ทุกเดือน)', c.ap.total > 0 ? 'bad' : '')].join(''));
+  miniLine($('exp6'), c.cashOut.slice(-n6).map(v => v / 1e6), lab6, { name: 'จ่ายออกรวม', unit: 'ล้านบาท', dp: 2 });
+  ['มดงานการป้าย', 'The 101'].forEach((b, i) => { const t = c.top[b] || {};
+    if (t.err) { errB('top' + i, t.err); return; }
+    $('topD' + i).textContent = (t.rows || []).length ? ('จ่ายออก' + (c.win.full ? 'ทั้งเดือน ' : 'ถึงวันนี้ ') + moneyT(t.total) + ' จาก ' + fmt(t.docN) + ' ใบ · ' + t.rows.length + ' รายแรก ' + pctT(t.shown, t.total, 0) + (t.owe > 0 ? ' · ยังค้างจ่าย ' + moneyT(t.owe) : '')) : '';
+    hbars($('top' + i), (t.rows || []).map(v => [v.name, v.amt, v.cnt]), { w: 400, lab: 176, rh: 34, valRoom: 84, cut: 26, empty: 'ยังไม่มีรายจ่ายของบริษัทนี้ในช่วงนี้', vf: r => fmt(r[1]) }); });
+}
+
+/* ═══ ⑤ คลัง ═══ */
+function drawStock(s){
+  if (!ok(s)) { ['stockStats', 'invTop', 'slowStats', 'invCat'].forEach(i => errB(i, s && s.err)); return; }
+  const c = s.counts, a = s.analytics, f = s.flow, p = s.purchase;
+  $('stockD').textContent = s.daysCover == null ? 'ยังคิดจำนวนวันที่ของพอใช้ไม่ได้ (ไม่มียอดเบิกในช่วงนี้)' : ('ของในคลังพอใช้ราว ' + fmt(s.daysCover) + ' วัน ตามอัตราเบิกของช่วงนี้');
+  if (!ok(c)) errB('stockStats', c.err);
+  else fill('stockStats', [mstat(c.value, 'มูลค่าของในคลัง (ณ วันนี้)'), stat(s.daysCover == null ? '–' : fmt(s.daysCover) + ' <small>วัน</small>', 'ของพอใช้'),
+    ok(f) ? mstat(f.grValue, 'รับเข้า · ' + fmt(f.grN) + ' ใบ') : stat('–', 'รับเข้า (อ่านไม่ได้)'), ok(f) ? mstat(f.issueValue, 'เบิกใช้ · ' + fmt(f.issueTimes) + ' ครั้ง') : stat('–', 'เบิกใช้ (อ่านไม่ได้)'),
+    stat(fmt(c.lowStock), 'รายการใกล้หมด', c.lowStock > 0 ? 'bad' : ''), stat(fmt(c.openMR) + ' <small>ใบ</small>', 'ใบเบิกค้างจ่ายของ')].join(''));
+  if (!ok(f)) { errB('invTop', f.err); $('invTopD').textContent = ''; }
+  else { const top = f.top || [], sum = top.reduce((x, r) => x + r[1], 0);
+    $('invTopD').textContent = top.length ? ('รวม ' + moneyT(sum) + ' · ' + pctT(sum, f.issueValue, 0) + ' ของยอดเบิกช่วงนี้') : '';
+    hbars($('invTop'), top, { w: 400, lab: 160, rh: 34, valRoom: 78, cut: 24, empty: 'ยังไม่มีการเบิกใช้ในช่วงนี้', vf: r => fmt(r[1]) }); }
+  fill('slowStats', [ok(a) ? mstat(a.slowValue, 'ไม่เคลื่อนไหวเกิน 90 วัน', a.slowValue > 0 ? 'bad' : '') : stat('–', 'ของไม่เคลื่อนไหว (อ่านไม่ได้)'),
+    ok(a) ? stat(fmt(a.slowN), 'รายการ' + (ok(c) && c.value > 0 ? ' · ' + pctT(a.slowValue, c.value, 0) + ' ของมูลค่าคลัง' : '')) : '',
+    ok(p) ? stat(fmt(p.waitN) + ' <small>ใบ</small>', 'ใบขอซื้อรออนุมัติ', p.waitN > 0 ? '' : 'ok') : stat('–', 'ใบขอซื้อ (อ่านไม่ได้)'), ok(p) ? stat(fmt(p.waitSum), 'บาทที่รออนุมัติ') : '',
+    ok(p) ? stat(fmt(p.urgentOverdue), 'ใบด่วนค้างเกิน 24 ชม.', p.urgentOverdue > 0 ? 'bad' : '') : '', ok(p) ? stat(fmt(p.openOverdue), 'ใบปกติค้างเกิน 72 ชม.') : ''].join(''));
+  if (ok(a)) hbars($('invCat'), a.category, { w: 400, lab: 150, rh: 26, valRoom: 84, cut: 22, vf: r => fmt(r[1]) }); else errB('invCat', a.err);
+}
+
+/* ═══ ⑥ ⑦ โปรเจกต์ · ผลิต · ติดตั้ง · ส่งมอบ · รีวิว · หลังการขาย ═══ */
+function drawOps(o){
+  const all = ['projects', 'leadStats', 'stations', 'instStats', 'dlvStats', 'rvStats', 'asStats'];
+  if (!ok(o)) { all.forEach(i => errB(i, o && o.err)); return; }
+  const pj = o.projects, pr = o.production, ld = o.lead, cl = o.claim, ins = o.install, dv = o.delivery, rv = o.reviews, as = o.aftersale, mt = o.maint;
+  if (!ok(pj)) { errB('projects', pj.err); fill('pjStats', ''); }
+  else { $('pjD').textContent = 'เปิดอยู่ ' + fmt(pj.active) + ' โปรเจกต์ (ณ วันนี้) · เปิดใหม่ในช่วงนี้ ' + fmt(pj.started) + ' · Complete ' + fmt(pj.complete);
+    hbars($('projects'), pj.rows, { w: 400, lab: 190, rh: 31, valRoom: 44, cut: 30 });
+    fill('pjStats', [stat(fmt(pj.overdue), 'เลยกำหนดส่ง (Due)', pj.overdue > 0 ? 'bad' : ''), stat(fmt(pj.old30), 'เปิดมาเกิน 30 วัน'), stat(fmt(pj.waitAcc), 'Complete รอบัญชีตรวจเงิน')].join('')); }
+  if (!ok(ld)) { errB('leadStats', ld.err); fill('leadtime', ''); }
+  else { fill('leadStats', [stat(f1(ld.avg) + ' <small>วัน</small>', 'เฉลี่ยทุกงาน · ' + fmt(ld.n) + ' ใบ'), stat(f1(ld.sign) + ' <small>วัน</small>', 'กลุ่มงานป้าย'), stat(f1(ld.print) + ' <small>วัน</small>', 'กลุ่มงานพิมพ์')].join(''));
+    miniLine($('leadtime'), ld.series, ld.months.map(m => m.split(' ')[0]), { name: 'ระยะเวลาผลิตเฉลี่ย', unit: 'วัน', h: 110 });
+    if (ld.cut) $('leadtime').insertAdjacentHTML('beforeend', '<div class="none" style="padding:2px 0 0">ไม่นับ ' + fmt(ld.cut) + ' ใบที่นานเกิน 120 วัน (ใบถูกแก้หลังวันปิด)</div>'); }
+  if (!ok(pr)) { errB('prodStats', pr.err); errB('stations', pr.err); $('stnD').textContent = ''; }
+  else { fill('prodStats', [stat(pr.onTimePct == null ? '–' : pr.onTimePct + '%', 'แพ็คทันกำหนดส่ง', pr.onTimePct != null && pr.onTimePct < 75 ? 'bad' : ''), stat(fmt(pr.whOverdue) + ' <small>ใบ</small>', 'เกินกำหนดเข้าคลัง', pr.whOverdue > 0 ? 'bad' : ''),
+      stat(fmt(pr.claimN) + ' <small>ใบ</small>', 'ใบเคลมที่เปิดในเดือนที่ดู' + (ok(cl) && cl.total > 0 ? ' · ' + fmt(cl.total) + ' บาท' : ''))].join(''));
+    $('stnD').textContent = 'ใบสั่งผลิตเปิดอยู่ ' + fmt(pr.open) + ' ใบ (ป้าย ' + fmt(pr.openSign) + ' · พิมพ์ ' + fmt(pr.openPrint) + ') · สถานีที่ยังไม่กดรับงาน ' + fmt(pr.waitingTotal) + ' จุด';
+    hbars($('stations'), pr.waiting, { w: 400, lab: 170, rh: 25, valRoom: 40, cut: 26, empty: 'ไม่มีงานรอรับที่สถานีใด' }); }
+  fill('maintStats', ok(mt) ? [stat(fmt(mt.down) + ' <small>/ ' + fmt(mt.machines) + '</small>', 'เครื่องเสีย/ซ่อมอยู่', mt.down > 0 ? 'bad' : 'ok'), stat(fmt(mt.open), 'ใบแจ้งซ่อมค้าง'), stat(fmt(mt.overduePM), 'PM เลยกำหนด', mt.overduePM > 0 ? 'bad' : '')].join('') : '<div class="errbox">อ่านไม่ได้ — ' + esc(mt.err) + '</div>');
+  if (!ok(ins)) errB('instStats', ins.err);
+  else fill('instStats', [stat(fmt(ins.total), 'คิวในช่วงนี้'), stat(fmt(ins.finished), 'จบงาน'), stat(fmt(ins.unfinished), 'ยังไม่จบ', ins.unfinished > 0 ? '' : 'ok'), stat(ins.finishRate == null ? '–' : ins.finishRate + '%', 'จบงานของคิวที่มีทีมช่าง'),
+    mstat(ins.profit, 'กำไรค่าติดตั้ง' + (ins.marginPct == null ? '' : ' · ' + ins.marginPct + '%'), ins.profit >= 0 ? '' : 'bad'), stat(fmt(ins.lossJobs), 'งานที่ขาดทุน', ins.lossJobs > 0 ? 'bad' : '')].join(''));
+  if (!ok(dv)) errB('dlvStats', dv.err);
+  else fill('dlvStats', [stat(fmt(dv.total), 'เที่ยวส่งในช่วงนี้'), stat(fmt(dv.delivered), 'ส่งสำเร็จ'), stat(dv.successPct == null ? '–' : dv.successPct + '%', 'สำเร็จของเที่ยวที่ถึงกำหนด'), stat(fmt(dv.overdue), 'เลยกำหนดยังไม่ส่ง', dv.overdue > 0 ? 'bad' : ''), stat(fmt(dv.pending), 'รอจัดส่ง'), stat(fmt(dv.failed), 'ส่งไม่สำเร็จ', dv.failed > 0 ? 'bad' : '')].join(''));
+  if (!ok(rv)) { errB('rvStats', rv.err); fill('reviews', ''); }
+  else { const m = rv.month.n ? rv.month : rv.all;
+    fill('rvStats', [stat(f1(rv.month.avg) + ' <small>/ 5</small>', 'ช่วงนี้ · ' + fmt(rv.month.n) + ' รีวิว'), stat(rv.month.recommend == null ? '–' : Math.round(rv.month.recommend) + '%', 'แนะนำต่อ (ช่วงนี้)'),
+      stat(f1(rv.all.avg) + ' <small>/ 5</small>', 'ทั้งหมด · ' + fmt(rv.all.n) + ' รีวิว'), stat(rv.all.recommend == null ? '–' : Math.round(rv.all.recommend) + '%', 'แนะนำต่อ (ทั้งหมด)')].join(''));
+    fill('reviews', m.parts.map(r => `<tr><td>${esc(r[0])}</td><td style="text-align:left;width:52%">${r[1] == null ? '–' : `<span class="bar" style="width:${(r[1] / 5 * 70).toFixed(0)}%"></span>${r[1].toFixed(1)}`}</td></tr>`).join('')); }
+  if (!ok(as)) errB('asStats', as.err);
+  else fill('asStats', [stat(fmt(as.open), 'งานเปิดอยู่'), stat(fmt(as.overdue), 'เกิน SLA', as.overdue > 0 ? 'bad' : 'ok'), stat(fmt(as.monthNew), 'งานใหม่ (เดือนปัจจุบัน)'), stat(fmt(as.monthClosed), 'ปิดงาน (เดือนปัจจุบัน)'), stat(fmt(as.monthCost), 'บาท ค่าใช้จ่าย (เดือนปัจจุบัน)'), stat(fmt(as.total), 'งานทั้งหมดในระบบ')].join(''));
+}
+
+/* ═══ 📒 รอบ 233 — ค่าใช้จ่ายที่ลงตรงรหัสผังบัญชี: บอกตรง ๆ ว่ายังไม่รวม + ผลทดสอบล่าสุด (ชุดเดียวกับเมนู Cash Flow) ═══ */
+function drawLedger(L){
+  S.led = L;
+  /* 💵 รอบ 235 — เงินเข้า–ออกของเดือนที่ดูมาจากสมุดเงินสดของ PEAK แล้ว (ชุดเดียวกับเมนู Cash Flow ใหม่) ⇒ บอกที่มาใหม่แทนคำเตือนเดิม */
+  const bk = S.cash && S.cash.book;
+  if (bk && bk.cur) {
+    fill('expLedger', '✔ เงินเข้า–ออกในหน้านี้นับจาก<b>บัญชีเงินสด/ธนาคารในสมุดบัญชี PEAK</b> (ชุดเดียวกับเมนู Cash Flow ในคีย์ยอดขาย) — รวมรายการที่บัญชีลงตรงรหัสผังบัญชีแล้ว' +
+      (bk.n < bk.of ? ' · <span style="color:var(--warn-t)">ย้อนหลังมีข้อมูลจากสมุดเงินสด ' + bk.n + '/' + bk.of + ' เดือน ที่เหลือยังนับจากเอกสาร EXP</span>' : '') +
+      (bk.bankEnd != null ? '<br>เงินคงเหลือทุกบัญชี ณ สิ้นเดือนที่ดู <b>' + fmt(Math.round(bk.bankEnd)) + '</b> บาท' : '') +
+      '<br>ตาราง "ค่าใช้จ่ายสูงสุด 5 ราย" ยังมาจากเอกสาร EXP · <a href="/m/sales/" style="color:var(--s1)">เปิดคีย์ยอดขาย → เมนูงาน → Cash Flow เพื่อดูรายหมวด/รายเอกสาร</a>');
+    return;
+  }
+  const head = '⚠ ค่าใช้จ่ายและเงินออกในหน้านี้นับจาก<b>เอกสาร EXP</b> ใน PEAK (ข้อมูลชุดเดียวกับเมนู Cash Flow ในคีย์ยอดขาย) — รายการที่บัญชีลงตรงรหัสผังบัญชี<b>ยังไม่รวม</b>';
+  let st;
+  if (!L || L.ok === false) st = 'อ่านผลทดสอบการดึงตามรหัสผังบัญชีไม่ได้' + (L && L.err ? ' — ' + esc(L.err) : '');
+  else if (L.never) st = 'ยังไม่เคยทดสอบว่า PEAK ให้ดึงตามรหัสผังบัญชีได้ไหม';
+  else {
+    let when = ''; try { when = new Date(L.at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' น.'; } catch (_) { /* ไม่มีเวลา */ }
+    st = 'ทดสอบดึงตามรหัสผังบัญชีล่าสุด ' + esc(when) + ' (เดือน ' + esc(L.month || '') + '): ' +
+      (L.biz || []).map(b => '<b>' + esc(b.biz) + '</b> ' + esc(b.verdictTh || '')).join(' · ') + ' — ยังไม่นำมาคิดในรายงาน';
+  }
+  fill('expLedger', head + '<br>' + st + ' · <a href="/m/sales/" style="color:var(--s1)">เปิดคีย์ยอดขาย → เมนูงาน → Cash Flow → "ลองถาม PEAK ตามรหัสผังบัญชี"</a>');
+}
+function loadLedger(){ getJSON(API + '/ledger/last').then(d => d, e => ({ ok: false, err: e.message })).then(drawLedger); }
+
+/* ═══ โหลด ═══ */
+const DRAW = { sales: drawSales, cash: drawCash, ar: drawAr, ops: drawOps, stock: drawStock, health: drawHealth };
+function loadAll(fresh){
+  const seq = ++S.seq, q = '?ym=' + encodeURIComponent(S.ym) + (fresh ? '&fresh=1' : '');
+  ['sales', 'cash', 'ar', 'ops', 'stock', 'health'].forEach(k => { S[k] = null; });
+  $('mAt').textContent = 'กำลังอ่านข้อมูล…';
+  loadLedger();
+  let left = 6;
+  ['sales', 'cash', 'ar', 'ops', 'stock', 'health'].forEach((name, i) => {
+    /* ก้อนแรกที่ขอ "อ่านใหม่" เป็นตัวล้างที่จำไว้ ก้อนที่เหลือใช้ผลชุดเดียวกัน */
+    getJSON(API + '/part/' + name + (fresh && i > 0 ? '?ym=' + encodeURIComponent(S.ym) : q)).then(d => d, e => ({ ok: false, err: e.message, denied: e.denied }))
+      .then(d => {
+        if (seq !== S.seq) return;
+        S[name] = d;
+        if (d && d.denied) showDenied(d.err);
+        try { DRAW[name](d); if (name !== 'health' && name !== 'stock') drawKpis(); } catch (e) { console.error(name, e); }
+        if (name === 'sales' && ok(d)) { $('mRange').textContent = d.win.rangeText; $('mCmp').textContent = d.win.cmpText; }
+        if (--left === 0) $('mAt').textContent = 'อัปเดต ' + new Date().toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' น.';
+      });
+  });
+}
+function showDenied(msg){ const n = $('notice'); n.style.display = 'block'; n.textContent = msg || 'Management Report เปิดดูได้เฉพาะสิทธิ์ Administrator'; }
+
+/* ═══ ตั้งค่า ═══ */
+const NUMS = [['roas', 'good', 'โฆษณา: เขียวเมื่อได้ยอดกลับ ≥ (เท่า)'], ['roas', 'warn', 'โฆษณา: แดงเมื่อต่ำกว่า (เท่า)'], ['sales', 'trendGood', 'ยอดขาย: เขียวเมื่อเฉลี่ย 3 เดือนเปลี่ยน ≥ (%)'],
+  ['sales', 'trendBad', 'ยอดขาย: แดงเมื่อเฉลี่ย 3 เดือนลดถึง (%)'], ['sales', 'paceBad', 'ยอดขาย: เดือนนี้ลดถึง (%) ถือว่าลดต่อเนื่อง'], ['ar', 'overduePctWarn', 'ลูกหนี้: เหลืองเมื่อเกินกำหนด ≥ (%)'],
+  ['ar', 'overduePctBad', 'ลูกหนี้: แดงเมื่อเกินกำหนด ≥ (%)'], ['expense', 'toCashInWarn', 'ค่าใช้จ่าย: เหลืองเมื่อ ≥ (% ของเงินรับ)'], ['expense', 'toCashInBad', 'ค่าใช้จ่าย: แดงเมื่อ ≥ (% ของเงินรับ)'],
+  ['stock', 'slowPctWarn', 'คลัง: เหลืองเมื่อของค้าง ≥ (% ของมูลค่า)'], ['stock', 'slowPctBad', 'คลัง: แดงเมื่อของค้าง ≥ (% ของมูลค่า)'], ['closeRate', 'warn', 'ปิดการขาย: เขียวเมื่อ ≥ (%)'],
+  ['closeRate', 'bad', 'ปิดการขาย: แดงเมื่อต่ำกว่า (%)'], ['production', 'onTimeGood', 'ผลิต: เขียวเมื่อทันกำหนด ≥ (%)'], ['production', 'onTimeWarn', 'ผลิต: แดงเมื่อต่ำกว่า (%)'],
+  ['install', 'finishGood', 'ติดตั้ง: เขียวเมื่อจบงาน ≥ (%)'], ['install', 'finishWarn', 'ติดตั้ง: แดงเมื่อต่ำกว่า (%)']];
+let CFG = null;
+async function openCfg(){
+  $('cfgOv').style.display = 'flex'; $('cfgMsg').textContent = ''; $('cfgInfo').textContent = 'กำลังโหลด…';
+  try {
+    const r = await getJSON(API + '/config'); CFG = r.config;
+    $('cfgInfo').textContent = r.err ? ('อ่านค่าที่บันทึกไว้ไม่ได้ (' + r.err + ') — แสดงค่าตั้งต้น') : (r.saved ? ('บันทึกล่าสุดโดย ' + (r.by || '-') + ' · มีผลทุกเดือนที่ดู') : 'ยังไม่เคยบันทึก — ใช้ค่าตั้งต้น (งบตามที่พี่เอกำหนด 3 ต.ค. 69)');
+    fill('cfgAds', CFG.ads.map((a, i) => `<div class="frow"><input class="inp" id="ca_n${i}" value="${esc(a.name)}" maxlength="60" aria-label="ชื่อช่องทาง"><input class="inp" id="ca_b${i}" type="number" min="0" step="1000" value="${a.budget}" aria-label="งบต่อเดือน">` +
+      (a.group === 'web' ? `<input class="inp" id="ca_m${i}" value="${esc((a.match || []).join(', '))}" maxlength="200" aria-label="คำที่ใช้จับ">` : `<div style="font-size:12.5px;color:var(--dim)">ทั้งกลุ่ม ${a.group === 'fb' ? 'Facebook / Instagram' : 'TikTok'} ของรายงาน Online</div>`) + '</div>').join(''));
+    fill('cfgNum', NUMS.map((n, i) => `<div><label for="cn${i}">${esc(n[2])}</label><input class="inp" id="cn${i}" type="number" step="any" value="${CFG[n[0]][n[1]]}"></div>`).join(''));
+    $('ca_b0').focus();
+  } catch (e) { $('cfgInfo').textContent = 'อ่านค่าตั้งไม่ได้ — ' + e.message; }
+}
+async function saveCfg(){
+  if (!CFG) return;
+  const out = { ads: CFG.ads.map((a, i) => ({ key: a.key, name: $('ca_n' + i).value, budget: Number($('ca_b' + i).value), match: a.group === 'web' ? $('ca_m' + i).value.split(',').map(s => s.trim()).filter(Boolean) : [] })) };
+  NUMS.forEach((n, i) => { out[n[0]] = out[n[0]] || {}; out[n[0]][n[1]] = Number($('cn' + i).value); });
+  $('cfgMsg').textContent = 'กำลังบันทึก…';
+  try {
+    const r = await getJSON(API + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify({ config: out }) });
+    if (!r.ok) throw new Error(r.error || 'บันทึกไม่สำเร็จ');
+    $('cfgOv').style.display = 'none'; loadAll(false);
+  } catch (e) { $('cfgMsg').textContent = e.message; }
+}
+
+/* ═══ เริ่ม ═══ */
+(async function(){
+  $('btnPrint').addEventListener('click', () => window.print());
+  $('btnFresh').addEventListener('click', () => loadAll(true));
+  $('btnCfg').addEventListener('click', openCfg);
+  $('cfgCancel').addEventListener('click', () => { $('cfgOv').style.display = 'none'; });
+  $('cfgSave').addEventListener('click', saveCfg);
+  $('cfgOv').addEventListener('click', e => { if (e.target === $('cfgOv')) $('cfgOv').style.display = 'none'; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('cfgOv').style.display = 'none'; });
+  try {
+    const m = await getJSON(API + '/meta'); S.meta = m;
+    const v = $('ver'); v.textContent = 'v' + m.version; v.hidden = false;
+    const sel = $('ym'); sel.innerHTML = m.months.map(o => `<option value="${esc(o.ym)}">${esc(o.label)}</option>`).join('');
+    /* ต้นเดือน (วันที่ 1–5) ตัวเลขเดือนนี้ยังน้อยมาก ⇒ เปิดมาที่เดือนที่แล้วทั้งเดือน แล้วบอกให้รู้ */
+    const cur = m.months[0].ym, early = !m.win.full && m.win.days <= 5 && m.months[1];
+    S.ym = early ? m.months[1].ym : cur; sel.value = S.ym;
+    if (early) { const n = $('notice'); n.style.display = 'block'; n.textContent = 'ต้นเดือน: เดือนนี้เพิ่งผ่านมา ' + m.win.days + ' วัน ตัวเลขยังน้อย จึงเปิดมาที่ ' + m.months[1].label + ' ทั้งเดือนก่อน — เลือก "' + m.months[0].label + '" ที่ช่องเดือนได้'; }
+    sel.addEventListener('change', () => { S.ym = sel.value; $('notice').style.display = 'none'; loadAll(false); });
+    loadAll(false);
+  } catch (e) {
+    $('mRange').textContent = '';
+    if (e.denied) showDenied(e.message); else { const n = $('notice'); n.style.display = 'block'; n.textContent = 'เปิดหน้าไม่ได้ — ' + e.message; }
+    document.querySelectorAll('.ld').forEach(x => { x.textContent = '–'; });
+  }
+})();
+</script>
+</body>
+</html>
