@@ -254,6 +254,69 @@ async function mount(router, ctx) {
   }));
 
   /* ═══ บันทึกลูกค้าเป้าหมาย (จากผลค้นหา หรือกรอกเอง) ═══ */
+  /* ═══ 🔎 v1.5.1 (7 พ.ย. 69) ลูกค้าเดิมในคีย์ยอดขาย ⇒ ดึงมาติดตาม (แชท / โทร / นัดในปฏิทิน) โดยไม่ต้อง visit
+   *  พี่เอ: "ในส่วนของลูกค้า ให้สามารถค้นหาลูกค้าเดิมที่มีในระบบ ขึ้นมาทำการ ติดตาม update โดยไม่ต้อง visit ได้ด้วยนะ
+   *         เช่น โทรติดตาม chat ติดตาม และลงแผนกิจกรรมในปฏิทินได้เหมือนกับ การ visit สำหรับ user online"
+   *  · ค้น total_sales ตาม ชื่อบริษัท / ผู้ติดต่อ / เบอร์ / รหัสงาน · เซลส์เห็นเฉพาะใบของตัวเอง (Sales Code) · หัวหน้าเห็นทุกใบ
+   *  · ดึงเข้ามา = สร้างลูกค้าในแอปนี้ ผูกกับใบเดิม (doc.sales.linked) ⇒ ไม่ออกรหัสงานใหม่ ไม่เปิดใบ B2B ซ้ำ
+   *  · อ่านเฉพาะตอนกดค้น (ไม่อยู่ในทางเปิดแอป) · ≤ 60 แถว/ครั้ง */
+  const SALES_T = 'total_sales';
+  const SALES_COLS = ['_row', 'รหัสงาน', 'ชื่อบริษัท', 'ชื่อผู้ติดต่อ', 'เบอร์ติดต่อ', 'Lead Status', 'วันที่ติดต่อ', 'ลูกค้ามาจากไหน', 'ชื่อช่อง / Platform', 'Sales Code', 'Create By'];
+  const qcol = c => /^[a-z_]+$/.test(c) ? c : '"' + c.replace(/"/g, '""') + '"';
+  const sOut = r => ({ row: Number(r._row), jobCode: clean(r['รหัสงาน']), company: clean(r['ชื่อบริษัท']), contact: clean(r['ชื่อผู้ติดต่อ']), phone: clean(r['เบอร์ติดต่อ']),
+    status: clean(r['Lead Status']), date: clean(r['วันที่ติดต่อ']), source: clean(r['ลูกค้ามาจากไหน']), channel: clean(r['ชื่อช่อง / Platform']), sales: clean(r['Sales Code']), salesNick: clean(r['Create By']) });
+  router.get('/api/existing', (req, res) => send(res, async () => {
+    res.set('Cache-Control', 'no-store');
+    await need();
+    const me = meOf(req), q = clean(req.query.q).replace(/[,()*"\\]/g, ' ').trim();
+    if (q.length < 2) throw uerr('พิมพ์อย่างน้อย 2 ตัวอักษร');
+    const like = 'ilike.*' + q.replace(/\s+/g, '*') + '*';
+    const digits = q.replace(/\D/g, '');
+    const terms = ['ชื่อบริษัท', 'ชื่อผู้ติดต่อ', 'รหัสงาน'].map(c => qcol(c) + '.' + like);
+    /* เบอร์ในใบมีขีด/เว้นวรรคปนได้ (089-111-2233) ⇒ แทรก * ระหว่างตัวเลข ให้พิมพ์ติดกันก็เจอ */
+    if (digits.length >= 4) terms.push(qcol('เบอร์ติดต่อ') + '.ilike.*' + digits.slice(-10).split('').join('*') + '*');
+    const qq = { select: SALES_COLS.map(qcol).join(','), or: '(' + terms.join(',') + ')', order: '_row.desc', limit: 60 };
+    if (!me.sup) qq['Sales Code'] = 'ilike.' + me.username;
+    let rows;
+    try { rows = (await db.select(SALES_T, qq)) || []; } catch (e) { throw uerr('ค้นคีย์ยอดขายไม่สำเร็จ: ' + errText(e), 502); }
+    /* รวมใบของลูกค้าคนเดียวกัน (ชื่อบริษัท/ผู้ติดต่อ) ⇒ แสดงใบล่าสุด + จำนวนใบ */
+    const by = new Map();
+    for (const r of rows.map(sOut)) {
+      const k = nameKey(r.company || r.contact) || ('row' + r.row);
+      if (!by.has(k)) by.set(k, Object.assign(r, { jobs: 1, key: k })); else by.get(k).jobs++;
+    }
+    const items = [...by.values()].slice(0, 20);
+    const keys = items.map(x => x.key).filter(k => !/^row/.test(k));
+    const have = keys.length ? await db.select(T.p, { name_key: 'in.(' + keys.map(k => '"' + k.replace(/"/g, '') + '"').join(',') + ')', select: 'id,name_key,owner' }).catch(() => []) : [];
+    for (const x of items) { const h = (have || []).find(p => p.name_key === x.key); x.inVisit = h ? { id: h.id, owner: h.owner, mine: me.sup || lower(h.owner) === lower(me.username) } : null; delete x.key; }
+    return { ok: true, items, total: rows.length, mineOnly: !me.sup };
+  }));
+  router.post('/api/existing/add', (req, res) => send(res, async () => {
+    await need();
+    const me = meOf(req), rowNo = Number((req.body || {}).row);
+    if (!Number.isInteger(rowNo) || rowNo <= 0) throw uerr('ไม่พบใบนี้');
+    const r0 = await db.one(SALES_T, { _row: 'eq.' + rowNo, select: SALES_COLS.map(qcol).join(',') });
+    if (!r0) throw uerr('ไม่พบใบนี้ในคีย์ยอดขาย', 404);
+    const r = sOut(r0);
+    if (!me.sup && lower(r.sales) !== lower(me.username)) throw uerr('ใบนี้เป็นลูกค้าของ ' + (r.salesNick || r.sales || 'เซลส์คนอื่น') + ' — ให้หัวหน้าโอนให้ก่อน', 403);
+    const name = r.company || r.contact;
+    if (!name) throw uerr('ใบนี้ไม่มีชื่อบริษัท/ผู้ติดต่อ');
+    const key = nameKey(name);
+    const dup = key ? await db.one(T.p, { name_key: 'eq.' + key, select: 'id,owner' }) : null;
+    if (dup) {
+      if (!me.sup && lower(dup.owner) !== lower(me.username)) throw uerr('"' + name + '" เป็นลูกค้าที่ ' + dup.owner + ' ดูแลในแอปนี้อยู่แล้ว — ให้หัวหน้าโอนให้ก่อน', 403);
+      return { ok: true, id: dup.id, existing: true, name };
+    }
+    const owner = me.sup ? (r.sales || me.username) : me.username;
+    const row = Object.assign(prow({ name, phone: r.phone }, me, owner), { id: rid('vp_'), stage: 'target', chance: Seg.STAGE_CHANCE.target, created_by: me.username,
+      doc: { from: { sales: r.jobCode, row: r.row }, contacts: r.contact ? [{ name: r.contact, role: '', phone: r.phone, line: '' }] : [],
+        note: 'ลูกค้าเดิมจากคีย์ยอดขาย ' + r.jobCode + (r.source ? ' · ' + r.source : '') + (r.channel ? ' · ' + r.channel : '') + (r.status ? ' · ' + r.status : ''),
+        sales: r.jobCode ? { jobCode: r.jobCode, row: r.row, linked: true, at: Date.now() } : undefined } });
+    await db.insert(T.p, [row]);
+    if (ctx.audit) ctx.audit(req.user, 'visit_existing_add', { id: row.id, name, jobCode: r.jobCode });
+    return { ok: true, id: row.id, existing: false, name };
+  }));
+
   router.post('/api/prospect/save', (req, res) => send(res, async () => {
     await need();
     const me = meOf(req), x = (req.body && req.body.item) || {};
@@ -524,9 +587,9 @@ async function mount(router, ctx) {
     if (next && p.stage !== 'won' && p.stage !== 'lost') nextEv = await addEvent(p, me, { kind: 'task', at: next.at, title: next.title || ('ติดตามต่อ · ' + oc.label), doc: { channel: next.channel, fromFollow: id } });
     p = await saveP(p, { doc: Object.assign({}, p.doc, { lastFollowAt: at, lastFollow: { channel: ch, outcome: oc.key } }) });
     p = await refreshNext(p);
-    const x = await toSales(p).catch(() => ({ p, sales: null }));   /* 🧾 มีการติดตาม = ติดต่อแล้ว ⇒ เปิดใบคีย์ยอดขาย B2B (เหมือน visit/งานติดตาม) */
+    /* ‼ v1.5.1 ไม่เปิดใบคีย์ยอดขาย B2B จากการติดตามทางแชท/โทร — ลูกค้า online มีใบตามช่องทางของตัวเองอยู่แล้ว (ไม่ให้ไปนับเป็น B2B) */
     if (ctx.audit) ctx.audit(req.user, 'visit_follow', { id: p.id, name: p.name, channel: ch, outcome: oc.key, photos: saved.length });
-    return { ok: true, event: eOut(row), next: nextEv, p: x.p || p, sales: x.sales };
+    return { ok: true, event: eOut(row), next: nextEv, p };
   }));
 
   /* ═══ บันทึก visit: รูป + สรุป ⇒ อลิซวิเคราะห์ ⇒ งานถัดไปอัตโนมัติ ═══ */

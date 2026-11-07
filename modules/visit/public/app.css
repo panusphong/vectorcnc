@@ -642,10 +642,23 @@ main { padding: 26px 30px 64px; max-width: 1320px; width: 100%; }
 .fu-next { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--well); }
 .fu-new { margin-top: 6px; align-self: flex-start; border-color: var(--fu); color: var(--fu); }
 @media (max-width: 640px) { .fu-oc { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-/* 💬 v1.5.0 ปุ่มลัด 5 ปุ่ม: แถวบน = งานกับลูกค้า (นัด · visit · ติดตาม) · แถวล่าง = หาลูกค้า (หาใหม่ · หาเอง) */
-@media (min-width: 1201px) {
-  .qa { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .qa > .qa-b { grid-column: span 2; }
-  .qa > .qa-b:nth-child(n+4) { grid-column: span 3; }
-}
-@media (max-width: 1200px) and (min-width: 901px) { .qa > .qa-b:nth-child(5) { grid-column: 1 / -1; } }
+/* 📞 v1.5.1 ปุ่มลัด 6 ปุ่ม = 3 × 2 — แถวบน: visit · แถวล่าง: ทีมขาย online (วางแผนติดตาม · บันทึกการติดตาม · ลูกค้าที่หาเอง) */
+@media (min-width: 1201px) { .qa { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.qa-b.task .qi { background: var(--info); }
+
+/* ═══ 🔎 v1.5.1 ลูกค้าเดิมในคีย์ยอดขาย ═══ */
+.ex-panel { padding: 14px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ex-h { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.ex-bar { display: flex; gap: 8px; }
+.ex-bar .in { flex: 1; min-width: 0; }
+.ex-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; max-height: 360px; overflow-y: auto; }
+.ex-it { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+.ex-it:first-child { border-top: 0; }
+.ex-main { min-width: 0; }
+.ex-main .small { overflow-wrap: anywhere; }
+.ex-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ex-msg { margin: 0; }
+.fu-more { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fu-more .fu-new { margin-top: 0; }
+.modal .ex-list { max-height: 240px; margin-top: 6px; }
+@media (max-width: 640px) { .ex-it { grid-template-columns: minmax(0, 1fr); } .ex-acts { justify-content: flex-start; } }

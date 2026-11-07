@@ -49,6 +49,7 @@ const DAY = 864e5;
   const wipe = async () => {
     await pg.query(`delete from app.app_users where "Username" like 'zzf%'`);
     for (const t of ['visit_prospects', 'visit_events', 'visit_reports']) await pg.query('delete from app.' + t).catch(() => {});
+    await pg.query(`delete from app.total_sales where "Sales Code" like 'zzf%'`).catch(() => {});
   };
   const photos = [];
   const fakeStorage = { upload: async (p, buf, mime) => { photos.push({ p, n: buf.length, mime }); return { path: p, url: 'https://cdn.example/' + p, bytes: buf.length }; } };
@@ -127,14 +128,57 @@ const DAY = 864e5;
     const n0 = (await pg.query(`select count(*)::int n from app.visit_events where by_user=$1 and kind='follow'`, [U.s1])).rows[0].n;
     ok(n0 === 5, 'ฐาน: visit_events ชนิด follow ของเซลส์ = 5 (Report & Ranking นับจากตรงนี้)');
 
+    head('⑧ ลูกค้าเดิมในคีย์ยอดขาย ⇒ ติดตาม / วางแผนติดตาม (ไม่ต้อง visit)');
+    const mkS = (row, code, comp, contact, phone, sc, nick, st) => pg.query(`insert into app.total_sales (_row, "รหัสงาน", "ชื่อบริษัท", "ชื่อผู้ติดต่อ", "เบอร์ติดต่อ", "Lead Status", "วันที่ติดต่อ", "ลูกค้ามาจากไหน", "ชื่อช่อง / Platform", "Sales Code", "Create By") values ($1,$2,$3,$4,$5,$6,'2026-10-20','Online','LINE OA',$7,$8)`, [row, code, comp, contact, phone, st, sc, nick]);
+    await mkS(9900001, 'ZZF2610/001', 'ร้านเบเกอรี่ ใจดี', 'คุณจอย', '089-111-2233', U.s1, '(นี) นี ออนไลน์', 'Onprocess');
+    await mkS(9900002, 'ZZF2610/002', 'ร้านเบเกอรี่ ใจดี', 'คุณจอย', '089-111-2233', U.s1, '(นี) นี ออนไลน์', 'ปิดการขาย');
+    await mkS(9900003, 'ZZF2610/003', '', 'คุณบอย ร้านใจดีมาร์ท', '082-555-0000', U.s1, '(นี) นี ออนไลน์', 'Onprocess');
+    await mkS(9900004, 'ZZF2610/004', 'ร้านเบเกอรี่ ใจดีสาขา 2', 'คุณแพร', '081-000-1111', U.s2, '(แนน) แนน ออนไลน์', 'Onprocess');
+    r = await call(U.s1, 'GET', '/api/existing?q=' + encodeURIComponent('ใจดี'));
+    ok(r.st === 200 && r.j.mineOnly && r.j.items.length === 2 && r.j.items.every(x => x.sales === U.s1), 'เซลส์ค้น "ใจดี" ⇒ เห็นเฉพาะลูกค้าของตัวเอง 2 ราย (รวมใบของลูกค้าเดียวกัน) ' + JSON.stringify((r.j.items || []).map(x => x.company || x.contact)));
+    const bk = r.j.items.find(x => x.company === 'ร้านเบเกอรี่ ใจดี');
+    ok(bk && bk.jobs === 2 && bk.jobCode === 'ZZF2610/002' && bk.phone === '089-111-2233' && !bk.inVisit, 'ร้านเบเกอรี่: 2 ใบ · แสดงใบล่าสุด · ยังไม่อยู่ในแอปนี้');
+    r = await call(U.s1, 'GET', '/api/existing?q=' + encodeURIComponent('0891112'));
+    ok(r.st === 200 && r.j.items.length === 1 && r.j.items[0].company === 'ร้านเบเกอรี่ ใจดี', 'ค้นด้วยเบอร์โทรได้');
+    r = await call(U.s1, 'GET', '/api/existing?q=' + encodeURIComponent('ZZF2610/003'));
+    ok(r.st === 200 && r.j.items.length === 1 && r.j.items[0].contact === 'คุณบอย ร้านใจดีมาร์ท', 'ค้นด้วยรหัสงานได้ (ใบที่ไม่มีชื่อบริษัท ใช้ชื่อผู้ติดต่อ)');
+    r = await call(U.boss, 'GET', '/api/existing?q=' + encodeURIComponent('ใจดี'));
+    ok(r.st === 200 && !r.j.mineOnly && r.j.items.length === 3, 'หัวหน้าเห็นทุกเซลส์ (3 ราย)');
+    r = await call(U.s1, 'GET', '/api/existing?q=a');
+    ok(r.st === 400, 'คำค้นสั้นเกิน ⇒ ไม่ค้น');
+    r = await call(U.s1, 'POST', '/api/existing/add', { row: 9900004 });
+    ok(r.st === 403 && /แนน/.test(r.j.error), 'ดึงลูกค้าของเซลส์คนอื่นไม่ได้ ⇒ ' + (r.j && r.j.error));
+    const nTS = (await pg.query(`select count(*)::int n from app.total_sales where "Sales Code" like 'zzf%'`)).rows[0].n;
+    r = await call(U.s1, 'POST', '/api/existing/add', { row: 9900002 });
+    const EX = r.j.id;
+    ok(r.st === 200 && !r.j.existing && r.j.name === 'ร้านเบเกอรี่ ใจดี', 'ดึง "ร้านเบเกอรี่ ใจดี" เข้ามาเป็นลูกค้าในแอป');
+    d = (await call(U.s1, 'GET', '/api/prospect/' + EX)).j;
+    ok(d.p.owner === U.s1 && d.p.phone === '089-111-2233' && d.p.doc.sales && d.p.doc.sales.jobCode === 'ZZF2610/002' && d.p.doc.sales.linked && d.p.doc.contacts[0].name === 'คุณจอย', 'ผูกกับใบเดิม ZZF2610/002 · ผู้ติดต่อ/เบอร์ติดมาด้วย');
+    r = await call(U.s1, 'POST', '/api/existing/add', { row: 9900001 });
+    ok(r.st === 200 && r.j.existing && r.j.id === EX, 'ดึงซ้ำ ⇒ ได้ลูกค้ารายเดิม ไม่สร้างซ้ำ');
+    r = await call(U.s1, 'GET', '/api/existing?q=' + encodeURIComponent('เบเกอรี่'));
+    ok(r.j.items[0].inVisit && r.j.items[0].inVisit.id === EX && r.j.items[0].inVisit.mine, 'ผลค้นบอกว่า "มีในแอปนี้แล้ว"');
+    const tAt = Date.now() + DAY + 3 * 3600e3;
+    r = await call(U.s1, 'POST', '/api/task', { prospectId: EX, channel: 'line', title: 'ทัก LINE ถามแบบป้ายสาขาใหม่', at: new Date(tAt).toISOString() });
+    ok(r.st === 200 && r.j.event.kind === 'task' && r.j.event.doc.channel === 'line', '📞 วางแผนติดตาม (LINE) ลงปฏิทิน');
+    r = await call(U.s1, 'GET', '/api/calendar?from=' + encodeURIComponent(new Date(Date.now() - DAY).toISOString()) + '&to=' + encodeURIComponent(new Date(Date.now() + 5 * DAY).toISOString()));
+    ok(r.j.events.some(e => e.prospectId === EX && e.kind === 'task' && Math.abs(e.at - tAt) < 2000), 'แผนติดตามขึ้นในปฏิทินวันพรุ่งนี้');
+    r = await call(U.s1, 'POST', '/api/follow', { prospectId: EX, channel: 'call', outcome: 'talked', note: 'โทรคุยเรื่องป้ายสาขา 2 ลูกค้าจะส่งขนาดมาให้' });
+    ok(r.st === 200 && r.j.event.kind === 'follow', '💬 บันทึกการติดตามลูกค้าเดิมได้');
+    const nTS2 = (await pg.query(`select count(*)::int n from app.total_sales where "Sales Code" like 'zzf%'`)).rows[0].n;
+    ok(nTS2 === nTS, 'ไม่เปิดใบคีย์ยอดขายใหม่ / ไม่ออกรหัสงานซ้ำ (ใช้ใบเดิม)');
+    const nTS3 = (await pg.query(`select count(*)::int n from app.total_sales where "ลูกค้ามาจากไหน" = 'B2B' and "ชื่อบริษัท" in ('คลินิกฟัน ยิ้มสวย','หอพัก เดอะลีฟ')`)).rows[0].n;
+    ok(nTS3 === 0, 'บันทึกการติดตามทางแชท/โทร ไม่ไปเปิดใบ B2B ให้ลูกค้า online');
+
     head('⑦ หน้าเว็บ');
     const js = fs.readFileSync(path.join(ROOT, 'modules/visit/public/app.js'), 'utf8');
     ok(/data-act="qfollow"/.test(js) && /data-act="follow"/.test(js) && /function followForm/.test(js) && /req\('\/follow'/.test(js), 'ปุ่ม 💬 หน้าแรก/ปฏิทิน/แฟ้มลูกค้า + ฟอร์ม + ส่งบันทึก');
     ok(/✓ บันทึกผล/.test(js) && /taskId: e1\.id/.test(js), 'งานติดตาม "✓ บันทึกผล" ⇒ เปิดฟอร์มบันทึกการติดตาม');
+    ok(/data-act="qtask"/.test(js) && /function exPanel/.test(js) && /data-fufor=/.test(js) && /req\('\/existing\?q='/.test(js) && /data-act="mexsearch"/.test(js), '📞 วางแผนติดตาม · แถบค้นลูกค้าเดิม · ปุ่ม 💬 ติดตามในแถวลูกค้า · ค้นลูกค้าเดิมในฟอร์ม');
     const man = fs.readFileSync(path.join(ROOT, 'modules/visit/public/manual.html'), 'utf8'), idx = fs.readFileSync(path.join(ROOT, 'modules/visit/public/index.html'), 'utf8');
     const imgs = [...man.matchAll(/src="\.\/(manual\/[^"]+)"/g)].map(x => x[1]);
-    ok(/href="\.\/manual\.html"/.test(idx) && imgs.length === 6 && imgs.every(f => fs.existsSync(path.join(ROOT, 'modules/visit/public', f)) && fs.statSync(path.join(ROOT, 'modules/visit/public', f)).size < 120 * 1024) && !/<script/.test(man),
-      '📖 คู่มือ: ลิงก์บนหัวแอป · ภาพประกอบ 6 รูปมีครบ (≤120KB/รูป) · หน้าคงที่ไม่มีสคริปต์');
+    ok(/href="\.\/manual\.html"/.test(idx) && imgs.length === 9 && imgs.every(f => fs.existsSync(path.join(ROOT, 'modules/visit/public', f)) && fs.statSync(path.join(ROOT, 'modules/visit/public', f)).size < 120 * 1024) && !/<script/.test(man),
+      '📖 คู่มือ: ลิงก์บนหัวแอป · ภาพประกอบ 9 รูปมีครบ (≤120KB/รูป) · หน้าคงที่ไม่มีสคริปต์');
     if (process.env.SHOT) {
       const { chromium } = require('playwright'); const br = await chromium.launch();
       /* ข้อมูลตัวอย่างสำหรับภาพคู่มือ */
@@ -162,6 +206,9 @@ const DAY = 864e5;
       await shot(D, async pz => { await pz.click('[data-go="cal"]'); await pz.waitForSelector('.cal .ev', { timeout: 15000 }); await pz.waitForTimeout(300); const bx = await pz.locator('.cal').boundingBox(); await pz.screenshot({ path: path.join(process.env.SHOT, 'm5-calendar.png'), clip: { x: bx.x, y: bx.y, width: bx.width, height: Math.min(bx.height, 420) } }); return false; }, 'm5-calendar.png', { user: U.s1 });
       await shot(D, async pz => { await pz.click('[data-go="list"]'); await pz.waitForSelector('tr[data-open]'); await pz.click('tr[data-open="' + Pother + '"]'); await pz.waitForTimeout(700);
         await pz.getByText('visit & ติดตาม', { exact: true }).click(); await pz.waitForSelector('.tl-it.follow'); await pz.waitForTimeout(300); return pz.locator('.drawer, .dr, aside').first(); }, 'm6-timeline.png');
+      await shot(D, async pz => { await pz.click('[data-go="list"]'); await pz.waitForSelector('#exq'); await pz.fill('#exq', 'ใจดี'); await pz.click('[data-act="exsearch"]'); await pz.waitForSelector('.ex-it', { timeout: 15000 }); await pz.waitForTimeout(300); return pz.locator('.ex-panel'); }, 'm7-existing.png', { user: U.s1 });
+      await shot(D, async pz => { await pz.click('[data-act="qtask"]'); await pz.waitForSelector('.modal'); await pz.fill('[data-mq]', 'ใจดี'); await pz.waitForTimeout(150); await pz.click('[data-act="mexsearch"]'); await pz.waitForSelector('.modal .ex-it', { timeout: 15000 }); await pz.waitForTimeout(250); return pz.locator('.modal'); }, 'm8-task-modal.png', { user: U.s1, tall: true });
+      await shot(D, async pz => { await pz.click('[data-go="list"]'); await pz.waitForSelector('tr[data-open]'); return pz.locator('table.tbl.cust tr').nth(1); }, 'm9-row-buttons.png', { user: U.s1 });
       await br.close();
     }
   } catch (e) { fail++; console.log('  ❌ ล้ม: ' + (e.stack || e)); }

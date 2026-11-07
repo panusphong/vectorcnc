@@ -126,8 +126,10 @@
   function quickActs() {
     return '<button class="qa-b plan" data-act="qplan"><span class="qi">📅</span><b>วางแผน visit</b><small>เลือกลูกค้า · วัน-เวลา · เป้าหมาย ⇒ ลงปฏิทิน</small></button>' +
       '<button class="qa-b shot" data-act="qvisit"><span class="qi">📸</span><b>บันทึก visit + รูปหน้างาน</b><small>ถ่าย/แนบรูป · สรุปสั้น ๆ ⇒ อลิซวิเคราะห์ต่อ</small></button>' +
-      '<button class="qa-b follow" data-act="qfollow"><span class="qi">💬</span><b>บันทึกการติดตาม</b><small>แชท · โทร · LINE · Facebook ⇒ ผลการคุย + นัดครั้งถัดไป</small></button>' +
       '<button class="qa-b find" data-go="search"><span class="qi">🔎</span><b>หาลูกค้าใหม่</b><small>เลือกกลุ่มธุรกิจ · พื้นที่ ⇒ อลิซค้นเว็บให้</small></button>' +
+      /* 📞 v1.5.1 แถวล่าง = ทีมขาย online (ไม่ต้องออก visit) */
+      '<button class="qa-b task" data-act="qtask"><span class="qi">📞</span><b>วางแผนติดตาม (โทร · แชท)</b><small>เลือกลูกค้า · วัน-เวลา · ช่องทาง ⇒ ลงปฏิทิน</small></button>' +
+      '<button class="qa-b follow" data-act="qfollow"><span class="qi">💬</span><b>บันทึกการติดตาม</b><small>แชท · โทร · LINE · Facebook ⇒ ผลการคุย + นัดครั้งถัดไป</small></button>' +
       '<button class="qa-b mine" data-act="manual"><span class="qi">📥</span><b>ลูกค้าที่หาไว้เอง</b><small>ใส่ชื่อ (ได้ทีละหลายราย) ⇒ อลิซบอกว่าควรโฟกัสไหม</small></button>';
   }
   function agItem(e) {
@@ -192,7 +194,8 @@
     if (!L) return '<div class="boot">กำลังโหลด…</div>';
     var q = ui.q.trim().toLowerCase();
     var items = L.items.filter(function (p) { return (!ui.stage || p.stage === ui.stage) && (!q || (p.name + ' ' + p.phone + ' ' + p.bizType + ' ' + p.province).toLowerCase().indexOf(q) >= 0); });
-    var h = '<div class="page-h"><div><h1>ลูกค้า</h1><p>' + L.items.length + ' ราย · แตะเพื่อเปิดแฟ้ม (ข้อมูล · การเงิน · visit & ติดตาม)</p></div><div class="acts"><button class="btn" data-act="manual">+ เพิ่มลูกค้าของฉัน · ให้อลิซวิเคราะห์</button><button class="btn primary" data-go="search">🔎 หาลูกค้าใหม่</button></div></div>';
+    var h = '<div class="page-h"><div><h1>ลูกค้า</h1><p>' + L.items.length + ' ราย · แตะเพื่อเปิดแฟ้ม (ข้อมูล · การเงิน · visit & ติดตาม)</p></div><div class="acts"><button class="btn" data-act="qtask">📞 วางแผนติดตาม</button><button class="btn follow" data-act="qfollow">💬 บันทึกการติดตาม</button><button class="btn" data-act="manual">+ เพิ่มลูกค้าของฉัน · ให้อลิซวิเคราะห์</button><button class="btn primary" data-go="search">🔎 หาลูกค้าใหม่</button></div></div>';
+    h += exPanel();
     /* 🤖 v1.2.0 ลูกค้าที่ยังไม่ได้ให้อลิซวิเคราะห์ */
     var noAi = L.items.filter(function (p) { return !(p.doc && (p.doc.analyzed || p.doc.ai)) && p.stage !== 'lost' && p.stage !== 'won'; });
     if (noAi.length && B.ai.ready) h += '<div class="ai-nudge"><span>🤖 มีลูกค้า <b>' + noAi.length + ' ราย</b> ที่อลิซยังไม่ได้วิเคราะห์ว่าควรโฟกัสไหม</span><button class="btn sm primary" data-act="analyzeall">ให้อลิซวิเคราะห์' + (noAi.length > 30 ? ' 30 รายแรก' : 'ทั้งหมด') + '</button></div>';
@@ -207,18 +210,18 @@
     }
     h += '<div class="chips" style="margin-bottom:12px"><button class="chip" data-stage="" aria-pressed="' + (!ui.stage) + '">ทั้งหมด<span class="n">' + L.items.length + '</span></button>' + B.stages.map(function (s) {
       return '<button class="chip" data-stage="' + s.key + '" aria-pressed="' + (ui.stage === s.key) + '">' + esc(s.label) + '<span class="n">' + (L.stageN[s.key] || 0) + '</span></button>'; }).join('') + '</div>';
-    if (!items.length) return h + '<div class="card empty">ไม่มีลูกค้าในมุมมองนี้</div>';
+    if (!items.length) return h + '<div class="card empty">ไม่มีลูกค้าในมุมมองนี้' + (q.length >= 2 ? ' — <button class="btn sm" data-act="exfromq">🔎 ค้น "' + esc(ui.q.trim()) + '" ในลูกค้าเดิม (คีย์ยอดขาย)</button>' : '') + '</div>';
     return h + '<div class="card tbl-wrap cust"><table class="tbl cust"><thead><tr><th>คะแนน</th><th>บริษัท</th><th>ขั้น</th><th>โอกาส</th><th>มูลค่า</th><th>งานถัดไป</th>' + (B.me.sup ? '<th>เซลส์</th>' : '') + '<th class="ra">visit</th></tr></thead><tbody>' + items.map(function (p) {
       return '<tr data-open="' + esc(p.id) + '"><td>' + scoreRing(p.score, p.fit) + '</td><td class="nm"><b>' + esc(p.name) + '</b><span>' + esc([p.bizType, p.province].filter(Boolean).join(' · ') || '-') + (p.phone ? ' · ' + esc(p.phone) : '') + '</span></td>' +
         '<td><span class="pill' + (p.stage === 'won' ? ' go' : p.stage === 'lost' ? '' : ' cu') + '">' + esc(stageL(p.stage)) + '</span></td><td class="num" data-l="โอกาส">' + p.chance + '%</td><td class="num" data-l="มูลค่า">' + (p.value ? '฿' + baht(p.value) : '—') + '</td>' +
         '<td>' + (p.nextAction ? (p.overdue ? '<span class="pill late">เลยกำหนด</span> ' : '<span class="small muted">' + dt(p.nextAt) + '</span> ') + esc(p.nextAction) : '<span class="muted">—</span>') + '</td>' + (B.me.sup ? '<td class="small">' + esc(who(p.owner)) + '</td>' : '') +
-        '<td class="ra"><span class="row-acts"><button class="btn xs" data-planfor="' + esc(p.id) + '" title="วางแผน visit">📅 นัด</button><button class="btn xs primary" data-visit="' + esc(p.id) + '" title="บันทึก visit + รูปหน้างาน">📸 บันทึก</button></span></td></tr>'; }).join('') + '</tbody></table></div>';
+        '<td class="ra"><span class="row-acts"><button class="btn xs" data-planfor="' + esc(p.id) + '" title="วางแผน visit">📅 นัด</button><button class="btn xs follow" data-fufor="' + esc(p.id) + '" title="บันทึก / วางแผนการติดตาม ทางแชท · โทร">💬 ติดตาม</button><button class="btn xs primary" data-visit="' + esc(p.id) + '" title="บันทึก visit + รูปหน้างาน">📸 บันทึก</button></span></td></tr>'; }).join('') + '</tbody></table></div>';
   }
 
   /* ── ปฏิทิน ── */
   function calView() {
     var m = ui.calMonth, first = new Date(m.getFullYear(), m.getMonth(), 1), start = new Date(first); start.setDate(1 - first.getDay());
-    var h = '<div class="page-h"><div><h1>ปฏิทิน visit</h1><p>นัด visit · งานติดตาม · การติดตามทางแชท/โทร · visit ที่บันทึกแล้ว — แตะรายการเพื่อเปิดแฟ้มลูกค้า</p></div><div class="acts"><button class="btn" data-act="qplan">📅 วางแผน visit</button><button class="btn follow" data-act="qfollow">💬 บันทึกการติดตาม</button><button class="btn primary" data-act="qvisit">📸 บันทึก visit + รูป</button></div></div>' +
+    var h = '<div class="page-h"><div><h1>ปฏิทิน visit</h1><p>นัด visit · งานติดตาม · การติดตามทางแชท/โทร · visit ที่บันทึกแล้ว — แตะรายการเพื่อเปิดแฟ้มลูกค้า</p></div><div class="acts"><button class="btn" data-act="qplan">📅 วางแผน visit</button><button class="btn" data-act="qtask">📞 วางแผนติดตาม</button><button class="btn follow" data-act="qfollow">💬 บันทึกการติดตาม</button><button class="btn primary" data-act="qvisit">📸 บันทึก visit + รูป</button></div></div>' +
       '<div class="cal-h"><h2>' + TH_MF[m.getMonth()] + ' ' + (m.getFullYear() + 543) + '</h2><button class="btn sm" data-cal="-1" aria-label="เดือนก่อน">‹</button><button class="btn sm" data-cal="0">เดือนนี้</button><button class="btn sm" data-cal="1" aria-label="เดือนถัดไป">›</button><span class="grow" style="flex:1"></span>' + ownerSelect(ui.owner, 'owner', true) + '</div>';
     if (!ui.cal) return h + '<div class="boot">กำลังโหลด…</div>';
     var today = new Date(), now = Date.now();
@@ -681,8 +684,8 @@
     if (m.type === 'plan') h = '<h3>📅 ' + (m.pick ? 'วางแผน visit' : 'นัด visit — ' + esc(m.name)) + '</h3>' + pick + '<div class="grid2"><label class="field">วัน-เวลา<input type="datetime-local" data-mbind="at" value="' + esc(m.at) + '"></label><label class="field">ใช้เวลา (นาที)<input type="number" min="15" step="15" data-mbind="minutes" value="' + esc(m.minutes) + '"></label></div>' +
       '<label class="field">สถานที่<input data-mbind="place" value="' + esc(m.place) + '"></label><label class="field">เป้าหมายของ visit ครั้งนี้<input data-mbind="goal" value="' + esc(m.goal) + '" placeholder="เช่น สำรวจป้ายเดิม · พบฝ่ายจัดซื้อ · นำเสนอตัวอย่างงาน"></label><label class="field">โน้ต<textarea data-mbind="note" style="min-height:70px">' + esc(m.note) + '</textarea></label>';
     else if (m.type === 'follow') h = followForm(m, pick);
-    else if (m.type === 'task') h = '<h3>+ งานติดตาม — ' + esc(m.name) + '</h3><label class="field">ช่องทาง<span class="chips">' + B.channels.map(function (c) { return '<button type="button" class="chip" data-mch="' + c.key + '" aria-pressed="' + (m.channel === c.key) + '">' + c.icon + ' ' + esc(c.label) + '</button>'; }).join('') + '</span></label>' +
-      '<label class="field">ต้องทำอะไร<input data-mbind="title" value="' + esc(m.title) + '" placeholder="เช่น โทรถามผลพิจารณาใบเสนอราคา"></label><div class="grid2"><label class="field">ครบกำหนด<input type="datetime-local" data-mbind="at" value="' + esc(m.at) + '"></label></div><label class="field">โน้ต<textarea data-mbind="note" style="min-height:60px">' + esc(m.note) + '</textarea></label>';
+    else if (m.type === 'task') h = (m.pick ? '<h3>📞 วางแผนติดตาม (โทร · แชท)</h3>' + pick : '<h3>📞 วางแผนติดตาม — ' + esc(m.name) + '</h3>') + '<label class="field">ช่องทาง<span class="chips">' + B.channels.map(function (c) { return '<button type="button" class="chip" data-mch="' + c.key + '" aria-pressed="' + (m.channel === c.key) + '">' + c.icon + ' ' + esc(c.label) + '</button>'; }).join('') + '</span></label>' +
+      '<label class="field">จะติดตามเรื่องอะไร<input data-mbind="title" value="' + esc(m.title) + '" placeholder="เช่น โทรถามผลพิจารณาใบเสนอราคา · ทัก LINE ส่งแบบ"></label><div class="grid2"><label class="field">วัน-เวลาที่จะติดตาม<input type="datetime-local" data-mbind="at" value="' + esc(m.at) + '"></label></div><label class="field">โน้ต<textarea data-mbind="note" style="min-height:60px">' + esc(m.note) + '</textarea></label>';
     else if (m.type === 'visit') h = '<h3>📸 ' + (m.pick ? 'บันทึก visit + รูปหน้างาน' : 'บันทึก visit — ' + esc(m.name)) + '</h3>' + pick + (m.plans && m.plans.length ? '<label class="field">ปิดนัดที่วางแผนไว้<select data-mbind="planId"><option value="">— visit นอกแผน —</option>' + m.plans.map(function (e) { return '<option value="' + esc(e.id) + '"' + (m.planId === e.id ? ' selected' : '') + '>' + esc(dt(e.at) + ' ' + hm(e.at) + ' · ' + e.title) + '</option>'; }).join('') + '</select></label>' : '') + '<label class="field">เวลาที่เข้าพบ<input type="datetime-local" data-mbind="at" value="' + esc(m.at) + '"></label><label class="field">พบใครบ้าง<input data-mbind="people" value="' + esc(m.people) + '" placeholder="เช่น คุณสมชาย ผจก.จัดซื้อ"></label>' +
       '<label class="field">สรุปสั้น ๆ (อลิซใช้วิเคราะห์)<textarea data-mbind="note" placeholder="คุยเรื่องอะไร ลูกค้าต้องการป้ายอะไร งบ/ช่วงเวลา ข้อกังวล นัดหมายถัดไป">' + esc(m.note) + '</textarea></label>' +
       '<div class="field shots">📷 รูปหน้างาน / กิจกรรม (สูงสุด 8 รูป — ป้ายเดิม · ตัวอาคาร · จุดติดตั้ง · ทีมที่พบ)<span class="row"><label class="btn sm">📷 ถ่ายรูป<input type="file" accept="image/*" capture="environment" data-pick="cam" hidden></label><label class="btn sm">🖼 เลือกจากเครื่อง<input type="file" accept="image/*" multiple data-pick="gal" hidden></label></span>' +
@@ -734,18 +737,61 @@
         (m.next ? '<div class="grid2"><label class="field">วัน-เวลา<input type="datetime-local" data-mbind="nextAt" value="' + esc(m.nextAt) + '"></label><label class="field">จะติดตามเรื่องอะไร<input data-mbind="nextTitle" value="' + esc(m.nextTitle) + '" placeholder="เช่น ส่งแบบ + ถามผลใบเสนอราคา"></label></div>' : '') + '</div>'
         : '<p class="small muted" style="margin:0">ผลนี้ปิดลูกค้ารายนี้แล้ว — ไม่ต้องนัดติดตามต่อ</p>');
   }
+  /* ═══ 🔎 v1.5.1 ลูกค้าเดิมในคีย์ยอดขาย — พี่เอ 7 พ.ย. 69: "ในส่วนของลูกค้า ให้สามารถค้นหาลูกค้าเดิมที่มีในระบบ ขึ้นมาทำการ ติดตาม update
+   *   โดยไม่ต้อง visit ได้ด้วยนะ เช่น โทรติดตาม chat ติดตาม และลงแผนกิจกรรมในปฏิทินได้เหมือนกับ การ visit สำหรับ user online" ═══ */
+  function exRow(x, inModal) {
+    var who0 = x.inVisit && !x.inVisit.mine ? '<span class="pill">ดูแลโดย ' + esc(who(x.inVisit.owner)) + '</span>' : '';
+    var meta = [x.contact && x.company ? x.contact : '', x.phone, x.jobCode, x.status, x.date, [x.source, x.channel].filter(Boolean).join(' · ')].filter(Boolean).map(esc).join(' · ');
+    var acts = who0 ? who0 : inModal ? '<button type="button" class="btn sm primary" data-expick="' + x.row + '">เลือก</button>'
+      : (x.inVisit ? '<button class="btn sm" data-open="' + esc(x.inVisit.id) + '">เปิดแฟ้ม</button>' : '') +
+        '<button class="btn sm follow" data-exgo="fu:' + x.row + '">💬 บันทึกติดตาม</button><button class="btn sm" data-exgo="tk:' + x.row + '">📞 วางแผนติดตาม</button>';
+    return '<div class="ex-it"><div class="ex-main"><b>' + esc(x.company || x.contact) + '</b>' + (x.inVisit ? ' <span class="pill cu">มีในแอปนี้แล้ว</span>' : '') + (x.jobs > 1 ? ' <span class="small muted">' + x.jobs + ' ใบ</span>' : '') +
+      '<div class="small muted">' + meta + '</div></div><div class="ex-acts">' + acts + '</div></div>';
+  }
+  function exResults(st, inModal) {
+    if (!st) return '';
+    if (st.busy) return '<p class="small muted ex-msg">กำลังค้นในคีย์ยอดขาย…</p>';
+    if (st.err) return '<p class="small ex-msg" style="color:var(--skip)">' + esc(st.err) + '</p>';
+    if (!st.items) return '';
+    if (!st.items.length) return '<p class="small muted ex-msg">ไม่พบ "' + esc(st.q) + '" ในคีย์ยอดขาย' + (st.mineOnly ? ' (ค้นเฉพาะลูกค้าของคุณ)' : '') + '</p>';
+    return '<div class="ex-list">' + st.items.map(function (x) { return exRow(x, inModal); }).join('') + '</div>' + (st.mineOnly ? '<p class="small muted ex-msg">แสดงเฉพาะใบที่คุณเป็นเซลส์ผู้ดูแล</p>' : '');
+  }
+  function exPanel() {
+    var st = ui.ex || {};
+    return '<section class="card ex-panel"><div class="ex-h"><b>🔎 ลูกค้าเดิมในระบบ (คีย์ยอดขาย)</b><span class="small muted">ค้นแล้วดึงมาติดตามทางแชท / โทร หรือวางแผนในปฏิทิน — ไม่ต้อง visit</span></div>' +
+      '<div class="ex-bar"><input class="in" type="search" id="exq" data-bind="exq" value="' + esc(ui.exq || '') + '" placeholder="ชื่อบริษัท · ชื่อผู้ติดต่อ · เบอร์ · รหัสงาน" aria-label="ค้นลูกค้าเดิมในคีย์ยอดขาย"><button class="btn" data-act="exsearch">ค้น</button></div>' +
+      exResults(st, false) + '</section>';
+  }
+  function exSearch(q, target) {
+    q = String(q || '').trim(); if (q.length < 2) return toast('พิมพ์อย่างน้อย 2 ตัวอักษร', true);
+    var st = { q: q, busy: true }; if (target) target.ex = st; else ui.ex = st;
+    var redraw = function () { if (target) { if (ui.modal === target) drawModal(); } else render(); };
+    redraw();
+    req('/existing?q=' + encodeURIComponent(q)).then(function (j) { st.busy = false; st.items = j.items; st.mineOnly = j.mineOnly; redraw(); })
+      .catch(function (e) { st.busy = false; st.err = e.message; redraw(); });
+  }
+  function exItem(st, row) { return ((st && st.items) || []).filter(function (x) { return String(x.row) === String(row); })[0]; }
+  /* ดึงลูกค้าเดิมเข้ามา (หรือใช้ของที่มีแล้ว) ⇒ คืน { id, name } */
+  function exAdd(x) {
+    if (x.inVisit && x.inVisit.mine) return Promise.resolve({ id: x.inVisit.id, name: x.company || x.contact });
+    return req('/existing/add', { row: x.row }).then(function (j) { x.inVisit = { id: j.id, owner: B.me.username, mine: true }; return loadList().then(function () { return { id: j.id, name: j.name }; }); });
+  }
+  /* 📞 วางแผนติดตาม = งานติดตาม (โทร / แชท) ลงปฏิทิน — เลือกลูกค้าในฟอร์มได้ */
+  function newTask(o) { return Object.assign({ type: 'task', pick: !o || !o.pid, pid: '', name: '', q: '', channel: 'call', title: '', at: plusDays(1), note: '' }, o || {}); }
   /* 🧭 v1.0.1 — เลือกลูกค้าในฟอร์ม (กดจากปุ่มใหญ่ ไม่ต้องเปิดแฟ้มก่อน) */
   function custPick(m) {
     var items = (L && L.items || []).filter(function (p) { return p.stage !== 'lost'; });
     var q = (m.q || '').trim().toLowerCase(), list = q ? items.filter(function (p) { return (p.name + ' ' + (p.phone || '') + ' ' + (p.province || '')).toLowerCase().indexOf(q) >= 0; }) : items;
     list = list.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'th'); });
-    var addNew = m.type === 'follow' && !m.pid && q.length >= 2 && !items.some(function (p) { return p.name.toLowerCase() === q; })
-      ? '<button type="button" class="btn sm fu-new" data-act="fnew">+ เพิ่ม "' + esc((m.q || '').trim()) + '" เป็นลูกค้าใหม่</button>' : '';
-    if (!items.length) return m.type === 'follow' ? '<div class="field">ลูกค้า *<input data-mq="1" value="' + esc(m.q || '') + '" placeholder="พิมพ์ชื่อลูกค้า / บริษัท" aria-label="ชื่อลูกค้า">' + addNew + '</div>'
+    var online = m.type === 'follow' || m.type === 'task';
+    var addNew = (online && !m.pid && q.length >= 2 ? '<span class="fu-more"><button type="button" class="btn sm" data-act="mexsearch">🔎 ค้น "' + esc((m.q || '').trim()) + '" ในลูกค้าเดิม (คีย์ยอดขาย)</button>' +
+        (!items.some(function (p) { return p.name.toLowerCase() === q; }) ? '<button type="button" class="btn sm fu-new" data-act="fnew">+ เพิ่ม "' + esc((m.q || '').trim()) + '" เป็นลูกค้าใหม่</button>' : '') + '</span>' : '') +
+      (online && !m.pid ? exResults(m.ex, true) : '');
+    if (!items.length) return online ? '<div class="field">ลูกค้า *<input data-mq="1" value="' + esc(m.q || '') + '" placeholder="พิมพ์ชื่อลูกค้า / บริษัท" aria-label="ชื่อลูกค้า">' + addNew + '</div>'
       : '<p class="banner">ยังไม่มีลูกค้าในระบบ — ไปที่ "ค้นหาลูกค้า" หรือ "+ เพิ่มลูกค้าเอง" ก่อน</p>';
     return '<div class="field">ลูกค้า *<input data-mq="1" value="' + esc(m.q || '') + '" placeholder="พิมพ์ค้นชื่อ เบอร์ จังหวัด" aria-label="ค้นลูกค้า"><select data-mpick="1" size="' + Math.min(5, Math.max(2, list.length)) + '" class="pick-list" aria-label="เลือกลูกค้า">' +
       list.map(function (p) { return '<option value="' + esc(p.id) + '"' + (m.pid === p.id ? ' selected' : '') + '>' + esc(p.name + ' · ' + stageL(p.stage) + (B.me.sup ? ' · ' + who(p.owner) : '')) + '</option>'; }).join('') + '</select>' +
-      (m.pid ? '' : '<span class="small muted">' + (m.type === 'follow' ? 'แตะชื่อลูกค้าที่ติดตาม — ไม่มีในรายการ พิมพ์ชื่อแล้วกดเพิ่มเป็นลูกค้าใหม่' : 'แตะชื่อลูกค้าที่จะไป visit') + '</span>') + addNew + '</div>';
+      (m.pid ? '' : '<span class="small muted">' + (online ? 'แตะชื่อลูกค้า — ไม่มีในรายการ ค้นในลูกค้าเดิม (คีย์ยอดขาย) หรือเพิ่มเป็นลูกค้าใหม่' : 'แตะชื่อลูกค้าที่จะไป visit') + '</span>') + addNew + '</div>';
   }
   function pickCust(m, id) {
     var p = (L && L.items || []).filter(function (x) { return x.id === id; })[0]; if (!p) return;
@@ -772,7 +818,7 @@
     var p = ui.dr && ui.dr.data ? ui.dr.data.p : null, after = function () { closeModal(); reloadDr(); loadList(); if (ui.view === 'cal') loadCal(); };
     var fail = function (e) { m.busy = false; drawModal(); toast(e.message, true); };
     var at = function (v) { return new Date(v).toISOString(); };
-    if ((m.type === 'plan' || m.type === 'visit' || m.type === 'follow') && !m.pid) return toast('เลือกลูกค้าก่อน', true);
+    if ((m.type === 'plan' || m.type === 'visit' || m.type === 'follow' || m.type === 'task') && !m.pid) return toast('เลือกลูกค้าก่อน', true);
     if (m.type === 'follow') {
       if (!m.outcome) return toast('เลือกผลการติดตาม', true);
       if (m.note.trim().length < 5) return toast('เขียนสั้น ๆ ว่าคุยอะไรกับลูกค้า', true);
@@ -785,7 +831,7 @@
         .catch(fail);
     }
     if (m.type === 'plan') { m.busy = true; drawModal(); req('/plan', { prospectId: m.pid, at: at(m.at), minutes: m.minutes, place: m.place, goal: m.goal, note: m.note, title: 'visit ' + m.name }).then(function (j) { toast('ลงนัดแล้ว' + (j.sales && j.sales.jobCode && !j.sales.existed ? ' · เปิดใบคีย์ยอดขาย ' + j.sales.jobCode : '') + ' — กด "+ Google Calendar" เพื่อเตือนในมือถือได้'); after(); }).catch(fail); }
-    else if (m.type === 'task') { if (!m.title.trim()) return toast('พิมพ์ว่าจะติดตามอะไร', true); m.busy = true; drawModal(); req('/task', { prospectId: m.pid, channel: m.channel, title: m.title, at: at(m.at), note: m.note }).then(function (j) { toast('เพิ่มงานติดตามแล้ว' + (j && j.sales && j.sales.jobCode && !j.sales.existed ? ' · เปิดใบคีย์ยอดขาย ' + j.sales.jobCode : '')); after(); }).catch(fail); }
+    else if (m.type === 'task') { if (!m.title.trim()) return toast('พิมพ์ว่าจะติดตามอะไร', true); m.busy = true; drawModal(); req('/task', { prospectId: m.pid, channel: m.channel, title: m.title, at: at(m.at), note: m.note }).then(function (j) { toast('📞 ลงแผนติดตามในปฏิทินแล้ว · ' + dt(new Date(m.at).getTime(), true) + (j && j.sales && j.sales.jobCode && !j.sales.existed ? ' · เปิดใบคีย์ยอดขาย ' + j.sales.jobCode : '')); after(); }).catch(fail); }
     else if (m.type === 'visit') {
       if (m.note.trim().length < 10) return toast('เขียนสรุปสั้น ๆ อย่างน้อย 1 ประโยค', true);
       var tp = tripPayload(m.trip); if (tp === 'need') return toast('ใส่ต้นทาง + ปลายทางให้ครบ — หรือเอาติ๊ก "การเดินทาง" ออกถ้าไม่เบิก', true);
@@ -866,6 +912,14 @@
     if (d.reai) { ui.dr.busy = 'ai'; drawDr(); req('/visit/reanalyze', { id: d.reai }).then(function (j) { ui.dr.busy = false; toast('อลิซวิเคราะห์แล้ว — โอกาส ' + j.ai.chance + '%'); reloadDr(); loadList(); }).catch(function (e) { ui.dr.busy = false; drawDr(); toast(e.message, true); }); return; }
     if (d.setstage) { var pp = ui.dr && ui.dr.data && ui.dr.data.p; if (!pp || pp.stage === d.setstage) return; return modal({ type: 'stage', pid: pp.id, stage: d.setstage, why: '', value: pp.value || '' }); }
     if (d.mch) { ui.modal.channel = d.mch; return drawModal(); }
+    /* 🔎 v1.5.1 ลูกค้าเดิมในคีย์ยอดขาย */
+    if (d.fufor) { var pf2 = (L && L.items.filter(function (x) { return x.id === d.fufor; })[0]) || {}; return modal(newFollow({ pid: d.fufor, name: pf2.name || '' })); }
+    if (d.exgo) { var g = d.exgo.split(':'), xi = exItem(ui.ex, g[1]); if (!xi) return; t.disabled = true;
+      return exAdd(xi).then(function (r1) { t.disabled = false; render(); modal(g[0] === 'fu' ? newFollow({ pid: r1.id, name: r1.name }) : newTask({ pid: r1.id, name: r1.name })); })
+        .catch(function (e) { t.disabled = false; toast(e.message, true); }); }
+    if (d.expick && ui.modal) { var mm2 = ui.modal, xj = exItem(mm2.ex, d.expick); if (!xj || mm2.busy) return; mm2.busy = true; drawModal();
+      return exAdd(xj).then(function (r2) { mm2.busy = false; if (ui.modal !== mm2) return; mm2.q = ''; mm2.ex = null; pickCust(mm2, r2.id); drawModal(); toast('ดึง "' + r2.name + '" จากคีย์ยอดขายแล้ว'); })
+        .catch(function (e) { mm2.busy = false; drawModal(); toast(e.message, true); }); }
     if (d.mmode && ui.modal) { ui.modal.mode = d.mmode; return drawModal(); }
     if (d.unpick !== undefined) { ui.modal.photos.splice(Number(d.unpick), 1); return drawModal(); }
     /* 🚗💰🧾 v1.1.0 */
@@ -911,6 +965,10 @@
     }
     else if (a === 'qplan') modal({ type: 'plan', pick: true, pid: '', name: '', q: '', at: plusDays(1), minutes: 60, place: '', goal: '', note: '' });
     else if (a === 'qfollow') modal(newFollow());
+    else if (a === 'qtask') modal(newTask());
+    else if (a === 'exsearch') exSearch(ui.exq);
+    else if (a === 'exfromq') { ui.exq = ui.q.trim(); exSearch(ui.exq); setTimeout(function () { var e0 = document.querySelector('.ex-panel'); if (e0) e0.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60); }
+    else if (a === 'mexsearch') { if (ui.modal) exSearch(ui.modal.q, ui.modal); }
     else if (a === 'fnew') {
       var mm = ui.modal; if (!mm || mm.busy) return; var nm0 = (mm.q || '').trim(); if (nm0.length < 2) return;
       mm.busy = true; drawModal();
@@ -938,7 +996,7 @@
     else if (a === 'finsave' || a === 'finclear') { if (a === 'finsave' && !dr.fin.trim()) return toast('วางข้อความจากหน้า DBD ก่อน', true); dr.busy = true; drawDr(); req('/prospect/fin', a === 'finclear' ? { id: p.id, clear: true } : { id: p.id, text: dr.fin }).then(function (j) { dr.busy = false; dr.fin = ''; toast(j.risk ? 'ประเมินแล้ว: ' + j.risk.label : 'ล้างงบแล้ว'); reloadDr(); loadList(); }).catch(function (e) { dr.busy = false; drawDr(); toast(e.message, true); }); }
     else if (a === 'plan') modal({ type: 'plan', pid: p.id, name: p.name, at: plusDays(1), minutes: 60, place: p.address || '', goal: '', note: '' });
     else if (a === 'follow') modal(newFollow({ pid: p.id, name: p.name }));
-    else if (a === 'task') modal({ type: 'task', pid: p.id, name: p.name, channel: 'call', title: '', at: plusDays(2), note: '' });
+    else if (a === 'task') modal(newTask({ pid: p.id, name: p.name, at: plusDays(2) }));
     else if (a === 'visit') { var plan = (dr.data.events || []).filter(function (e) { return e.kind === 'plan' && e.status === 'open'; }).sort(function (x, y) { return x.at - y.at; })[0]; modal({ type: 'visit', pid: p.id, planId: plan ? plan.id : '', name: p.name, at: localInput(Date.now()), people: '', note: '', photos: [] }); }
     else if (a === 'delp') modal({ type: 'confirm', title: 'ลบ "' + p.name + '"?', text: 'ลบลูกค้าและประวัติ visit/งานติดตามทั้งหมดของรายนี้ กู้คืนไม่ได้', run: function () { return req('/prospect/delete', { id: p.id }).then(function () { closeDr(); toast('ลบแล้ว'); loadList(); }); } });
     else if (a === 'report') {
@@ -998,6 +1056,8 @@
   });
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Enter' && ev.target && (ev.target.id === 'area' || ev.target.id === 'extra')) { ev.preventDefault(); act('search'); }
+    if (ev.key === 'Enter' && ev.target && ev.target.id === 'exq') { ev.preventDefault(); exSearch(ev.target.value); }
+    if (ev.key === 'Enter' && ev.target && ev.target.dataset && ev.target.dataset.mq && ui.modal && (ui.modal.type === 'follow' || ui.modal.type === 'task') && !ui.modal.pid) { ev.preventDefault(); exSearch(ui.modal.q, ui.modal); }
     if (ev.key === 'Enter' && ev.target && ev.target.dataset && ev.target.dataset.tq && ui.modal && ui.modal.trip) { ev.preventDefault(); tripAct(ev.target.dataset.tq + '-find', ui.modal.trip); }
   });
 
