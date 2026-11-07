@@ -149,7 +149,7 @@ async function mount(router, ctx) {
     const me = meOf(req);
     return { ok: true, version: VERSION.VERSION, me, health: Object.assign({ sqlFile: SQL_FILE }, health), ai: { ready: ai.ready(), engine: ai.engineLabel() },
       team: me.sup ? await teamList() : (await teamList()).filter(u => lower(u.username) === lower(me.username)),
-      segments: Seg.SEGMENTS.map(s => ({ key: s.key, label: s.label, icon: s.icon, needs: s.needs })), stages: Seg.STAGES, channels: Seg.CHANNELS, outcomes: Seg.OUTCOMES,   /* 💬 v1.5.0 */
+      segments: Seg.SEGMENTS.map(s => ({ key: s.key, label: s.label, icon: s.icon, needs: s.needs })), stages: Seg.STAGES, channels: Seg.CHANNELS,
       /* 🚗💰 v1.1.0 */ trip: { vehicles: Trip.VEHICLES, rates: Trip.RATES, office, srcLabel: Trip.SRC_LABEL, maxKm: Trip.MAX_KM, maxToll: Trip.MAX_TOLL },
       claims: { ready: (await CL.cFresh()).ok, sqlFile: Claims.CLAIM_SQL, acc: CL.isAcc(req.user), accOnly: CL.accOnly(req.user), status: Claims.STATUS } };
   }));
@@ -254,69 +254,6 @@ async function mount(router, ctx) {
   }));
 
   /* ═══ บันทึกลูกค้าเป้าหมาย (จากผลค้นหา หรือกรอกเอง) ═══ */
-  /* ═══ 🔎 v1.5.1 (7 พ.ย. 69) ลูกค้าเดิมในคีย์ยอดขาย ⇒ ดึงมาติดตาม (แชท / โทร / นัดในปฏิทิน) โดยไม่ต้อง visit
-   *  พี่เอ: "ในส่วนของลูกค้า ให้สามารถค้นหาลูกค้าเดิมที่มีในระบบ ขึ้นมาทำการ ติดตาม update โดยไม่ต้อง visit ได้ด้วยนะ
-   *         เช่น โทรติดตาม chat ติดตาม และลงแผนกิจกรรมในปฏิทินได้เหมือนกับ การ visit สำหรับ user online"
-   *  · ค้น total_sales ตาม ชื่อบริษัท / ผู้ติดต่อ / เบอร์ / รหัสงาน · เซลส์เห็นเฉพาะใบของตัวเอง (Sales Code) · หัวหน้าเห็นทุกใบ
-   *  · ดึงเข้ามา = สร้างลูกค้าในแอปนี้ ผูกกับใบเดิม (doc.sales.linked) ⇒ ไม่ออกรหัสงานใหม่ ไม่เปิดใบ B2B ซ้ำ
-   *  · อ่านเฉพาะตอนกดค้น (ไม่อยู่ในทางเปิดแอป) · ≤ 60 แถว/ครั้ง */
-  const SALES_T = 'total_sales';
-  const SALES_COLS = ['_row', 'รหัสงาน', 'ชื่อบริษัท', 'ชื่อผู้ติดต่อ', 'เบอร์ติดต่อ', 'Lead Status', 'วันที่ติดต่อ', 'ลูกค้ามาจากไหน', 'ชื่อช่อง / Platform', 'Sales Code', 'Create By'];
-  const qcol = c => /^[a-z_]+$/.test(c) ? c : '"' + c.replace(/"/g, '""') + '"';
-  const sOut = r => ({ row: Number(r._row), jobCode: clean(r['รหัสงาน']), company: clean(r['ชื่อบริษัท']), contact: clean(r['ชื่อผู้ติดต่อ']), phone: clean(r['เบอร์ติดต่อ']),
-    status: clean(r['Lead Status']), date: clean(r['วันที่ติดต่อ']), source: clean(r['ลูกค้ามาจากไหน']), channel: clean(r['ชื่อช่อง / Platform']), sales: clean(r['Sales Code']), salesNick: clean(r['Create By']) });
-  router.get('/api/existing', (req, res) => send(res, async () => {
-    res.set('Cache-Control', 'no-store');
-    await need();
-    const me = meOf(req), q = clean(req.query.q).replace(/[,()*"\\]/g, ' ').trim();
-    if (q.length < 2) throw uerr('พิมพ์อย่างน้อย 2 ตัวอักษร');
-    const like = 'ilike.*' + q.replace(/\s+/g, '*') + '*';
-    const digits = q.replace(/\D/g, '');
-    const terms = ['ชื่อบริษัท', 'ชื่อผู้ติดต่อ', 'รหัสงาน'].map(c => qcol(c) + '.' + like);
-    /* เบอร์ในใบมีขีด/เว้นวรรคปนได้ (089-111-2233) ⇒ แทรก * ระหว่างตัวเลข ให้พิมพ์ติดกันก็เจอ */
-    if (digits.length >= 4) terms.push(qcol('เบอร์ติดต่อ') + '.ilike.*' + digits.slice(-10).split('').join('*') + '*');
-    const qq = { select: SALES_COLS.map(qcol).join(','), or: '(' + terms.join(',') + ')', order: '_row.desc', limit: 60 };
-    if (!me.sup) qq['Sales Code'] = 'ilike.' + me.username;
-    let rows;
-    try { rows = (await db.select(SALES_T, qq)) || []; } catch (e) { throw uerr('ค้นคีย์ยอดขายไม่สำเร็จ: ' + errText(e), 502); }
-    /* รวมใบของลูกค้าคนเดียวกัน (ชื่อบริษัท/ผู้ติดต่อ) ⇒ แสดงใบล่าสุด + จำนวนใบ */
-    const by = new Map();
-    for (const r of rows.map(sOut)) {
-      const k = nameKey(r.company || r.contact) || ('row' + r.row);
-      if (!by.has(k)) by.set(k, Object.assign(r, { jobs: 1, key: k })); else by.get(k).jobs++;
-    }
-    const items = [...by.values()].slice(0, 20);
-    const keys = items.map(x => x.key).filter(k => !/^row/.test(k));
-    const have = keys.length ? await db.select(T.p, { name_key: 'in.(' + keys.map(k => '"' + k.replace(/"/g, '') + '"').join(',') + ')', select: 'id,name_key,owner' }).catch(() => []) : [];
-    for (const x of items) { const h = (have || []).find(p => p.name_key === x.key); x.inVisit = h ? { id: h.id, owner: h.owner, mine: me.sup || lower(h.owner) === lower(me.username) } : null; delete x.key; }
-    return { ok: true, items, total: rows.length, mineOnly: !me.sup };
-  }));
-  router.post('/api/existing/add', (req, res) => send(res, async () => {
-    await need();
-    const me = meOf(req), rowNo = Number((req.body || {}).row);
-    if (!Number.isInteger(rowNo) || rowNo <= 0) throw uerr('ไม่พบใบนี้');
-    const r0 = await db.one(SALES_T, { _row: 'eq.' + rowNo, select: SALES_COLS.map(qcol).join(',') });
-    if (!r0) throw uerr('ไม่พบใบนี้ในคีย์ยอดขาย', 404);
-    const r = sOut(r0);
-    if (!me.sup && lower(r.sales) !== lower(me.username)) throw uerr('ใบนี้เป็นลูกค้าของ ' + (r.salesNick || r.sales || 'เซลส์คนอื่น') + ' — ให้หัวหน้าโอนให้ก่อน', 403);
-    const name = r.company || r.contact;
-    if (!name) throw uerr('ใบนี้ไม่มีชื่อบริษัท/ผู้ติดต่อ');
-    const key = nameKey(name);
-    const dup = key ? await db.one(T.p, { name_key: 'eq.' + key, select: 'id,owner' }) : null;
-    if (dup) {
-      if (!me.sup && lower(dup.owner) !== lower(me.username)) throw uerr('"' + name + '" เป็นลูกค้าที่ ' + dup.owner + ' ดูแลในแอปนี้อยู่แล้ว — ให้หัวหน้าโอนให้ก่อน', 403);
-      return { ok: true, id: dup.id, existing: true, name };
-    }
-    const owner = me.sup ? (r.sales || me.username) : me.username;
-    const row = Object.assign(prow({ name, phone: r.phone }, me, owner), { id: rid('vp_'), stage: 'target', chance: Seg.STAGE_CHANCE.target, created_by: me.username,
-      doc: { from: { sales: r.jobCode, row: r.row }, contacts: r.contact ? [{ name: r.contact, role: '', phone: r.phone, line: '' }] : [],
-        note: 'ลูกค้าเดิมจากคีย์ยอดขาย ' + r.jobCode + (r.source ? ' · ' + r.source : '') + (r.channel ? ' · ' + r.channel : '') + (r.status ? ' · ' + r.status : ''),
-        sales: r.jobCode ? { jobCode: r.jobCode, row: r.row, linked: true, at: Date.now() } : undefined } });
-    await db.insert(T.p, [row]);
-    if (ctx.audit) ctx.audit(req.user, 'visit_existing_add', { id: row.id, name, jobCode: r.jobCode });
-    return { ok: true, id: row.id, existing: false, name };
-  }));
-
   router.post('/api/prospect/save', (req, res) => send(res, async () => {
     await need();
     const me = meOf(req), x = (req.body && req.body.item) || {};
@@ -541,60 +478,9 @@ async function mount(router, ctx) {
     return { ok: true, p };
   }));
 
-  /* ═══ 💬 v1.5.0 (7 พ.ย. 69) บันทึกการติดตาม — แชท / โทร (ไม่ต้องออกไปหาลูกค้า)
-   *  พี่เอ: "ให้เพิ่มส่วนการติดตามลูกค้าที่ไม่การ visit ด้วยนะ เช่น แชทติดตาม โทรติดตาม ให้กับทีม ขาย online ด้วยนะ
-   *         เพราะเค้าไม่ได้ออกไปหาลูกค้า"
-   *  · kind 'follow' (status done) · doc: ช่องทาง · ผล · รูปแคปแชท (≤ 4 · ย่อ ≤150KB เก็บ Storage) · งานที่ทำเสร็จ (taskId)
-   *  · ผล "ขอใบเสนอราคา" ⇒ ขั้นเสนอราคา · "ปิดการขายได้" ⇒ ปิดการขาย · "ไม่สนใจ" ⇒ ไม่ได้งาน (ไม่ถอยขั้น)
-   *  · นัดติดตามครั้งถัดไป (ไม่บังคับ) ⇒ งานติดตามใหม่ลงปฏิทิน
-   *  · ไม่ใช้ AI ไม่มีค่า API · นับคะแนน "ติดตามลูกค้า" ใน Report & Ranking */
-  router.post('/api/follow', (req, res) => send(res, async () => {
-    await need();
-    const me = meOf(req), b = req.body || {}; let p = await mustP(me, b.prospectId);
-    const ch = Seg.CHANNEL[clean(b.channel)] ? clean(b.channel) : '';
-    if (!ch) throw uerr('เลือกช่องทางที่ติดตาม (โทร / LINE / Facebook …)');
-    const oc = Seg.OUTCOME[clean(b.outcome)];
-    if (!oc) throw uerr('เลือกผลการติดตาม');
-    const note = String(b.note || '').trim().slice(0, 4000);
-    if (note.length < 5) throw uerr('เขียนสรุปสั้น ๆ ว่าคุยอะไรกับลูกค้า (อย่างน้อย 5 ตัวอักษร)');
-    const at = b.at ? atOf(b.at) : Date.now();
-    if (at > Date.now() + 10 * 60e3) throw uerr('เวลาที่ติดตามต้องไม่เกินตอนนี้ (ถ้าจะนัดล่วงหน้า ใช้ "+ งานติดตาม")');
-    let next = null;
-    if (b.next && b.next.at) {
-      const nAt = atOf(b.next.at);
-      if (nAt <= Date.now()) throw uerr('วันนัดติดตามครั้งถัดไปต้องเป็นเวลาข้างหน้า');
-      next = { at: nAt, channel: Seg.CHANNEL[clean(b.next.channel)] ? clean(b.next.channel) : ch, title: clip(b.next.title, 200) };
-    }
-    const photos = (Array.isArray(b.photos) ? b.photos : []).slice(0, 4);
-    const id = rid('ve_'), saved = [];
-    for (let i = 0; i < photos.length; i++) {
-      const big = await shrink150(bufOfData(photos[i]));
-      const path = 'visit/' + p.id + '/' + id + '-' + (i + 1) + '.jpg';
-      try { const u = await storage.upload(path, big, 'image/jpeg', { shrink: false, immutable: true }); saved.push({ url: u.url, path: u.path || path, bytes: big.length }); }
-      catch (e) { throw uerr('อัปโหลดรูปไม่สำเร็จ: ' + errText(e), 502); }
-    }
-    const taskId = clean(b.taskId);
-    const row = { id, prospect_id: p.id, kind: 'follow', status: 'done', at: iso(at), owner: p.owner || me.username, by_user: me.username,
-      title: clip(b.title, 200) || (Seg.CHANNEL[ch].label + ' · ' + oc.label), body: note,
-      doc: { channel: ch, outcome: oc.key, photos: saved, taskId } };
-    await db.insert(T.e, [row]);
-    /* งานติดตามที่ทำเสร็จจากการติดตามครั้งนี้ */
-    if (taskId) await db.update(T.e, { id: 'eq.' + taskId, prospect_id: 'eq.' + p.id, status: 'eq.open' }, { status: 'done', updated_at: iso(Date.now()), doc: { channel: ch, result: clip(oc.label + ' — ' + note, 600), doneBy: me.username, doneAt: Date.now(), followId: id } }).catch(() => {});
-    /* ขั้นการขาย: ขยับไปข้างหน้าเท่านั้น · ปิดการขาย/ไม่ได้งาน ตามผล */
-    if (oc.stage && p.stage !== oc.stage && p.stage !== 'won' && (oc.stage === 'won' || oc.stage === 'lost' || further(oc.stage, p.stage)))
-      p = await setStage(p, me, oc.stage, 'ติดตามทาง' + Seg.CHANNEL[ch].label + ': ' + oc.label);
-    let nextEv = null;
-    if (next && p.stage !== 'won' && p.stage !== 'lost') nextEv = await addEvent(p, me, { kind: 'task', at: next.at, title: next.title || ('ติดตามต่อ · ' + oc.label), doc: { channel: next.channel, fromFollow: id } });
-    p = await saveP(p, { doc: Object.assign({}, p.doc, { lastFollowAt: at, lastFollow: { channel: ch, outcome: oc.key } }) });
-    p = await refreshNext(p);
-    /* ‼ v1.5.1 ไม่เปิดใบคีย์ยอดขาย B2B จากการติดตามทางแชท/โทร — ลูกค้า online มีใบตามช่องทางของตัวเองอยู่แล้ว (ไม่ให้ไปนับเป็น B2B) */
-    if (ctx.audit) ctx.audit(req.user, 'visit_follow', { id: p.id, name: p.name, channel: ch, outcome: oc.key, photos: saved.length });
-    return { ok: true, event: eOut(row), next: nextEv, p };
-  }));
-
   /* ═══ บันทึก visit: รูป + สรุป ⇒ อลิซวิเคราะห์ ⇒ งานถัดไปอัตโนมัติ ═══ */
   async function runVisitAI(p, me, ev, images) {
-    const hist = (await db.selectAll(T.e, { prospect_id: 'eq.' + p.id, kind: 'in.(visit,stage,task,follow)', select: 'kind,at,title,body,status', order: 'at.asc' }))
+    const hist = (await db.selectAll(T.e, { prospect_id: 'eq.' + p.id, kind: 'in.(visit,stage,task)', select: 'kind,at,title,body,status', order: 'at.asc' }))
       .filter(x => x.at && ms(x.at) < ev.at).map(x => new Date(ms(x.at) + 7 * 3600e3).toISOString().slice(0, 10) + ' ' + x.kind + ': ' + clip(x.title + ' ' + (x.body || ''), 200));
     const a = await ai.analyzeVisit(Object.assign({ verdict: p.doc.ai && p.doc.ai.verdict }, p), { note: ev.body, history: hist }, images);
     await db.update(T.e, { id: 'eq.' + ev.id }, { doc: Object.assign({}, ev.doc, { ai: a }), updated_at: iso(Date.now()) });
@@ -692,7 +578,7 @@ async function mount(router, ctx) {
     await need();
     const me = meOf(req), from = Date.parse(clean(req.query.from)), to = Date.parse(clean(req.query.to));
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 62 * DAY) throw uerr('ช่วงวันที่ไม่ถูกต้อง');
-    const q = { at: 'gte.' + iso(from), and: '(at.lt.' + iso(to) + ')', kind: 'in.(plan,task,visit,follow)', status: 'neq.cancelled', select: '*', order: 'at.asc' };
+    const q = { at: 'gte.' + iso(from), and: '(at.lt.' + iso(to) + ')', kind: 'in.(plan,task,visit)', status: 'neq.cancelled', select: '*', order: 'at.asc' };
     const owner = clean(req.query.owner);
     if (!me.sup) q.owner = 'eq.' + me.username; else if (owner) q.owner = 'eq.' + owner;
     const evs = (await db.selectAll(T.e, q)).map(eOut);
@@ -713,7 +599,7 @@ async function mount(router, ctx) {
     const ps = (await db.selectAll(T.p, pq)).map(pOut);
     const eq = { at: 'gte.' + iso(from), and: '(at.lte.' + iso(to) + ')', select: '*', order: 'at.asc' }; if (owner) eq.owner = 'eq.' + owner;
     const evs = (await db.selectAll(T.e, eq)).map(eOut);
-    const visits = evs.filter(e => e.kind === 'visit'), plans = evs.filter(e => e.kind === 'plan'), tasks = evs.filter(e => e.kind === 'task'), follows = evs.filter(e => e.kind === 'follow');
+    const visits = evs.filter(e => e.kind === 'visit'), plans = evs.filter(e => e.kind === 'plan'), tasks = evs.filter(e => e.kind === 'task');
     const vids = [...new Set(visits.map(v => v.prospectId))];
     const team0 = await teamList();
     const now = Date.now();
@@ -727,12 +613,12 @@ async function mount(router, ctx) {
     });
     const won = customers.filter(c => c.stage === 'won').length, lost = customers.filter(c => c.stage === 'lost').length, openC = customers.filter(c => c.stage !== 'won' && c.stage !== 'lost');
     const expected = won + openC.reduce((s, c) => s + c.chance / 100, 0);
-    const kpi = { customers: customers.length, visits: visits.length, follows: follows.length, plans: plans.length, plansDone: plans.filter(x => x.status === 'done').length, tasks: tasks.length, tasksDone: tasks.filter(x => x.status === 'done').length,
+    const kpi = { customers: customers.length, visits: visits.length, plans: plans.length, plansDone: plans.filter(x => x.status === 'done').length, tasks: tasks.length, tasksDone: tasks.filter(x => x.status === 'done').length,
       overdue: openTasks.filter(t => t.at < now && vids.indexOf(t.prospectId) >= 0).length, won, lost, open: openC.length,
       winRate: won + lost ? Math.round(won / (won + lost) * 100) : null, weightedRate: customers.length ? Math.round(expected / customers.length * 100) : 0, expectedWins: Math.round(expected * 10) / 10,
       pipeline: openC.reduce((s, c) => s + (c.value || 0), 0), weightedValue: Math.round(openC.reduce((s, c) => s + (c.value || 0) * c.chance / 100, 0)),
       stageN: Object.fromEntries(Seg.STAGES.map(s => [s.key, customers.filter(c => c.stage === s.key).length])),
-      bySales: [...new Set(customers.map(c => c.owner))].map(u => { const cc = customers.filter(c => c.owner === u); return { owner: u, name: nameOfUser(team0, u), customers: cc.length, visits: visits.filter(v => cc.some(c => c.id === v.prospectId)).length, follows: follows.filter(v => cc.some(c => c.id === v.prospectId)).length, won: cc.filter(c => c.stage === 'won').length, avgChance: cc.length ? Math.round(cc.reduce((s, c) => s + c.chance, 0) / cc.length) : 0 }; }) };
+      bySales: [...new Set(customers.map(c => c.owner))].map(u => { const cc = customers.filter(c => c.owner === u); return { owner: u, name: nameOfUser(team0, u), customers: cc.length, visits: visits.filter(v => cc.some(c => c.id === v.prospectId)).length, won: cc.filter(c => c.stage === 'won').length, avgChance: cc.length ? Math.round(cc.reduce((s, c) => s + c.chance, 0) / cc.length) : 0 }; }) };
     const periodLabel = clean(b.from) + ' ถึง ' + clean(b.to), ownerLabel = owner ? nameOfUser(team0, owner) : '';
     let aiOut = null, aiErr = '';
     if (customers.length && ai.ready()) { try { aiOut = await ai.report({ customers, kpi, periodLabel, ownerLabel }); } catch (e) { aiErr = errText(e); } }
